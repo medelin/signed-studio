@@ -194,3 +194,54 @@ def test_env_example_documents_password_generation():
 
     text = (Path(__file__).resolve().parents[1] / ".env.example").read_text()
     assert "secrets.token_urlsafe(24)" in text
+
+
+# -- I6: the daily budget is reserved under the lock and survives restarts -------------
+
+
+def test_reservations_are_atomic_under_concurrency():
+    b = Budget(1.0)
+    ok = []
+
+    def work():
+        try:
+            b.reserve(0.3)
+            ok.append(1)
+        except BudgetExceeded:
+            pass
+
+    threads = [threading.Thread(target=work) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(ok) == 3  # 0.9 reserved; a fourth would exceed the cap
+
+
+def test_settle_swaps_reservation_for_actual_cost():
+    b = Budget(1.0)
+    b.reserve(0.5)
+    assert b.remaining() == pytest.approx(0.5)
+    b.settle(0.5, 0.1)
+    assert b.spent() == pytest.approx(0.1)
+    assert b.remaining() == pytest.approx(0.9)
+    b.reserve(0.9)  # the released part is available again
+    b.settle(0.9, 1.2)  # an incurred cost is counted even past the cap
+    assert b.spent() == pytest.approx(1.3)
+
+
+def test_budget_rebuilt_from_todays_model_call_receipts():
+    import time as _time
+
+    from studio.receipts import Ledger
+
+    led = Ledger()
+    led.append("run-1", agent="a", kind="model_call", cost_usd=0.75)
+    led.append("run-1", agent="a", kind="model_call", cost_usd=0.5)
+    led.append("run-1", agent="a", kind="review", cost_usd=9.0)  # not a model call
+    b = Budget.from_ledger(1.0, led)
+    assert b.spent() == pytest.approx(1.25)
+    with pytest.raises(BudgetExceeded):
+        b.reserve(0.01)
+    tomorrow = Budget.from_ledger(1.0, led, now=_time.time() + 2 * 86_400)
+    assert tomorrow.spent() == 0.0

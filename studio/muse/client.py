@@ -135,6 +135,43 @@ def input_hashes(body: Mapping[str, Any]) -> list[str]:
     return out
 
 
+DEFAULT_OUTPUT_ESTIMATE = 8192  # output tokens assumed when the call sets no cap
+IMAGE_TOKENS_ESTIMATE = 2000  # per image part (data URLs are not counted as text)
+
+
+def _strip_images(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        if value.get("type") in ("image_url", "input_image"):
+            return None
+        return {k: _strip_images(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_images(v) for v in value]
+    return value
+
+
+def estimate_cost(model: str, body: Mapping[str, Any]) -> float:
+    """Worst-case-ish cost of a request, reserved from the budget before it is sent: input
+    at ~3 characters per token (uncached), images at a flat rate, output at its cap."""
+    price_in, _, price_out = TOKEN_PRICES[model]
+    text_tokens = len(canonical(_strip_images(dict(body)))) // 3 + 1
+    images = len(input_hashes(body))
+    cap = body.get("max_output_tokens") or body.get("max_completion_tokens")
+    out = cap if isinstance(cap, int) and cap > 0 else DEFAULT_OUTPUT_ESTIMATE
+    return ((text_tokens + images * IMAGE_TOKENS_ESTIMATE) * price_in + out * price_out) / 1e6
+
+
+def _usage_of(data: Any) -> Usage | None:
+    """Usage from a body that failed to parse otherwise (Chat or Responses names)."""
+    u = data.get("usage") if isinstance(data, dict) else None
+    if not isinstance(u, dict):
+        return None
+    usage = Usage(
+        input_tokens=_int(u.get("input_tokens", u.get("prompt_tokens"))),
+        output_tokens=_int(u.get("output_tokens", u.get("completion_tokens"))),
+    )
+    return usage if usage.input_tokens or usage.output_tokens else None
+
+
 def check_tier(model: str, tier: str) -> None:
     if model not in TOKEN_PRICES:
         raise ValueError(f"unknown model {model!r}")
@@ -173,7 +210,7 @@ class MuseClient:
             settings.model_api_key,
             settings.model_api_base_url,
             ledger=ledger,
-            budget=budget or Budget(settings.daily_budget_usd),
+            budget=budget or Budget.from_ledger(settings.daily_budget_usd, ledger),
             read_only=settings.read_only,
         )
 
@@ -266,10 +303,11 @@ class MuseClient:
         Ledger.validate_ids(run_id, agent, provider=PROVIDER, model=model, tier=tier)
         if self.read_only:
             raise ReadOnlyMode("STUDIO_READ_ONLY=1: model calls are disabled")
-        if self.budget is not None:
-            self.budget.check()
         if not self._api_key:
             raise MuseError("MODEL_API_KEY is not set", code="no_api_key")
+        estimate = estimate_cost(model, body)
+        if self.budget is not None:
+            self.budget.reserve(estimate)  # atomic: concurrent calls cannot overspend
         audit: dict[str, Any] = {
             "provider": PROVIDER,
             "tier": tier,
@@ -286,23 +324,37 @@ class MuseClient:
                 usage: Usage = parsed["usage"]
                 cost = cost_usd(used_model if used_model in TOKEN_PRICES else model, usage)
             except Exception:  # noqa: BLE001 - any malformed body is a bad response
+                # The call was billed: record whatever usage the body reports, else the
+                # estimate, so the spend (and the receipt the budget is rebuilt from) is real.
+                bad_usage = _usage_of(data)
                 raise _Failure({"error": "bad_response"},
                                MuseError("Model API returned an unexpected response shape",
-                                         code="bad_response")) from None
+                                         code="bad_response"),
+                               usage=bad_usage,
+                               cost=cost_usd(model, bad_usage) if bad_usage else None,
+                               ) from None
         except _Failure as failure:
+            charged = estimate if failure.cost is None else failure.cost
+            self._settle(estimate, charged)
+            u = failure.usage or Usage()
+            basis = ({"cost_basis": "estimate"} if failure.cost is None
+                     else {"cost_basis": "usage"} if failure.usage else {})
             self.ledger.append(run_id, agent=agent, kind="model_call", model=model, **audit,
-                               duration_ms=_ms(start),
-                               details={"endpoint": endpoint, **failure.details})
+                               duration_ms=_ms(start), tokens_in=u.input_tokens,
+                               tokens_out=u.output_tokens, cost_usd=round(charged, 8),
+                               details={"endpoint": endpoint, **failure.details, **basis})
             raise failure.error from None
         except BaseException as exc:
+            # Unknown whether the request was billed: charge the estimate (conservative).
+            self._settle(estimate, estimate)
             self.ledger.append(run_id, agent=agent, kind="model_call", model=model, **audit,
-                               duration_ms=_ms(start),
+                               duration_ms=_ms(start), cost_usd=round(estimate, 8),
                                details={"endpoint": endpoint, "error": "aborted",
-                                        "error_type": type(exc).__name__})
+                                        "error_type": type(exc).__name__,
+                                        "cost_basis": "estimate"})
             raise
         ms = _ms(start)
-        if self.budget is not None:
-            self.budget.record(cost)
+        self._settle(estimate, cost)
         details: dict[str, Any] = {
             "endpoint": endpoint,
             "response_id": str(data.get("id", "")),
@@ -328,6 +380,10 @@ class MuseClient:
             finish=parsed["finish"], duration_ms=ms, receipt_id=receipt.id,
         )
 
+    def _settle(self, estimate: float, cost: float) -> None:
+        if self.budget is not None:
+            self.budget.settle(estimate, cost)
+
     def _send(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         try:
             resp = self._http.post(
@@ -336,9 +392,10 @@ class MuseClient:
                 headers={"Authorization": f"Bearer {self._api_key}"},
             )
         except httpx.HTTPError as exc:
+            # The request may have reached the API: charge the estimate (conservative).
             raise _Failure({"error": "network", "error_type": type(exc).__name__},
                            MuseError(f"Model API unreachable ({type(exc).__name__})",
-                                     code="network")) from None
+                                     code="network"), cost=None) from None
         try:
             data = resp.json()
         except ValueError:
@@ -353,10 +410,22 @@ class MuseClient:
 
 
 class _Failure(Exception):
-    def __init__(self, details: dict[str, Any], error: MuseError) -> None:
+    """A failed call. ``cost`` is what it incurred: ``None`` = unknown (charge the
+    estimate), ``0.0`` = nothing billed (HTTP error), else computed from ``usage``."""
+
+    def __init__(
+        self,
+        details: dict[str, Any],
+        error: MuseError,
+        *,
+        usage: Usage | None = None,
+        cost: float | None = 0.0,
+    ) -> None:
         super().__init__(error)
         self.details = details
         self.error = error
+        self.usage = usage
+        self.cost = cost
 
 
 def _ms(start: float) -> int:

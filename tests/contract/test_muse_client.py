@@ -357,3 +357,61 @@ def test_odd_server_model_string_still_leaves_a_receipt(client, ledger):
     assert receipt.details["reported_model_sha256"] == sha256_hex(odd)
     assert receipt.details["requested_model"] == "muse-spark-1.3"
     assert "jan@example.org" not in ledger.export_jsonl()
+
+
+def test_estimate_is_reserved_before_the_call(ledger):
+    b = Budget(0.05)  # muse-spark-1.3: 100k output tokens alone would cost $0.425
+    c = MuseClient(FAKE_KEY, ledger=ledger, budget=b)
+    with respx.mock(assert_all_called=False) as router:
+        route = router.post(url__startswith=BASE_URL)
+        with pytest.raises(BudgetExceeded):
+            c.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
+                   agent="a", max_tokens=100_000)
+    assert not route.called
+    assert b.spent() == 0.0 and b.remaining() == pytest.approx(0.05)
+
+
+def test_success_settles_the_reservation_to_the_real_cost(client, ledger):
+    with respx.mock() as router:
+        mount(router, "spark_structured")
+        result = client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}],
+                             run_id="r", agent="a", max_tokens=400)
+    assert client.budget.spent() == pytest.approx(result.cost_usd)
+    assert client.budget.remaining() == pytest.approx(1.0 - result.cost_usd)
+
+
+def test_bad_response_still_records_its_usage_and_cost(client, ledger):
+    with respx.mock() as router:
+        router.post(url__startswith=BASE_URL).mock(return_value=httpx.Response(
+            200, json={"model": "muse-spark-1.3", "choices": "garbage",
+                       "usage": {"prompt_tokens": 1000, "completion_tokens": 2000}}))
+        with pytest.raises(MuseError):
+            client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
+                        agent="a", max_tokens=4000)
+    receipt = ledger.receipts("r")[-1]
+    expected = cost_usd("muse-spark-1.3", Usage(input_tokens=1000, output_tokens=2000))
+    assert receipt.details["error"] == "bad_response"
+    assert receipt.tokens_in == 1000 and receipt.tokens_out == 2000
+    assert receipt.cost_usd == pytest.approx(expected)
+    assert client.budget.spent() == pytest.approx(expected)
+
+
+def test_http_error_releases_the_reservation(client, ledger):
+    with respx.mock() as router:
+        router.post(url__startswith=BASE_URL).mock(return_value=httpx.Response(
+            500, json={"error": {"type": "server_error"}}))
+        with pytest.raises(MuseError):
+            client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
+                        agent="a", max_tokens=4000)
+    assert client.budget.spent() == 0.0 and client.budget.remaining() == pytest.approx(1.0)
+
+
+def test_network_error_charges_the_estimate_conservatively(client, ledger):
+    with respx.mock() as router:
+        router.post(url__startswith=BASE_URL).mock(side_effect=httpx.ReadTimeout("slow"))
+        with pytest.raises(MuseError):
+            client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
+                        agent="a", max_tokens=4000)
+    receipt = ledger.receipts("r")[-1]
+    assert receipt.details["cost_basis"] == "estimate" and receipt.cost_usd > 0
+    assert client.budget.spent() == pytest.approx(receipt.cost_usd)

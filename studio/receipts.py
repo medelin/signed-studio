@@ -287,6 +287,12 @@ class Ledger:
     def receipts(self, run_id: str | None = None) -> list[Receipt]:
         return self._store.receipts(run_id)
 
+    def model_spend_since(self, ts: float) -> float:
+        """Sum of ``cost_usd`` over ``model_call`` receipts at or after ``ts`` (durable when
+        the store is SQLite): the source of truth for the daily budget after a restart."""
+        return sum(r.cost_usd for r in self._store.receipts()
+                   if r.kind == "model_call" and r.ts >= ts)
+
     @staticmethod
     def validate_ids(
         run_id: str, agent: str, *, provider: str = "", model: str = "", tier: str = ""

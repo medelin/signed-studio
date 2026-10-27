@@ -281,3 +281,20 @@ def test_seeded_run_export_has_no_contact_data(tmp_path):
     report = verify(out, led.public_key, approver_keys=ap.Keys.registry(c))
     assert report.ok, report.errors
     assert report.signatures == 5
+
+
+def test_daily_spend_survives_a_restart(tmp_path):
+    """I6: the budget is rebuilt from the durable model_call receipts of the day."""
+    from studio.muse.client import MuseClient
+    from studio.settings import Settings
+
+    c = db.connect(tmp_path / "studio.db")
+    db.init(c)
+    led = db.open_ledger(c, tmp_path / "ledger.key")
+    led.append("run-1", agent="producer", kind="model_call", cost_usd=0.4)
+    c.close()
+    c2 = db.connect(tmp_path / "studio.db")
+    led2 = db.open_ledger(c2, tmp_path / "ledger.key")
+    client = MuseClient.from_settings(Settings.load({"STUDIO_DAILY_BUDGET_USD": "1"}), led2)
+    assert client.budget is not None
+    assert client.budget.spent() == pytest.approx(0.4)

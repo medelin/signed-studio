@@ -13,9 +13,11 @@ import os
 import secrets
 import stat
 import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 MIN_SECRET_LEN = 32
 MIN_SECRET_DISTINCT = 12
@@ -194,8 +196,24 @@ def _utc_today() -> str:
     return dt.datetime.now(dt.UTC).date().isoformat()
 
 
+def utc_day_start(now: float | None = None) -> float:
+    t = time.time() if now is None else now
+    day = dt.datetime.fromtimestamp(t, dt.UTC).date()
+    return dt.datetime(day.year, day.month, day.day, tzinfo=dt.UTC).timestamp()
+
+
+class SpendSource(Protocol):
+    def model_spend_since(self, ts: float) -> float: ...
+
+
 class Budget:
-    """Daily (UTC) spend cap for the Model API. Thread-safe."""
+    """Daily (UTC) spend cap for the Model API. Thread-safe.
+
+    A call ``reserve``s its worst-case estimate under the lock before it is sent (so
+    concurrent calls cannot all pass a check and then overspend together) and ``settle``s
+    it with the incurred cost afterwards. ``from_ledger`` rebuilds today's spend from the
+    durable ``model_call`` receipts, so a restart does not reset the cap.
+    """
 
     def __init__(
         self, limit_usd: float, *, spent_usd: float = 0.0, today: Callable[[], str] = _utc_today
@@ -206,7 +224,20 @@ class Budget:
         self._today = today
         self._day = today()
         self._spent = spent_usd
+        self._reserved = 0.0
         self._lock = threading.Lock()
+
+    @classmethod
+    def from_ledger(
+        cls, limit_usd: float, ledger: SpendSource, *, now: float | None = None
+    ) -> Budget:
+        """A budget whose spend today is the sum of today's ``model_call`` receipt costs."""
+        start = utc_day_start(now)
+        spent = ledger.model_spend_since(start)
+        if now is None:
+            return cls(limit_usd, spent_usd=spent)
+        day = dt.datetime.fromtimestamp(now, dt.UTC).date().isoformat()
+        return cls(limit_usd, spent_usd=spent, today=lambda: day)
 
     def _roll(self) -> None:
         day = self._today()
@@ -226,8 +257,9 @@ class Budget:
             self._over(estimate_usd)
 
     def _over(self, cost: float) -> None:
-        full = cost == 0 and self._spent >= self.limit_usd
-        if full or self._spent + cost > self.limit_usd + 1e-9:
+        committed = self._spent + self._reserved
+        full = cost == 0 and committed >= self.limit_usd
+        if full or committed + cost > self.limit_usd + 1e-9:
             raise BudgetExceeded(
                 f"daily model budget ${self.limit_usd:.2f} reached (spent ${self._spent:.4f})"
             )
@@ -238,6 +270,24 @@ class Budget:
         with self._lock:
             self._roll()
             self._over(cost_usd)
+            self._spent += cost_usd
+
+    def reserve(self, estimate_usd: float) -> float:
+        """Hold ``estimate_usd`` of today's budget; ``BudgetExceeded`` if it does not fit."""
+        self._valid(estimate_usd)
+        with self._lock:
+            self._roll()
+            self._over(estimate_usd)
+            self._reserved += estimate_usd
+            return estimate_usd
+
+    def settle(self, reserved_usd: float, cost_usd: float) -> None:
+        """Release a reservation and record the cost actually incurred (even past the cap)."""
+        self._valid(reserved_usd)
+        self._valid(cost_usd)
+        with self._lock:
+            self._roll()
+            self._reserved = max(0.0, self._reserved - reserved_usd)
             self._spent += cost_usd
 
     def record(self, cost_usd: float) -> None:
@@ -255,4 +305,4 @@ class Budget:
     def remaining(self) -> float:
         with self._lock:
             self._roll()
-            return max(0.0, self.limit_usd - self._spent)
+            return max(0.0, self.limit_usd - self._spent - self._reserved)
