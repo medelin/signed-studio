@@ -1,0 +1,2 @@
+# False positive: a type annotation (signing_key: Ed25519PrivateKey), not a secret.
+dd771f647231c216652df8b4e45fb05317a879ab:studio/receipts.py:generic-api-key:95
