@@ -1,9 +1,10 @@
-"""Receipts: a hash-chained provenance log for every agent step.
+"""Receipts: a hash-chained, signed provenance log for every agent step.
 
 Each receipt names the agent, the model or tool, what went in and out (as hashes), the
-cost, and the hash of the previous receipt in the same run. ``verify`` recomputes every
-hash, checks the links and timestamps, and checks that every external write is preceded
-by a human approval for exactly the same content.
+cost, and the hash of the previous receipt in the same run. The server signs every
+receipt hash with its Ed25519 ledger key, so a changed log cannot be "repaired" by
+recomputing the hashes. ``verify`` checks signatures, hashes, links and timestamps, and
+that every external write is preceded by a human approval for exactly the same content.
 """
 
 from __future__ import annotations
@@ -17,6 +18,12 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 GENESIS = "0" * 64
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review"})
@@ -70,10 +77,12 @@ class Receipt:
     envelope: bool = False
     details: dict[str, Any] = field(default_factory=dict)
     hash: str = ""
+    sig: str = ""
 
     def body(self) -> dict[str, Any]:
         data = asdict(self)
         data.pop("hash")
+        data.pop("sig")
         return data
 
     def compute_hash(self) -> str:
@@ -83,11 +92,16 @@ class Receipt:
 class Ledger:
     """In-memory ledger; the database layer persists the same receipts."""
 
-    def __init__(self) -> None:
+    def __init__(self, signing_key: Ed25519PrivateKey | None = None) -> None:
+        self._key = signing_key or Ed25519PrivateKey.generate()
         self._receipts: list[Receipt] = []
         self._heads: dict[str, str] = {}
         self._last_ts: dict[str, float] = {}
         self._lock = threading.Lock()
+
+    @property
+    def public_key(self) -> Ed25519PublicKey:
+        return self._key.public_key()
 
     def chain_head(self, run_id: str) -> str:
         return self._heads.get(run_id, GENESIS)
@@ -108,7 +122,9 @@ class Ledger:
                 details=details,
                 **fields,
             )
-            receipt = Receipt(**{**asdict(draft), "hash": draft.compute_hash()})
+            digest = draft.compute_hash()
+            sig = self._key.sign(bytes.fromhex(digest)).hex()
+            receipt = Receipt(**{**asdict(draft), "hash": digest, "sig": sig})
             self._receipts.append(receipt)
             self._heads[run_id] = receipt.hash
             self._last_ts[run_id] = ts
@@ -128,8 +144,12 @@ class Report:
     errors: list[str]
 
 
-def verify(path: str | Path) -> Report:
-    """Check hashes, links, timestamps and approval-before-write for a JSONL export."""
+def verify(path: str | Path, public_key: Ed25519PublicKey) -> Report:
+    """Check signatures, hashes, links, timestamps and approval-before-write.
+
+    ``public_key`` is the ledger key published by the server (``/api/ledger-key``).
+    Without it a forged log with recomputed hashes would look valid.
+    """
     errors: list[str] = []
     heads: dict[str, str] = {}
     last_ts: dict[str, float] = {}
@@ -147,6 +167,11 @@ def verify(path: str | Path) -> Report:
         run = receipt.run_id
         if receipt.compute_hash() != receipt.hash:
             errors.append(f"{receipt.id}: hash mismatch (content was changed)")
+        else:
+            try:
+                public_key.verify(bytes.fromhex(receipt.sig), bytes.fromhex(receipt.hash))
+            except (InvalidSignature, ValueError):
+                errors.append(f"{receipt.id}: bad ledger signature")
         if receipt.prev != heads.get(run, GENESIS):
             errors.append(f"{receipt.id}: broken link to previous receipt")
         if receipt.ts < last_ts.get(run, 0.0):

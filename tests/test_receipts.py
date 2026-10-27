@@ -27,14 +27,14 @@ def test_verify_ok_and_tamper_detected(tmp_path):
         led.append("run-1", agent=agent, kind="model_call", model="muse-spark")
     path = tmp_path / "receipts.jsonl"
     path.write_text(led.export_jsonl())
-    assert verify(path).ok
+    assert verify(path, led.public_key).ok
 
     lines = path.read_text().splitlines()
     rec = json.loads(lines[1])
     rec["model"] = "something-else"
     lines[1] = json.dumps(rec)
     path.write_text("\n".join(lines) + "\n")
-    report = verify(path)
+    report = verify(path, led.public_key)
     assert not report.ok
     assert report.errors[0].startswith(rec["id"])
 
@@ -46,7 +46,7 @@ def test_broken_prev_link_detected(tmp_path):
     lines = led.export_jsonl().splitlines()
     path = tmp_path / "r.jsonl"
     path.write_text(lines[1] + "\n")  # second receipt without its predecessor
-    assert not verify(path).ok
+    assert not verify(path, led.public_key).ok
 
 
 def test_timestamps_monotonic():
@@ -75,7 +75,7 @@ def test_external_write_requires_matching_approval(tmp_path):
     led.append("run-1", agent="media_buyer", kind="external_write", output_sha256="abc")
     path = tmp_path / "r.jsonl"
     path.write_text(led.export_jsonl())
-    report = verify(path)
+    report = verify(path, led.public_key)
     assert not report.ok
     assert "external_write without approval" in report.errors[0]
 
@@ -83,10 +83,34 @@ def test_external_write_requires_matching_approval(tmp_path):
     led2.append("run-1", agent="human", kind="approval", details={"content_sha256": "abc"})
     led2.append("run-1", agent="media_buyer", kind="external_write", output_sha256="abc")
     path.write_text(led2.export_jsonl())
-    assert verify(path).ok
+    assert verify(path, led2.public_key).ok
 
 
 @pytest.mark.parametrize("kind", ["unknown", ""])
 def test_unknown_kind_rejected(kind):
     with pytest.raises(ValueError):
         Ledger().append("run-1", agent="a", kind=kind)
+
+
+def test_recomputed_hashes_without_key_are_rejected(tmp_path):
+    from studio.receipts import Receipt
+
+    led = Ledger()
+    led.append("run-1", agent="producer", kind="model_call", model="muse-spark")
+    rec = json.loads(led.export_jsonl())
+    rec["model"] = "forged"
+    forged = Receipt(**{**rec, "hash": "", "sig": rec["sig"]})
+    rec["hash"] = forged.compute_hash()  # attacker recomputes the hash
+    path = tmp_path / "r.jsonl"
+    path.write_text(json.dumps(rec) + "\n")
+    report = verify(path, led.public_key)
+    assert not report.ok
+    assert "bad ledger signature" in report.errors[0]
+
+
+def test_other_ledger_key_rejected(tmp_path):
+    led = Ledger()
+    led.append("run-1", agent="a", kind="model_call")
+    path = tmp_path / "r.jsonl"
+    path.write_text(led.export_jsonl())
+    assert not verify(path, Ledger().public_key).ok
