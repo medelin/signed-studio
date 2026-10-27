@@ -184,6 +184,8 @@ class Store(Protocol):
 
     def snapshot(self) -> tuple[int, list[Receipt]]: ...
 
+    def seq(self) -> int: ...
+
 
 class MemoryStore:
     """Process memory; not transactional, so it cannot record approvals."""
@@ -222,6 +224,10 @@ class MemoryStore:
         with self._lock:
             return self._seq, list(self._receipts)
 
+    def seq(self) -> int:
+        with self._lock:
+            return self._seq
+
 
 class Ledger:
     """Signs and appends receipts; storage is pluggable (memory here, SQLite in ``db``)."""
@@ -231,6 +237,8 @@ class Ledger:
     ) -> None:
         self._key = signer or Ed25519PrivateKey.generate()
         self._store: Store = store or MemoryStore()
+        self._signed: dict[str, Any] | None = None  # latest signed manifest (one per seq)
+        self._signed_lock = threading.Lock()
 
     @property
     def public_key(self) -> Ed25519PublicKey:
@@ -292,14 +300,27 @@ class Ledger:
             if (required or value) and not is_opaque(value):
                 raise ValueError(f"receipt field {name!r} must be an opaque id, not free text")
 
+    def seq(self) -> int:
+        """Current durable ledger version; read-only (no signing), for display."""
+        return self._store.seq()
+
     def _sign_manifest(self, seq: int, receipts: list[Receipt]) -> dict[str, Any]:
+        """The signed manifest for ``seq``, signed once and reused until the ledger changes
+        (``seq`` grows with every write, so equal ``seq`` means equal contents)."""
+        with self._signed_lock:
+            if self._signed is not None and self._signed["seq"] == seq:
+                return dict(self._signed)
         runs: dict[str, dict[str, Any]] = {}
         for r in receipts:
             entry = runs.setdefault(r.run_id, {"head": GENESIS, "count": 0})
             entry["head"] = r.hash
             entry["count"] += 1
         body = {"seq": seq, "ts": time.time(), "epoch": self.epoch, "runs": runs}
-        return {**body, "sig": self._key.sign(_manifest_bytes(body)).hex()}
+        signed = {**body, "sig": self._key.sign(_manifest_bytes(body)).hex()}
+        with self._signed_lock:
+            if self._signed is None or self._signed["seq"] <= seq:
+                self._signed = signed
+        return signed
 
     def manifest(self) -> dict[str, Any]:
         """Signed statement of every run's head and length.
@@ -307,7 +328,12 @@ class Ledger:
         ``seq`` is the ledger version: a durable counter that grows with every write, so an
         older export cannot be passed off as current when the verifier knows the latest
         ``seq`` (published at ``/api/ledger-manifest``). ``epoch`` names the signing key.
+        Reading it never changes ``seq``; a new manifest is signed only after a write.
         """
+        seq = self._store.seq()
+        with self._signed_lock:
+            if self._signed is not None and self._signed["seq"] == seq:
+                return dict(self._signed)
         return self._sign_manifest(*self._store.snapshot())
 
     def export_jsonl(self) -> str:

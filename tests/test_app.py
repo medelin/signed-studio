@@ -63,7 +63,21 @@ def test_index_escapes_receipt_content(app, client):
 
 def test_healthz(client):
     r = client.get("/healthz")
-    assert r.status_code == 200 and r.json()["ok"] is True
+    assert r.status_code == 200 and r.json() == {"ok": True, "read_only": False}
+
+
+def test_public_gets_neither_bump_seq_nor_sign_new_manifests(app, client):
+    app.state.ledger.append("run-1", agent="a", kind="model_call")
+    seq = app.state.ledger.seq()
+    first = client.get("/api/ledger-manifest").json()
+    for _ in range(100):
+        client.get("/healthz")
+        client.get("/")
+        assert client.get("/api/ledger-manifest").json() == first  # same signed manifest
+    assert app.state.ledger.seq() == seq == first["seq"]
+    app.state.ledger.append("run-1", agent="b", kind="model_call")
+    newer = client.get("/api/ledger-manifest").json()
+    assert newer["seq"] == seq + 1 and newer["sig"] != first["sig"]
 
 
 def test_security_headers(client):
@@ -474,6 +488,7 @@ def test_daily_failure_budget_warns_without_locking(caplog):
     assert lim.failures_24h(now=t + 86_401) == 0  # the window slides
 
 
-def test_healthz_reports_login_failures_metric(client):
+def test_login_failures_metric_is_not_public(app, client):
     login(client, "nope")
-    assert client.get("/healthz").json()["login_failures_24h"] == 1
+    assert "login_failures_24h" not in client.get("/healthz").json()
+    assert app.state.limiter.failures_24h() == 1

@@ -159,6 +159,11 @@ class SqliteStore:
                 ).fetchall()
         return [Receipt(**json.loads(r[0])) for r in rows]
 
+    def seq(self) -> int:
+        with _lock(self._conn):
+            return int(self._conn.execute(
+                "SELECT seq FROM ledger_meta WHERE id = 1").fetchone()[0])
+
     def snapshot(self) -> tuple[int, list[Receipt]]:
         """Ledger version and all receipts, read in one transaction (consistent pair)."""
         c = self._conn

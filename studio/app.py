@@ -392,14 +392,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> Response:
         receipts = ledger.receipts()[-50:][::-1]
-        manifest = ledger.manifest()
         return templates.TemplateResponse(
             request,
             "index.html",
             {
                 "receipts": receipts,
-                "seq": manifest["seq"],
-                "epoch": manifest["epoch"],
+                "seq": ledger.seq(),
+                "epoch": ledger.epoch,
                 "logged_in": session_of(request) is not None,
                 "login_enabled": settings.judge_login_enabled,
                 "read_only": settings.read_only,
@@ -408,8 +407,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/healthz")
     def healthz() -> dict[str, Any]:
-        return {"ok": True, "read_only": settings.read_only, "seq": ledger.manifest()["seq"],
-                "login_failures_24h": app.state.limiter.failures_24h()}
+        return {"ok": True, "read_only": settings.read_only}  # minimal and public
 
     @app.post("/login")
     async def login(request: Request) -> Response:
