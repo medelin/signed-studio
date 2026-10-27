@@ -94,6 +94,14 @@ def test_reply_is_signed_over_the_exact_edited_text(app):
         r = c.post(f"/api/approvals/{approval_id}", json={"approver": approver,
                                                           "signature": sig})
         assert r.status_code == 200 and r.json()["action"] == "reply.post"
+        assert r.json()["executed"] is True and r.json()["result"]["adapter"] == "mock"
+        assert app.state.adapter.replies == {"c-1": [edited]}
+        comments = {x["id"]: x for x in c.get("/api/comments").json()["comments"]}
+        assert comments["c-1"]["status"] == "replied"
+        (write,) = [x for x in app.state.ledger.receipts() if x.kind == "external_write"]
+        assert write.details["approval_id"] == approval_id
+        assert write.details["action"] == "reply.post" and write.details["item_id"] == "c-1"
+        assert write.output_sha256 == p["content_sha256"]
         again = c.post(f"/api/approvals/{approval_id}", json={"approver": approver,
                                                               "signature": sig})
         assert again.status_code == 409
@@ -171,3 +179,18 @@ def test_anonymous_views_redact_every_string_field_recursively(app):
         login(c)
         full = c.get("/api/leads").json()["leads"]
     assert next(x for x in full if x["id"] == "l-1")["email"] == "lead.one@example.com"
+
+
+def test_poll_ingests_comments_from_the_adapter_once(app):
+    from studio.meta.adapter import RemoteComment
+    from studio.meta.mock import MockAdapter
+
+    app.state.adapter = MockAdapter(comments=[RemoteComment(
+        "300_400", "Czy macie zestaw 4 kubków?", "Demo Commenter", 1.0, "200_300")])
+    with client(app) as c:
+        assert c.post("/api/comments/poll", json={"object_id": "200_300"}).status_code == 401
+        login(c)
+        assert c.post("/api/comments/poll", json={"object_id": "../x"}).status_code == 400
+        first = c.post("/api/comments/poll", json={"object_id": "200_300"}).json()
+        second = c.post("/api/comments/poll", json={"object_id": "200_300"}).json()
+    assert len(first["new"]) == 1 and second["new"] == []

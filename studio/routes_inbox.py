@@ -19,17 +19,20 @@ from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from studio import envelope
 from studio.agents import community
+from studio.meta.adapter import AdapterError
 from studio.muse.client import MuseError
 from studio.receipts import Ledger, redact
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
 LOG = logging.getLogger("studio.inbox")
 COMMENT_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
+POST_ID = re.compile(r"[0-9_]{1,80}")
 Guard = Callable[[Request], "JSONResponse | str"]
 
 _FIELDS = ("id", "post_id", "author_name", "text", "created_ts", "status", "intent", "draft",
@@ -102,6 +105,22 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         except community.InboxError as exc:
             return JSONResponse({"error": "invalid_comment", "detail": str(exc)}, 400)
         return JSONResponse({"comment_id": cid}, 201)
+
+    @app.post("/api/comments/poll")
+    async def poll(request: Request) -> Response:
+        """Fetch new comments under one Page/ad post through the Meta adapter."""
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        body = await _json(request)
+        object_id = body.get("object_id")
+        if not isinstance(object_id, str) or not POST_ID.fullmatch(object_id):
+            return JSONResponse({"error": "invalid_object_id"}, 400)
+        try:
+            new = await run_in_threadpool(community.poll, conn, app.state.adapter, object_id)
+        except AdapterError as exc:
+            return JSONResponse({"error": exc.code}, 502)
+        return JSONResponse({"new": new, "adapter": app.state.adapter.name})
 
     @app.post("/api/comments/{comment_id}/triage")
     def triage(comment_id: str, request: Request) -> Response:

@@ -39,7 +39,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from studio import db, routes_inbox, routes_report, routes_studio
+from studio.agents import community
 from studio.approvals import KeyConflict, Keys
+from studio.meta import adapter as meta_adapter
 from studio.receipts import public_key_raw
 from studio.settings import ReadOnlyMode, Settings
 
@@ -54,7 +56,8 @@ MAX_KEYS_PER_SESSION = 5
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    "connect-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; "
+    "base-uri 'none'; form-action 'self'"
 )
 
 Scope = MutableMapping[str, Any]
@@ -399,6 +402,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_inbox.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_inbox.register_leads(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
+
+    # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
+    # each runs only for a consumed, signed approval (studio.executor.authorize).
+    app.state.adapter = meta_adapter.make(settings)
+
+    def insights() -> dict[str, Any]:
+        """Insights of the newest campaign made by this adapter; the synthetic fixture
+        (marked ``_synthetic``) when there is none."""
+        adapter = app.state.adapter
+        with conn.lock:
+            row = conn.execute("SELECT external_id FROM campaigns WHERE adapter = ? AND "
+                               "external_id != '' ORDER BY created_ts DESC LIMIT 1",
+                               (adapter.name,)).fetchone()
+        if row is None:
+            from studio.meta.mock import MockAdapter
+            return MockAdapter().insights("")
+        return adapter.insights(row[0])  # type: ignore[no-any-return]
+
+    app.state.insights = insights
+    for action in community.SIGNED_ACTIONS:
+        app.state.executors[action] = (
+            lambda verified, payload: community.send(conn, ledger, app.state.adapter,
+                                                     verified, payload))
 
     @app.get("/studio", response_class=HTMLResponse)
     def studio_page(request: Request) -> Response:

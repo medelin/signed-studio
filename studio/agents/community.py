@@ -248,3 +248,47 @@ def ingest(conn: sqlite3.Connection, external_id: str, text: str, author: str,
             (comment_id, post_id[:80], envelope.clean(author, max_chars=60), text[:MAX_COMMENT],
              created_ts, external_id))
     return comment_id if cur.rowcount == 1 else None
+
+
+def send(conn: sqlite3.Connection, ledger: Ledger, adapter: Any, verified: Any,
+         payload: dict[str, Any]) -> dict[str, Any]:
+    """Executor for ``reply.post`` / ``comment.hide``: only after ``executor.authorize``."""
+    from studio import executor
+
+    action = getattr(verified, "action", "")
+    if action not in SIGNED_ACTIONS:
+        raise executor.ExecutionRefused("not an inbox action", "wrong_action")
+    executor.authorize(conn, verified, action, payload)
+    try:
+        if action == "reply.post":
+            reply_id = adapter.reply(payload, verified)
+            result = {"adapter": adapter.name, "reply_id": executor.safe_id(reply_id)}
+            status = "replied"
+        else:
+            adapter.hide(payload, verified)
+            result = {"adapter": adapter.name}
+            status = "hidden"
+    except Exception as exc:
+        executor.finish(conn, verified, "failed", {"error": type(exc).__name__})
+        executor.record_step(ledger, verified, agent=AGENT, adapter=adapter.name,
+                             step=action, status="error",
+                             details={"error": getattr(exc, "code", type(exc).__name__)})
+        raise
+    executor.record_write(ledger, verified, agent=AGENT, adapter=adapter.name,
+                          details=result)
+    executor.finish(conn, verified, "done", result)
+    with transaction(conn):
+        conn.execute("UPDATE comments SET status = ? WHERE id = ?",
+                     (status, payload["comment_id"]))
+    return result
+
+
+def poll(conn: sqlite3.Connection, adapter: Any, object_id: str, since: float = 0.0
+         ) -> list[str]:
+    """Fetch new comments under one Page post / ad post into the inbox (Graph poller)."""
+    new = []
+    for c in adapter.list_comments(object_id, since):
+        cid = ingest(conn, c.external_id, c.message, c.author, c.created_ts, c.object_id)
+        if cid:
+            new.append(cid)
+    return new

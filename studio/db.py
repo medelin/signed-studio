@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from studio import approvals, store
+from studio import approvals, executor, store
 from studio.approvals import transaction
 from studio.receipts import Ledger, key_id, public_key_raw
 from studio.settings import ConfigError
@@ -188,6 +188,7 @@ def init(conn: sqlite3.Connection) -> None:
     """Create every table (idempotent) and add columns introduced later."""
     conn.executescript(store.SCHEMA)
     approvals.ensure_schema(conn)
+    executor.ensure_schema(conn)
     conn.executescript(DEMO_SCHEMA)
     with transaction(conn):
         _migrate(conn)

@@ -73,6 +73,9 @@ def test_cassettes_contain_no_secrets():
         assert "bearer" not in text.lower()
         assert not re.search(r"\b(sk|mk|key)[-_][A-Za-z0-9]{16,}", text)
         data = json.loads(text)
+        if path.name.startswith("graph_"):  # hand-written Graph API cassettes
+            assert data["_synthetic"] is True and "access_token" not in text
+            continue
         for item in data["interactions"]:
             # multipart (voice) requests keep only the request JSON and audio hashes
             assert set(item["request"]) in ({"method", "path", "json"},
