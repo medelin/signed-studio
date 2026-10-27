@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import threading
 import time
@@ -28,6 +29,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 GENESIS = "0" * 64
+APPROVAL_TTL_S = 900  # an approval authorises one write within this many seconds of issue
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review"})
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -300,29 +302,103 @@ class Report:
     signatures: int = 0
 
 
+_STR_FIELDS = ("id", "prev", "run_id", "agent", "kind", "provider", "model", "tier",
+               "tier_reason", "prompt_sha256", "output_sha256", "hash", "sig")
+_INT_FIELDS = ("tokens_in", "tokens_out", "cached_tokens", "duration_ms")
+
+
+def _number(value: Any) -> bool:
+    return (isinstance(value, int | float) and not isinstance(value, bool)
+            and math.isfinite(value))
+
+
+def _type_error(r: Receipt) -> str | None:
+    """Why a parsed receipt has the wrong field types, or None. Checked before any use."""
+    for name in _STR_FIELDS:
+        if not isinstance(getattr(r, name), str):
+            return f"field {name!r} must be a string"
+    for name in _INT_FIELDS:
+        value = getattr(r, name)
+        if not isinstance(value, int) or isinstance(value, bool):
+            return f"field {name!r} must be an integer"
+    if not _number(r.ts) or not _number(r.cost_usd):
+        return "fields 'ts' and 'cost_usd' must be finite numbers"
+    if not isinstance(r.envelope, bool):
+        return "field 'envelope' must be a boolean"
+    if not isinstance(r.input_sha256, list) or not all(isinstance(h, str)
+                                                        for h in r.input_sha256):
+        return "field 'input_sha256' must be a list of strings"
+    if not isinstance(r.details, dict):
+        return "field 'details' must be an object"
+    return None
+
+
+@dataclass(frozen=True)
+class _Grant:
+    """What one valid approval authorises: one write of this action and content, in time."""
+
+    action: str
+    content_sha256: str
+    ts: int
+
+
 def _check_approval(
     receipt: Receipt,
     seen: set[str],
-    approver_keys: Mapping[str, Ed25519PublicKey],
-) -> list[str]:
-    """Approver signature over the approval fields, bound to a real chain head of the run."""
+    approver_keys: Mapping[str, Ed25519PublicKey] | None,
+) -> tuple[list[str], _Grant | None]:
+    """Signed fields well-formed, approver signature valid (when keys are given), and bound
+    to a real chain head of the run (``GENESIS`` only for the run's first receipt)."""
     d = receipt.details
-    if not d.get("sig"):
-        return [f"{receipt.id}: approval is not signed by an approver"]
-    try:
-        message = approval_message(d)
-    except KeyError as exc:
-        return [f"{receipt.id}: approval is missing signed field {exc}"]
-    key = approver_keys.get(str(d["approver"]))
-    if key is None:
-        return [f"{receipt.id}: unknown approver {d['approver']!r}"]
+    missing = [k for k in APPROVAL_SIGNED_FIELDS if k not in d]
+    if missing:
+        return [f"{receipt.id}: approval is missing signed field {missing[0]!r}"], None
+    if not all(isinstance(d[k], str) for k in APPROVAL_SIGNED_FIELDS if k != "ts") or not (
+        isinstance(d["ts"], int) and not isinstance(d["ts"], bool)
+    ):
+        return [f"{receipt.id}: approval signed fields have the wrong types"], None
     errors: list[str] = []
-    try:
-        key.verify(bytes.fromhex(str(d["sig"])), message)
-    except (InvalidSignature, ValueError):
-        errors.append(f"{receipt.id}: bad approver signature")
-    if d["chain_head"] != GENESIS and d["chain_head"] not in seen:
+    if approver_keys is not None:
+        if not isinstance(d.get("sig"), str) or not d.get("sig"):
+            return [f"{receipt.id}: approval is not signed by an approver"], None
+        key = approver_keys.get(d["approver"])
+        if key is None:
+            return [f"{receipt.id}: unknown approver {d['approver']!r}"], None
+        try:
+            key.verify(bytes.fromhex(d["sig"]), approval_message(d))
+        except (InvalidSignature, ValueError):
+            errors.append(f"{receipt.id}: bad approver signature")
+    head = d["chain_head"]
+    if (head == GENESIS and seen) or (head != GENESIS and head not in seen):
         errors.append(f"{receipt.id}: approval chain_head is not an earlier receipt of this run")
+    if errors:
+        return errors, None
+    return [], _Grant(d["action"], d["content_sha256"], d["ts"])
+
+
+def _check_write(
+    receipt: Receipt, grants: dict[str, _Grant], used: set[str]
+) -> list[str]:
+    """Consume the approval the write names; it must match action, content and TTL."""
+    approval_id = receipt.details.get("approval_id")
+    if not isinstance(approval_id, str) or not approval_id:
+        return [f"{receipt.id}: external_write without approval: it names no approval "
+                "(details.approval_id)"]
+    grant = grants.pop(approval_id, None)
+    if grant is None:
+        if approval_id in used:
+            return [f"{receipt.id}: approval {approval_id} was already used by an earlier write"]
+        return [f"{receipt.id}: external_write without approval for this content"]
+    used.add(approval_id)
+    errors: list[str] = []
+    if receipt.output_sha256 != grant.content_sha256:
+        errors.append(f"{receipt.id}: external_write without approval for this content")
+    if receipt.details.get("action") != grant.action:
+        errors.append(f"{receipt.id}: write action does not match the approved action "
+                      f"{grant.action!r}")
+    if receipt.ts - grant.ts > APPROVAL_TTL_S:
+        errors.append(f"{receipt.id}: approval expired before the write "
+                      f"(older than {APPROVAL_TTL_S} s)")
     return errors
 
 
@@ -339,15 +415,22 @@ def verify(
     latest manifest sequence the verifier knows; an older (rolled-back) export fails.
     ``approver_keys`` (``/api/approver-keys``) maps approver ids to their public keys; when
     given, every approval must carry a valid approver signature over its fields.
+
+    Every ``external_write`` must name (``details.approval_id``) a valid approval of the
+    same run that no earlier write used, for the same content and ``details.action``, and
+    happen within ``APPROVAL_TTL_S`` of the approval's signed ``ts``. A nonce may appear
+    in only one approval of the whole log.
     """
     errors: list[str] = []
     signatures = 0
     seen: dict[str, set[str]] = {}
     heads: dict[str, str] = {}
     last_ts: dict[str, float] = {}
-    approved: dict[str, set[str]] = {}
+    grants: dict[str, dict[str, _Grant]] = {}
+    used: dict[str, set[str]] = {}
+    nonces: set[str] = set()
     counts: dict[str, int] = {}
-    manifests: list[dict[str, Any]] = []
+    manifests: list[Any] = []
     count = 0
     for line_no, line in enumerate(Path(path).read_text().splitlines(), start=1):
         if not line.strip():
@@ -362,9 +445,15 @@ def verify(
             continue
         count += 1
         try:
+            if not isinstance(raw, dict):
+                raise TypeError("not a JSON object")
             receipt = Receipt(**raw)
         except (TypeError, ValueError) as exc:
             errors.append(f"line {line_no}: unreadable receipt ({exc})")
+            continue
+        problem = _type_error(receipt)
+        if problem is not None:
+            errors.append(f"line {line_no}: unreadable receipt ({problem})")
             continue
         run = receipt.run_id
         if receipt.compute_hash() != receipt.hash:
@@ -378,18 +467,22 @@ def verify(
             errors.append(f"{receipt.id}: broken link to previous receipt")
         if receipt.ts < last_ts.get(run, 0.0):
             errors.append(f"{receipt.id}: timestamp goes backwards")
-        problems: list[str] = []
-        if receipt.kind == "approval" and approver_keys is not None:
-            problems = _check_approval(receipt, seen.get(run, set()), approver_keys)
+        if receipt.kind == "approval":
+            problems, grant = _check_approval(receipt, seen.get(run, set()), approver_keys)
+            nonce = receipt.details.get("nonce")
+            if isinstance(nonce, str) and nonce in nonces:
+                problems.append(f"{receipt.id}: approval nonce {nonce} is used more than once")
+                grant = None
+            elif isinstance(nonce, str):
+                nonces.add(nonce)
             errors += problems
-            signatures += not problems
-        if receipt.kind == "approval" and not problems:  # a bad approval authorises nothing
-            digest = str(receipt.details.get("content_sha256", ""))
-            approved.setdefault(run, set()).add(digest)
-        if receipt.kind == "external_write" and receipt.output_sha256 not in approved.get(
-            run, set()
-        ):
-            errors.append(f"{receipt.id}: external_write without approval for this content")
+            if grant is not None:  # a bad approval authorises nothing
+                signatures += approver_keys is not None
+                pending_id = receipt.details.get("pending_id")
+                grants.setdefault(run, {})[str(pending_id or receipt.id)] = grant
+        if receipt.kind == "external_write":
+            errors += _check_write(receipt, grants.setdefault(run, {}),
+                                   used.setdefault(run, set()))
         heads[run] = receipt.hash
         seen.setdefault(run, set()).add(receipt.hash)
         last_ts[run] = receipt.ts
@@ -399,7 +492,7 @@ def verify(
 
 
 def _check_manifest(
-    manifests: list[dict[str, Any]],
+    manifests: list[Any],
     heads: dict[str, str],
     counts: dict[str, int],
     public_key: Ed25519PublicKey,
@@ -409,6 +502,8 @@ def _check_manifest(
         return [f"expected exactly one signed manifest, found {len(manifests)}"]
     man = manifests[0]
     try:
+        if not isinstance(man, dict):
+            raise TypeError("manifest is not an object")
         body: dict[str, Any] = {
             "seq": int(man["seq"]),
             "ts": float(man["ts"]),
@@ -430,6 +525,7 @@ def _check_manifest(
             errors.append(f"run {run}: receipts not covered by the manifest")
         elif run not in counts:
             errors.append(f"run {run}: listed in the manifest but missing from the log")
-        elif entry.get("head") != heads[run] or entry.get("count") != counts[run]:
+        elif (not isinstance(entry, dict) or entry.get("head") != heads[run]
+              or entry.get("count") != counts[run]):
             errors.append(f"run {run}: log does not match manifest (truncated or receipts missing)")
     return errors

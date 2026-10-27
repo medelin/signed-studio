@@ -265,9 +265,10 @@ def test_seeded_run_export_has_no_contact_data(tmp_path):
         approval = ap.Approval(pending_id=p.id, **p.fields(approver),
                                signature=key.sign(p.message(approver)).hex())
         with db.transaction(c):
-            ap.verify_and_consume(c, approval, payload, ledger=led)
+            ok = ap.verify_and_consume(c, approval, payload, ledger=led)
         led.append("run-inbox", agent="media_buyer", kind="external_write",
-                   output_sha256=p.content_sha256, details={"comment_id": cid})
+                   output_sha256=p.content_sha256,
+                   details={"comment_id": cid, **ok.write_details()})
     export = led.export_jsonl()
     for line in export.splitlines():
         for value in _strings(json.loads(line)):

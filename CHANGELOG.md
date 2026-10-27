@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-27 — day 1 fix round (review)
+
+- C1/I5 verify: an approval authorises exactly one write. `external_write` receipts carry `details.approval_id` + `details.action` (`Verified.write_details()`); verify consumes the named approval, requires the same run, content and action and `write.ts - approval.ts <= APPROVAL_TTL_S` (900 s, shared with the server TTL), rejects a second write on the same approval and a nonce that appears in more than one approval; `chain_head == GENESIS` only for the run's first receipt (the server refuses such a pending once the run has grown); server-made approvals that are unsigned, signed by another key or by an unregistered approver authorise nothing; receipts are type-checked after parsing, so hostile lines are reported, never crash; the CLI reports every error as `error:` with exit 2; 30 tests.
+
 ## 2026-10-27
 
 - D1-1 repo bootstrap: pyproject, Makefile, CI (pytest, ruff, gitleaks), env template.

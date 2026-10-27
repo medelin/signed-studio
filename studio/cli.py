@@ -90,7 +90,9 @@ def run_verify(args: argparse.Namespace) -> int:
         key = _pubkey(default.read_text())
     if args.approver_keys:
         data = json.loads(Path(args.approver_keys).read_text())
-        approvers = {a: _pubkey(h) for a, h in data.items()}
+        if not isinstance(data, dict) or not all(isinstance(h, str) for h in data.values()):
+            raise UsageError("--approver-keys must be a JSON object {approver: hex key}")
+        approvers = {str(a): _pubkey(h) for a, h in data.items()}
     if approvers is None and not args.skip_approver_signatures:
         raise UsageError("no approver keys: pass --server or --approver-keys "
                          "(or --skip-approver-signatures to check the chain only)")
@@ -131,6 +133,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ConfigError, MuseError, UsageError, OSError, httpx.HTTPError, ValueError,
             KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:  # noqa: BLE001 - a verifier reports, it never dumps a traceback
+        print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
     return 1
 

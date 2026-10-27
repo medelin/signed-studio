@@ -57,9 +57,9 @@ def _export(tmp_path):
     approval = ap.Approval(pending_id=p.id, **p.fields(approver),
                            signature=key.sign(p.message(approver)).hex())
     with db.transaction(c):
-        ap.verify_and_consume(c, approval, payload, ledger=led)
+        ok = ap.verify_and_consume(c, approval, payload, ledger=led)
     led.append("run-1", agent="media_buyer", kind="external_write",
-               output_sha256=p.content_sha256)
+               output_sha256=p.content_sha256, details=ok.write_details())
     path = tmp_path / "receipts.jsonl"
     path.write_text(led.export_jsonl())
     keys = tmp_path / "approvers.json"
@@ -124,3 +124,23 @@ def test_verify_server_must_be_https(tmp_path, capsys):
     _, path, _, _ = _export(tmp_path)
     assert cli.main(["verify", str(path), "--server", "http://studio.example"]) == 2
     assert "https" in capsys.readouterr().err
+
+
+def test_verify_reports_unexpected_errors_instead_of_a_traceback(tmp_path, capsys, monkeypatch):
+    _, path, keys, pub = _export(tmp_path)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(cli, "verify", boom)
+    rc = cli.main(["verify", str(path), "--key-file", str(pub), "--approver-keys", str(keys)])
+    assert rc == 2
+    assert "unexpected" in capsys.readouterr().err
+
+
+def test_verify_bad_approver_keys_file_is_a_clean_error(tmp_path, capsys):
+    _, path, keys, pub = _export(tmp_path)
+    keys.write_text("[1, 2]")
+    rc = cli.main(["verify", str(path), "--key-file", str(pub), "--approver-keys", str(keys)])
+    assert rc == 2
+    assert capsys.readouterr().err.startswith("error:")

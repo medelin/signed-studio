@@ -24,6 +24,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from studio.receipts import (
     APPROVAL_SIGNED_FIELDS,
+    APPROVAL_TTL_S,
+    GENESIS,
     Ledger,
     approval_message,
     canonical,
@@ -53,7 +55,7 @@ __all__ = [
 
 ACTIONS = frozenset({"campaign.create", "campaign.activate", "reply.post", "comment.hide"})
 SIGNED_FIELDS = APPROVAL_SIGNED_FIELDS
-TTL_S = 900
+TTL_S = APPROVAL_TTL_S  # the verifier enforces the same window between approval and write
 SKEW_S = 60
 KEY_TTL_S = 8 * 3600  # an approver key lives no longer than the session that registered it
 
@@ -338,6 +340,10 @@ class Verified:
     approver: str
     signature: str
 
+    def write_details(self) -> dict[str, str]:
+        """``details`` for the ``external_write`` receipt this approval authorises."""
+        return {"approval_id": self.pending_id, "action": self.action}
+
 
 def verify_and_consume(
     conn: sqlite3.Connection,
@@ -370,6 +376,9 @@ def verify_and_consume(
         raise ContentMismatch("payload was changed after the approval was requested")
     if approval.chain_head != pending.chain_head:
         raise ChainHeadMismatch("signed chain head differs from the provenance of the content")
+    if pending.chain_head == GENESIS and ledger.chain_head(pending.run_id) != GENESIS:
+        # verify accepts a GENESIS-bound approval only as the run's first receipt
+        raise ChainHeadMismatch("approval bound to an empty run, but the run has grown since")
     if approval.nonce != pending.nonce:
         raise NonceMismatch("nonce does not belong to this approval")
     if approval.ts != pending.ts:

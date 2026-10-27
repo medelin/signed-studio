@@ -234,7 +234,10 @@ def test_verify_rejects_forged_approval_receipt(env, tmp_path):
 
 def test_verify_requires_signature_when_registry_given(tmp_path):
     led = Ledger()
-    led.append("run-1", agent="human", kind="approval", details={"content_sha256": "abc"})
+    fields = {"action": "reply.post", "item_id": "c-1", "content_sha256": "a" * 64,
+              "chain_head": "0" * 64, "approver": "ed25519:" + "b" * 32,
+              "nonce": "n_" + "c" * 32, "ts": int(time.time())}
+    led.append("run-1", agent="human", kind="approval", details=fields)  # server-made, no sig
     path = tmp_path / "r.jsonl"
     path.write_text(led.export_jsonl())
     assert verify(path, led.public_key).ok  # legacy mode, no registry
@@ -346,3 +349,33 @@ def test_key_expiry_follows_session(env):
     row = env["conn"].execute("SELECT expires_ts FROM keys WHERE approver = ?",
                               (approver,)).fetchone()
     assert row == (exp,)
+
+
+def test_ttl_is_the_verifier_ttl():
+    from studio.receipts import APPROVAL_TTL_S
+
+    assert ap.TTL_S == APPROVAL_TTL_S
+
+
+def test_genesis_bound_pending_refused_once_the_run_has_receipts(env):
+    """verify accepts chain_head == GENESIS only as a run's first receipt; so does the server."""
+    with ap.transaction(env["conn"]):
+        p = ap.Pending.create("reply.post", "c-9", PAYLOAD, ledger=env["ledger"],
+                              run_id="run-new")
+        p.save(env["conn"])
+    assert p.chain_head == "0" * 64
+    env["ledger"].append("run-new", agent="community", kind="model_call")
+    env["pending"] = p
+    with pytest.raises(ap.ChainHeadMismatch):
+        consume(env, sign(env))
+
+
+def test_verified_write_details_pass_verify(env, tmp_path):
+    ok = consume(env, sign(env))
+    env["ledger"].append("run-1", agent="media_buyer", kind="external_write",
+                         output_sha256=ok.content_sha256, details=ok.write_details())
+    path = tmp_path / "r.jsonl"
+    path.write_text(env["ledger"].export_jsonl())
+    report = verify(path, env["ledger"].public_key,
+                    approver_keys={env["approver"]: env["key"].public_key()})
+    assert report.ok, report.errors
