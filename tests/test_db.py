@@ -230,3 +230,53 @@ def test_approval_and_receipt_commit_atomically(tmp_path):
     out.write_text(led.export_jsonl())
     report = verify(out, led.public_key, approver_keys=ap.Keys.registry(c))
     assert report.ok and report.signatures == 1
+
+
+def _strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from _strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from _strings(v)
+
+
+def test_seeded_run_export_has_no_contact_data(tmp_path):
+    """A run over seeded comments (with e-mails and phones) exports no contact data."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from studio.receipts import _EMAIL, _PHONE, public_key_raw
+
+    c = db.connect(tmp_path / "studio.db")
+    db.init(c)
+    db.seed(c)
+    led = db.open_ledger(c, tmp_path / "ledger.key")
+    key = Ed25519PrivateKey.generate()
+    approver = ap.Keys.register(c, "s1", public_key_raw(key.public_key()))
+    for cid, text in c.execute("SELECT id, text FROM comments ORDER BY id").fetchall():
+        led.append("run-inbox", agent="community", kind="model_call",
+                   details={"comment_id": cid, "comment": text})
+        payload = {"comment_id": cid, "message": f"Thanks! Reply to: {text}"}
+        with db.transaction(c):
+            p = ap.Pending.create("reply.post", cid, payload, ledger=led, run_id="run-inbox")
+            p.save(c)
+        approval = ap.Approval(pending_id=p.id, **p.fields(approver),
+                               signature=key.sign(p.message(approver)).hex())
+        with db.transaction(c):
+            ap.verify_and_consume(c, approval, payload, ledger=led)
+        led.append("run-inbox", agent="media_buyer", kind="external_write",
+                   output_sha256=p.content_sha256, details={"comment_id": cid})
+    export = led.export_jsonl()
+    for line in export.splitlines():
+        for value in _strings(json.loads(line)):
+            if re.fullmatch(r"[0-9a-f]{64}|[0-9a-f]{128}", value):
+                continue  # digests and signatures are opaque by construction
+            assert not _EMAIL.search(value), value
+            assert not _PHONE.search(value), value
+    out = tmp_path / "r.jsonl"
+    out.write_text(export)
+    report = verify(out, led.public_key, approver_keys=ap.Keys.registry(c))
+    assert report.ok, report.errors
+    assert report.signatures == 5

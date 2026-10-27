@@ -116,11 +116,36 @@ class Receipt:
         return sha256_hex(canonical(self.body()))
 
 
+_OPAQUE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}")
+_HEX = re.compile(r"[0-9a-f]+")
+
+
+def is_opaque(value: Any) -> bool:
+    """True for values that cannot carry PII: ints, hex digests, short internal ids.
+
+    An internal id must match ``[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}`` and be left unchanged by
+    ``redact`` (so ``c-600123456`` or an e-mail address is not an id).
+    """
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    if not isinstance(value, str):
+        return False
+    if _HEX.fullmatch(value) and len(value) in (64, 128):
+        return True
+    return bool(_OPAQUE_ID.fullmatch(value)) and redact(value) == value
+
+
 def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
-    """Redact PII, except the fields a human signed: those must stay byte-exact."""
+    """Redact PII. Approval receipts keep the signed fields byte-exact, so those fields
+    must be opaque (ids, digests, key ids, nonce, ts); anything else is refused."""
     if kind != "approval":
         return dict(redact(dict(details)))
     keep = (*APPROVAL_SIGNED_FIELDS, "sig")
+    for k in keep:
+        if k in details and not is_opaque(details[k]):
+            raise ValueError(f"approval field {k!r} must be an opaque value, not free text")
     rest = redact({k: v for k, v in details.items() if k not in keep})
     return {**rest, **{k: details[k] for k in keep if k in details}}
 

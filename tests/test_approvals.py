@@ -257,19 +257,35 @@ def test_verify_rejects_chain_head_not_in_run(env, tmp_path):
     assert json.loads(path.read_text().splitlines()[-2])["kind"] == "approval"
 
 
-def test_signed_fields_are_not_redacted(env, tmp_path):
-    """PII-looking signed fields stay byte-exact, so the approver signature still verifies."""
+@pytest.mark.parametrize(
+    "item_id",
+    ["jan@example.org", "lead jan@example.org", "c-600123456", "+48 601 234 567", "", "a b",
+     "x" * 81, "<script>"],
+)
+def test_non_opaque_item_id_rejected(env, item_id):
+    with pytest.raises(ap.InvalidItemId) as exc:
+        ap.Pending.create("reply.post", item_id, PAYLOAD, ledger=env["ledger"], run_id="run-1")
+    assert exc.value.code == "invalid_item"
+
+
+def test_ledger_refuses_pii_in_signed_approval_fields(env):
+    with pytest.raises(ValueError, match="opaque"):
+        env["ledger"].append("run-1", agent="human", kind="approval",
+                             details={"item_id": "jan@example.org", "sig": "ab"})
+
+
+def test_pii_payload_signs_and_verifies_with_only_its_hash_in_receipts(env, tmp_path):
+    """The payload may contain PII; receipts only ever see its hash."""
     payload = {"message": "Write to jan.kowalski@example.org or call +48 601 234 567"}
     with ap.transaction(env["conn"]):
-        p = ap.Pending.create("reply.post", "lead jan@example.org 600 123 456", payload,
-                              ledger=env["ledger"], run_id="run-1")
+        p = ap.Pending.create("reply.post", "c-2", payload, ledger=env["ledger"], run_id="run-1")
         p.save(env["conn"])
     env["pending"] = p
     consume(env, sign(env), payload=payload)
-    receipt = env["ledger"].receipts("run-1")[-1]
-    assert receipt.details["item_id"] == "lead jan@example.org 600 123 456"
+    export = env["ledger"].export_jsonl()
+    assert "jan.kowalski" not in export and "601 234 567" not in export
     path = tmp_path / "r.jsonl"
-    path.write_text(env["ledger"].export_jsonl())
+    path.write_text(export)
     registry = {env["approver"]: env["key"].public_key()}
     report = verify(path, env["ledger"].public_key, approver_keys=registry)
     assert report.ok, report.errors

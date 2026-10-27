@@ -9,7 +9,10 @@ key** (`var/ledger.key`, mode 0600; public half in `var/ledger.pub` and at
 **human approval**: the browser signs, with its own non-extractable Ed25519 key, the exact
 content hash, the run's chain head, a one-time nonce and the issue time. The server
 verifies the signature and consumes the nonce in the same SQLite transaction that records
-the approval receipt. `studio verify` re-checks everything offline.
+the approval receipt. The signed message contains only opaque values (internal item id,
+content hash, chain head, approver key id, nonce, ts), so approval receipts keep it
+byte-exact without carrying PII; readable content never enters a receipt, only its hash.
+`studio verify` re-checks everything offline.
 
 ## Data (SQLite, WAL) — `studio/db.py`, `studio/store.py`, `studio/approvals.py`
 

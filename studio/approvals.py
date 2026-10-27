@@ -27,6 +27,7 @@ from studio.receipts import (
     Ledger,
     approval_message,
     canonical,
+    is_opaque,
     key_id,
     sha256_hex,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "TTL_S",
     "Approval",
     "ApprovalError",
+    "InvalidItemId",
     "Keys",
     "Pending",
     "Verified",
@@ -92,6 +94,10 @@ class NotFound(ApprovalError):
 
 class UnknownAction(ApprovalError):
     code = "unknown_action"
+
+
+class InvalidItemId(ApprovalError):
+    code = "invalid_item"
 
 
 class FieldMismatch(ApprovalError):
@@ -208,11 +214,14 @@ class Pending:
     ) -> Pending:
         if action not in ACTIONS:
             raise UnknownAction(f"unknown action {action!r}")
+        if not isinstance(item_id, str) or not is_opaque(item_id):
+            # The signed message is stored un-redacted in receipts: ids only, never text.
+            raise InvalidItemId("item_id must be an internal opaque id")
         return cls(
             id=uuid.uuid4().hex,
             run_id=run_id,
             action=action,
-            item_id=str(item_id),
+            item_id=item_id,
             content_sha256=payload_sha256(payload),
             chain_head=ledger.chain_head(run_id),
             nonce="n_" + secrets.token_hex(16),
