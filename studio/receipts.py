@@ -133,8 +133,23 @@ class Ledger:
     def receipts(self, run_id: str | None = None) -> list[Receipt]:
         return [r for r in self._receipts if run_id is None or r.run_id == run_id]
 
+    def checkpoint(self, run_id: str) -> dict[str, Any]:
+        """Signed statement of a run's current head and length (detects truncation)."""
+        count = len(self.receipts(run_id))
+        head = self.chain_head(run_id)
+        sig = self._key.sign(_checkpoint_bytes(run_id, head, count)).hex()
+        return {"run_id": run_id, "head": head, "count": count, "sig": sig}
+
     def export_jsonl(self, run_id: str | None = None) -> str:
-        return "".join(json.dumps(asdict(r), sort_keys=True) + "\n" for r in self.receipts(run_id))
+        """Receipts followed by one signed checkpoint line per run."""
+        lines = [json.dumps(asdict(r), sort_keys=True) for r in self.receipts(run_id)]
+        runs = dict.fromkeys(r.run_id for r in self.receipts(run_id))
+        lines += [json.dumps({"checkpoint": self.checkpoint(run)}, sort_keys=True) for run in runs]
+        return "".join(line + "\n" for line in lines)
+
+
+def _checkpoint_bytes(run_id: str, head: str, count: int) -> bytes:
+    return canonical({"run_id": run_id, "head": head, "count": count, "type": "checkpoint"})
 
 
 @dataclass
@@ -154,13 +169,24 @@ def verify(path: str | Path, public_key: Ed25519PublicKey) -> Report:
     heads: dict[str, str] = {}
     last_ts: dict[str, float] = {}
     approved: dict[str, set[str]] = {}
+    counts: dict[str, int] = {}
+    checkpoints: dict[str, dict[str, Any]] = {}
     count = 0
     for line_no, line in enumerate(Path(path).read_text().splitlines(), start=1):
         if not line.strip():
             continue
+        try:
+            raw = json.loads(line)
+        except ValueError as exc:
+            errors.append(f"line {line_no}: unreadable line ({exc})")
+            continue
+        if isinstance(raw, dict) and "checkpoint" in raw:
+            cp = raw["checkpoint"]
+            checkpoints[str(cp.get("run_id"))] = cp
+            continue
         count += 1
         try:
-            receipt = Receipt(**json.loads(line))
+            receipt = Receipt(**raw)
         except (TypeError, ValueError) as exc:
             errors.append(f"line {line_no}: unreadable receipt ({exc})")
             continue
@@ -185,4 +211,22 @@ def verify(path: str | Path, public_key: Ed25519PublicKey) -> Report:
             errors.append(f"{receipt.id}: external_write without approval for this content")
         heads[run] = receipt.hash
         last_ts[run] = receipt.ts
+        counts[run] = counts.get(run, 0) + 1
+    for run in counts:
+        cp = checkpoints.get(run)
+        if cp is None:
+            errors.append(f"run {run}: missing signed checkpoint")
+            continue
+        try:
+            public_key.verify(
+                bytes.fromhex(str(cp.get("sig", ""))),
+                _checkpoint_bytes(run, str(cp.get("head")), int(cp.get("count", -1))),
+            )
+        except (InvalidSignature, ValueError, TypeError):
+            errors.append(f"run {run}: bad checkpoint signature")
+            continue
+        if cp.get("head") != heads[run] or cp.get("count") != counts[run]:
+            errors.append(
+                f"run {run}: log does not match checkpoint (truncated or receipts missing)"
+            )
     return Report(ok=not errors, count=count, errors=errors)

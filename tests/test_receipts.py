@@ -45,7 +45,7 @@ def test_broken_prev_link_detected(tmp_path):
     led.append("run-1", agent="b", kind="model_call")
     lines = led.export_jsonl().splitlines()
     path = tmp_path / "r.jsonl"
-    path.write_text(lines[1] + "\n")  # second receipt without its predecessor
+    path.write_text(lines[1] + "\n" + lines[-1] + "\n")  # receipt 2 without its predecessor
     assert not verify(path, led.public_key).ok
 
 
@@ -97,7 +97,7 @@ def test_recomputed_hashes_without_key_are_rejected(tmp_path):
 
     led = Ledger()
     led.append("run-1", agent="producer", kind="model_call", model="muse-spark")
-    rec = json.loads(led.export_jsonl())
+    rec = json.loads(led.export_jsonl().splitlines()[0])
     rec["model"] = "forged"
     forged = Receipt(**{**rec, "hash": "", "sig": rec["sig"]})
     rec["hash"] = forged.compute_hash()  # attacker recomputes the hash
@@ -114,3 +114,25 @@ def test_other_ledger_key_rejected(tmp_path):
     path = tmp_path / "r.jsonl"
     path.write_text(led.export_jsonl())
     assert not verify(path, Ledger().public_key).ok
+
+
+def test_truncated_tail_detected(tmp_path):
+    led = Ledger()
+    led.append("run-1", agent="human", kind="approval", details={"content_sha256": "abc"})
+    led.append("run-1", agent="media_buyer", kind="external_write", output_sha256="abc")
+    lines = led.export_jsonl().splitlines()
+    path = tmp_path / "r.jsonl"
+    path.write_text(lines[0] + "\n" + lines[-1] + "\n")  # last receipt dropped
+    report = verify(path, led.public_key)
+    assert not report.ok
+    assert "does not match checkpoint" in report.errors[0]
+
+
+def test_missing_checkpoint_detected(tmp_path):
+    led = Ledger()
+    led.append("run-1", agent="a", kind="model_call")
+    path = tmp_path / "r.jsonl"
+    path.write_text(led.export_jsonl().splitlines()[0] + "\n")
+    report = verify(path, led.public_key)
+    assert not report.ok
+    assert "missing signed checkpoint" in report.errors[0]
