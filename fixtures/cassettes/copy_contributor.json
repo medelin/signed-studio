@@ -1,0 +1,115 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "json": {
+          "model": "muse-spark-1.3-contributor",
+          "messages": [
+            {
+              "role": "system",
+              "content": "# Brand sheet (synthetic demo brand)\n\n- Brand: **Demo Ceramics Studio** — always the full name, never an abbreviation.\n- Product: hand-thrown stoneware mugs, 350 ml, dishwasher safe, made in small batches.\n- Price: 89 PLN per mug; free delivery in Poland above 150 PLN. No other prices exist.\n- Voice: warm, plain, specific; short sentences; no hype words (\"best ever\", \"revolutionary\").\n- Palette: off-white #F4EFE6, clay #B5654A, charcoal #2E2B28. Plenty of empty space.\n- Language: copy in English unless the brief asks for Polish.\n- Never: medical, legal or tax claims; invented discounts; competitor names; people's faces.\n\n# Policy checklist (cite rule ids in every finding)\n\n- **P1 Personal attributes** — never assert or imply a person's attributes (health, age, finances, religion, ethnicity, ...): \"Are you lonely?\" is a violation.\n- **P2 Before/after and body image** — no before/after comparisons, no idealised bodies.\n- **P3 Unrealistic promises** — no guaranteed results, no exaggerated or unverifiable claims.\n- **P4 Price and offer accuracy** — prices, discounts and delivery terms must match the brand sheet exactly; no invented offers.\n- **P5 Brand name** — the brand appears with its full name; no misleading affiliation with other companies or Meta.\n- **P6 Image text** — at most the headline as text in the image; no fake buttons, no fake UI.\n- **P7 Prohibited or sensitive content** — no weapons, drugs, adult content, shocking imagery, faces of real people without consent.\n- **P8 Regulated claims** — no medical, legal, financial or tax claims or advice.\n\n# Role: Copywriter\n\nWrite exactly three ad copy variants for the given angle and persona, following the brand sheet.\nEach variant: `primary_text` (max 125 characters), `headline` (max 40), `description` (max 30), and one `cta` from the allowed list.\nUse only facts from the brand sheet. If a fact you need is missing, write `[FACT]` in its place and add a line to `risks` naming the missing fact.\nList in `risks` anything a policy reviewer might flag, with its rule id."
+            },
+            {
+              "role": "user",
+              "content": "Angle: Morning ritual\nHook: Your first coffee deserves a real mug\nPersona: home-office worker"
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "CopyPack",
+              "strict": true,
+              "schema": {
+                "additionalProperties": false,
+                "required": [
+                  "variants",
+                  "risks"
+                ],
+                "type": "object",
+                "properties": {
+                  "variants": {
+                    "items": {
+                      "additionalProperties": false,
+                      "required": [
+                        "primary_text",
+                        "headline",
+                        "description",
+                        "cta"
+                      ],
+                      "type": "object",
+                      "properties": {
+                        "primary_text": {
+                          "type": "string"
+                        },
+                        "headline": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "cta": {
+                          "enum": [
+                            "LEARN_MORE",
+                            "SHOP_NOW",
+                            "SIGN_UP",
+                            "CONTACT_US",
+                            "BOOK_NOW",
+                            "GET_OFFER"
+                          ],
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "type": "array"
+                  },
+                  "risks": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                }
+              }
+            }
+          },
+          "max_completion_tokens": 4000,
+          "reasoning_effort": "minimal"
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "id": "chatcmpl-01a17f79-d87b-73f4-8e66-357697b95a13",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "{\"risks\": [], \"variants\": [{\"cta\": \"SHOP_NOW\", \"description\": \"89 PLN. Dishwasher safe.\", \"headline\": \"A Mug for Slow Mornings\", \"primary_text\": \"Your first coffee deserves a real mug. Hand-thrown, 350 ml. From Demo Ceramics Studio.\"}, {\"cta\": \"SHOP_NOW\", \"description\": \"Small batches. 89 PLN.\", \"headline\": \"Start Work With Warmth\", \"primary_text\": \"Made for home-office mornings. Stoneware, dishwasher safe. Demo Ceramics Studio.\"}, {\"cta\": \"LEARN_MORE\", \"description\": \"Free delivery over 150 PLN\", \"headline\": \"Clay. Coffee. Quiet.\", \"primary_text\": \"350 ml. Small batches. Plain and warm. Demo Ceramics Studio mugs, 89 PLN.\"}]}",
+                "refusal": null,
+                "role": "assistant"
+              },
+              "logprobs": null
+            }
+          ],
+          "created": 1793140054,
+          "model": "muse-spark-1.3-contributor",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 516,
+            "prompt_tokens": 665,
+            "total_tokens": 1181,
+            "completion_tokens_details": {
+              "reasoning_tokens": 328
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        }
+      }
+    }
+  ]
+}

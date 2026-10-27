@@ -75,7 +75,9 @@ def test_cassettes_contain_no_secrets():
         data = json.loads(text)
         for item in data["interactions"]:
             assert set(item["request"]) == {"method", "path", "json"}
-            assert set(item["response"]) == {"status", "json"}
+            assert set(item["response"]) in ({"status", "json"}, {"status", "sse"})
+        # big images live in fixture files (``@file:``), never inline in a cassette
+        assert not re.search(r"[A-Za-z0-9+/=]{8000,}", text), path.name
 
 
 def test_strict_structured_output(client, ledger):
