@@ -23,7 +23,7 @@ from studio.approvals import transaction
 from studio.muse.client import MuseClient, MuseResult
 from studio.muse.structured import structured
 from studio.pii import choose_tier, find_email, find_phone
-from studio.receipts import Ledger, sha256_hex
+from studio.receipts import Ledger, redact, sha256_hex
 
 AGENT = "lead_scorer"
 HOT, WARM = 80, 60
@@ -101,9 +101,10 @@ def _features(lead: dict[str, Any], rs: RuleScore) -> str:
 def explain(client: MuseClient, lead: dict[str, Any], rs: RuleScore, *,
             run_id: str) -> tuple[Score, MuseResult]:
     """Persona, reasons and next action from Muse Spark; score and temp stay the rules'."""
-    free_text = "\n".join(
+    # contact data inside free text (a comment that quotes an e-mail) is redacted too
+    free_text = redact("\n".join(
         f"{k}: {lead.get(k)}" for k in ("city", "country", "company", "message")
-        if lead.get(k))
+        if lead.get(k)))
     user = (_features(lead, rs) + "\n\nLead details:\n"
             + envelope.wrap(free_text or "(none)", "lead", max_chars=1500)
             + "\n\nExplain the score for the owner.")

@@ -95,3 +95,16 @@ def test_comment_with_contact_data_becomes_a_lead(env):
     assert lead["email"] == "visitor.b@example.com" and lead["source"] == "comment"
     card = lead_scorer.score_lead(conn, ledger, None, lead_id)  # rules only, no model
     assert card["score"] == 50 and "+10 business" in card["reasons"]
+
+
+def test_contact_data_inside_the_message_is_redacted_before_the_model(env):
+    _, _, client = env
+    lead = {"email": "x@example.com", "phone": "+48 000 000 105",
+            "message": "write to visitor.q@example.com or call 600 100 200"}
+    with respx.mock() as router:
+        route = router.post(url__startswith=BASE_URL).mock(
+            return_value=httpx.Response(200, json=_reply()))
+        lead_scorer.explain(client, lead, rules(lead), run_id="ld_q")
+    sent = route.calls[0].request.content.decode()
+    assert "visitor.q@example.com" not in sent and "600 100 200" not in sent
+    assert "[email]" in sent and "[phone]" in sent
