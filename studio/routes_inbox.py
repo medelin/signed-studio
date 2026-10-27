@@ -50,12 +50,17 @@ def list_comments(conn: Any, full: bool) -> list[dict[str, Any]]:
         c["requires_human"] = bool(c["requires_human"])
         for key in ("text", "draft", "reason", "author_name"):
             c[key] = envelope.clean(str(c[key] or ""))
-            if not full:
-                c[key] = redact(c[key])
         c["approval_status"] = statuses.get(c["pending_id"], "")
         c["actions"] = list(community.ACTIONS)
         out.append(c)
-    return out
+    return out if full else public_view(out)
+
+
+def public_view(value: Any) -> Any:
+    """What a visitor without a session sees: every string, at any depth, redacted
+    (e-mail → ``[email]``, phone → ``[phone]``). Not a field list: new fields, model text
+    and nested lists are covered by default; numbers and booleans pass unchanged."""
+    return redact(value)
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
@@ -174,13 +179,15 @@ def list_leads(conn: Any, full: bool) -> list[dict[str, Any]]:
         lead["reasons"] = json.loads(lead["reasons"] or "[]")
         for key in ("name", "email", "phone", "message", "company", "persona", "next_action"):
             lead[key] = envelope.clean(str(lead[key] or ""))
-            if not full:
-                lead[key] = redact(lead[key])
-        if not full and lead["email"]:
-            lead["email"] = "[email]"
+        lead["reasons"] = [envelope.clean(str(r)) for r in lead["reasons"]]
         lead["tasks"] = by_lead.get(lead["id"], [])
+        if not full:
+            if lead["email"]:
+                lead["email"] = "[email]"
+            if lead["phone"]:
+                lead["phone"] = "[phone]"
         out.append(lead)
-    return out
+    return out if full else public_view(out)
 
 
 def register_leads(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,

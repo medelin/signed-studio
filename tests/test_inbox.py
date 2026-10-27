@@ -144,3 +144,30 @@ def test_a_lead_comment_becomes_a_scored_crm_card(tmp_path):
     with client(a) as anon:
         page = anon.get("/leads").text
         assert "visitor.b@example.com" not in page and "lead.one@example.com" not in page
+
+
+def test_anonymous_views_redact_every_string_field_recursively(app):
+    conn = app.state.conn
+    with conn.lock:
+        conn.execute(
+            "UPDATE leads SET reasons = ?, persona = ?, next_action = ? WHERE id = 'l-1'",
+            (json.dumps(["wrote from lead.one@example.com", "call +48 000 000 101"]),
+             "reach me at lead.one@example.com", "ring 600 100 200"))
+        conn.execute("UPDATE comments SET reason = 'quotes visitor.b@example.com', "
+                     "flags = '[\"x 600 100 200\"]', draft = 'mail visitor.b@example.com' "
+                     "WHERE id = 'c-2'")
+    with client(app) as c:
+        leads = c.get("/api/leads").json()["leads"]
+        comments = c.get("/api/comments").json()["comments"]
+        page = c.get("/leads").text + c.get("/inbox").text
+    blob = json.dumps(leads + comments) + page
+    for secret in ("lead.one@example.com", "visitor.b@example.com", "000 000 101",
+                   "600 100 200"):
+        assert secret not in blob
+    l1 = next(x for x in leads if x["id"] == "l-1")
+    assert l1["reasons"] == ["wrote from [email]", "call [phone]"]
+    assert l1["email"] == "[email]" and l1["phone"] == "[phone]"
+    with client(app) as c:  # with a session the CRM shows the data
+        login(c)
+        full = c.get("/api/leads").json()["leads"]
+    assert next(x for x in full if x["id"] == "l-1")["email"] == "lead.one@example.com"
