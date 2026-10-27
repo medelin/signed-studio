@@ -1,0 +1,48 @@
+# Skill registry. side_effects: none (pure), local (writes inside the studio: files, rows,
+# pending approvals), external (leaves the studio: Meta writes). External skills are never
+# model-callable: the producer has no such tool, and the dispatcher refuses the name.
+skills:
+  - name: run_copywriter
+    agent: copywriter
+    side_effects: none
+    model_callable: true
+    description: Write three ad copy variants for one angle of the plan.
+  - name: run_art_director
+    agent: art_director
+    side_effects: local
+    model_callable: true
+    description: Cut the product out of the photo and render one image per placement.
+  - name: run_reviewers
+    agent: reviewer
+    side_effects: none
+    model_callable: true
+    description: Compliance review of the creative and copy, plus an open-weights second opinion.
+  - name: request_approval
+    agent: producer
+    side_effects: local
+    model_callable: true
+    description: Ask the human to sign the campaign; creates a pending approval only.
+  - name: create_campaign
+    agent: media_buyer
+    side_effects: external
+    model_callable: false
+    action: campaign.create
+    description: Create the PAUSED campaign, ad set, creative and ad (signed approval only).
+  - name: activate_campaign
+    agent: media_buyer
+    side_effects: external
+    model_callable: false
+    action: campaign.activate
+    description: Activate a campaign within its budget ceiling (second signed approval).
+  - name: post_reply
+    agent: community
+    side_effects: external
+    model_callable: false
+    action: reply.post
+    description: Post a signed reply under a comment.
+  - name: hide_comment
+    agent: community
+    side_effects: external
+    model_callable: false
+    action: comment.hide
+    description: Hide a comment (signed approval only).

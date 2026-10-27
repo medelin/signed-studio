@@ -39,10 +39,28 @@ def _strictify(node: Any) -> Any:
     return out
 
 
+def _inline(node: Any, defs: dict[str, Any], depth: int = 0) -> Any:
+    """Replace local ``$ref``s with their definitions (the strict subset is safest flat)."""
+    if depth > 32:
+        raise ValueError("schema nesting too deep (recursive model?)")
+    if isinstance(node, list):
+        return [_inline(v, defs, depth) for v in node]
+    if not isinstance(node, dict):
+        return node
+    ref = node.get("$ref")
+    if isinstance(ref, str):
+        name = ref.removeprefix("#/$defs/")
+        if name == ref or name not in defs:
+            raise ValueError(f"unsupported $ref {ref!r}")
+        return _inline(defs[name], defs, depth + 1)
+    return {k: _inline(v, defs, depth) for k, v in node.items() if k != "$defs"}
+
+
 def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
     """Pydantic JSON schema rewritten to the strict subset: every object closed, every key
-    required, no titles/defaults, no allOf/oneOf, plain-object root."""
-    schema = _strictify(copy.deepcopy(model.model_json_schema()))
+    required, no titles/defaults, no allOf/oneOf, ``$ref``s inlined, plain-object root."""
+    raw = copy.deepcopy(model.model_json_schema())
+    schema = _strictify(_inline(raw, raw.get("$defs", {})))
     if schema.get("type") != "object" or any(k in schema for k in ("anyOf", "enum", "not")):
         raise ValueError("strict schema root must be a plain object")
     return dict(schema)

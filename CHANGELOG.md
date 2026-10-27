@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-27 — day 2 plan (Studio act, D2-1 … D2-8)
+
+- D2-1 schemas + prompts: `studio/agents/schemas.py` (`Plan`, `CopyPack`, `CreativeSet`, `Review`, `Triage`, `Score`, `Report`; counts enforced by validators, not by schema keywords the strict subset may lack); `strict_schema` now inlines `$ref`/`$defs` so nested models are sent flat; system prompts = byte-stable prefix (synthetic brand sheet + policy checklist P1–P8) + role, for prompt caching (`studio/agents/prompts.py`); `skills.yaml` with `side_effects: none|local|external`, loader fails closed (an external skill marked model-callable, an unknown class or a missing approval action refuse to load); 21 tests.
+
 ## 2026-10-27 — day 1 fix round (review)
 
 - C1/I5 verify: an approval authorises exactly one write. `external_write` receipts carry `details.approval_id` + `details.action` (`Verified.write_details()`); verify consumes the named approval, requires the same run, content, action and `item_id` and `write.ts - approval.ts <= APPROVAL_TTL_S` (900 s, shared with the server TTL), rejects a second write on the same approval and a nonce that appears in more than one approval; `chain_head == GENESIS` only for the run's first receipt (the server refuses such a pending once the run has grown); server-made approvals that are unsigned, signed by another key or by an unregistered approver authorise nothing; receipts are type-checked after parsing, so hostile lines are reported, never crash; the CLI reports every error as `error:` with exit 2; 30 tests.
