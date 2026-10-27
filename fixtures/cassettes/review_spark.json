@@ -1,0 +1,125 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/chat/completions",
+        "json": {
+          "model": "muse-spark-1.3",
+          "messages": [
+            {
+              "role": "system",
+              "content": "# Brand sheet (synthetic demo brand)\n\n- Brand: **Demo Ceramics Studio** — always the full name, never an abbreviation.\n- Product: hand-thrown stoneware mugs, 350 ml, dishwasher safe, made in small batches.\n- Price: 89 PLN per mug; free delivery in Poland above 150 PLN. No other prices exist.\n- Voice: warm, plain, specific; short sentences; no hype words (\"best ever\", \"revolutionary\").\n- Palette: off-white #F4EFE6, clay #B5654A, charcoal #2E2B28. Plenty of empty space.\n- Language: copy in English unless the brief asks for Polish.\n- Never: medical, legal or tax claims; invented discounts; competitor names; people's faces.\n\n# Policy checklist (cite rule ids in every finding)\n\n- **P1 Personal attributes** — never assert or imply a person's attributes (health, age, finances, religion, ethnicity, ...): \"Are you lonely?\" is a violation.\n- **P2 Before/after and body image** — no before/after comparisons, no idealised bodies.\n- **P3 Unrealistic promises** — no guaranteed results, no exaggerated or unverifiable claims.\n- **P4 Price and offer accuracy** — prices, discounts and delivery terms must match the brand sheet exactly; no invented offers.\n- **P5 Brand name** — the brand appears with its full name; no misleading affiliation with other companies or Meta.\n- **P6 Image text** — at most the headline as text in the image; no fake buttons, no fake UI.\n- **P7 Prohibited or sensitive content** — no weapons, drugs, adult content, shocking imagery, faces of real people without consent.\n- **P8 Regulated claims** — no medical, legal, financial or tax claims or advice.\n\n# Role: Compliance reviewer\n\nYou review one ad: the attached image and the copy below, against the policy checklist.\nReturn `verdict` OK (no issues), WARN (fixable issues) or BLOCK (must not run). For every issue add a finding with the rule id (P1-P8), the evidence (quote the copy or describe the image region) and the severity (info, warn, block). Do not invent issues; an empty findings list with OK is a valid answer."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Primary text: Your first coffee deserves a real mug. Hand-thrown, 350 ml. From Demo Ceramics Studio.\nHeadline: A Mug for Slow Mornings\nDescription: 89 PLN. Dishwasher safe.\nCTA: SHOP_NOW"
+                },
+                {
+                  "type": "image_url",
+                  "image_url": {
+                    "url": "data:image/png;sha256,ed7d7199743892f08cb83da8b0c14640d419adc2bcf223a824c7b8038fdcc4f0"
+                  }
+                }
+              ]
+            }
+          ],
+          "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+              "name": "Review",
+              "strict": true,
+              "schema": {
+                "additionalProperties": false,
+                "required": [
+                  "verdict",
+                  "findings",
+                  "summary"
+                ],
+                "type": "object",
+                "properties": {
+                  "verdict": {
+                    "enum": [
+                      "OK",
+                      "WARN",
+                      "BLOCK"
+                    ],
+                    "type": "string"
+                  },
+                  "findings": {
+                    "items": {
+                      "additionalProperties": false,
+                      "required": [
+                        "rule",
+                        "evidence",
+                        "severity"
+                      ],
+                      "type": "object",
+                      "properties": {
+                        "rule": {
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "type": "string"
+                        },
+                        "severity": {
+                          "enum": [
+                            "info",
+                            "warn",
+                            "block"
+                          ],
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "type": "array"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "max_completion_tokens": 6000,
+          "reasoning_effort": "low"
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "id": "chatcmpl-01a17f85-c075-711e-b072-4039a9c8f9f1",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "message": {
+                "content": "{\"findings\":[],\"summary\":\"Ad is compliant: full brand name, correct 89 PLN / 350 ml / hand-thrown / dishwasher-safe details, headline-only image text, no personal attributes, promises, prohibited content or regulated claims.\",\"verdict\":\"OK\"}",
+                "refusal": null,
+                "role": "assistant"
+              },
+              "logprobs": null
+            }
+          ],
+          "created": 1793140834,
+          "model": "muse-spark-1.3",
+          "object": "chat.completion",
+          "usage": {
+            "completion_tokens": 562,
+            "prompt_tokens": 2035,
+            "total_tokens": 2597,
+            "completion_tokens_details": {
+              "reasoning_tokens": 500
+            },
+            "prompt_tokens_details": {
+              "cached_tokens": 0
+            }
+          }
+        }
+      }
+    }
+  ]
+}

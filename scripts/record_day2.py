@@ -210,6 +210,21 @@ def _art(client: MuseClient, rec: Recorder, key: str) -> None:
     save("image_series", rec, key)
 
 
+@step("review_spark")
+def _review_spark(client: MuseClient, rec: Recorder, key: str) -> None:
+    from studio.agents import reviewer
+    from studio.agents.schemas import CopyPack
+
+    rec.name = "review_spark"
+    image_png = (OUT / "files" / "image_series-1.png").read_bytes()
+    copy = json.loads((OUT / "copy_contributor.json").read_text())
+    content = copy["interactions"][0]["response"]["json"]["choices"][0]["message"]["content"]
+    variant = CopyPack.model_validate_json(content).variants[0]
+    result = reviewer.review(client, image_png, variant, run_id="rec")
+    print(result.model_dump_json(indent=1))
+    save("review_spark", rec, key)
+
+
 def main() -> None:
     rec = Recorder()
     client, key = open_client(rec)

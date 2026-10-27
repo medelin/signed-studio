@@ -356,18 +356,19 @@ class MuseClient:
     ) -> MuseResult:
         """Send one request. Once anything may have been sent, a receipt is always written:
         the success receipt, or an error receipt for network, HTTP, parse or abort."""
-        check_tier(model, tier)
+        self._check(model, tier)
         # Caller-supplied ids fail here, before any I/O, never in the receipt after the call.
-        Ledger.validate_ids(run_id, agent, provider=PROVIDER, model=model, tier=tier)
+        rid = self._receipt_model(model)
+        Ledger.validate_ids(run_id, agent, provider=self.provider, model=rid, tier=tier)
         if self.read_only:
             raise ReadOnlyMode("STUDIO_READ_ONLY=1: model calls are disabled")
         if not self._api_key:
-            raise MuseError("MODEL_API_KEY is not set", code="no_api_key")
-        estimate = estimate_cost(model, body)
+            raise MuseError(f"{self.key_name} is not set", code="no_api_key")
+        estimate = self._estimate(model, body)
         if self.budget is not None:
             self.budget.reserve(estimate)  # atomic: concurrent calls cannot overspend
         audit: dict[str, Any] = {
-            "provider": PROVIDER,
+            "provider": self.provider,
             "tier": tier,
             "tier_reason": tier_reason,
             "prompt_sha256": sha256_hex(canonical(body)),
@@ -378,19 +379,19 @@ class MuseClient:
             data = self._send_stream(path, body) if stream else self._send(path, body)
             try:
                 parsed = parser(data)
-                used_model, reported_sha = normalize_id(data.get("model") or model)
+                used_model, reported_sha = normalize_id(
+                    self._receipt_model(str(data.get("model") or model)))
                 usage: Usage = parsed["usage"]
-                priced = used_model if used_model in TOKEN_PRICES | UNIT_PRICES else model
-                cost = cost_usd(priced, usage, parsed.get("units", 0))
+                cost = self._cost(model, used_model, usage, parsed.get("units", 0))
             except Exception:  # noqa: BLE001 - any malformed body is a bad response
                 # The call was billed: record whatever usage the body reports, else the
                 # estimate, so the spend (and the receipt the budget is rebuilt from) is real.
                 bad_usage = _usage_of(data)
                 raise _Failure({"error": "bad_response"},
-                               MuseError("Model API returned an unexpected response shape",
+                               MuseError(f"{self.api_label} returned an unexpected response shape",
                                          code="bad_response"),
                                usage=bad_usage,
-                               cost=(cost_usd(model, bad_usage)
+                               cost=(self._cost(model, model, bad_usage, 0)
                                      if bad_usage and model in TOKEN_PRICES else None),
                                ) from None
         except _Failure as failure:
@@ -399,7 +400,7 @@ class MuseClient:
             u = failure.usage or Usage()
             basis = ({"cost_basis": "estimate"} if failure.cost is None
                      else {"cost_basis": "usage"} if failure.usage else {})
-            self.ledger.append(run_id, agent=agent, kind="model_call", model=model, **audit,
+            self.ledger.append(run_id, agent=agent, kind="model_call", model=rid, **audit,
                                duration_ms=_ms(start), tokens_in=u.input_tokens,
                                tokens_out=u.output_tokens, cost_usd=round(charged, 8),
                                details={"endpoint": endpoint, **failure.details, **basis})
@@ -407,7 +408,7 @@ class MuseClient:
         except BaseException as exc:
             # Unknown whether the request was billed: charge the estimate (conservative).
             self._settle(estimate, estimate)
-            self.ledger.append(run_id, agent=agent, kind="model_call", model=model, **audit,
+            self.ledger.append(run_id, agent=agent, kind="model_call", model=rid, **audit,
                                duration_ms=_ms(start), cost_usd=round(estimate, 8),
                                details={"endpoint": endpoint, "error": "aborted",
                                         "error_type": type(exc).__name__,
@@ -423,10 +424,11 @@ class MuseClient:
         }
         if parsed.get("units"):
             details["units"] = parsed["units"]
+        details.update(self._cost_note())
         if parsed["tool_calls"]:
             details["tool_calls"] = [c.name for c in parsed["tool_calls"]]
-        if used_model != model:
-            details["requested_model"] = model
+        if used_model != self._receipt_model(model):
+            details["requested_model"] = self._receipt_model(model)
         if reported_sha:
             details["reported_model_sha256"] = reported_sha
         receipt = self.ledger.append(
@@ -443,6 +445,29 @@ class MuseClient:
             images=parsed.get("images", []), events=data.get("_events", []),
         )
 
+    # -- provider hooks (overridden by the open-weights client) -------------------------
+
+    provider = PROVIDER
+    key_name = "MODEL_API_KEY"
+    api_label = "Model API"
+
+    def _check(self, model: str, tier: str) -> None:
+        check_tier(model, tier)
+
+    def _estimate(self, model: str, body: Mapping[str, Any]) -> float:
+        return estimate_cost(model, body)
+
+    def _cost(self, model: str, reported: str, usage: Usage, units: int) -> float:
+        priced = reported if reported in TOKEN_PRICES or reported in UNIT_PRICES else model
+        return cost_usd(priced, usage, units)
+
+    def _cost_note(self) -> dict[str, str]:
+        return {}
+
+    def _receipt_model(self, model: str) -> str:
+        """The model id as written in receipts (must be an opaque id)."""
+        return model
+
     def _settle(self, estimate: float, cost: float) -> None:
         if self.budget is not None:
             self.budget.settle(estimate, cost)
@@ -457,7 +482,7 @@ class MuseClient:
         except httpx.HTTPError as exc:
             # The request may have reached the API: charge the estimate (conservative).
             raise _Failure({"error": "network", "error_type": type(exc).__name__},
-                           MuseError(f"Model API unreachable ({type(exc).__name__})",
+                           MuseError(f"{self.api_label} unreachable ({type(exc).__name__})",
                                      code="network"), cost=None) from None
         try:
             data = resp.json()
@@ -467,7 +492,7 @@ class MuseClient:
             err = data.get("error") if isinstance(data, dict) else None
             code = str(err.get("type") or err.get("code") or "") if isinstance(err, dict) else ""
             raise _Failure({"error_status": resp.status_code, "error_type": code},
-                           MuseError(f"Model API returned HTTP {resp.status_code} "
+                           MuseError(f"{self.api_label} returned HTTP {resp.status_code} "
                                      f"({code or 'error'})", status=resp.status_code, code=code))
         return data
 
@@ -491,7 +516,7 @@ class MuseClient:
                     code = (str(err.get("type") or err.get("code") or "")
                             if isinstance(err, dict) else "")
                     raise _Failure({"error_status": resp.status_code, "error_type": code},
-                                   MuseError(f"Model API returned HTTP {resp.status_code} "
+                                   MuseError(f"{self.api_label} returned HTTP {resp.status_code} "
                                              f"({code or 'error'})", status=resp.status_code,
                                              code=code))
                 for line in resp.iter_lines():
@@ -508,7 +533,7 @@ class MuseClient:
                         events.append(event)
         except httpx.HTTPError as exc:
             raise _Failure({"error": "network", "error_type": type(exc).__name__},
-                           MuseError(f"Model API unreachable ({type(exc).__name__})",
+                           MuseError(f"{self.api_label} unreachable ({type(exc).__name__})",
                                      code="network"), cost=None) from None
         final: dict[str, Any] = {}
         for event in events:
