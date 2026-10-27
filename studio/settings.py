@@ -115,6 +115,10 @@ class Settings:
     # The operator's product photo replaces the synthetic one by setting these two.
     product_photo: Path = DEFAULT_PRODUCT_PHOTO
     product_concept: str = "mug"
+    keep_audio: bool = False  # voice briefs: keep the converted WAV after transcription
+    # campaign.activate is refused above this daily budget (PLN), whatever was signed
+    max_daily_budget_pln: int = 50
+    landing_url: str = "https://example.com/"
 
     @property
     def judge_login_enabled(self) -> bool:
@@ -183,6 +187,15 @@ class Settings:
         if not base_url.startswith("https://"):
             raise ConfigError("MODEL_API_BASE_URL must use https")
 
+        try:
+            ceiling = int(e.get("STUDIO_MAX_DAILY_BUDGET_PLN", "") or 50)
+        except ValueError:
+            raise ConfigError("STUDIO_MAX_DAILY_BUDGET_PLN must be an integer") from None
+        if not 1 <= ceiling <= 500:
+            raise ConfigError("STUDIO_MAX_DAILY_BUDGET_PLN must be 1-500")
+        landing = e.get("STUDIO_LANDING_URL", "") or "https://example.com/"
+        if not landing.startswith("https://") or any(c.isspace() for c in landing):
+            raise ConfigError("STUDIO_LANDING_URL must be an https URL")
         return cls(
             model_api_key=e.get("MODEL_API_KEY", ""),
             model_api_base_url=base_url.rstrip("/"),
@@ -203,6 +216,9 @@ class Settings:
             data_dir=Path(e.get("STUDIO_DATA_DIR", "") or "var"),
             product_photo=Path(e.get("STUDIO_PRODUCT_PHOTO", "") or DEFAULT_PRODUCT_PHOTO),
             product_concept=concept,
+            keep_audio=_bool(e, "STUDIO_KEEP_AUDIO", False),
+            max_daily_budget_pln=ceiling,
+            landing_url=landing,
         )
 
 

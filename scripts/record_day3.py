@@ -94,6 +94,19 @@ def _lead(client: MuseClient, rec: rec2.Recorder, key: str) -> None:
     rec2.save("lead_rationale", rec, key, {"lead": DEMO_LEAD})
 
 
+@step("voice")
+def _voice(client: MuseClient, rec: rec2.Recorder, key: str) -> None:
+    from studio.muse import voice
+
+    rec.name = "voice_transcribe"
+    wav = (ROOT / "fixtures" / "audio" / "brief-pl.synthetic.wav").read_bytes()
+    t = voice.transcribe(client, wav, run_id="rec_voice")
+    print(json.dumps(t.as_dict(), ensure_ascii=False, indent=1))
+    rec2.save("voice_transcribe", rec, key,
+              {"audio": "fixtures/audio/brief-pl.synthetic.wav",
+               "note": "synthetic speech (Piper TTS, pl_PL voice), not a recording of a person"})
+
+
 def main() -> None:
     rec = Recorder()
     client, key = rec2.open_client(rec)

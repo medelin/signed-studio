@@ -18,9 +18,11 @@ import base64
 import json
 import logging
 import re
+import secrets
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
+from functools import partial
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -35,16 +37,19 @@ from studio.approvals import (
     Pending,
     verify_and_consume,
 )
-from studio.muse.client import MuseClient
+from studio.muse import voice
+from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
 from studio.receipts import Ledger, Receipt
-from studio.settings import Settings
+from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
 LOG = logging.getLogger("studio.runs")
 RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 APPROVER = re.compile(r"ed25519:[0-9a-f]{32}")
 SIGNATURE = re.compile(r"[0-9a-f]{128}")
 ASSET_NAMES = frozenset({"feed_1x1", "feed_4x5", "story_9x16", "cutout"})
+VOICE_TYPES = frozenset({"audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/wave",
+                         "audio/mp4", "audio/mpeg", "audio/aac"})
 SSE_POLL_S = 0.5
 SSE_MAX_S = 20 * 60
 
@@ -146,6 +151,42 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         app.state.last_thread = thread
         thread.start()
         return JSONResponse({"run_id": run_id}, 202)
+
+    @app.post("/api/briefs/voice")
+    async def voice_brief(request: Request) -> Response:
+        """Raw audio body (what ``MediaRecorder`` produced) → WAV → transcript → brief row."""
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
+        if ctype not in VOICE_TYPES:
+            return JSONResponse({"error": "unsupported_audio_type"}, 415)
+        if app.state.muse is None and not settings.model_api_key:
+            return JSONResponse({"error": "model_api_unavailable"}, 503)
+        data = await request.body()
+        brief_id = "b_" + secrets.token_hex(8)
+        try:
+            wav = await run_in_threadpool(voice.to_wav, data)
+            muse, _ = clients()
+            t = await run_in_threadpool(partial(voice.transcribe, muse, wav, run_id=brief_id))
+        except voice.VoiceError as exc:
+            return JSONResponse({"error": exc.code}, exc.status)
+        except (ReadOnlyMode, BudgetExceeded) as exc:
+            return JSONResponse({"error": type(exc).__name__}, 503)
+        except MuseError as exc:
+            return JSONResponse({"error": "model_error", "code": exc.code}, 502)
+        if settings.keep_audio:
+            audio_dir = settings.data_dir / "audio"
+            audio_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            (audio_dir / f"{brief_id}.wav").write_bytes(wav)
+        text = t.text[:producer.MAX_BRIEF]
+        with db.transaction(conn):
+            conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "
+                         "VALUES (?, '', ?, 'voice', ?)", (brief_id, text, time.time()))
+        return JSONResponse({"brief_id": brief_id, **t.as_dict(), "transcript": text,
+                             "receipt_id": t.result.receipt_id if t.result else "",
+                             "audio_kept": settings.keep_audio,
+                             "cost_usd": t.result.cost_usd if t.result else 0.0})
 
     @app.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> Response:

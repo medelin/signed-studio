@@ -22,7 +22,15 @@
 <section class="panel" aria-labelledby="brief-h">
   <h1 id="brief-h">1 · Brief</h1>
   <form id="brief-form" class="stack">
-    <label for="brief">Campaign brief (text; voice comes later)</label>
+    <div class="inline" id="voice-box">
+      <button type="button" id="rec-button" {% if not logged_in or read_only %}disabled{% endif %}>Record a voice brief</button>
+      <button type="button" id="stop-button" hidden>Stop and transcribe</button>
+      <span id="rec-timer" class="hint" aria-live="off"></span>
+    </div>
+    <p class="hint">Speak in Polish or English (up to 60 s here; the server accepts 10 min / 32 MB). Muse Voice Transcribe writes the brief; the audio is deleted after transcription.</p>
+    <p class="status" id="voice-status" role="status" aria-live="polite"></p>
+    <ol id="turns" class="hint" aria-label="Transcript turns"></ol>
+    <label for="brief">Campaign brief (type it, or record it above)</label>
     <textarea id="brief" name="brief" rows="4" maxlength="2000" required
       aria-describedby="brief-help">Autumn campaign for Demo Ceramics Studio: hand-thrown stoneware mugs, 89 PLN, free delivery in Poland above 150 PLN. Audience: people working from home in Poland, 25-55. Budget 30 PLN per day. Facebook and Instagram feed plus stories.</textarea>
     <p id="brief-help" class="hint">The producer plans, the copywriter writes, the art director cuts the {{ product_concept }} out of the product photo with SAM 3.1 and renders three placements with Muse Image, two reviewers check it. Nothing is published: the run ends in an approval only you can sign.</p>

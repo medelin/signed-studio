@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import math
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -36,6 +37,7 @@ TOKEN_PRICES: dict[str, tuple[float, float, float]] = {
 UNIT_PRICES: dict[str, float] = {
     "muse-image-1.0": 0.01,
     "sam-3.1": 0.0025,  # $2.50 per 1k images
+    "muse-voice-transcribe-1.0": 0.18 / 3600,  # $0.18 per hour of audio, per second
 }
 TIERS = frozenset({"standard", "contributor"})
 
@@ -147,6 +149,8 @@ def input_hashes(body: Mapping[str, Any]) -> list[str]:
                         out.append("file:" + sha256_hex(str(part["file_id"])))
                     else:
                         out.append(_hash_image_ref(part.get("image_url")))
+    if isinstance(body.get("audio_sha256"), str):
+        out.append(str(body["audio_sha256"]))  # multipart audio part (transcription)
     return out
 
 
@@ -169,6 +173,9 @@ def estimate_cost(model: str, body: Mapping[str, Any]) -> float:
     at ~3 characters per token (uncached), images at a flat rate, output at its cap; for
     unit-priced models, the price times the number of outputs asked for."""
     if model in UNIT_PRICES:
+        seconds = body.get("audio_seconds")
+        if isinstance(seconds, int | float) and seconds > 0:
+            return UNIT_PRICES[model] * math.ceil(seconds)
         n = body.get("n")
         return UNIT_PRICES[model] * (n if isinstance(n, int) and n > 0 else 1)
     price_in, _, price_out = TOKEN_PRICES[model]
@@ -342,6 +349,36 @@ class MuseClient:
         return self._call("/responses", "responses.stream", _parse_stream, body, model,
                           "standard", tier_reason, run_id, agent, stream=True)
 
+    def transcribe(
+        self,
+        wav: bytes,
+        request: Mapping[str, Any],
+        *,
+        seconds: float,
+        run_id: str,
+        agent: str,
+        tier_reason: str = "",
+    ) -> MuseResult:
+        """Muse Voice Transcribe (``POST /asr/transcribe``, multipart ``request`` + ``audio``).
+
+        Priced per second of audio; the receipt hashes the audio, never stores it."""
+        model = str(request.get("model", ""))
+        body = {"request": dict(request), "audio_sha256": sha256_hex(wav),
+                "audio_bytes": len(wav), "audio_seconds": round(seconds, 3)}
+        units = max(1, math.ceil(seconds))
+
+        def send() -> dict[str, Any]:
+            files = {"request": (None, json.dumps(dict(request)), "application/json"),
+                     "audio": ("audio.wav", wav, "audio/wav")}
+            data = self._send("/asr/transcribe", None, files=files)
+            billed = data.get("audioDurationMs") if isinstance(data, dict) else None
+            if isinstance(billed, int | float) and not isinstance(billed, bool) and billed > 0:
+                return {**data, "_units": max(1, math.ceil(billed / 1000))}
+            return {**data, "_units": units}
+
+        return self._call("/asr/transcribe", "asr.transcribe", _parse_asr, body, model,
+                          "standard", tier_reason, run_id, agent, sender=send)
+
     # -- internals -------------------------------------------------------------------
 
     def _call(
@@ -357,6 +394,7 @@ class MuseClient:
         agent: str,
         stream: bool = False,
         envelope_sources: Sequence[str] = (),
+        sender: Callable[[], dict[str, Any]] | None = None,
     ) -> MuseResult:
         """Send one request. Once anything may have been sent, a receipt is always written:
         the success receipt, or an error receipt for network, HTTP, parse or abort."""
@@ -386,7 +424,10 @@ class MuseClient:
         }
         start = time.monotonic()
         try:
-            data = self._send_stream(path, body) if stream else self._send(path, body)
+            if sender is not None:
+                data = sender()
+            else:
+                data = self._send_stream(path, body) if stream else self._send(path, body)
             try:
                 parsed = parser(data)
                 used_model, reported_sha = normalize_id(
@@ -483,11 +524,13 @@ class MuseClient:
         if self.budget is not None:
             self.budget.settle(estimate, cost)
 
-    def _send(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+    def _send(self, path: str, body: dict[str, Any] | None,
+              files: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
             resp = self._http.post(
                 self.base_url + path,
                 json=body,
+                files=files,
                 headers={"Authorization": f"Bearer {self._api_key}"},
             )
         except httpx.HTTPError as exc:
@@ -661,6 +704,16 @@ def _parse_images(data: dict[str, Any]) -> dict[str, Any]:
                   output_tokens=_int(u.get("output_tokens")))
     return {"text": "", "summary": "", "tool_calls": [], "items": [], "usage": usage,
             "finish": "completed", "images": images, "units": len(images)}
+
+
+def _parse_asr(data: dict[str, Any]) -> dict[str, Any]:
+    transcript = data.get("transcript")
+    turns = data.get("turns", [])
+    if not isinstance(transcript, str) or not isinstance(turns, list):
+        raise ValueError("unexpected transcription body")
+    return {"text": transcript, "summary": "", "tool_calls": [],
+            "items": [t for t in turns if isinstance(t, dict)], "usage": Usage(),
+            "finish": "completed", "units": _int(data.get("_units"))}
 
 
 def _parse_stream(data: dict[str, Any]) -> dict[str, Any]:

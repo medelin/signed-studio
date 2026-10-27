@@ -1,0 +1,40 @@
+{
+  "audio": "fixtures/audio/brief-pl.synthetic.wav",
+  "note": "synthetic speech (Piper TTS, pl_PL voice), not a recording of a person",
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/asr/transcribe",
+        "multipart": {
+          "request": {
+            "mode": "ENDPOINTING",
+            "model": "muse-voice-transcribe-1.0",
+            "audioEncoding": "WAV",
+            "languageBias": [
+              "pl"
+            ]
+          },
+          "audio_sha256": "3439d7ba1e15239fee36e3ee6ddae5f1ebc21c7fb3bf4567f8a72c941131710f",
+          "audio_bytes": 903952
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "sessionId": "voyager/transcribe/7FF98FAA80F647D2B02BF0B0C0F7B811",
+          "transcript": "i się na kampania dla Democeramics Studio ręcznie ręcznie toczone kubki z kamionki ze osiemdziesiąt dziewięć złotych, darmowa dostawa w Polsce powyżej stu pięćdziesięciu złotych. Celujemy w osoby pracujące z domu, od dwudziestu pięciu do pięćdziesięciu pięciu pięciu lat. Budżet trzydzieści złotych dziennie, Facebook i Instagram.",
+          "audioDurationMs": 18880,
+          "turns": [
+            {
+              "turnId": 0,
+              "startMs": 0,
+              "endMs": 18380,
+              "transcript": "i się na kampania dla Democeramics Studio ręcznie ręcznie toczone kubki z kamionki ze osiemdziesiąt dziewięć złotych, darmowa dostawa w Polsce powyżej stu pięćdziesięciu złotych. Celujemy w osoby pracujące z domu, od dwudziestu pięciu do pięćdziesięciu pięciu pięciu lat. Budżet trzydzieści złotych dziennie, Facebook i Instagram."
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

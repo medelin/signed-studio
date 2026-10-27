@@ -48,6 +48,7 @@ LOG = logging.getLogger("studio.login")
 COOKIE = "studio_session"
 SESSION_TTL_S = 8 * 3600
 MAX_BODY = 64 * 1024
+UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024 * 1024}
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
@@ -271,17 +272,20 @@ class Sessions:
 class BodyLimit:
     """413 for bodies over ``limit`` bytes, by header or while streaming (chunked)."""
 
-    def __init__(self, app: ASGIApp, limit: int = MAX_BODY) -> None:
+    def __init__(self, app: ASGIApp, limit: int = MAX_BODY,
+                 paths: dict[str, int] | None = None) -> None:
         self.app = app
         self.limit = limit
+        self.paths = paths or {}  # exact path -> larger limit (uploads)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        limit = self.paths.get(scope.get("path", ""), self.limit)
         headers = dict(scope.get("headers") or [])
         length = headers.get(b"content-length")
-        if length is not None and (not length.isdigit() or int(length) > self.limit):
+        if length is not None and (not length.isdigit() or int(length) > limit):
             await PlainTextResponse("request body too large", 413)(scope, receive, send)
             return
         seen = 0
@@ -292,7 +296,7 @@ class BodyLimit:
             message = await receive()
             if message["type"] == "http.request":
                 seen += len(message.get("body", b""))
-                if seen > self.limit:
+                if seen > limit:
                     raise _TooLarge
             return message
 
@@ -362,7 +366,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessions = Sessions(settings.session_secret)
     templates = Jinja2Templates(directory=str(UI / "templates"))
     app.mount("/static", StaticFiles(directory=str(UI / "static")), name="static")
-    app.add_middleware(BodyLimit)
+    app.add_middleware(BodyLimit, paths=UPLOAD_LIMITS)
 
     @app.middleware("http")
     async def security_headers(

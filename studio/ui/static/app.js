@@ -38,7 +38,7 @@ if (loginForm) {
     loggedIn = true;
     try { await Signer.registerKey(); } catch (e) { status("login-status", e.message, true); return; }
     $("login-panel").hidden = true;
-    if (!readOnly) $("run-button").disabled = false;
+    if (!readOnly) { $("run-button").disabled = false; $("rec-button").disabled = false; }
     status("run-status", "Signed in. Your approver key is " + Signer.approver() + ".");
     $("brief").focus();
   });
@@ -251,4 +251,76 @@ $("open-form").addEventListener("submit", (ev) => {
   }
   const run = new URLSearchParams(location.search).get("run");
   if (run && /^[A-Za-z0-9_-]{1,40}$/.test(run)) follow(run);
+})();
+
+// -- voice brief ----------------------------------------------------------------------
+// MediaRecorder → raw audio POST /api/briefs/voice → ffmpeg + Muse Voice Transcribe.
+
+(() => {
+  const recBtn = $("rec-button");
+  const stopBtn = $("stop-button");
+  if (!recBtn || !window.MediaRecorder) {
+    if (recBtn) { recBtn.disabled = true; status("voice-status", "This browser cannot record audio."); }
+    return;
+  }
+  const MAX_REC_S = 60;
+  const MAX_BYTES = 32 * 1024 * 1024;
+  let recorder = null;
+  let chunks = [];
+  let timer = null;
+  let started = 0;
+
+  function fmt(ms) {
+    const s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0") + "." + String(Math.floor((ms % 1000) / 100));
+  }
+
+  async function upload(blob) {
+    if (blob.size > MAX_BYTES) { status("voice-status", "Recording is larger than 32 MB.", true); return; }
+    status("voice-status", "Transcribing with Muse Voice Transcribe…");
+    const r = await fetch("/api/briefs/voice", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": blob.type || "audio/webm" }, body: blob,
+    });
+    let data = {};
+    try { data = await r.json(); } catch (_) { /* empty */ }
+    if (!r.ok) { status("voice-status", "Transcription failed: " + (data.error || r.status), true); return; }
+    $("brief").value = data.transcript;
+    const ol = $("turns");
+    ol.replaceChildren();
+    for (const t of data.turns) ol.append(el("li", fmt(t.start_ms) + "–" + fmt(t.end_ms) + "  " + t.text));
+    status("voice-status", "Transcribed " + data.seconds.toFixed(1) + " s for $" + data.cost_usd.toFixed(5)
+      + (data.audio_kept ? " (audio kept by configuration)." : "; the audio was deleted.") + " Edit the brief, then run the studio.");
+    $("brief").focus();
+  }
+
+  recBtn.addEventListener("click", async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recorder = new MediaRecorder(stream);
+      chunks = [];
+      recorder.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        clearInterval(timer);
+        stopBtn.hidden = true;
+        recBtn.hidden = false;
+        upload(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
+      };
+      recorder.start();
+      started = Date.now();
+      recBtn.hidden = true;
+      stopBtn.hidden = false;
+      stopBtn.focus();
+      status("voice-status", "Recording…");
+      timer = setInterval(() => {
+        const ms = Date.now() - started;
+        $("rec-timer").textContent = fmt(ms);
+        if (ms >= MAX_REC_S * 1000 && recorder.state === "recording") recorder.stop();
+      }, 200);
+    } catch (e) {
+      status("voice-status", "Microphone not available: " + e.message, true);
+    }
+  });
+  stopBtn.addEventListener("click", () => { if (recorder && recorder.state === "recording") recorder.stop(); });
 })();
