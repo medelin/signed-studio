@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -29,6 +30,11 @@ TOKEN_PRICES: dict[str, tuple[float, float, float]] = {
     "muse-spark-1.3": (1.25, 0.15, 4.25),
     "muse-spark-1.3-contributor": (0.10, 0.002, 0.20),
     "muse-wonder-1.0": (4.00, 0.20, 20.00),
+}
+# USD per unit (generated image / segmented image): priced per output, not per token.
+UNIT_PRICES: dict[str, float] = {
+    "muse-image-1.0": 0.01,
+    "sam-3.1": 0.0025,  # $2.50 per 1k images
 }
 TIERS = frozenset({"standard", "contributor"})
 
@@ -56,6 +62,12 @@ class ToolCall:
 
 
 @dataclass(frozen=True)
+class GeneratedImage:
+    data: bytes
+    item_id: str = ""  # Responses ``image_generation_call`` id (a handle for later edits)
+
+
+@dataclass(frozen=True)
 class MuseResult:
     text: str
     model: str
@@ -68,9 +80,13 @@ class MuseResult:
     finish: str = ""
     duration_ms: int = 0
     receipt_id: str = ""
+    images: list[GeneratedImage] = field(default_factory=list)
+    events: list[dict[str, Any]] = field(default_factory=list)  # SSE events (streamed calls)
 
 
-def cost_usd(model: str, usage: Usage) -> float:
+def cost_usd(model: str, usage: Usage, units: int = 0) -> float:
+    if model in UNIT_PRICES:
+        return UNIT_PRICES[model] * units
     price_in, price_cached, price_out = TOKEN_PRICES[model]
     cached = min(usage.cached_tokens, usage.input_tokens)
     return (
@@ -149,7 +165,11 @@ def _strip_images(value: Any) -> Any:
 
 def estimate_cost(model: str, body: Mapping[str, Any]) -> float:
     """Worst-case-ish cost of a request, reserved from the budget before it is sent: input
-    at ~3 characters per token (uncached), images at a flat rate, output at its cap."""
+    at ~3 characters per token (uncached), images at a flat rate, output at its cap; for
+    unit-priced models, the price times the number of outputs asked for."""
+    if model in UNIT_PRICES:
+        n = body.get("n")
+        return UNIT_PRICES[model] * (n if isinstance(n, int) and n > 0 else 1)
     price_in, _, price_out = TOKEN_PRICES[model]
     text_tokens = len(canonical(_strip_images(dict(body)))) // 3 + 1
     images = len(input_hashes(body))
@@ -171,7 +191,7 @@ def _usage_of(data: Any) -> Usage | None:
 
 
 def check_tier(model: str, tier: str) -> None:
-    if model not in TOKEN_PRICES:
+    if model not in TOKEN_PRICES and model not in UNIT_PRICES:
         raise ValueError(f"unknown model {model!r}")
     if tier not in TIERS:
         raise ValueError(f"unknown tier {tier!r}")
@@ -284,6 +304,40 @@ class MuseClient:
         return self._call("/chat/completions", "chat.completions", _parse_chat, body, model,
                           tier, tier_reason, run_id, agent)
 
+    def images(
+        self,
+        operation: str,
+        body: Mapping[str, Any],
+        *,
+        run_id: str,
+        agent: str,
+        tier_reason: str = "",
+    ) -> MuseResult:
+        """Images API: ``operation`` is ``generations`` or ``edits`` (JSON body, base64 out)."""
+        if operation not in ("generations", "edits"):
+            raise ValueError(f"unknown images operation {operation!r}")
+        full = {"response_format": "b64_json", **body}
+        model = str(full.get("model", ""))
+        return self._call(f"/images/{operation}", f"images.{operation}", _parse_images, full,
+                          model, "standard", tier_reason, run_id, agent)
+
+    def respond_stream(
+        self,
+        model: str,
+        input: Sequence[Mapping[str, Any]],  # noqa: A002 - API field name
+        *,
+        run_id: str,
+        agent: str,
+        metadata: Mapping[str, str] | None = None,
+        tier_reason: str = "",
+    ) -> MuseResult:
+        """Streamed Responses call (SSE); events are returned in ``MuseResult.events``."""
+        body: dict[str, Any] = {"model": model, "input": list(input), "stream": True}
+        if metadata:
+            body["metadata"] = dict(metadata)
+        return self._call("/responses", "responses.stream", _parse_stream, body, model,
+                          "standard", tier_reason, run_id, agent, stream=True)
+
     # -- internals -------------------------------------------------------------------
 
     def _call(
@@ -297,6 +351,7 @@ class MuseClient:
         tier_reason: str,
         run_id: str,
         agent: str,
+        stream: bool = False,
     ) -> MuseResult:
         """Send one request. Once anything may have been sent, a receipt is always written:
         the success receipt, or an error receipt for network, HTTP, parse or abort."""
@@ -319,12 +374,13 @@ class MuseClient:
         }
         start = time.monotonic()
         try:
-            data = self._send(path, body)
+            data = self._send_stream(path, body) if stream else self._send(path, body)
             try:
                 parsed = parser(data)
                 used_model, reported_sha = normalize_id(data.get("model") or model)
                 usage: Usage = parsed["usage"]
-                cost = cost_usd(used_model if used_model in TOKEN_PRICES else model, usage)
+                priced = used_model if used_model in TOKEN_PRICES | UNIT_PRICES else model
+                cost = cost_usd(priced, usage, parsed.get("units", 0))
             except Exception:  # noqa: BLE001 - any malformed body is a bad response
                 # The call was billed: record whatever usage the body reports, else the
                 # estimate, so the spend (and the receipt the budget is rebuilt from) is real.
@@ -333,7 +389,8 @@ class MuseClient:
                                MuseError("Model API returned an unexpected response shape",
                                          code="bad_response"),
                                usage=bad_usage,
-                               cost=cost_usd(model, bad_usage) if bad_usage else None,
+                               cost=(cost_usd(model, bad_usage)
+                                     if bad_usage and model in TOKEN_PRICES else None),
                                ) from None
         except _Failure as failure:
             charged = estimate if failure.cost is None else failure.cost
@@ -363,6 +420,8 @@ class MuseClient:
             "finish": parsed["finish"],
             "reasoning_tokens": usage.reasoning_tokens,
         }
+        if parsed.get("units"):
+            details["units"] = parsed["units"]
         if parsed["tool_calls"]:
             details["tool_calls"] = [c.name for c in parsed["tool_calls"]]
         if used_model != model:
@@ -380,6 +439,7 @@ class MuseClient:
             response_id=str(data.get("id", "")), output_items=parsed["items"],
             tool_calls=parsed["tool_calls"], reasoning_summary=parsed["summary"],
             finish=parsed["finish"], duration_ms=ms, receipt_id=receipt.id,
+            images=parsed.get("images", []), events=data.get("_events", []),
         )
 
     def _settle(self, estimate: float, cost: float) -> None:
@@ -409,6 +469,54 @@ class MuseClient:
                            MuseError(f"Model API returned HTTP {resp.status_code} "
                                      f"({code or 'error'})", status=resp.status_code, code=code))
         return data
+
+
+    def _send_stream(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        """POST with ``stream: true``; returns the final response object plus ``_events``."""
+        events: list[dict[str, Any]] = []
+        try:
+            with self._http.stream(
+                "POST", self.base_url + path, json=body,
+                headers={"Authorization": f"Bearer {self._api_key}",
+                         "Accept": "text/event-stream"},
+            ) as resp:
+                if resp.status_code >= 400:
+                    resp.read()
+                    try:
+                        data = resp.json()
+                    except ValueError:
+                        data = None
+                    err = data.get("error") if isinstance(data, dict) else None
+                    code = (str(err.get("type") or err.get("code") or "")
+                            if isinstance(err, dict) else "")
+                    raise _Failure({"error_status": resp.status_code, "error_type": code},
+                                   MuseError(f"Model API returned HTTP {resp.status_code} "
+                                             f"({code or 'error'})", status=resp.status_code,
+                                             code=code))
+                for line in resp.iter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[5:].strip()
+                    if not payload or payload == "[DONE]":
+                        continue
+                    try:
+                        event = json.loads(payload)
+                    except ValueError:
+                        continue
+                    if isinstance(event, dict):
+                        events.append(event)
+        except httpx.HTTPError as exc:
+            raise _Failure({"error": "network", "error_type": type(exc).__name__},
+                           MuseError(f"Model API unreachable ({type(exc).__name__})",
+                                     code="network"), cost=None) from None
+        final: dict[str, Any] = {}
+        for event in events:
+            if event.get("type") in ("response.completed", "response.incomplete",
+                                     "response.failed") and isinstance(event.get("response"),
+                                                                       dict):
+                final = dict(event["response"])
+        final["_events"] = events
+        return final
 
 
 class _Failure(Exception):
@@ -441,6 +549,7 @@ def _parse_responses(data: dict[str, Any]) -> dict[str, Any]:
     texts: list[str] = []
     summary: list[str] = []
     calls: list[ToolCall] = []
+    images: list[GeneratedImage] = []
     items = [i for i in output if isinstance(i, dict)]
     for item in items:
         kind = item.get("type")
@@ -451,6 +560,8 @@ def _parse_responses(data: dict[str, Any]) -> dict[str, Any]:
         elif kind == "function_call":
             calls.append(ToolCall(str(item.get("call_id", "")), str(item.get("name", "")),
                                   str(item.get("arguments", ""))))
+        elif kind == "image_generation_call" and item.get("result"):
+            images.append(GeneratedImage(_image_bytes(item["result"]), str(item.get("id", ""))))
         elif kind == "reasoning":
             for part in item.get("summary") or []:
                 if isinstance(part, dict):
@@ -462,8 +573,11 @@ def _parse_responses(data: dict[str, Any]) -> dict[str, Any]:
         cached_tokens=_int((u.get("input_tokens_details") or {}).get("cached_tokens")),
         reasoning_tokens=_int((u.get("output_tokens_details") or {}).get("reasoning_tokens")),
     )
+    # image results are returned in ``images``; keep the items light (no base64 copies)
+    light = [{k: v for k, v in i.items() if k != "result"} for i in items]
     return {"text": "".join(texts), "summary": "\n".join(summary), "tool_calls": calls,
-            "items": items, "usage": usage, "finish": str(data.get("status", ""))}
+            "items": light, "usage": usage, "finish": str(data.get("status", "")),
+            "images": images, "units": len(images)}
 
 
 def _parse_chat(data: dict[str, Any]) -> dict[str, Any]:
@@ -491,3 +605,42 @@ def _parse_chat(data: dict[str, Any]) -> dict[str, Any]:
             "items": [msg] if msg else [], "usage": usage,
             "finish": str(choice.get("finish_reason", "")),
             "refusal": msg.get("refusal")}
+
+
+def _image_bytes(b64: Any) -> bytes:
+    if not isinstance(b64, str) or not b64:
+        raise ValueError("missing image data")
+    return base64.b64decode(b64, validate=True)
+
+
+def _parse_images(data: dict[str, Any]) -> dict[str, Any]:
+    items = data.get("data")
+    if not isinstance(items, list) or not items:
+        raise ValueError("unexpected Images body: no data")
+    images = [GeneratedImage(_image_bytes(i.get("b64_json"))) for i in items
+              if isinstance(i, dict)]
+    u = data.get("usage") or {}
+    usage = Usage(input_tokens=_int(u.get("input_tokens")),
+                  output_tokens=_int(u.get("output_tokens")))
+    return {"text": "", "summary": "", "tool_calls": [], "items": [], "usage": usage,
+            "finish": "completed", "images": images, "units": len(images)}
+
+
+def _parse_stream(data: dict[str, Any]) -> dict[str, Any]:
+    events = data.get("_events") or []
+    if not events:
+        raise ValueError("empty event stream")
+    status = str(data.get("status", "")) or "eof"
+    texts = [str(e.get("delta", "")) for e in events
+             if e.get("type") == "response.output_text.delta"]
+    if not texts:  # SAM emits the whole lane in content_part.done
+        for e in events:
+            part = e.get("part")
+            if (e.get("type") == "response.content_part.done" and isinstance(part, dict)
+                    and part.get("type") == "output_text"):
+                texts.append(str(part.get("text", "")))
+    u = data.get("usage") or {}
+    usage = Usage(input_tokens=_int(u.get("input_tokens")),
+                  output_tokens=_int(u.get("output_tokens")))
+    return {"text": "".join(texts), "summary": "", "tool_calls": [], "items": [],
+            "usage": usage, "finish": status, "units": 1 if status == "completed" else 0}

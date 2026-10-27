@@ -1,0 +1,36 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/images/generations",
+        "json": {
+          "response_format": "b64_json",
+          "model": "muse-image-1.0",
+          "prompt": "Studio product photo of one hand-thrown stoneware coffee mug with a clay-red glaze and a round handle, standing alone in the centre on a plain off-white seamless background, soft daylight from the left, gentle shadow, sharp focus, no text, no logo, no people.",
+          "n": 1,
+          "size": "1024x1024",
+          "output_format": "png"
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "created": 1793140220,
+          "data": [
+            {
+              "b64_json": "@file:fixtures/assets/product-demo.png"
+            }
+          ],
+          "output_format": "png",
+          "background": "opaque",
+          "usage": {
+            "input_tokens": 9987,
+            "output_tokens": 798,
+            "total_tokens": 10785
+          }
+        }
+      }
+    }
+  ]
+}

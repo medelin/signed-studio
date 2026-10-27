@@ -154,6 +154,46 @@ def _copy(client: MuseClient, rec: Recorder, key: str) -> None:
     save("copy_contributor", rec, key)
 
 
+PRODUCT_PROMPT = (
+    "Studio product photo of one hand-thrown stoneware coffee mug with a clay-red glaze and "
+    "a round handle, standing alone in the centre on a plain off-white seamless background, "
+    "soft daylight from the left, gentle shadow, sharp focus, no text, no logo, no people."
+)
+
+
+@step("product")
+def _product(client: MuseClient, rec: Recorder, key: str) -> None:
+    """The synthetic, brand-neutral demo product photo (model-generated, see CHANGELOG)."""
+    from studio.muse import image
+
+    rec.name = "image_generate"
+    out = image.generate(client, PRODUCT_PROMPT, size="1024x1024", run_id="rec",
+                         agent="art_director")
+    asset = ROOT / "fixtures" / "assets" / "product-demo.png"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_bytes(out.png)
+    for it in rec.interactions:  # reference the asset instead of a second copy
+        for d in it["response"]["json"]["data"]:
+            ref = d.get("b64_json", "")
+            if ref.startswith("@file:"):
+                (ROOT / ref[6:]).unlink()
+                d["b64_json"] = "@file:" + str(asset.relative_to(ROOT))
+    print("product photo", out.width, "x", out.height, len(out.png), "bytes")
+    save("image_generate", rec, key)
+
+
+@step("sam")
+def _sam(client: MuseClient, rec: Recorder, key: str) -> None:
+    from studio.muse import sam
+
+    rec.name = "sam_cutout"
+    photo = (ROOT / "fixtures" / "assets" / "product-demo.png").read_bytes()
+    cut = sam.cutout(client, photo, "mug", run_id="rec")
+    (ROOT / "fixtures" / "assets" / "product-demo-cutout.png").write_bytes(cut.crop_png)
+    print("box", cut.box, "mask", cut.mask_px, "fg", cut.foreground_pixels, "n", cut.matches)
+    save("sam_cutout", rec, key)
+
+
 def main() -> None:
     rec = Recorder()
     client, key = open_client(rec)

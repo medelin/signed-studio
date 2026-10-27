@@ -245,3 +245,20 @@ def test_budget_rebuilt_from_todays_model_call_receipts():
         b.reserve(0.01)
     tomorrow = Budget.from_ledger(1.0, led, now=_time.time() + 2 * 86_400)
     assert tomorrow.spent() == 0.0
+
+
+def test_product_photo_defaults_to_the_synthetic_mug_and_is_configurable(tmp_path):
+    from studio.settings import DEFAULT_PRODUCT_PHOTO
+
+    s = Settings.load({})
+    assert s.product_photo == DEFAULT_PRODUCT_PHOTO and s.product_photo.exists()
+    assert s.product_concept == "mug"
+    own = tmp_path / "mine.png"
+    s = Settings.load({"STUDIO_PRODUCT_PHOTO": str(own), "STUDIO_PRODUCT_CONCEPT": "trophy"})
+    assert s.product_photo == own and s.product_concept == "trophy"
+
+
+@pytest.mark.parametrize("concept", ["mug<|box|>", "x" * 61, "a;b"])
+def test_product_concept_must_be_a_noun_phrase(concept):
+    with pytest.raises(ConfigError):
+        Settings.load({"STUDIO_PRODUCT_CONCEPT": concept})

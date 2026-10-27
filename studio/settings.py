@@ -10,6 +10,7 @@ import datetime as dt
 import ipaddress
 import math
 import os
+import re
 import secrets
 import stat
 import threading
@@ -25,6 +26,10 @@ MIN_JUDGE_PASSWORD_LEN = 20
 MIN_JUDGE_PASSWORD_CLASSES = 3  # of: lower case, upper case, digits, other
 MIN_JUDGE_PASSWORD_DISTINCT = 10
 ADAPTERS = frozenset({"mock", "graph"})
+# Synthetic, model-generated demo photo (see CHANGELOG); STUDIO_PRODUCT_PHOTO replaces it.
+DEFAULT_PRODUCT_PHOTO = (
+    Path(__file__).resolve().parent.parent / "fixtures" / "assets" / "product-demo.png"
+)
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"", "0", "false", "no", "off"})
 
@@ -107,6 +112,9 @@ class Settings:
     cookie_secure: bool = True
     store_prompts: bool = False
     data_dir: Path = Path("var")
+    # The operator's product photo replaces the synthetic one by setting these two.
+    product_photo: Path = DEFAULT_PRODUCT_PHOTO
+    product_concept: str = "mug"
 
     @property
     def judge_login_enabled(self) -> bool:
@@ -167,6 +175,10 @@ class Settings:
             except ValueError as exc:
                 raise ConfigError(f"TRUSTED_PROXY must be IP addresses, got {item!r}") from exc
 
+        concept = e.get("STUDIO_PRODUCT_CONCEPT", "") or "mug"
+        if len(concept) > 60 or not re.fullmatch(r"[\w][\w \-]*", concept):
+            raise ConfigError("STUDIO_PRODUCT_CONCEPT must be a short noun phrase")
+
         base_url = e.get("MODEL_API_BASE_URL", "") or "https://api.meta.ai/v1"
         if not base_url.startswith("https://"):
             raise ConfigError("MODEL_API_BASE_URL must use https")
@@ -189,6 +201,8 @@ class Settings:
             cookie_secure=_bool(e, "COOKIE_SECURE", True),
             store_prompts=_bool(e, "STORE_PROMPTS", False),
             data_dir=Path(e.get("STUDIO_DATA_DIR", "") or "var"),
+            product_photo=Path(e.get("STUDIO_PRODUCT_PHOTO", "") or DEFAULT_PRODUCT_PHOTO),
+            product_concept=concept,
         )
 
 
