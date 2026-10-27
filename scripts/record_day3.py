@@ -107,6 +107,25 @@ def _voice(client: MuseClient, rec: rec2.Recorder, key: str) -> None:
                "note": "synthetic speech (Piper TTS, pl_PL voice), not a recording of a person"})
 
 
+@step("analyst")
+def _analyst(client: MuseClient, rec: rec2.Recorder, key: str) -> None:
+    from studio.agents import analyst
+
+    rec.name = "analyst_report"
+    export = client.ledger.export_jsonl()  # the recording ledger: real receipts, redacted
+    (ROOT / "fixtures" / "replay").mkdir(exist_ok=True)
+    (ROOT / "fixtures" / "replay" / "analyst-ledger.jsonl").write_text(export)
+    insights = json.loads((ROOT / "fixtures/seed/insights.SYNTHETIC.json").read_text())
+    shot = (ROOT / "fixtures/images/insights-chart.SYNTHETIC.png").read_bytes()
+    summary = {"comment_intents": {"price": 2, "lead": 1, "complaint": 1, "spam": 1},
+               "lead_temps": {"HOT": 1, "WARM": 1, "COLD": 1}, "campaigns": {"PAUSED": 1}}
+    out = analyst.report(client, export, insights, shot, run_id="rec_analyst",
+                         summary=summary, max_cost_usd=0.5)
+    print(json.dumps(out.as_dict(), ensure_ascii=False, indent=1)[:4000])
+    rec2.save("analyst_report", rec, key, {"ledger": "fixtures/replay/analyst-ledger.jsonl",
+                                           "summary": summary})
+
+
 def main() -> None:
     rec = Recorder()
     client, key = rec2.open_client(rec)

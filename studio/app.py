@@ -38,7 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from studio import db, routes_inbox, routes_studio
+from studio import db, routes_inbox, routes_report, routes_studio
 from studio.approvals import KeyConflict, Keys
 from studio.receipts import public_key_raw
 from studio.settings import ReadOnlyMode, Settings
@@ -398,6 +398,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_studio.register(app, settings, ledger, conn, write_guard)
     routes_inbox.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_inbox.register_leads(app, settings, ledger, conn, write_guard, templates, session_of)
+    routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
 
     @app.get("/studio", response_class=HTMLResponse)
     def studio_page(request: Request) -> Response:

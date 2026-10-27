@@ -1,0 +1,85 @@
+{
+ "_synthetic": true,
+ "_note": "Hand-made insights in the shape of the Marketing API /insights response (fields impressions, reach, clicks, ctr, spend, cpc; strings as the API returns them). Not real ad data.",
+ "campaign": "Autumn mugs (demo)",
+ "currency": "PLN",
+ "placements": {
+  "feed_1x1": {
+   "impressions": 8400,
+   "clicks": 131
+  },
+  "feed_4x5": {
+   "impressions": 4700,
+   "clicks": 70
+  },
+  "story_9x16": {
+   "impressions": 2169,
+   "clicks": 16
+  }
+ },
+ "data": [
+  {
+   "date_start": "2026-10-19",
+   "impressions": "2463",
+   "reach": "2019",
+   "clicks": "50",
+   "ctr": "2.03",
+   "spend": "27.58",
+   "cpc": "0.55"
+  },
+  {
+   "date_start": "2026-10-20",
+   "impressions": "1898",
+   "reach": "1556",
+   "clicks": "16",
+   "ctr": "0.84",
+   "spend": "28.14",
+   "cpc": "1.76"
+  },
+  {
+   "date_start": "2026-10-21",
+   "impressions": "2548",
+   "reach": "2089",
+   "clicks": "39",
+   "ctr": "1.53",
+   "spend": "29.64",
+   "cpc": "0.76"
+  },
+  {
+   "date_start": "2026-10-22",
+   "impressions": "2239",
+   "reach": "1835",
+   "clicks": "19",
+   "ctr": "0.85",
+   "spend": "27.73",
+   "cpc": "1.46"
+  },
+  {
+   "date_start": "2026-10-23",
+   "impressions": "1943",
+   "reach": "1593",
+   "clicks": "21",
+   "ctr": "1.08",
+   "spend": "28.20",
+   "cpc": "1.34"
+  },
+  {
+   "date_start": "2026-10-24",
+   "impressions": "1921",
+   "reach": "1575",
+   "clicks": "36",
+   "ctr": "1.87",
+   "spend": "26.50",
+   "cpc": "0.74"
+  },
+  {
+   "date_start": "2026-10-25",
+   "impressions": "2257",
+   "reach": "1850",
+   "clicks": "36",
+   "ctr": "1.60",
+   "spend": "28.33",
+   "cpc": "0.79"
+  }
+ ]
+}

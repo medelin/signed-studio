@@ -47,9 +47,27 @@ def _lead(client):
     return "lead", _score_reply()
 
 
+def _report_reply():
+    report = {"summary": "s", "kpis": [], "wins": [], "losses": [], "recommendations": [],
+              "evidence_refs": []}
+    return {"id": "resp_1", "model": "muse-spark-1.3", "status": "completed",
+            "output": [{"type": "message", "content": [
+                {"type": "output_text", "text": json.dumps(report)}]}],
+            "usage": {"input_tokens": 10, "output_tokens": 10}}
+
+
+def _analyst(client):
+    from studio.agents import analyst
+    png = (STUDIO.parent / "fixtures/images/red-256.png").read_bytes()
+    analyst.report(client, json.dumps({"id": "r1", "kind": "model_call"}),
+                   {"campaign": CANARY, "data": [{"ad_name": CANARY}]}, png, run_id="p3")
+    return "insights", None
+
+
 PATHS = {
-    "studio/agents/community.py": (_community, _triage_reply),
-    "studio/agents/lead_scorer.py": (_lead, _score_reply),
+    "studio/agents/community.py": (_community, lambda: _chat(_triage_reply())),
+    "studio/agents/lead_scorer.py": (_lead, lambda: _chat(_score_reply())),
+    "studio/agents/analyst.py": (_analyst, _report_reply),
 }
 
 
@@ -72,7 +90,7 @@ def test_customer_text_reaches_the_model_only_inside_an_envelope(module):
     client = MuseClient(FAKE_KEY, ledger=ledger, budget=Budget(1.0))
     with respx.mock() as router:
         route = router.post(url__startswith=BASE_URL).mock(
-            return_value=httpx.Response(200, json=_chat(reply())))
+            return_value=httpx.Response(200, json=reply()))
         source, _ = call(client)
     for c in route.calls:
         sent = json.loads(c.request.content)
@@ -85,11 +103,13 @@ def test_customer_text_reaches_the_model_only_inside_an_envelope(module):
 
 
 def test_paths_are_complete():
-    """A module that routes customer text must be covered by ``PATHS``."""
+    """A module that routes customer text or wraps untrusted text must be in ``PATHS``."""
     routed = set()
     for path in STUDIO.rglob("*.py"):
         src = path.read_text()
-        if re.search(r"choose_tier\([^)]*source=\"(comment|lead|transcript)\"", src, re.S):
+        customer = re.search(r"choose_tier\([^)]*source=\"(comment|lead|transcript)\"",
+                             src, re.S)
+        if (customer or "envelope.wrap(" in src) and path.name != "envelope.py":
             routed.add(str(path.relative_to(STUDIO.parent)))
     assert routed, "expected at least the community agent"
     assert routed <= set(PATHS), f"customer-text paths without a canary test: {routed - set(PATHS)}"
