@@ -15,7 +15,7 @@ import sqlite3
 import time
 import uuid
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import Any
 
@@ -141,13 +141,15 @@ def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     IMMEDIATE takes the write lock up front, so concurrent consumers serialize instead of
     racing on stale snapshots.
     """
-    conn.execute("BEGIN IMMEDIATE")
-    try:
-        yield conn
-    except BaseException:
-        conn.execute("ROLLBACK")
-        raise
-    conn.execute("COMMIT")
+    lock: AbstractContextManager[Any] = getattr(conn, "lock", None) or nullcontext()
+    with lock:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield conn
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("COMMIT")
 
 
 def payload_sha256(payload: bytes | Mapping[str, Any]) -> str:
@@ -285,7 +287,7 @@ def verify_and_consume(
     approval: Approval,
     payload: bytes | Mapping[str, Any],
     *,
-    ledger: Ledger | None = None,
+    ledger: Ledger,
     now: float | None = None,
 ) -> Verified:
     """Verify ``approval`` for ``payload`` and consume its nonce in the caller's transaction.
@@ -295,6 +297,11 @@ def verify_and_consume(
     """
     if not conn.in_transaction:
         raise RuntimeError("verify_and_consume must run inside the caller's write transaction")
+    if not ledger.joins(conn):
+        raise RuntimeError(
+            "the ledger must be transactional on this connection (SqliteStore), so the "
+            "approval receipt commits or rolls back with the nonce"
+        )
     pending = Pending.load(conn, approval.pending_id)
     if approval.action not in ACTIONS:
         raise UnknownAction(f"unknown action {approval.action!r}")
@@ -337,18 +344,18 @@ def verify_and_consume(
     if cur.rowcount != 1:
         raise NonceUsed("approval was already decided")
 
-    if ledger is not None:
-        ledger.append(
-            pending.run_id,
-            agent="human",
-            kind="approval",
-            output_sha256=pending.content_sha256,
-            details={
-                **pending.fields(approval.approver),
-                "sig": approval.signature,
-                "pending_id": pending.id,
-            },
-        )
+    ledger.append(
+        pending.run_id,
+        agent="human",
+        kind="approval",
+        conn=conn,  # same transaction as the nonce: both commit or neither does
+        output_sha256=pending.content_sha256,
+        details={
+            **pending.fields(approval.approver),
+            "sig": approval.signature,
+            "pending_id": pending.id,
+        },
+    )
     return Verified(
         pending_id=pending.id,
         run_id=pending.run_id,

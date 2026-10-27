@@ -1,5 +1,4 @@
 import json
-import sqlite3
 import threading
 import time
 
@@ -8,6 +7,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 from studio import approvals as ap
+from studio import store
 from studio.receipts import Ledger, verify
 
 PAYLOAD = {"message": "Thanks! Our price list is on the website.", "comment_id": "c-1"}
@@ -20,9 +20,10 @@ def raw(pub):
 @pytest.fixture
 def env(tmp_path):
     db = tmp_path / "studio.db"
-    conn = sqlite3.connect(db, isolation_level=None)
+    conn = store.connect(db)
     ap.ensure_schema(conn)
-    ledger = Ledger()
+    ledger_key = Ed25519PrivateKey.generate()
+    ledger = Ledger(ledger_key, store.SqliteStore(conn, key_epoch="test"))
     ledger.append("run-1", agent="community", kind="model_call", model="muse-spark-1.3")
     key = Ed25519PrivateKey.generate()
     approver = ap.Keys.register(conn, "session-1", raw(key.public_key()))
@@ -30,7 +31,7 @@ def env(tmp_path):
         pending = ap.Pending.create("reply.post", "c-1", PAYLOAD, ledger=ledger, run_id="run-1")
         pending.save(conn)
     return {"db": db, "conn": conn, "ledger": ledger, "key": key, "approver": approver,
-            "pending": pending}
+            "pending": pending, "ledger_key": ledger_key}
 
 
 def sign(env, **override):
@@ -151,16 +152,26 @@ def test_error_codes_are_distinct():
 
 def test_consume_requires_open_transaction(env):
     with pytest.raises(RuntimeError, match="transaction"):
-        ap.verify_and_consume(env["conn"], sign(env), PAYLOAD)
+        ap.verify_and_consume(env["conn"], sign(env), PAYLOAD, ledger=env["ledger"])
 
 
 def test_rollback_leaves_nonce_unconsumed(env):
     approval = sign(env)
+    receipts_before = len(env["ledger"].receipts())
     with pytest.raises(RuntimeError, match="boom"), ap.transaction(env["conn"]):
-        ap.verify_and_consume(env["conn"], approval, PAYLOAD)
+        ap.verify_and_consume(env["conn"], approval, PAYLOAD, ledger=env["ledger"])
         raise RuntimeError("boom")
     assert env["conn"].execute("SELECT count(*) FROM nonces").fetchone() == (0,)
+    assert len(env["ledger"].receipts()) == receipts_before  # no phantom approval receipt
+    assert env["conn"].execute("SELECT status FROM approvals").fetchone() == ("pending",)
     consume(env, approval)  # still usable after the rollback
+    assert env["ledger"].receipts()[-1].kind == "approval"
+
+
+def test_non_transactional_ledger_refused(env):
+    with pytest.raises(RuntimeError, match="transactional"), ap.transaction(env["conn"]):
+        ap.verify_and_consume(env["conn"], sign(env), PAYLOAD, ledger=Ledger())
+    assert env["conn"].execute("SELECT count(*) FROM nonces").fetchone() == (0,)
 
 
 def test_nonce_row_already_present_wins_over_pending_status(env):
@@ -175,11 +186,12 @@ def test_two_concurrent_consumes_exactly_one_wins(env):
     results: list[str] = []
 
     def worker():
-        conn = sqlite3.connect(env["db"], isolation_level=None, timeout=10)
+        conn = store.connect(env["db"])
+        ledger = Ledger(env["ledger_key"], store.SqliteStore(conn, key_epoch="test"))
         barrier.wait()
         try:
             with ap.transaction(conn):
-                ap.verify_and_consume(conn, approval, PAYLOAD)
+                ap.verify_and_consume(conn, approval, PAYLOAD, ledger=ledger)
             results.append("ok")
         except ap.NonceUsed:
             results.append("nonce_used")
@@ -192,6 +204,8 @@ def test_two_concurrent_consumes_exactly_one_wins(env):
     for t in threads:
         t.join()
     assert sorted(results) == ["nonce_used", "ok"]
+    kinds = [r.kind for r in env["ledger"].receipts("run-1")]
+    assert kinds.count("approval") == 1
 
 
 def test_register_rejects_bad_key(env):
@@ -241,3 +255,54 @@ def test_verify_rejects_chain_head_not_in_run(env, tmp_path):
                     approver_keys={env["approver"]: env["key"].public_key()})
     assert not report.ok and "chain_head" in " ".join(report.errors)
     assert json.loads(path.read_text().splitlines()[-2])["kind"] == "approval"
+
+
+def test_signed_fields_are_not_redacted(env, tmp_path):
+    """PII-looking signed fields stay byte-exact, so the approver signature still verifies."""
+    payload = {"message": "Write to jan.kowalski@example.org or call +48 601 234 567"}
+    with ap.transaction(env["conn"]):
+        p = ap.Pending.create("reply.post", "lead jan@example.org 600 123 456", payload,
+                              ledger=env["ledger"], run_id="run-1")
+        p.save(env["conn"])
+    env["pending"] = p
+    consume(env, sign(env), payload=payload)
+    receipt = env["ledger"].receipts("run-1")[-1]
+    assert receipt.details["item_id"] == "lead jan@example.org 600 123 456"
+    path = tmp_path / "r.jsonl"
+    path.write_text(env["ledger"].export_jsonl())
+    registry = {env["approver"]: env["key"].public_key()}
+    report = verify(path, env["ledger"].public_key, approver_keys=registry)
+    assert report.ok, report.errors
+    assert report.signatures == 1
+
+
+@pytest.mark.parametrize("field", ap.SIGNED_FIELDS)
+def test_editing_any_signed_field_fails_verification(env, tmp_path, field):
+    consume(env, sign(env))
+    lines = env["ledger"].export_jsonl().splitlines()
+    idx = next(i for i, line in enumerate(lines) if '"kind": "approval"' in line)
+    rec = json.loads(lines[idx])
+    value = rec["details"][field]
+    rec["details"][field] = value + 1 if isinstance(value, int) else value[:-1] + "x"
+    lines[idx] = json.dumps(rec)
+    path = tmp_path / "r.jsonl"
+    path.write_text("\n".join(lines) + "\n")
+    registry = {env["approver"]: env["key"].public_key()}
+    assert not verify(path, env["ledger"].public_key, approver_keys=registry).ok
+
+
+def test_approver_signature_checked_even_with_ledger_key(env, tmp_path):
+    """Even someone holding the ledger key cannot forge what the human signed."""
+    consume(env, sign(env))
+    receipts = env["ledger"].receipts("run-1")
+    forged = Ledger(env["ledger_key"])
+    for r in receipts:
+        details = dict(r.details)
+        if r.kind == "approval":
+            details["item_id"] = "c-2"
+        forged.append("run-1", agent=r.agent, kind=r.kind, details=details)
+    path = tmp_path / "r.jsonl"
+    path.write_text(forged.export_jsonl())
+    registry = {env["approver"]: env["key"].public_key()}
+    report = verify(path, env["ledger"].public_key, approver_keys=registry)
+    assert any("bad approver signature" in e for e in report.errors)

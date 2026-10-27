@@ -15,10 +15,10 @@ import re
 import threading
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
@@ -116,34 +116,110 @@ class Receipt:
         return sha256_hex(canonical(self.body()))
 
 
-class Ledger:
-    """In-memory ledger; the database layer persists the same receipts."""
+def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
+    """Redact PII, except the fields a human signed: those must stay byte-exact."""
+    if kind != "approval":
+        return dict(redact(dict(details)))
+    keep = (*APPROVAL_SIGNED_FIELDS, "sig")
+    rest = redact({k: v for k, v in details.items() if k not in keep})
+    return {**rest, **{k: details[k] for k in keep if k in details}}
 
-    def __init__(self, signing_key: Ed25519PrivateKey | None = None) -> None:
-        self._key = signing_key or Ed25519PrivateKey.generate()
+
+class Store(Protocol):
+    """Where receipts live. ``append_atomic`` reads the run head, builds and stores the
+    receipt and bumps the ledger version in one atomic step (``conn`` joins a caller's
+    SQLite transaction when the store supports it)."""
+
+    transactional: bool
+
+    def accepts(self, conn: Any) -> bool: ...
+
+    def append_atomic(
+        self, run_id: str, build: Callable[[str, float], Receipt], conn: Any = None
+    ) -> Receipt: ...
+
+    def head(self, run_id: str) -> str: ...
+
+    def receipts(self, run_id: str | None = None) -> list[Receipt]: ...
+
+    def snapshot(self) -> tuple[int, list[Receipt]]: ...
+
+
+class MemoryStore:
+    """Process memory; not transactional, so it cannot record approvals."""
+
+    transactional = False
+
+    def accepts(self, conn: Any) -> bool:
+        return False
+
+    def __init__(self) -> None:
         self._receipts: list[Receipt] = []
-        self._heads: dict[str, str] = {}
-        self._last_ts: dict[str, float] = {}
-        self._export_seq = 0
+        self._heads: dict[str, tuple[str, float]] = {}
+        self._seq = 0
         self._lock = threading.Lock()
+
+    def append_atomic(
+        self, run_id: str, build: Callable[[str, float], Receipt], conn: Any = None
+    ) -> Receipt:
+        with self._lock:
+            prev, last_ts = self._heads.get(run_id, (GENESIS, 0.0))
+            receipt = build(prev, last_ts)
+            self._receipts.append(receipt)
+            self._heads[run_id] = (receipt.hash, receipt.ts)
+            self._seq += 1
+            return receipt
+
+    def head(self, run_id: str) -> str:
+        with self._lock:
+            return self._heads.get(run_id, (GENESIS, 0.0))[0]
+
+    def receipts(self, run_id: str | None = None) -> list[Receipt]:
+        with self._lock:
+            return [r for r in self._receipts if run_id is None or r.run_id == run_id]
+
+    def snapshot(self) -> tuple[int, list[Receipt]]:
+        with self._lock:
+            return self._seq, list(self._receipts)
+
+
+class Ledger:
+    """Signs and appends receipts; storage is pluggable (memory here, SQLite in ``db``)."""
+
+    def __init__(
+        self, signing_key: Ed25519PrivateKey | None = None, store: Store | None = None
+    ) -> None:
+        self._key = signing_key or Ed25519PrivateKey.generate()
+        self._store: Store = store or MemoryStore()
 
     @property
     def public_key(self) -> Ed25519PublicKey:
         return self._key.public_key()
 
-    def chain_head(self, run_id: str) -> str:
-        return self._heads.get(run_id, GENESIS)
+    @property
+    def epoch(self) -> str:
+        """Key epoch id: fingerprint of the ledger key, signed into every manifest."""
+        return key_id(self.public_key)
 
-    def append(self, run_id: str, *, agent: str, kind: str, **fields: Any) -> Receipt:
+    def chain_head(self, run_id: str) -> str:
+        return self._store.head(run_id)
+
+    def joins(self, conn: Any) -> bool:
+        """True when receipts appended with ``conn`` commit or roll back with its txn."""
+        return self._store.transactional and self._store.accepts(conn)
+
+    def append(
+        self, run_id: str, *, agent: str, kind: str, conn: Any = None, **fields: Any
+    ) -> Receipt:
         if kind not in KINDS:
             raise ValueError(f"unknown receipt kind: {kind!r}")
-        details = redact(fields.pop("details", {}) or {})
-        with self._lock:
-            ts = max(time.time(), self._last_ts.get(run_id, 0.0))
+        details = _redact_details(kind, fields.pop("details", {}) or {})
+
+        def build(prev: str, last_ts: float) -> Receipt:
             draft = Receipt(
                 id=uuid.uuid4().hex,
-                prev=self.chain_head(run_id),
-                ts=ts,
+                prev=prev,
+                ts=max(time.time(), last_ts),
                 run_id=run_id,
                 agent=agent,
                 kind=kind,
@@ -152,40 +228,43 @@ class Ledger:
             )
             digest = draft.compute_hash()
             sig = self._key.sign(bytes.fromhex(digest)).hex()
-            receipt = Receipt(**{**asdict(draft), "hash": digest, "sig": sig})
-            self._receipts.append(receipt)
-            self._heads[run_id] = receipt.hash
-            self._last_ts[run_id] = ts
-            return receipt
+            return Receipt(**{**asdict(draft), "hash": digest, "sig": sig})
+
+        return self._store.append_atomic(run_id, build, conn)
 
     def receipts(self, run_id: str | None = None) -> list[Receipt]:
-        return [r for r in self._receipts if run_id is None or r.run_id == run_id]
+        return self._store.receipts(run_id)
 
-    def manifest(self) -> dict[str, Any]:
-        """Signed statement of every run's head and length at export time.
-
-        ``seq`` grows with every export and ``ts`` is the signing time, so an old
-        manifest cannot be passed off as current when the verifier knows the latest
-        ``seq`` (published by the server at ``/api/ledger-manifest``).
-        """
-        with self._lock:
-            self._export_seq += 1
-            runs = {
-                run: {"head": self.chain_head(run), "count": len(self.receipts(run))}
-                for run in dict.fromkeys(r.run_id for r in self._receipts)
-            }
-            body = {"seq": self._export_seq, "ts": time.time(), "runs": runs}
+    def _sign_manifest(self, seq: int, receipts: list[Receipt]) -> dict[str, Any]:
+        runs: dict[str, dict[str, Any]] = {}
+        for r in receipts:
+            entry = runs.setdefault(r.run_id, {"head": GENESIS, "count": 0})
+            entry["head"] = r.hash
+            entry["count"] += 1
+        body = {"seq": seq, "ts": time.time(), "epoch": self.epoch, "runs": runs}
         return {**body, "sig": self._key.sign(_manifest_bytes(body)).hex()}
 
+    def manifest(self) -> dict[str, Any]:
+        """Signed statement of every run's head and length.
+
+        ``seq`` is the ledger version: a durable counter that grows with every write, so an
+        older export cannot be passed off as current when the verifier knows the latest
+        ``seq`` (published at ``/api/ledger-manifest``). ``epoch`` names the signing key.
+        """
+        return self._sign_manifest(*self._store.snapshot())
+
     def export_jsonl(self) -> str:
-        """All receipts followed by exactly one signed manifest line."""
-        lines = [json.dumps(asdict(r), sort_keys=True) for r in self._receipts]
-        lines.append(json.dumps({"manifest": self.manifest()}, sort_keys=True))
+        """All receipts followed by exactly one signed manifest line (one snapshot)."""
+        seq, receipts = self._store.snapshot()
+        lines = [json.dumps(asdict(r), sort_keys=True) for r in receipts]
+        lines.append(json.dumps({"manifest": self._sign_manifest(seq, receipts)}, sort_keys=True))
         return "".join(line + "\n" for line in lines)
 
 
 def _manifest_bytes(body: dict[str, Any]) -> bytes:
-    return canonical({"type": "manifest", **{k: body[k] for k in ("seq", "ts", "runs")}})
+    return canonical(
+        {"type": "manifest", **{k: body[k] for k in ("seq", "ts", "epoch", "runs")}}
+    )
 
 
 @dataclass
@@ -308,12 +387,15 @@ def _check_manifest(
         body: dict[str, Any] = {
             "seq": int(man["seq"]),
             "ts": float(man["ts"]),
+            "epoch": str(man["epoch"]),
             "runs": dict(man["runs"]),
         }
         public_key.verify(bytes.fromhex(str(man["sig"])), _manifest_bytes(body))
     except (KeyError, TypeError, ValueError, InvalidSignature):
         return ["bad manifest signature"]
     errors: list[str] = []
+    if body["epoch"] != key_id(public_key):
+        errors.append(f"manifest key epoch {body['epoch']} does not match the ledger key")
     if body["seq"] < min_seq:
         errors.append(f"manifest seq {body['seq']} is older than the latest known {min_seq}")
     listed: dict[str, Any] = body["runs"]
