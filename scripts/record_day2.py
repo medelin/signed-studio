@@ -128,6 +128,7 @@ def open_client(rec: Recorder) -> tuple[MuseClient, str]:
     budget = Budget.from_ledger(limit, ledger)
     client = MuseClient(settings.model_api_key, settings.model_api_base_url, ledger=ledger,
                         budget=budget, transport=rec, timeout=300.0)
+    client.conn = conn  # type: ignore[attr-defined]
     return client, settings.model_api_key
 
 
@@ -223,6 +224,37 @@ def _review_spark(client: MuseClient, rec: Recorder, key: str) -> None:
     result = reviewer.review(client, image_png, variant, run_id="rec")
     print(result.model_dump_json(indent=1))
     save("review_spark", rec, key)
+
+
+DEMO_BRIEF = (
+    "Autumn campaign for Demo Ceramics Studio: hand-thrown stoneware mugs, 89 PLN, free "
+    "delivery in Poland above 150 PLN. Audience: people working from home in Poland, 25-55. "
+    "Budget 30 PLN per day. Facebook and Instagram feed plus stories."
+)
+
+
+@step("producer")
+def _producer(client: MuseClient, rec: Recorder, key: str) -> None:
+    import tempfile
+
+    from studio.agents import producer
+    from studio.muse.openweights import OpenWeightsClient
+
+    rec.name = "producer_loop"
+    photo = (ROOT / "fixtures" / "assets" / "product-demo.png").read_bytes()
+    with tempfile.TemporaryDirectory() as tmp:
+        ctx = producer.Context(
+            client=client, open_client=OpenWeightsClient("", ledger=client.ledger),
+            conn=client.conn, photo_png=photo, concept="mug",  # type: ignore[attr-defined]
+            data_dir=Path(tmp),
+            on_event=lambda kind, data: print("event", kind, data))
+        result = producer.run(ctx, DEMO_BRIEF, run_id="rec_producer")
+    print(result.status, "steps", result.steps, "cost", round(result.cost_usd, 5))
+    print("pending", result.pending_id, "summary", result.summary[:300])
+    for r in client.ledger.receipts("rec_producer"):
+        print(" ", r.kind, r.agent, r.model, r.details.get("tool", ""),
+              r.details.get("status", ""), r.details.get("tool_calls", ""), r.cost_usd)
+    save("producer_loop", rec, key, {"brief": DEMO_BRIEF})
 
 
 def main() -> None:

@@ -109,6 +109,19 @@ CREATE TABLE IF NOT EXISTS reports (
     body TEXT NOT NULL,
     created_ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS pending_payloads (
+    approval_id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    payload TEXT NOT NULL,  -- canonical JSON of exactly what the approval authorises
+    created_ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS run_state (
+    run_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'running'
+        CHECK (status IN ('running', 'awaiting_approval', 'approved', 'done', 'failed')),
+    state TEXT NOT NULL DEFAULT '{}',  -- plan, copy, creatives, review (JSON, for the UI)
+    updated_ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sandbox_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -117,7 +130,8 @@ CREATE TABLE IF NOT EXISTS sandbox_meta (
 
 # Seed order respects foreign keys; reset deletes in reverse.
 SEED_TABLES = ("briefs", "campaigns", "comments", "leads", "tasks")
-DEMO_TABLES = ("tasks", "leads", "comments", "campaigns", "creatives", "briefs", "reports")
+DEMO_TABLES = ("tasks", "leads", "comments", "campaigns", "creatives", "briefs", "reports",
+               "pending_payloads", "run_state")
 _COLUMNS: dict[str, tuple[str, ...]] = {
     "briefs": ("id", "text", "source", "created_ts"),
     "campaigns": ("id", "run_id", "name", "objective", "status", "daily_budget_minor",
