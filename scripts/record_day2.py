@@ -3,8 +3,9 @@
     .venv/bin/python scripts/record_day2.py copy [sam image review_spark producer ...]
 
 Spend is tracked by the studio budget module against a persistent receipt ledger in
-``~/.local/state/muse-studio-lite/record/`` (outside the repo) (cap ``RECORD_BUDGET_USD``, default $1.50 per UTC day), so repeated runs
-cannot exceed the cap. Cassettes keep only the request path + JSON body and the response
+``~/.local/state/muse-studio-lite/record/`` (outside the repo; cap
+``RECORD_BUDGET_USD``, default $1.50 per UTC day), so repeated runs cannot exceed the cap.
+Cassettes keep only the request path + JSON body and the response
 status + JSON body (or SSE events); no headers. Inline images in requests become
 ``data:<mime>;sha256,<hex>``; base64 image results larger than 4 KB are written as PNG
 files under ``fixtures/cassettes/files/`` and referenced as ``@file:<path>``. A cassette
