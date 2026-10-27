@@ -1,0 +1,20 @@
+:root { --fg: #1d1d1f; --muted: #6e6e73; --line: #e3e3e8; --bg: #fbfbfd; --accent: #0a66c2; --warn: #b25000; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); }
+.top { display: flex; gap: 1rem; align-items: baseline; flex-wrap: wrap; padding: 1rem 1.5rem; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; color: var(--fg); text-decoration: none; }
+.tag { color: var(--muted); }
+.badge { padding: 0 .5rem; border-radius: 1rem; font-size: .8rem; }
+.badge.warn { background: #fff1e5; color: var(--warn); }
+main { padding: 1rem 1.5rem; max-width: 1200px; }
+h1 { font-size: 1.2rem; }
+table.receipts { border-collapse: collapse; width: 100%; font-size: .85rem; }
+table.receipts th, table.receipts td { text-align: left; padding: .35rem .5rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.kind { padding: 0 .4rem; border-radius: .3rem; background: #eef3fb; }
+.kind.approval { background: #e8f6ec; }
+.kind.external_write { background: #fdecea; }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .85em; }
+.empty { color: var(--muted); }
+.foot { padding: 1rem 1.5rem; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); }
+a { color: var(--accent); }
+@media (max-width: 700px) { table.receipts { display: block; overflow-x: auto; } }

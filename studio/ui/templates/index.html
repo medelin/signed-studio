@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="intro">
+  <p>Muse agents plan, write, draw and review. Nothing leaves the studio until a person signs
+  the exact content. This page is public and read-only;
+  {% if logged_in %}you are signed in as the judge.{% elif login_enabled %}judges sign in to run the studio.{% else %}sign-in is disabled on this instance.{% endif %}</p>
+</section>
+<section>
+  <h1>Receipts</h1>
+  {% if receipts %}
+  <table class="receipts">
+    <thead><tr><th>time (UTC)</th><th>run</th><th>agent</th><th>kind</th><th>provider · model</th><th>tier</th><th>tokens in/out</th><th>cost</th><th>hash</th></tr></thead>
+    <tbody>
+    {% for r in receipts %}
+      <tr>
+        <td>{{ r.ts | int }}</td>
+        <td><code>{{ r.run_id }}</code></td>
+        <td>{{ r.agent }}</td>
+        <td><span class="kind {{ r.kind }}">{{ r.kind }}</span></td>
+        <td>{{ r.provider or "—" }} · {{ r.model or "—" }}</td>
+        <td>{{ r.tier or "—" }}</td>
+        <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
+        <td>${{ "%.5f" | format(r.cost_usd) }}</td>
+        <td><code title="{{ r.hash }}">{{ r.hash[:12] }}</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No receipts yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

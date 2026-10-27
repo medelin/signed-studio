@@ -30,6 +30,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["studio*"]
 
+[tool.setuptools.package-data]
+studio = ["ui/templates/*.html", "ui/static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
@@ -44,3 +47,7 @@ ignore = ["S101"]
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
+
+[tool.ruff.lint.per-file-ignores]
+# Synthetic test credentials are not secrets.
+"tests/**" = ["S105", "S106", "S107"]
