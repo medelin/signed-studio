@@ -9,3 +9,4 @@ __pycache__/
 *.key
 *.egg-info/
 receipts.jsonl
+var/

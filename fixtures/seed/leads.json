@@ -1,0 +1,5 @@
+[
+  {"id": "l-1", "name": "Demo Lead One", "email": "lead.one@example.com", "phone": "+48 000 000 101", "source": "comment", "message": "Asked about the sourdough subscription price.", "created_ts": 1793102700},
+  {"id": "l-2", "name": "Demo Lead Two", "email": "lead.two@example.com", "phone": "+48 000 000 102", "source": "form", "message": "Wants bookkeeping for a new sole proprietorship.", "created_ts": 1793104300},
+  {"id": "l-3", "name": "Demo Lead Three", "email": "lead.three@example.com", "phone": "+48 000 000 103", "source": "comment", "message": "Asked whether delivery works on Saturdays.", "created_ts": 1793104900}
+]
