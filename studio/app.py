@@ -38,7 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from studio import db
+from studio import db, routes_studio
 from studio.approvals import KeyConflict, Keys
 from studio.receipts import public_key_raw
 from studio.settings import ReadOnlyMode, Settings
@@ -388,6 +388,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ReadOnlyMode:
             return JSONResponse({"error": "read_only"}, 503)
         return sid
+
+    routes_studio.register(app, settings, ledger, conn, write_guard)
+
+    @app.get("/studio", response_class=HTMLResponse)
+    def studio_page(request: Request) -> Response:
+        return templates.TemplateResponse(
+            request,
+            "studio.html",
+            {
+                "seq": ledger.seq(),
+                "epoch": ledger.epoch,
+                "logged_in": session_of(request) is not None,
+                "login_enabled": settings.judge_login_enabled,
+                "read_only": settings.read_only,
+                "product_concept": settings.product_concept,
+            },
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request) -> Response:

@@ -66,3 +66,22 @@ def mount(router: Any, name: str, base_url: str, key: str = FAKE_KEY) -> list[di
 
     router.post(url__startswith=base_url).mock(side_effect=handler)
     return sent
+
+
+def transport(name: str, key: str = FAKE_KEY) -> tuple[httpx.MockTransport, list[dict[str, Any]]]:
+    """An ``httpx`` transport replaying the cassette (for clients used from other threads)."""
+    sent: list[dict[str, Any]] = []
+    items = interactions(name)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        i = len(sent)
+        sent.append(json.loads(request.content))
+        assert request.headers["authorization"] == f"Bearer {key}"
+        assert request.url.path.endswith(items[i]["request"]["path"])
+        r = items[i]["response"]
+        if "sse" in r:
+            return httpx.Response(r["status"], content=sse_body(r["sse"]),
+                                  headers={"content-type": "text/event-stream"})
+        return httpx.Response(r["status"], json=r["json"])
+
+    return httpx.MockTransport(handler), sent

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Studio · Muse Studio Lite{% endblock %}
+{% block content %}
+<div id="studio" data-logged-in="{{ 'yes' if logged_in else 'no' }}" data-read-only="{{ 'yes' if read_only else 'no' }}">
+
+<section class="panel" aria-labelledby="login-h" id="login-panel" {% if logged_in %}hidden{% endif %}>
+  <h1 id="login-h">Judge sign-in</h1>
+  {% if login_enabled %}
+  <form id="login-form" class="stack">
+    <label for="login-user">User name</label>
+    <input id="login-user" name="username" autocomplete="username" value="judge" required>
+    <label for="login-pass">Password</label>
+    <input id="login-pass" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+    <p class="status" id="login-status" role="status" aria-live="polite"></p>
+  </form>
+  {% else %}
+  <p class="empty">Sign-in is disabled on this instance; runs below are read-only.</p>
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="brief-h">
+  <h1 id="brief-h">1 · Brief</h1>
+  <form id="brief-form" class="stack">
+    <label for="brief">Campaign brief (text; voice comes later)</label>
+    <textarea id="brief" name="brief" rows="4" maxlength="2000" required
+      aria-describedby="brief-help">Autumn campaign for Demo Ceramics Studio: hand-thrown stoneware mugs, 89 PLN, free delivery in Poland above 150 PLN. Audience: people working from home in Poland, 25-55. Budget 30 PLN per day. Facebook and Instagram feed plus stories.</textarea>
+    <p id="brief-help" class="hint">The producer plans, the copywriter writes, the art director cuts the {{ product_concept }} out of the product photo with SAM 3.1 and renders three placements with Muse Image, two reviewers check it. Nothing is published: the run ends in an approval only you can sign.</p>
+    <button type="submit" id="run-button" {% if not logged_in or read_only %}disabled{% endif %}>Run the studio</button>
+    <p class="status" id="run-status" role="status" aria-live="polite"></p>
+  </form>
+  <form id="open-form" class="inline">
+    <label for="open-run">or follow an existing run id</label>
+    <input id="open-run" name="run" pattern="[A-Za-z0-9_-]{1,40}" placeholder="run_…">
+    <button type="submit">Open</button>
+  </form>
+</section>
+
+<div class="grid">
+  <section class="panel" aria-labelledby="plan-h">
+    <h2 id="plan-h">2 · Plan</h2>
+    <div id="plan" class="empty">No plan yet.</div>
+    <p id="thinking" class="hint"></p>
+  </section>
+  <section class="panel" aria-labelledby="copy-h">
+    <h2 id="copy-h">3 · Copy variants</h2>
+    <div id="copy" class="cards empty">No copy yet.</div>
+  </section>
+</div>
+
+<section class="panel" aria-labelledby="images-h">
+  <h2 id="images-h">4 · Creatives (SAM 3.1 cut-out → Muse Image)</h2>
+  <div id="images" class="carousel empty">No images yet.</div>
+</section>
+
+<section class="panel" aria-labelledby="review-h">
+  <h2 id="review-h">5 · Reviews</h2>
+  <div id="review" class="empty">No review yet.</div>
+</section>
+
+<section class="panel" aria-labelledby="approve-h" id="approve-panel" hidden>
+  <h2 id="approve-h" tabindex="-1">6 · Approve and sign</h2>
+  <p>You sign the exact bytes below with a key that never leaves this browser
+  (WebCrypto Ed25519, non-extractable). The bytes bind the content hash, the chain head of
+  the receipts that produced it, your key id and a one-time nonce.</p>
+  <dl class="kv">
+    <dt>action</dt><dd id="ap-action"></dd>
+    <dt>content sha256</dt><dd><code id="ap-sha"></code></dd>
+    <dt>chain head</dt><dd><code id="ap-head"></code></dd>
+    <dt>your key</dt><dd><code id="ap-key"></code></dd>
+    <dt>expires</dt><dd id="ap-exp"></dd>
+  </dl>
+  <details><summary>Content you are approving (campaign stays PAUSED)</summary>
+    <pre id="ap-content"></pre></details>
+  <details><summary>Exact signed bytes</summary><pre id="ap-message"></pre></details>
+  <button type="button" id="approve-button">Approve and sign</button>
+  <p class="status" id="approve-status" role="status" aria-live="polite"></p>
+  <div id="signature" hidden>
+    <h3>Signature</h3>
+    <p><code id="sig-value" class="wrap"></code></p>
+    <p>Approval receipt <code id="sig-receipt"></code></p>
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="ticker-h">
+  <h2 id="ticker-h">Receipts (live)</h2>
+  <table class="receipts">
+    <caption class="hint">Every model call, tool call, review and approval of this run.</caption>
+    <thead><tr><th scope="col">agent</th><th scope="col">kind</th><th scope="col">model / tool</th><th scope="col">tokens in/out</th><th scope="col">cost</th><th scope="col">hash</th></tr></thead>
+    <tbody id="ticker" aria-live="polite" aria-relevant="additions"></tbody>
+  </table>
+  <p class="hint">Total <span id="total-cost">$0.00000</span> · <a href="/api/receipts.jsonl">receipts.jsonl</a></p>
+</section>
+</div>
+<script src="/static/app.js" defer></script>
+{% endblock %}

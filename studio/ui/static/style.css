@@ -18,3 +18,33 @@ code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .85em;
 .foot { padding: 1rem 1.5rem; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); }
 a { color: var(--accent); }
 @media (max-width: 700px) { table.receipts { display: block; overflow-x: auto; } }
+.panel { border: 1px solid var(--line); border-radius: .6rem; padding: .75rem 1rem; margin: 0 0 1rem; background: #fff; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
+.stack { display: grid; gap: .4rem; max-width: 760px; }
+.inline { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; }
+label { font-weight: 600; }
+input, textarea { font: inherit; padding: .45rem .55rem; border: 1px solid #8e8e93; border-radius: .4rem; color: var(--fg); background: #fff; }
+textarea { width: 100%; }
+button { font: inherit; font-weight: 600; padding: .5rem 1rem; border: 0; border-radius: .4rem; background: #0a58a8; color: #fff; cursor: pointer; justify-self: start; }
+button:disabled { background: #8e8e93; cursor: not-allowed; }
+:focus-visible { outline: 3px solid #f5a623; outline-offset: 2px; }
+.hint { color: #57575c; font-size: .9rem; }
+.status { min-height: 1.4em; margin: 0; }
+.status.error { color: #a1260d; }
+.cards { display: grid; gap: .5rem; }
+.card { border: 1px solid var(--line); border-radius: .4rem; padding: .5rem .7rem; }
+.card h3 { margin: 0 0 .25rem; font-size: 1rem; }
+.cta { font-size: .8rem; font-weight: 700; color: #0a58a8; }
+.carousel { display: flex; gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .5rem; }
+.carousel figure { margin: 0; scroll-snap-align: start; flex: 0 0 auto; }
+.carousel img { height: 320px; width: auto; border-radius: .4rem; border: 1px solid var(--line); display: block; }
+.carousel figcaption { font-size: .85rem; color: #57575c; }
+.verdict { font-weight: 700; padding: 0 .5rem; border-radius: .3rem; }
+.verdict.OK { background: #e8f6ec; color: #1b5e20; }
+.verdict.WARN { background: #fff1e5; color: #8a3b00; }
+.verdict.BLOCK { background: #fdecea; color: #a1260d; }
+.disagree { color: #8a3b00; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f5f5f7; padding: .5rem; border-radius: .4rem; font-size: .8rem; }
+.wrap { overflow-wrap: anywhere; }
