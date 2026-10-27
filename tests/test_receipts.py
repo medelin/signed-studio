@@ -97,7 +97,7 @@ def test_recomputed_hashes_without_key_are_rejected(tmp_path):
 
     led = Ledger()
     led.append("run-1", agent="producer", kind="model_call", model="muse-spark")
-    rec = json.loads(led.export_jsonl().splitlines()[0])
+    rec = json.loads(led.export_jsonl().splitlines()[0])  # first receipt
     rec["model"] = "forged"
     forged = Receipt(**{**rec, "hash": "", "sig": rec["sig"]})
     rec["hash"] = forged.compute_hash()  # attacker recomputes the hash
@@ -125,14 +125,50 @@ def test_truncated_tail_detected(tmp_path):
     path.write_text(lines[0] + "\n" + lines[-1] + "\n")  # last receipt dropped
     report = verify(path, led.public_key)
     assert not report.ok
-    assert "does not match checkpoint" in report.errors[0]
+    assert "does not match manifest" in report.errors[0]
 
 
-def test_missing_checkpoint_detected(tmp_path):
+def test_missing_manifest_detected(tmp_path):
     led = Ledger()
     led.append("run-1", agent="a", kind="model_call")
     path = tmp_path / "r.jsonl"
     path.write_text(led.export_jsonl().splitlines()[0] + "\n")
     report = verify(path, led.public_key)
     assert not report.ok
-    assert "missing signed checkpoint" in report.errors[0]
+    assert "exactly one signed manifest" in report.errors[0]
+
+
+def test_whole_run_deletion_detected(tmp_path):
+    led = Ledger()
+    led.append("run-1", agent="a", kind="model_call")
+    led.append("run-2", agent="b", kind="model_call")
+    lines = led.export_jsonl().splitlines()
+    path = tmp_path / "r.jsonl"
+    path.write_text(lines[0] + "\n" + lines[-1] + "\n")  # run-2 removed entirely
+    report = verify(path, led.public_key)
+    assert not report.ok
+    assert "run-2" in report.errors[0]
+
+
+def test_rollback_to_older_export_detected(tmp_path):
+    led = Ledger()
+    led.append("run-1", agent="a", kind="model_call")
+    old = led.export_jsonl()
+    led.append("run-1", agent="b", kind="model_call")
+    latest_seq = led.manifest()["seq"]
+    path = tmp_path / "r.jsonl"
+    path.write_text(old)
+    assert verify(path, led.public_key).ok  # valid on its own...
+    report = verify(path, led.public_key, min_seq=latest_seq)
+    assert not report.ok  # ...but stale against the latest known manifest
+    assert "older than the latest known" in report.errors[0]
+
+
+def test_two_manifests_rejected(tmp_path):
+    led = Ledger()
+    led.append("run-1", agent="a", kind="model_call")
+    first = led.export_jsonl()
+    second_manifest = led.export_jsonl().splitlines()[-1]
+    path = tmp_path / "r.jsonl"
+    path.write_text(first + second_manifest + "\n")
+    assert not verify(path, led.public_key).ok

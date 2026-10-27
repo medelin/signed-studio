@@ -97,6 +97,7 @@ class Ledger:
         self._receipts: list[Receipt] = []
         self._heads: dict[str, str] = {}
         self._last_ts: dict[str, float] = {}
+        self._export_seq = 0
         self._lock = threading.Lock()
 
     @property
@@ -133,23 +134,31 @@ class Ledger:
     def receipts(self, run_id: str | None = None) -> list[Receipt]:
         return [r for r in self._receipts if run_id is None or r.run_id == run_id]
 
-    def checkpoint(self, run_id: str) -> dict[str, Any]:
-        """Signed statement of a run's current head and length (detects truncation)."""
-        count = len(self.receipts(run_id))
-        head = self.chain_head(run_id)
-        sig = self._key.sign(_checkpoint_bytes(run_id, head, count)).hex()
-        return {"run_id": run_id, "head": head, "count": count, "sig": sig}
+    def manifest(self) -> dict[str, Any]:
+        """Signed statement of every run's head and length at export time.
 
-    def export_jsonl(self, run_id: str | None = None) -> str:
-        """Receipts followed by one signed checkpoint line per run."""
-        lines = [json.dumps(asdict(r), sort_keys=True) for r in self.receipts(run_id)]
-        runs = dict.fromkeys(r.run_id for r in self.receipts(run_id))
-        lines += [json.dumps({"checkpoint": self.checkpoint(run)}, sort_keys=True) for run in runs]
+        ``seq`` grows with every export and ``ts`` is the signing time, so an old
+        manifest cannot be passed off as current when the verifier knows the latest
+        ``seq`` (published by the server at ``/api/ledger-manifest``).
+        """
+        with self._lock:
+            self._export_seq += 1
+            runs = {
+                run: {"head": self.chain_head(run), "count": len(self.receipts(run))}
+                for run in dict.fromkeys(r.run_id for r in self._receipts)
+            }
+            body = {"seq": self._export_seq, "ts": time.time(), "runs": runs}
+        return {**body, "sig": self._key.sign(_manifest_bytes(body)).hex()}
+
+    def export_jsonl(self) -> str:
+        """All receipts followed by exactly one signed manifest line."""
+        lines = [json.dumps(asdict(r), sort_keys=True) for r in self._receipts]
+        lines.append(json.dumps({"manifest": self.manifest()}, sort_keys=True))
         return "".join(line + "\n" for line in lines)
 
 
-def _checkpoint_bytes(run_id: str, head: str, count: int) -> bytes:
-    return canonical({"run_id": run_id, "head": head, "count": count, "type": "checkpoint"})
+def _manifest_bytes(body: dict[str, Any]) -> bytes:
+    return canonical({"type": "manifest", **{k: body[k] for k in ("seq", "ts", "runs")}})
 
 
 @dataclass
@@ -159,18 +168,19 @@ class Report:
     errors: list[str]
 
 
-def verify(path: str | Path, public_key: Ed25519PublicKey) -> Report:
+def verify(path: str | Path, public_key: Ed25519PublicKey, min_seq: int = 0) -> Report:
     """Check signatures, hashes, links, timestamps and approval-before-write.
 
     ``public_key`` is the ledger key published by the server (``/api/ledger-key``).
-    Without it a forged log with recomputed hashes would look valid.
+    Without it a forged log with recomputed hashes would look valid. ``min_seq`` is the
+    latest manifest sequence the verifier knows; an older (rolled-back) export fails.
     """
     errors: list[str] = []
     heads: dict[str, str] = {}
     last_ts: dict[str, float] = {}
     approved: dict[str, set[str]] = {}
     counts: dict[str, int] = {}
-    checkpoints: dict[str, dict[str, Any]] = {}
+    manifests: list[dict[str, Any]] = []
     count = 0
     for line_no, line in enumerate(Path(path).read_text().splitlines(), start=1):
         if not line.strip():
@@ -180,9 +190,8 @@ def verify(path: str | Path, public_key: Ed25519PublicKey) -> Report:
         except ValueError as exc:
             errors.append(f"line {line_no}: unreadable line ({exc})")
             continue
-        if isinstance(raw, dict) and "checkpoint" in raw:
-            cp = raw["checkpoint"]
-            checkpoints[str(cp.get("run_id"))] = cp
+        if isinstance(raw, dict) and "manifest" in raw:
+            manifests.append(raw["manifest"])
             continue
         count += 1
         try:
@@ -212,21 +221,35 @@ def verify(path: str | Path, public_key: Ed25519PublicKey) -> Report:
         heads[run] = receipt.hash
         last_ts[run] = receipt.ts
         counts[run] = counts.get(run, 0) + 1
-    for run in counts:
-        cp = checkpoints.get(run)
-        if cp is None:
-            errors.append(f"run {run}: missing signed checkpoint")
-            continue
-        try:
-            public_key.verify(
-                bytes.fromhex(str(cp.get("sig", ""))),
-                _checkpoint_bytes(run, str(cp.get("head")), int(cp.get("count", -1))),
-            )
-        except (InvalidSignature, ValueError, TypeError):
-            errors.append(f"run {run}: bad checkpoint signature")
-            continue
-        if cp.get("head") != heads[run] or cp.get("count") != counts[run]:
-            errors.append(
-                f"run {run}: log does not match checkpoint (truncated or receipts missing)"
-            )
+    errors += _check_manifest(manifests, heads, counts, public_key, min_seq)
     return Report(ok=not errors, count=count, errors=errors)
+
+
+def _check_manifest(
+    manifests: list[dict[str, Any]],
+    heads: dict[str, str],
+    counts: dict[str, int],
+    public_key: Ed25519PublicKey,
+    min_seq: int,
+) -> list[str]:
+    if len(manifests) != 1:
+        return [f"expected exactly one signed manifest, found {len(manifests)}"]
+    man = manifests[0]
+    try:
+        body = {"seq": int(man["seq"]), "ts": float(man["ts"]), "runs": dict(man["runs"])}
+        public_key.verify(bytes.fromhex(str(man["sig"])), _manifest_bytes(body))
+    except (KeyError, TypeError, ValueError, InvalidSignature):
+        return ["bad manifest signature"]
+    errors: list[str] = []
+    if body["seq"] < min_seq:
+        errors.append(f"manifest seq {body['seq']} is older than the latest known {min_seq}")
+    listed = body["runs"]
+    for run in sorted(set(listed) | set(counts)):
+        entry = listed.get(run)
+        if entry is None:
+            errors.append(f"run {run}: receipts not covered by the manifest")
+        elif run not in counts:
+            errors.append(f"run {run}: listed in the manifest but missing from the log")
+        elif entry.get("head") != heads[run] or entry.get("count") != counts[run]:
+            errors.append(f"run {run}: log does not match manifest (truncated or receipts missing)")
+    return errors
