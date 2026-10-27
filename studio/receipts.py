@@ -236,14 +236,18 @@ def _check_manifest(
         return [f"expected exactly one signed manifest, found {len(manifests)}"]
     man = manifests[0]
     try:
-        body = {"seq": int(man["seq"]), "ts": float(man["ts"]), "runs": dict(man["runs"])}
+        body: dict[str, Any] = {
+            "seq": int(man["seq"]),
+            "ts": float(man["ts"]),
+            "runs": dict(man["runs"]),
+        }
         public_key.verify(bytes.fromhex(str(man["sig"])), _manifest_bytes(body))
     except (KeyError, TypeError, ValueError, InvalidSignature):
         return ["bad manifest signature"]
     errors: list[str] = []
     if body["seq"] < min_seq:
         errors.append(f"manifest seq {body['seq']} is older than the latest known {min_seq}")
-    listed = body["runs"]
+    listed: dict[str, Any] = body["runs"]
     for run in sorted(set(listed) | set(counts)):
         entry = listed.get(run)
         if entry is None:
