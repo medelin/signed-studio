@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 
+from studio import envelope
 from studio.receipts import Ledger, canonical, normalize_id, sha256_hex
 from studio.settings import Budget, ReadOnlyMode, Settings
 
@@ -373,6 +374,8 @@ class MuseClient:
             "tier_reason": tier_reason,
             "prompt_sha256": sha256_hex(canonical(body)),
             "input_sha256": input_hashes(body),  # before sending; never raises
+            # the call carries customer text inside an untrusted envelope
+            "envelope": envelope.present(canonical(body).decode()),
         }
         start = time.monotonic()
         try:

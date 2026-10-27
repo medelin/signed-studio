@@ -60,7 +60,7 @@ def receipt_event(r: Receipt) -> dict[str, Any]:
         "cached_tokens": r.cached_tokens, "cost_usd": r.cost_usd, "hash": r.hash,
         "tool": d.get("tool", ""), "status": d.get("status", ""),
         "tool_calls": d.get("tool_calls", []), "verdict": d.get("verdict", ""),
-        "foreground_pixels": d.get("foreground_pixels"),
+        "foreground_pixels": d.get("foreground_pixels"), "envelope": r.envelope,
     }
 
 

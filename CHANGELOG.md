@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-28 — day 3 plan (inbox, leads, voice, analyst, Meta adapter, D3-1 … D3-7)
+
+- D3-1 untrusted envelope: `studio/envelope.py` — `wrap(text, source)` puts customer text (sources `comment`, `lead`, `transcript`, `insights`, `screenshot`) between fixed `<<<BEGIN/END UNTRUSTED EXTERNAL CONTENT>>>` markers after neutralizing it (NFKC folding of look-alikes, zero-width/bidi/control characters removed, every `<<`/`>>` run and the marker phrase broken with U+200B, length cap), so the text can neither close the block nor open a new one; `SYSTEM_RULE` for the system prompt; `clean(text)` for display; the Muse client sets the receipt's `envelope` flag whenever a request carries a real envelope (also on the open-weights client), and the live receipt ticker exposes it. The envelope is a mitigation; the boundary stays "no tools + human signature". 14 tests (`tests/test_envelope.py`).
+
 ## 2026-10-27 — day 2 plan (Studio act, D2-1 … D2-8)
 
 - Dependencies added on day 2 are pinned exactly: `meta-sam-parser==0.1.0` (provenance checked: PyPI author "Meta Platforms, Inc.", source repo github.com/meta-models/meta-sam in Meta's org, the parser the Meta model cookbook uses for SAM output; SAM License), `pyyaml==6.0.3`, `pillow==13.0.0`, dev `types-PyYAML`.
