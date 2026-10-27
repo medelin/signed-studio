@@ -3,9 +3,15 @@
 ``POST /asr/transcribe`` (multipart: ``request`` JSON + ``audio`` file) with
 ``mode=ENDPOINTING``, ``audioEncoding=WAV`` and ``languageBias=["pl"]``; the response is the
 transcript plus ``turns[{startMs, endMs, transcript, speaker}]``. Limits enforced here, before
-any request: ≤ 32 MB upload, ≤ 10 minutes of audio. ffmpeg reads only a local temp file
-(``-protocol_whitelist file``), so a crafted container cannot make it fetch anything. The
-audio is deleted with the temp directory; nothing is kept unless the caller stores it.
+any request: ≤ 32 MB upload, ≤ 10 minutes of audio.
+
+ffmpeg never auto-detects the input: the upload's magic bytes must identify WAV, WebM/
+Matroska, Ogg, MP4/M4A, MP3 or AAC (``sniff``), anything else — e.g. an HLS ``#EXTM3U`` or
+``ffconcat`` playlist that would make ffmpeg read other local files — is a 415 before
+ffmpeg runs; ffmpeg is then given ``-f <that demuxer>``, ``-format_whitelist`` of the audio
+demuxers only, ``-protocol_whitelist file`` and the path of the upload in a private
+(0700) temp directory. The audio is deleted with the temp directory; nothing is kept
+unless the caller stores it.
 """
 
 from __future__ import annotations
@@ -57,10 +63,38 @@ class Transcript:
                            "speaker": t.speaker} for t in self.turns]}
 
 
-def ffmpeg_args(src: Path, dst: Path, ffmpeg: str = "ffmpeg") -> list[str]:
-    """Any input → mono 24 kHz signed 16-bit PCM WAV, at most ``MAX_SECONDS`` + 1 s read,
-    no metadata (byte-stable output), local files only."""
+# demuxers ffmpeg may use; sniff() picks one, nothing else is ever opened
+DEMUXERS = ("wav", "matroska", "ogg", "mov", "mp3", "aac")
+FORMAT_WHITELIST = "wav,matroska,webm,ogg,mov,mp4,m4a,3gp,3g2,mj2,mp3,aac"
+
+
+def sniff(data: bytes) -> str:
+    """The ffmpeg demuxer for an audio upload, from its magic bytes (``VoiceError`` 415)."""
+    head = data[:16]
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":
+        return "wav"
+    if head[:4] == b"\x1a\x45\xdf\xa3":
+        return "matroska"  # also WebM
+    if head[:4] == b"OggS":
+        return "ogg"
+    if head[4:8] == b"ftyp":
+        return "mov"  # MP4 / M4A (external data references stay disabled by default)
+    if head[:3] == b"ID3" or (len(head) > 1 and head[0] == 0xFF and head[1] in (
+            0xFB, 0xF3, 0xF2, 0xFA, 0xE3)):
+        return "mp3"
+    if len(head) > 1 and head[0] == 0xFF and head[1] in (0xF1, 0xF9):
+        return "aac"
+    raise VoiceError("unsupported audio container (wav, webm, ogg, mp4, mp3, aac)",
+                     "unsupported_audio_type", 415)
+
+
+def ffmpeg_args(src: Path, dst: Path, demuxer: str, ffmpeg: str = "ffmpeg") -> list[str]:
+    """Upload → mono 24 kHz signed 16-bit PCM WAV, at most ``MAX_SECONDS`` + 1 s read,
+    no metadata (byte-stable output); explicit demuxer, whitelisted formats and protocols."""
+    if demuxer not in DEMUXERS:
+        raise ValueError(f"demuxer {demuxer!r} is not allowed")
     return [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
+            "-f", demuxer, "-format_whitelist", FORMAT_WHITELIST,
             "-protocol_whitelist", "file", "-i", str(src),
             "-t", str(MAX_SECONDS + 1), "-vn", "-map_metadata", "-1",
             "-ac", "1", "-ar", str(SAMPLE_RATE), "-c:a", "pcm_s16le",
@@ -85,6 +119,7 @@ def check_upload(data: bytes) -> None:
 def to_wav(data: bytes) -> bytes:
     """Convert an upload with ffmpeg and enforce the duration limit."""
     check_upload(data)
+    demuxer = sniff(data)  # before ffmpeg ever sees the bytes
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise VoiceError("ffmpeg is not installed", "no_ffmpeg", 503)
@@ -92,7 +127,8 @@ def to_wav(data: bytes) -> bytes:
         src, dst = Path(tmp) / "in.bin", Path(tmp) / "out.wav"
         src.write_bytes(data)
         try:
-            proc = subprocess.run(ffmpeg_args(src, dst, ffmpeg), capture_output=True,  # noqa: S603
+            proc = subprocess.run(ffmpeg_args(src, dst, demuxer, ffmpeg),  # noqa: S603
+                                  capture_output=True,
                                   timeout=FFMPEG_TIMEOUT_S, check=False)
         except subprocess.TimeoutExpired as exc:
             raise VoiceError("audio conversion timed out", "convert_timeout") from exc

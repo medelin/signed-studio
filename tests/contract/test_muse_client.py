@@ -74,7 +74,9 @@ def test_cassettes_contain_no_secrets():
         assert not re.search(r"\b(sk|mk|key)[-_][A-Za-z0-9]{16,}", text)
         data = json.loads(text)
         for item in data["interactions"]:
-            assert set(item["request"]) == {"method", "path", "json"}
+            # multipart (voice) requests keep only the request JSON and audio hashes
+            assert set(item["request"]) in ({"method", "path", "json"},
+                                            {"method", "path", "multipart"})
             assert set(item["response"]) in ({"status", "json"}, {"status", "sse"})
         # big images live in fixture files (``@file:``), never inline in a cassette
         assert not re.search(r"[A-Za-z0-9+/=]{8000,}", text), path.name

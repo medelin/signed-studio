@@ -37,8 +37,13 @@ def _wav(seconds, rate=24_000):
 
 
 def test_ffmpeg_args_make_mono_24k_pcm_from_local_files_only(tmp_path):
-    args = voice.ffmpeg_args(tmp_path / "in.bin", tmp_path / "out.wav")
+    args = voice.ffmpeg_args(tmp_path / "in.bin", tmp_path / "out.wav", "matroska")
     joined = " ".join(args)
+    assert args.index("-f") < args.index("-i") and args[args.index("-f") + 1] == "matroska"
+    assert args.index("-format_whitelist") < args.index("-i")
+    assert "hls" not in joined and "concat" not in joined
+    with pytest.raises(ValueError):
+        voice.ffmpeg_args(tmp_path / "in.bin", tmp_path / "out.wav", "hls")
     assert "-ac 1" in joined and "-ar 24000" in joined and "-c:a pcm_s16le" in joined
     assert "-protocol_whitelist file" in joined and "-nostdin" in args
     assert args.index("-protocol_whitelist") < args.index("-i")  # applies to the input
@@ -69,7 +74,7 @@ def test_conversion_is_mono_24k_and_enforces_ten_minutes():
         voice.to_wav(_wav(605, rate=8000))
     assert exc.value.code == "audio_too_long"
     with pytest.raises(voice.VoiceError) as exc:
-        voice.to_wav(b"not audio at all" * 10)
+        voice.to_wav(b"RIFF\0\0\0\0WAVEgarbage" * 10)
     assert exc.value.code == "bad_audio"
 
 
@@ -147,3 +152,50 @@ def test_voice_upload_above_the_limit_is_413(tmp_path):
         r = c.post("/api/briefs/voice", content=b"\0" * (32 * 1024 * 1024 + 1),
                    headers={"content-type": "audio/webm"})
     assert r.status_code == 413
+
+
+@pytest.mark.parametrize("data", [
+    b"#EXTM3U\n#EXT-X-VERSION:3\n#EXTINF:1,\nfile:///etc/passwd\n",
+    b"ffconcat version 1.0\nfile '/etc/passwd'\n",
+    b"<?xml version='1.0'?><MPD></MPD>",
+    b"just some text that is not audio",
+])
+def test_playlists_and_unknown_containers_are_rejected_before_ffmpeg(data, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("ffmpeg must not run")
+
+    monkeypatch.setattr(voice.subprocess, "run", boom)
+    with pytest.raises(voice.VoiceError) as exc:
+        voice.to_wav(data)
+    assert exc.value.code == "unsupported_audio_type" and exc.value.status == 415
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize(("codec", "fmt", "demuxer"), [
+    ("libopus", "webm", "matroska"), ("libvorbis", "ogg", "ogg"), ("pcm_s16le", "wav", "wav"),
+])
+def test_valid_webm_ogg_and_wav_pass(tmp_path, codec, fmt, demuxer):
+    import subprocess
+
+    src = tmp_path / "in.wav"
+    src.write_bytes(_wav(1.0, rate=48_000))
+    out = tmp_path / f"out.{fmt}"
+    proc = subprocess.run([shutil.which("ffmpeg"), "-nostdin", "-loglevel", "error",  # noqa: S603
+                           "-i", str(src),
+                           "-c:a", codec, str(out)], capture_output=True, check=False)
+    if proc.returncode != 0:
+        pytest.skip(f"ffmpeg cannot encode {codec}")
+    data = out.read_bytes()
+    assert voice.sniff(data) == demuxer
+    wav = voice.to_wav(data)
+    assert 0.9 < voice.wav_seconds(wav) < 1.2
+
+
+def test_route_rejects_a_playlist_with_415(tmp_path):
+    a = create_app(settings(tmp_path))
+    a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0))
+    with TestClient(a, base_url="https://testserver") as c:
+        login(c)
+        r = c.post("/api/briefs/voice", content=b"#EXTM3U\nfile:///etc/passwd\n",
+                   headers={"content-type": "audio/webm"})
+    assert r.status_code == 415 and r.json()["error"] == "unsupported_audio_type"
