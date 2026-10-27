@@ -3,7 +3,7 @@
     .venv/bin/python scripts/record_day2.py copy [sam image review_spark producer ...]
 
 Spend is tracked by the studio budget module against a persistent receipt ledger in
-``var/record/`` (cap ``RECORD_BUDGET_USD``, default $1.50 per UTC day), so repeated runs
+``~/.local/state/muse-studio-lite/record/`` (outside the repo) (cap ``RECORD_BUDGET_USD``, default $1.50 per UTC day), so repeated runs
 cannot exceed the cap. Cassettes keep only the request path + JSON body and the response
 status + JSON body (or SSE events); no headers. Inline images in requests become
 ``data:<mime>;sha256,<hex>``; base64 image results larger than 4 KB are written as PNG
@@ -116,7 +116,9 @@ def save(name: str, rec: Recorder, key: str, extra: dict[str, Any] | None = None
 
 def open_client(rec: Recorder) -> tuple[MuseClient, str]:
     settings = Settings.load(env_file=ROOT / ".env")
-    rec_dir = ROOT / "var" / "record"
+    # Outside the repo: the ledger key must never sit in the working tree.
+    rec_dir = Path(os.environ.get("RECORD_STATE_DIR",
+                                  Path.home() / ".local/state/muse-studio-lite/record"))
     rec_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     conn = db.connect(rec_dir / "record.db")
     db.init(conn)
