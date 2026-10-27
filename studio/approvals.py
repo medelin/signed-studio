@@ -42,10 +42,12 @@ __all__ = [
     "Approval",
     "ApprovalError",
     "InvalidItemId",
+    "KeyConflict",
     "KeyInactive",
     "Keys",
     "Pending",
     "Verified",
+    "WrongSession",
     "approval_message",
     "ensure_schema",
     "payload_sha256",
@@ -138,6 +140,16 @@ class KeyInactive(ApprovalError):
     code, status = "key_inactive", 403
 
 
+class KeyConflict(ApprovalError):
+    """The key id exists already (revoked, or bound to another session): use a new key."""
+
+    code, status = "key_conflict", 409
+
+
+class WrongSession(ApprovalError):
+    code, status = "wrong_session", 403
+
+
 class BadSignature(ApprovalError):
     code, status = "bad_signature", 403
 
@@ -178,7 +190,9 @@ class Keys:
 
     A key can sign approvals only while its session is active: logout revokes it and it
     expires with the session. Revoked keys stay published (``registry``) so that approvals
-    signed earlier remain verifiable.
+    signed earlier remain verifiable. A key id is registered exactly once: it is never
+    revived after revocation and never moves to another session (``KeyConflict``), so the
+    browser generates a fresh key pair for every session.
     """
 
     @staticmethod
@@ -196,14 +210,21 @@ class Keys:
         approver = key_id(pub)
         created = int(time.time() if now is None else now)
         expires = int(expires_ts if expires_ts is not None else created + KEY_TTL_S)
-        conn.execute(
+        session_hash = sha256_hex(session_id)
+        cur = conn.execute(
             "INSERT INTO keys (approver, public_key, session_sha256, created_ts, expires_ts) "
-            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (approver) DO UPDATE SET "
-            "session_sha256 = excluded.session_sha256, expires_ts = excluded.expires_ts, "
-            "revoked_ts = NULL",
-            (approver, public_key, sha256_hex(session_id), created, expires),
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (approver) DO NOTHING",
+            (approver, public_key, session_hash, created, expires),
         )
-        return approver
+        if cur.rowcount == 1:
+            return approver
+        row = conn.execute(
+            "SELECT session_sha256, revoked_ts, expires_ts FROM keys WHERE approver = ?",
+            (approver,),
+        ).fetchone()
+        if row[0] == session_hash and row[1] is None and created < row[2]:
+            return approver  # same live session registering the same key again: no change
+        raise KeyConflict("this key is revoked or belongs to another session; use a new key")
 
     @staticmethod
     def revoke_session(
@@ -233,6 +254,13 @@ class Keys:
         ).fetchone()
         clock = time.time() if now is None else now
         return bool(row) and row[1] is None and clock < row[0]
+
+    @staticmethod
+    def session_matches(conn: sqlite3.Connection, approver: str, session_id: str) -> bool:
+        row = conn.execute(
+            "SELECT session_sha256 FROM keys WHERE approver = ?", (approver,)
+        ).fetchone()
+        return bool(row) and secrets.compare_digest(row[0], sha256_hex(session_id))
 
     @staticmethod
     def registry(conn: sqlite3.Connection) -> dict[str, Ed25519PublicKey]:
@@ -351,12 +379,16 @@ def verify_and_consume(
     payload: bytes | Mapping[str, Any],
     *,
     ledger: Ledger,
+    session_id: str,
     now: float | None = None,
 ) -> Verified:
     """Verify ``approval`` for ``payload`` and consume its nonce in the caller's transaction.
 
-    The caller must hold an open write transaction (see ``transaction``); nothing is
-    committed here. Raises a distinct ``ApprovalError`` subclass for every failure.
+    ``session_id`` is the caller's login session: the approver key must have been
+    registered by that same session (``WrongSession`` otherwise), so a signature cannot be
+    submitted from someone else's session. The caller must hold an open write transaction
+    (see ``transaction``); nothing is committed here. Raises a distinct ``ApprovalError``
+    subclass for every failure.
     """
     if not conn.in_transaction:
         raise RuntimeError("verify_and_consume must run inside the caller's write transaction")
@@ -393,6 +425,8 @@ def verify_and_consume(
         raise UnknownKey("approver key is not registered")
     if not Keys.is_active(conn, approval.approver, now=clock):
         raise KeyInactive("approver key was revoked (logout) or its session expired")
+    if not Keys.session_matches(conn, approval.approver, session_id):
+        raise WrongSession("approver key belongs to another session")
     try:
         key.verify(bytes.fromhex(approval.signature), pending.message(approval.approver))
     except (InvalidSignature, ValueError) as exc:

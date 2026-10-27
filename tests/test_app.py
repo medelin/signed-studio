@@ -261,7 +261,15 @@ def test_export_verifies_with_published_key_and_seq(app, client, tmp_path):
     assert report.ok, report.errors
 
 
-def _approve_with(app, key, approver):
+def _sid(client):
+    return client.cookies.get("studio_session").split(".")[0]
+
+
+def _register(client, key):
+    return client.post("/api/keys", json={"public_key": b64url(public_key_raw(key.public_key()))})
+
+
+def _approve_with(app, key, approver, session_id):
     from studio import approvals as ap
     from studio import db
 
@@ -273,7 +281,7 @@ def _approve_with(app, key, approver):
     approval = ap.Approval(pending_id=p.id, **p.fields(approver),
                            signature=key.sign(p.message(approver)).hex())
     with db.transaction(conn):
-        ap.verify_and_consume(conn, approval, {"m": "hi"}, ledger=led)
+        ap.verify_and_consume(conn, approval, {"m": "hi"}, ledger=led, session_id=session_id)
 
 
 def test_key_dies_with_session_on_logout(app, client):
@@ -281,19 +289,18 @@ def test_key_dies_with_session_on_logout(app, client):
 
     login(client)
     key = Ed25519PrivateKey.generate()
-    approver = client.post("/api/keys", json={
-        "public_key": b64url(public_key_raw(key.public_key()))}).json()["approver"]
+    approver = _register(client, key).json()["approver"]
+    sid = _sid(client)
     client.post("/logout")
     with pytest.raises(ap.KeyInactive):
-        _approve_with(app, key, approver)
+        _approve_with(app, key, approver, sid)
 
 
 def test_key_works_while_session_active(app, client):
     login(client)
     key = Ed25519PrivateKey.generate()
-    approver = client.post("/api/keys", json={
-        "public_key": b64url(public_key_raw(key.public_key()))}).json()["approver"]
-    _approve_with(app, key, approver)
+    approver = _register(client, key).json()["approver"]
+    _approve_with(app, key, approver, _sid(client))
 
 
 def test_keys_from_previous_process_are_inactive(tmp_path):
@@ -303,11 +310,11 @@ def test_keys_from_previous_process_are_inactive(tmp_path):
     with TestClient(first, base_url="https://testserver") as c:
         login(c)
         key = Ed25519PrivateKey.generate()
-        approver = c.post("/api/keys", json={
-            "public_key": b64url(public_key_raw(key.public_key()))}).json()["approver"]
+        approver = _register(c, key).json()["approver"]
+        sid = _sid(c)
     second = create_app(settings(tmp_path))  # sessions live in process memory
     with pytest.raises(ap.KeyInactive):
-        _approve_with(second, key, approver)
+        _approve_with(second, key, approver, sid)
 
 
 def test_ipv6_addresses_in_one_64_share_the_limit(app):
@@ -354,3 +361,28 @@ def test_full_table_of_blocked_clients_fails_closed():
         assert lim.reserve(f"203.0.113.{i}", now=1.0)  # each now at its limit
     assert not lim.reserve("192.0.2.1", now=2.0)
     assert lim.reserve("192.0.2.1", now=1000.0)  # entries expired: room again
+
+
+def test_revoked_key_cannot_be_revived_by_a_new_session(app, client):
+    login(client)
+    key = Ed25519PrivateKey.generate()
+    assert _register(client, key).status_code == 200
+    client.post("/logout")
+    login(client)
+    r = _register(client, key)
+    assert r.status_code == 409 and r.json()["error"] == "key_conflict"
+    assert _register(client, Ed25519PrivateKey.generate()).status_code == 200  # fresh key ok
+
+
+def test_key_of_one_session_cannot_be_claimed_by_another(app, tmp_path):
+    key = Ed25519PrivateKey.generate()
+    with TestClient(app, base_url="https://testserver") as a, \
+            TestClient(app, base_url="https://testserver") as b:
+        login(a)
+        login(b)
+        approver = _register(a, key).json()["approver"]
+        assert _register(b, key).status_code == 409
+        from studio import approvals as ap
+        with pytest.raises(ap.WrongSession):
+            _approve_with(app, key, approver, _sid(b))
+        _approve_with(app, key, approver, _sid(a))

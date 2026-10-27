@@ -57,7 +57,7 @@ def _export(tmp_path):
     approval = ap.Approval(pending_id=p.id, **p.fields(approver),
                            signature=key.sign(p.message(approver)).hex())
     with db.transaction(c):
-        ok = ap.verify_and_consume(c, approval, payload, ledger=led)
+        ok = ap.verify_and_consume(c, approval, payload, ledger=led, session_id="s1")
     led.append("run-1", agent="media_buyer", kind="external_write",
                output_sha256=p.content_sha256, details=ok.write_details())
     path = tmp_path / "receipts.jsonl"

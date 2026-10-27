@@ -220,11 +220,11 @@ def test_approval_and_receipt_commit_atomically(tmp_path):
     approval = ap.Approval(pending_id=p.id, **p.fields(approver),
                            signature=key.sign(p.message(approver)).hex())
     with pytest.raises(RuntimeError, match="boom"), db.transaction(c):
-        ap.verify_and_consume(c, approval, payload, ledger=led)
+        ap.verify_and_consume(c, approval, payload, ledger=led, session_id="s1")
         raise RuntimeError("boom")
     assert c.execute("SELECT count(*) FROM receipts").fetchone() == (1,)  # rolled back too
     with db.transaction(c):
-        ap.verify_and_consume(c, approval, payload, ledger=led)
+        ap.verify_and_consume(c, approval, payload, ledger=led, session_id="s1")
     assert led.receipts("run-1")[-1].kind == "approval"
     out = tmp_path / "r.jsonl"
     out.write_text(led.export_jsonl())
@@ -265,7 +265,7 @@ def test_seeded_run_export_has_no_contact_data(tmp_path):
         approval = ap.Approval(pending_id=p.id, **p.fields(approver),
                                signature=key.sign(p.message(approver)).hex())
         with db.transaction(c):
-            ok = ap.verify_and_consume(c, approval, payload, ledger=led)
+            ok = ap.verify_and_consume(c, approval, payload, ledger=led, session_id="s1")
         led.append("run-inbox", agent="media_buyer", kind="external_write",
                    output_sha256=p.content_sha256,
                    details={"comment_id": cid, **ok.write_details()})

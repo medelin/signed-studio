@@ -47,10 +47,11 @@ def sign(env, **override):
     return ap.Approval(**fields, signature=sig)
 
 
-def consume(env, approval, payload=PAYLOAD, conn=None, now=None):
+def consume(env, approval, payload=PAYLOAD, conn=None, now=None, session_id="session-1"):
     conn = conn or env["conn"]
     with ap.transaction(conn):
-        return ap.verify_and_consume(conn, approval, payload, ledger=env["ledger"], now=now)
+        return ap.verify_and_consume(conn, approval, payload, ledger=env["ledger"], now=now,
+                                     session_id=session_id)
 
 
 def test_pending_binds_content_and_chain_head(env):
@@ -152,14 +153,16 @@ def test_error_codes_are_distinct():
 
 def test_consume_requires_open_transaction(env):
     with pytest.raises(RuntimeError, match="transaction"):
-        ap.verify_and_consume(env["conn"], sign(env), PAYLOAD, ledger=env["ledger"])
+        ap.verify_and_consume(env["conn"], sign(env), PAYLOAD, ledger=env["ledger"],
+                              session_id="session-1")
 
 
 def test_rollback_leaves_nonce_unconsumed(env):
     approval = sign(env)
     receipts_before = len(env["ledger"].receipts())
     with pytest.raises(RuntimeError, match="boom"), ap.transaction(env["conn"]):
-        ap.verify_and_consume(env["conn"], approval, PAYLOAD, ledger=env["ledger"])
+        ap.verify_and_consume(env["conn"], approval, PAYLOAD, ledger=env["ledger"],
+                              session_id="session-1")
         raise RuntimeError("boom")
     assert env["conn"].execute("SELECT count(*) FROM nonces").fetchone() == (0,)
     assert len(env["ledger"].receipts()) == receipts_before  # no phantom approval receipt
@@ -170,7 +173,8 @@ def test_rollback_leaves_nonce_unconsumed(env):
 
 def test_non_transactional_ledger_refused(env):
     with pytest.raises(RuntimeError, match="transactional"), ap.transaction(env["conn"]):
-        ap.verify_and_consume(env["conn"], sign(env), PAYLOAD, ledger=Ledger())
+        ap.verify_and_consume(env["conn"], sign(env), PAYLOAD, ledger=Ledger(),
+                              session_id="session-1")
     assert env["conn"].execute("SELECT count(*) FROM nonces").fetchone() == (0,)
 
 
@@ -191,7 +195,8 @@ def test_two_concurrent_consumes_exactly_one_wins(env):
         barrier.wait()
         try:
             with ap.transaction(conn):
-                ap.verify_and_consume(conn, approval, PAYLOAD, ledger=ledger)
+                ap.verify_and_consume(conn, approval, PAYLOAD, ledger=ledger,
+                                         session_id="session-1")
             results.append("ok")
         except ap.NonceUsed:
             results.append("nonce_used")
@@ -379,3 +384,41 @@ def test_verified_write_details_pass_verify(env, tmp_path):
     report = verify(path, env["ledger"].public_key,
                     approver_keys={env["approver"]: env["key"].public_key()})
     assert report.ok, report.errors
+
+
+# -- I1: a key id is registered once; it is never revived or moved to another session --
+
+
+def test_reregistering_a_revoked_key_is_refused(env):
+    ap.Keys.revoke_session(env["conn"], "session-1")
+    with pytest.raises(ap.KeyConflict) as exc:
+        ap.Keys.register(env["conn"], "session-1", raw(env["key"].public_key()))
+    assert exc.value.status == 409
+    assert not ap.Keys.is_active(env["conn"], env["approver"])
+
+
+def test_key_cannot_move_to_another_session(env):
+    with pytest.raises(ap.KeyConflict):
+        ap.Keys.register(env["conn"], "session-2", raw(env["key"].public_key()))
+    row = env["conn"].execute("SELECT session_sha256 FROM keys WHERE approver = ?",
+                              (env["approver"],)).fetchone()
+    from studio.receipts import sha256_hex
+    assert row == (sha256_hex("session-1"),)
+
+
+def test_same_session_reregistration_is_idempotent(env):
+    before = env["conn"].execute("SELECT expires_ts FROM keys").fetchall()
+    again = ap.Keys.register(env["conn"], "session-1", raw(env["key"].public_key()),
+                             expires_ts=int(time.time()) + 10**6)
+    assert again == env["approver"]
+    assert env["conn"].execute("SELECT expires_ts FROM keys").fetchall() == before
+
+
+# -- I3: an approval is consumed only by the session whose key signed it -----------------
+
+
+def test_approval_from_another_session_rejected(env):
+    with pytest.raises(ap.WrongSession) as exc:
+        consume(env, sign(env), session_id="session-2")
+    assert exc.value.status == 403
+    consume(env, sign(env))  # nothing was consumed by the refused attempt

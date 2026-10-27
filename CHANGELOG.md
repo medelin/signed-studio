@@ -3,6 +3,7 @@
 ## 2026-10-27 — day 1 fix round (review)
 
 - C1/I5 verify: an approval authorises exactly one write. `external_write` receipts carry `details.approval_id` + `details.action` (`Verified.write_details()`); verify consumes the named approval, requires the same run, content and action and `write.ts - approval.ts <= APPROVAL_TTL_S` (900 s, shared with the server TTL), rejects a second write on the same approval and a nonce that appears in more than one approval; `chain_head == GENESIS` only for the run's first receipt (the server refuses such a pending once the run has grown); server-made approvals that are unsigned, signed by another key or by an unregistered approver authorise nothing; receipts are type-checked after parsing, so hostile lines are reported, never crash; the CLI reports every error as `error:` with exit 2; 30 tests.
+- I1/I3 approver keys: `Keys.register` only inserts — a revoked key or one bound to another session is a `KeyConflict` (`POST /api/keys` → 409 `key_conflict`, the browser must generate a new key pair per session); the same live session re-registering its key is a no-op; `verify_and_consume(..., session_id=...)` requires the key to belong to the caller's session (`wrong_session`, 403); 7 tests.
 
 ## 2026-10-27
 

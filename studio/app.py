@@ -35,7 +35,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from studio import db
-from studio.approvals import Keys
+from studio.approvals import KeyConflict, Keys
 from studio.receipts import public_key_raw
 from studio.settings import ReadOnlyMode, Settings
 
@@ -445,6 +445,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             except ValueError:
                 return JSONResponse({"error": "invalid_public_key"}, 400)
+            except KeyConflict:  # revoked, or another session's: generate a new key pair
+                return JSONResponse({"error": "key_conflict"}, 409)
         return JSONResponse({"approver": approver})
 
     @app.get("/api/receipts.jsonl")
