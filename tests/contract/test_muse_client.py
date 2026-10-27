@@ -278,3 +278,53 @@ def test_strict_schema_keeps_property_names_that_look_like_keywords():
     schema = strict_schema(Tricky)
     assert sorted(schema["properties"]) == ["default", "title"]
     assert sorted(schema["required"]) == ["default", "title"]
+
+
+def _ok_chat():
+    return httpx.Response(200, json={
+        "id": "x", "model": "muse-spark-1.3",
+        "choices": [{"index": 0, "finish_reason": "stop",
+                     "message": {"role": "assistant", "content": "ok", "refusal": None}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}})
+
+
+def test_malformed_data_url_never_sent_without_receipt(client, ledger):
+    bad = "data:image/png;base64,@@@not-base64@@@"
+    with respx.mock() as router:
+        route = router.post(url__startswith=BASE_URL).mock(return_value=_ok_chat())
+        client.chat("muse-spark-1.3", [{"role": "user", "content": [
+            {"type": "image_url", "image_url": {"url": bad}}]}], run_id="r", agent="a")
+    assert route.called
+    receipt = ledger.receipts("r")[-1]
+    assert receipt.input_sha256 == ["undecodable:" + sha256_hex(bad)]
+
+
+def test_images_hashed_only_at_known_positions(client, ledger):
+    text_with_prefix = "data:image/png;base64,AAAA"  # plain text, not an image part
+    with respx.mock() as router:
+        router.post(url__startswith=BASE_URL).mock(return_value=_ok_chat())
+        client.chat("muse-spark-1.3", [{"role": "user", "content": [
+            {"type": "text", "text": text_with_prefix}, chat_image_part(RED_PNG)]}],
+            run_id="r", agent="a")
+    assert ledger.receipts("r")[-1].input_sha256 == [sha256_hex(RED_PNG)]
+
+
+def test_responses_input_image_hashed_by_decoded_bytes(client, ledger):
+    body = {"id": "resp_1", "model": "muse-spark-1.3", "status": "completed", "output": [],
+            "usage": {"input_tokens": 5, "output_tokens": 1}}
+    with respx.mock() as router:
+        router.post(url__startswith=BASE_URL).mock(return_value=httpx.Response(200, json=body))
+        client.respond("muse-spark-1.3", [{"type": "message", "role": "user", "content": [
+            {"type": "input_text", "text": "describe"}, vision_parts(RED_PNG)]}],
+            run_id="r", agent="a")
+    assert ledger.receipts("r")[-1].input_sha256 == [sha256_hex(RED_PNG)]
+
+
+def test_unparseable_success_body_still_leaves_receipt(client, ledger):
+    with respx.mock() as router:
+        router.post(url__startswith=BASE_URL).mock(
+            return_value=httpx.Response(200, json={"choices": "garbage", "usage": []}))
+        with pytest.raises(MuseError):
+            client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
+                        agent="a")
+    assert ledger.receipts("r")[-1].details["error"] == "bad_response"

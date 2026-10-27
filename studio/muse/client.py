@@ -9,8 +9,9 @@ exceptions or ``repr``. Read-only mode and the daily budget are enforced before 
 from __future__ import annotations
 
 import base64
+import binascii
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -85,18 +86,52 @@ def _int(value: Any) -> int:
     return int(value) if isinstance(value, int | float) and not isinstance(value, bool) else 0
 
 
-def _image_hashes(node: Any) -> list[str]:
-    """SHA-256 of every inline image (data URL) in a request body, in order."""
+def _hash_image_ref(ref: Any) -> str:
+    """Hash of an image reference; never raises (an audit hash must always exist).
+
+    Inline data URLs hash to the decoded bytes; remote URLs and file ids to ``url:``/
+    ``file:``-tagged hashes of the reference; anything malformed to an ``undecodable:``
+    marker over the raw value.
+    """
+    raw = ref if isinstance(ref, str) else repr(ref)
+    if isinstance(ref, str) and ref.startswith("data:"):
+        header, _, payload = ref.partition(",")
+        if header.endswith(";base64") and payload:
+            try:
+                return sha256_hex(base64.b64decode(payload, validate=True))
+            except (binascii.Error, ValueError):
+                pass
+        return "undecodable:" + sha256_hex(raw)
+    if isinstance(ref, str) and ref.startswith(("https://", "http://")):
+        return "url:" + sha256_hex(ref)
+    return "undecodable:" + sha256_hex(raw)
+
+
+def input_hashes(body: Mapping[str, Any]) -> list[str]:
+    """Hashes of image parts at their known positions, computed before the request is sent:
+    Chat ``messages[].content[]`` ``image_url.url`` and Responses ``input[].content[]``
+    ``input_image.image_url`` / ``file_id``."""
     out: list[str] = []
-    if isinstance(node, str):
-        if node.startswith("data:image/") and ";base64," in node:
-            out.append(sha256_hex(base64.b64decode(node.split(",", 1)[1])))
-    elif isinstance(node, Mapping):
-        for v in node.values():
-            out += _image_hashes(v)
-    elif isinstance(node, list | tuple):
-        for v in node:
-            out += _image_hashes(v)
+    containers = [body.get("messages"), body.get("input")]
+    for items in containers:
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            content = item.get("content") if isinstance(item, Mapping) else None
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if not isinstance(part, Mapping):
+                    continue
+                if part.get("type") == "image_url":
+                    ref = part.get("image_url")
+                    out.append(_hash_image_ref(ref.get("url") if isinstance(ref, Mapping)
+                                               else ref))
+                elif part.get("type") == "input_image":
+                    if part.get("file_id"):
+                        out.append("file:" + sha256_hex(str(part["file_id"])))
+                    else:
+                        out.append(_hash_image_ref(part.get("image_url")))
     return out
 
 
@@ -179,9 +214,8 @@ class MuseClient:
             body["max_output_tokens"] = max_output_tokens
         if text_format:
             body["text"] = {"format": dict(text_format)}
-        data, ms = self._post("/responses", body, model, tier, tier_reason, run_id, agent)
-        return self._finish(data, ms, model, tier, tier_reason, run_id, agent, body,
-                            _parse_responses(data), "responses")
+        return self._call("/responses", "responses", _parse_responses, body, model, tier,
+                          tier_reason, run_id, agent)
 
     def chat(
         self,
@@ -208,22 +242,25 @@ class MuseClient:
             body["max_completion_tokens"] = max_tokens
         if reasoning_effort:
             body["reasoning_effort"] = reasoning_effort
-        data, ms = self._post("/chat/completions", body, model, tier, tier_reason, run_id, agent)
-        return self._finish(data, ms, model, tier, tier_reason, run_id, agent, body,
-                            _parse_chat(data), "chat.completions")
+        return self._call("/chat/completions", "chat.completions", _parse_chat, body, model,
+                          tier, tier_reason, run_id, agent)
 
     # -- internals -------------------------------------------------------------------
 
-    def _post(
+    def _call(
         self,
         path: str,
+        endpoint: str,
+        parser: Callable[[dict[str, Any]], dict[str, Any]],
         body: dict[str, Any],
         model: str,
         tier: str,
         tier_reason: str,
         run_id: str,
         agent: str,
-    ) -> tuple[dict[str, Any], int]:
+    ) -> MuseResult:
+        """Send one request. Once anything may have been sent, a receipt is always written:
+        the success receipt, or an error receipt for network, HTTP, parse or abort."""
         check_tier(model, tier)
         if self.read_only:
             raise ReadOnlyMode("STUDIO_READ_ONLY=1: model calls are disabled")
@@ -231,66 +268,37 @@ class MuseClient:
             self.budget.check()
         if not self._api_key:
             raise MuseError("MODEL_API_KEY is not set", code="no_api_key")
+        audit: dict[str, Any] = {
+            "provider": PROVIDER,
+            "tier": tier,
+            "tier_reason": tier_reason,
+            "prompt_sha256": sha256_hex(canonical(body)),
+            "input_sha256": input_hashes(body),  # before sending; never raises
+        }
         start = time.monotonic()
         try:
-            resp = self._http.post(
-                self.base_url + path,
-                json=body,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-            )
-        except httpx.HTTPError as exc:
-            ms = int((time.monotonic() - start) * 1000)
-            self._error_receipt(body, model, tier, tier_reason, run_id, agent, ms,
-                                {"error": "network", "error_type": type(exc).__name__})
-            raise MuseError(f"Model API unreachable ({type(exc).__name__})",
-                            code="network") from None
-        ms = int((time.monotonic() - start) * 1000)
-        try:
-            data = resp.json()
-        except ValueError:
-            data = {}
-        if resp.status_code >= 400 or not isinstance(data, dict):
-            err = data.get("error") if isinstance(data, dict) else None
-            code = str(err.get("type") or err.get("code") or "") if isinstance(err, dict) else ""
-            self._error_receipt(body, model, tier, tier_reason, run_id, agent, ms,
-                                {"error_status": resp.status_code, "error_type": code})
-            raise MuseError(f"Model API returned HTTP {resp.status_code} ({code or 'error'})",
-                            status=resp.status_code, code=code)
-        return data, ms
-
-    def _error_receipt(
-        self,
-        body: dict[str, Any],
-        model: str,
-        tier: str,
-        tier_reason: str,
-        run_id: str,
-        agent: str,
-        ms: int,
-        details: dict[str, Any],
-    ) -> None:
-        self.ledger.append(
-            run_id, agent=agent, kind="model_call", provider=PROVIDER, model=model, tier=tier,
-            tier_reason=tier_reason, prompt_sha256=sha256_hex(canonical(body)),
-            input_sha256=_image_hashes(body), duration_ms=ms, details=details,
-        )
-
-    def _finish(
-        self,
-        data: dict[str, Any],
-        ms: int,
-        model: str,
-        tier: str,
-        tier_reason: str,
-        run_id: str,
-        agent: str,
-        body: dict[str, Any],
-        parsed: dict[str, Any],
-        endpoint: str,
-    ) -> MuseResult:
-        used_model = str(data.get("model") or model)
-        usage: Usage = parsed["usage"]
-        cost = cost_usd(used_model if used_model in TOKEN_PRICES else model, usage)
+            data = self._send(path, body)
+            try:
+                parsed = parser(data)
+                used_model = str(data.get("model") or model)
+                usage: Usage = parsed["usage"]
+                cost = cost_usd(used_model if used_model in TOKEN_PRICES else model, usage)
+            except Exception:  # noqa: BLE001 - any malformed body is a bad response
+                raise _Failure({"error": "bad_response"},
+                               MuseError("Model API returned an unexpected response shape",
+                                         code="bad_response")) from None
+        except _Failure as failure:
+            self.ledger.append(run_id, agent=agent, kind="model_call", model=model, **audit,
+                               duration_ms=_ms(start),
+                               details={"endpoint": endpoint, **failure.details})
+            raise failure.error from None
+        except BaseException as exc:
+            self.ledger.append(run_id, agent=agent, kind="model_call", model=model, **audit,
+                               duration_ms=_ms(start),
+                               details={"endpoint": endpoint, "error": "aborted",
+                                        "error_type": type(exc).__name__})
+            raise
+        ms = _ms(start)
         if self.budget is not None:
             self.budget.record(cost)
         details: dict[str, Any] = {
@@ -304,12 +312,10 @@ class MuseClient:
         if used_model != model:
             details["requested_model"] = model
         receipt = self.ledger.append(
-            run_id, agent=agent, kind="model_call", provider=PROVIDER, model=used_model,
-            tier=tier, tier_reason=tier_reason, prompt_sha256=sha256_hex(canonical(body)),
-            input_sha256=_image_hashes(body), output_sha256=sha256_hex(parsed["text"]),
-            tokens_in=usage.input_tokens, tokens_out=usage.output_tokens,
-            cached_tokens=usage.cached_tokens, cost_usd=round(cost, 8), duration_ms=ms,
-            details=details,
+            run_id, agent=agent, kind="model_call", model=used_model, **audit,
+            output_sha256=sha256_hex(parsed["text"]), tokens_in=usage.input_tokens,
+            tokens_out=usage.output_tokens, cached_tokens=usage.cached_tokens,
+            cost_usd=round(cost, 8), duration_ms=ms, details=details,
         )
         return MuseResult(
             text=parsed["text"], model=used_model, usage=usage, cost_usd=cost,
@@ -318,12 +324,49 @@ class MuseClient:
             finish=parsed["finish"], duration_ms=ms, receipt_id=receipt.id,
         )
 
+    def _send(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        try:
+            resp = self._http.post(
+                self.base_url + path,
+                json=body,
+                headers={"Authorization": f"Bearer {self._api_key}"},
+            )
+        except httpx.HTTPError as exc:
+            raise _Failure({"error": "network", "error_type": type(exc).__name__},
+                           MuseError(f"Model API unreachable ({type(exc).__name__})",
+                                     code="network")) from None
+        try:
+            data = resp.json()
+        except ValueError:
+            data = None
+        if resp.status_code >= 400 or not isinstance(data, dict):
+            err = data.get("error") if isinstance(data, dict) else None
+            code = str(err.get("type") or err.get("code") or "") if isinstance(err, dict) else ""
+            raise _Failure({"error_status": resp.status_code, "error_type": code},
+                           MuseError(f"Model API returned HTTP {resp.status_code} "
+                                     f"({code or 'error'})", status=resp.status_code, code=code))
+        return data
+
+
+class _Failure(Exception):
+    def __init__(self, details: dict[str, Any], error: MuseError) -> None:
+        super().__init__(error)
+        self.details = details
+        self.error = error
+
+
+def _ms(start: float) -> int:
+    return int((time.monotonic() - start) * 1000)
+
 
 def _parse_responses(data: dict[str, Any]) -> dict[str, Any]:
+    output = data.get("output", [])
+    if not isinstance(output, list) or not isinstance(data.get("usage", {}), dict):
+        raise ValueError("unexpected Responses body")
     texts: list[str] = []
     summary: list[str] = []
     calls: list[ToolCall] = []
-    items = [i for i in data.get("output") or [] if isinstance(i, dict)]
+    items = [i for i in output if isinstance(i, dict)]
     for item in items:
         kind = item.get("type")
         if kind == "message":
@@ -349,8 +392,12 @@ def _parse_responses(data: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_chat(data: dict[str, Any]) -> dict[str, Any]:
-    choices = data.get("choices") or [{}]
-    choice = choices[0] if isinstance(choices[0], dict) else {}
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        raise ValueError("unexpected Chat Completions body: no choices")
+    if not isinstance(data.get("usage", {}), dict):
+        raise ValueError("unexpected Chat Completions body: usage")
+    choice = choices[0]
     msg = choice.get("message") or {}
     calls = [
         ToolCall(str(c.get("id", "")), str((c.get("function") or {}).get("name", "")),
