@@ -78,6 +78,22 @@ def _community(client: MuseClient, rec: rec2.Recorder, key: str) -> None:
     rec2.save("community_triage", rec, key, {"comment": DEMO_COMMENT})
 
 
+DEMO_LEAD = {"email": "buyer@example.com", "phone": "+44 20 7946 0958", "city": "London",
+             "country": "UK", "company": "", "kind": "", "source": "comment",
+             "message": "Do you ship to London? I need twelve mugs for our studio kitchen."}
+
+
+@step("lead")
+def _lead(client: MuseClient, rec: rec2.Recorder, key: str) -> None:
+    from studio.agents import lead_scorer
+
+    rec.name = "lead_rationale"
+    rs = lead_scorer.rules(DEMO_LEAD)
+    score, _ = lead_scorer.explain(client, DEMO_LEAD, rs, run_id="rec_lead")
+    print(rs, score.model_dump_json(indent=1))
+    rec2.save("lead_rationale", rec, key, {"lead": DEMO_LEAD})
+
+
 def main() -> None:
     rec = Recorder()
     client, key = rec2.open_client(rec)

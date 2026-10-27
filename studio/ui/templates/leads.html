@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Leads · Muse Studio Lite{% endblock %}
+{% block content %}
+<div id="leads" data-logged-in="{{ 'yes' if logged_in else 'no' }}">
+<section class="panel" aria-labelledby="leads-h">
+  <h1 id="leads-h">Leads (CRM)</h1>
+  <p class="hint">Scores come from fixed rules (base 20; +20 e-mail; +25 phone; +10 city;
+  +15 UK; +10 business; −30 private). Muse Spark only explains them: it never sees the
+  e-mail address or phone number and cannot change the score. HOT (≥ 80) gets a
+  "call within 30 min" task.</p>
+  {% if not logged_in %}<p class="empty">Read-only view; contact data redacted.</p>{% endif %}
+  <p class="status" id="leads-status" role="status" aria-live="polite"></p>
+</section>
+<section class="cards" aria-label="Lead cards">
+{% for l in leads %}
+  <article class="panel lead" data-id="{{ l.id }}">
+    <h2 class="small">{{ l.name }}
+      {% if l.temp %}<span class="verdict {{ 'BLOCK' if l.temp == 'HOT' else 'WARN' if l.temp == 'WARM' else 'OK' }}">{{ l.score }} · {{ l.temp }}</span>{% else %}<span class="hint">not scored</span>{% endif %}
+    </h2>
+    <dl class="kv">
+      <dt>source</dt><dd>{{ l.source }}{% if l.comment_id %} (comment <code>{{ l.comment_id }}</code>){% endif %}</dd>
+      {% if l.email %}<dt>e-mail</dt><dd>{{ l.email }}</dd>{% endif %}
+      {% if l.phone %}<dt>phone</dt><dd>{{ l.phone }}</dd>{% endif %}
+      {% if l.city %}<dt>city</dt><dd>{{ l.city }}{% if l.country %}, {{ l.country }}{% endif %}</dd>{% endif %}
+      {% if l.company %}<dt>company</dt><dd>{{ l.company }}</dd>{% endif %}
+      {% if l.persona %}<dt>persona</dt><dd>{{ l.persona }}</dd>{% endif %}
+      {% if l.owner %}<dt>owner</dt><dd>{{ l.owner }}</dd>{% endif %}
+      {% if l.next_action %}<dt>next action</dt><dd>{{ l.next_action }}</dd>{% endif %}
+    </dl>
+    <blockquote>{{ l.message }}</blockquote>
+    {% if l.reasons %}<ul>{% for r in l.reasons %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
+    {% for t in l.tasks %}<p class="badge {{ '' if t.done else 'warn' }}">task: {{ t.title }}</p>{% endfor %}
+    {% if logged_in and not read_only %}<button type="button" data-act="score">{{ 'Re-score' if l.temp else 'Score' }}</button>{% endif %}
+  </article>
+{% else %}
+  <p class="empty">No leads yet.</p>
+{% endfor %}
+</section>
+</div>
+<script src="/static/signer.js" defer></script>
+<script src="/static/leads.js" defer></script>
+{% endblock %}

@@ -150,3 +150,86 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     @app.post("/api/comments/{comment_id}/hide")
     async def hide(comment_id: str, request: Request) -> Response:
         return await _request(comment_id, request, "comment.hide")
+
+
+_LEAD_FIELDS = ("id", "name", "email", "phone", "source", "message", "city", "country",
+                "company", "kind", "score", "temp", "persona", "owner", "reasons",
+                "next_action", "comment_id", "created_ts")
+
+
+def list_leads(conn: Any, full: bool) -> list[dict[str, Any]]:
+    with conn.lock:
+        rows = conn.execute(
+            f"SELECT {', '.join(_LEAD_FIELDS)} FROM leads "  # noqa: S608 - fixed columns
+            "ORDER BY coalesce(score, -1) DESC, created_ts DESC LIMIT 100").fetchall()
+        tasks = conn.execute("SELECT lead_id, title, due_ts, done FROM tasks "
+                             "ORDER BY due_ts").fetchall()
+    by_lead: dict[str, list[dict[str, Any]]] = {}
+    for lead_id, title, due, done in tasks:
+        by_lead.setdefault(lead_id, []).append({"title": title, "due_ts": due,
+                                                "done": bool(done)})
+    out = []
+    for row in rows:
+        lead = dict(zip(_LEAD_FIELDS, row, strict=True))
+        lead["reasons"] = json.loads(lead["reasons"] or "[]")
+        for key in ("name", "email", "phone", "message", "company", "persona", "next_action"):
+            lead[key] = envelope.clean(str(lead[key] or ""))
+            if not full:
+                lead[key] = redact(lead[key])
+        if not full and lead["email"]:
+            lead["email"] = "[email]"
+        lead["tasks"] = by_lead.get(lead["id"], [])
+        out.append(lead)
+    return out
+
+
+def register_leads(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
+                   write_guard: Guard, templates: Jinja2Templates,
+                   session_of: Callable[[Request], str | None]) -> None:
+    from studio.agents import lead_scorer
+
+    def after_triage(comment_id: str, t: community.Triaged) -> dict[str, Any] | None:
+        """A comment triaged as a lead becomes a CRM card (rules + Spark rationale)."""
+        if t.triage.intent != "lead":
+            return None
+        lead_id = lead_scorer.lead_from_comment(conn, comment_id)
+        muse = app.state.muse
+        try:
+            return lead_scorer.score_lead(conn, ledger, muse, lead_id)
+        except (MuseError, ReadOnlyMode, BudgetExceeded) as exc:
+            LOG.warning("lead rationale failed: %s", type(exc).__name__)
+            return lead_scorer.score_lead(conn, ledger, None, lead_id)
+
+    app.state.after_triage = after_triage
+
+    @app.get("/leads", response_class=HTMLResponse)
+    def leads_page(request: Request) -> Response:
+        logged_in = session_of(request) is not None
+        return templates.TemplateResponse(request, "leads.html", {
+            "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": logged_in,
+            "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
+            "leads": list_leads(conn, logged_in),
+        })
+
+    @app.get("/api/leads")
+    def leads(request: Request) -> Response:
+        return JSONResponse({"leads": list_leads(conn, session_of(request) is not None)},
+                            headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/leads/{lead_id}/score")
+    def score(lead_id: str, request: Request) -> Response:
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        if not COMMENT_ID.fullmatch(lead_id) or lead_scorer.load(conn, lead_id) is None:
+            return JSONResponse({"error": "not_found"}, 404)
+        muse = None
+        if app.state.muse is not None or settings.model_api_key:
+            muse, _ = app.state.clients()
+        try:
+            card = lead_scorer.score_lead(conn, ledger, muse, lead_id)
+        except (ReadOnlyMode, BudgetExceeded) as exc:
+            return JSONResponse({"error": type(exc).__name__}, 503)
+        except MuseError as exc:
+            return JSONResponse({"error": "model_error", "code": exc.code}, 502)
+        return JSONResponse(card)

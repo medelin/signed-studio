@@ -36,7 +36,21 @@ def _community(client):
     return "comment", _triage_reply()
 
 
-PATHS = {"studio/agents/community.py": (_community, _triage_reply)}
+def _score_reply():
+    return {"score": 1, "temp": "COLD", "persona": "p", "reasons": ["r"], "next_action": "n"}
+
+
+def _lead(client):
+    from studio.agents import lead_scorer
+    lead = {"message": CANARY, "city": "London", "company": CANARY}
+    lead_scorer.explain(client, lead, lead_scorer.rules(lead), run_id="p2")
+    return "lead", _score_reply()
+
+
+PATHS = {
+    "studio/agents/community.py": (_community, _triage_reply),
+    "studio/agents/lead_scorer.py": (_lead, _score_reply),
+}
 
 
 def _chat(content):

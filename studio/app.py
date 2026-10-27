@@ -393,6 +393,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     routes_studio.register(app, settings, ledger, conn, write_guard)
     routes_inbox.register(app, settings, ledger, conn, write_guard, templates, session_of)
+    routes_inbox.register_leads(app, settings, ledger, conn, write_guard, templates, session_of)
 
     @app.get("/studio", response_class=HTMLResponse)
     def studio_page(request: Request) -> Response:

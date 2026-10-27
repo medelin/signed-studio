@@ -110,3 +110,37 @@ def test_simulate_adds_a_comment_and_bad_replies_are_refused(app):
         assert c.post(f"/api/comments/{cid}/reply",
                       json={"message": "x" * 601}).status_code == 400
         assert c.post("/api/comments/nope/reply", json={"message": "x"}).status_code == 400
+
+
+LEAD_TRIAGE = {**TRIAGE, "intent": "lead", "draft": "Thanks! We will e-mail you today."}
+
+
+def test_a_lead_comment_becomes_a_scored_crm_card(tmp_path):
+    a = create_app(settings(tmp_path))
+
+    def handler(request):
+        body = json.loads(request.content)
+        if "Rule score" in body["messages"][1]["content"]:
+            content = {"score": 1, "temp": "COLD", "persona": "office buyer",
+                       "reasons": ["asked for four mugs"], "next_action": "e-mail a quote"}
+        else:
+            content = LEAD_TRIAGE
+        return httpx.Response(200, json={
+            "id": "c1", "model": "muse-spark-1.3",
+            "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(content)}}],
+            "usage": {"prompt_tokens": 400, "completion_tokens": 60}})
+
+    a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0),
+                              transport=httpx.MockTransport(handler))
+    with client(a) as c:
+        login(c)
+        r = c.post("/api/comments/c-2/triage")
+        assert r.status_code == 200, r.text
+        lead = r.json()["lead"]
+        assert lead["score"] == 50 and lead["temp"] == "COLD"
+        assert lead["persona"] == "office buyer"
+        page = c.get("/leads").text
+        assert "office buyer" in page and "visitor.b@example.com" in page
+    with client(a) as anon:
+        page = anon.get("/leads").text
+        assert "visitor.b@example.com" not in page and "lead.one@example.com" not in page

@@ -92,3 +92,16 @@ def choose_tier(text: str, requested: str, *, source: str = "operator") -> tuple
     if match:
         return "standard", f"pii detected ({match.kind}): contributor refused", STANDARD_MODEL
     return "contributor", "no pii detected: public copy on contributor", CONTRIBUTOR_MODEL
+
+
+def find_email(text: str) -> str:
+    m = _EMAIL.search(text)
+    return m.group() if m else ""
+
+
+def find_phone(text: str) -> str:
+    for run in _RUN.finditer(text):
+        raw = run.group().strip(" -.(")
+        if _classify(raw) == "phone":
+            return raw
+    return ""
