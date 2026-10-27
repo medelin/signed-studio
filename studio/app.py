@@ -1,8 +1,10 @@
 """FastAPI app: public read-only views, judge login, approver keys and receipt export.
 
 Security notes:
-- the login attempt is reserved in the limiter *before* the body is awaited, so concurrent
-  requests cannot all slip past the check; success clears the client's bucket;
+- the login attempt is reserved in the per-prefix limiter *before* the body is awaited, so
+  concurrent requests cannot all slip past the check; the body must arrive within
+  ``LOGIN_BODY_TIMEOUT_S``; only completed attempts count towards the short, capped global
+  pause (see ``LoginLimiter``); success clears the client's bucket;
 - credentials are compared as bytes in constant time (non-ASCII input is a 401, not a 500);
 - sessions are HMAC-signed with the dedicated ``SESSION_SECRET`` and also tracked server
   side, so ``POST /logout`` revokes them; cookies are HttpOnly, SameSite=Lax, Secure;
@@ -14,6 +16,7 @@ Security notes:
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -45,6 +48,7 @@ SESSION_TTL_S = 8 * 3600
 MAX_BODY = 64 * 1024
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5
+LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
@@ -88,20 +92,29 @@ def limiter_key(ip: str) -> str:
 
 
 class LoginLimiter:
-    """Per-prefix attempt limit plus a global failure counter for the judge account.
+    """Per-prefix attempt limit plus a short, capped global pause for the judge account.
 
-    - ``reserve`` counts the attempt atomically (before the body is read) for the client's
-      prefix and for the global account budget (attempts in flight count too);
-    - ``GLOBAL_MAX_FAILURES`` failures from any addresses lock the account with
-      exponential backoff (``BASE_LOCK_S * 2**strikes``), independent of the address;
+    - ``reserve`` counts the attempt atomically for the client's prefix *before* the body
+      is read (concurrent requests cannot all pass) and refuses while the account is paused;
+    - ``settle`` is called after the body was read and the password compared, with no
+      ``await`` in between: only completed attempts count towards the global budget, so
+      requests in flight (or slow bodies, which time out) never use it up;
+    - ``GLOBAL_MAX_FAILURES`` failures from any addresses within ``GLOBAL_WINDOW_S`` pause
+      the account for ``BASE_LOCK_S * 2**(strikes-1)`` seconds, never more than
+      ``MAX_LOCK_S``; strikes are forgotten after ``STRIKE_DECAY_S`` without a pause. So the
+      global limit is a slow rate limit (at most 20 guesses per pause), not a hard lockout:
+      however long a failure storm lasts, a correct login gets through at most
+      ``MAX_LOCK_S`` after it stops;
     - under table pressure, expired then low-count unblocked entries are evicted; blocked
       prefixes are never evicted, and when only blocked entries remain, new clients are
       refused (fail closed).
     """
 
     GLOBAL_MAX_FAILURES = 20
-    BASE_LOCK_S = 60.0
-    MAX_STRIKES = 10
+    GLOBAL_WINDOW_S = 300.0
+    BASE_LOCK_S = 5.0
+    MAX_LOCK_S = 60.0
+    STRIKE_DECAY_S = 900.0
 
     def __init__(self, max_attempts: int = 5, window_s: float = 900, max_clients: int = 10_000):
         self.max_attempts = max_attempts
@@ -109,8 +122,8 @@ class LoginLimiter:
         self.max_clients = max_clients
         self._hits: dict[str, list[float]] = {}
         self._failures: list[float] = []
-        self._in_flight = 0
         self._strikes = 0
+        self._last_pause = 0.0
         self.locked_until = 0.0
         self._lock = threading.Lock()
 
@@ -133,14 +146,11 @@ class LoginLimiter:
         return True
 
     def reserve(self, ip: str, now: float | None = None) -> bool:
-        """Atomically count one attempt; False (429) when over any limit."""
+        """Atomically count one attempt for the prefix; False (429) when over any limit."""
         t = time.time() if now is None else now
         key = limiter_key(ip)
         with self._lock:
             if t < self.locked_until:
-                return False
-            self._failures = self._recent(self._failures, t)
-            if len(self._failures) + self._in_flight >= self.GLOBAL_MAX_FAILURES:
                 return False
             if key not in self._hits and not self._make_room(t):
                 return False
@@ -150,25 +160,28 @@ class LoginLimiter:
                 return False
             hits.append(t)
             self._hits[key] = hits
-            self._in_flight += 1
             return True
 
-    def failure(self, now: float | None = None) -> None:
+    def settle(self, ip: str, ok: bool, now: float | None = None) -> bool:
+        """Record a completed attempt. False (429, nothing recorded) while paused."""
         t = time.time() if now is None else now
         with self._lock:
-            self._in_flight = max(0, self._in_flight - 1)
-            self._failures = [*self._recent(self._failures, t), t]
+            if t < self.locked_until:
+                return False
+            if ok:
+                self._hits.pop(limiter_key(ip), None)
+                return True
+            self._failures = [f for f in self._failures if t - f < self.GLOBAL_WINDOW_S]
+            self._failures.append(t)
             if len(self._failures) >= self.GLOBAL_MAX_FAILURES:
-                self._strikes = min(self._strikes + 1, self.MAX_STRIKES)
-                self.locked_until = t + self.BASE_LOCK_S * 2 ** (self._strikes - 1)
+                if t - self._last_pause > self.STRIKE_DECAY_S:
+                    self._strikes = 0
+                self._strikes = min(self._strikes + 1, 16)
+                pause = min(self.BASE_LOCK_S * 2 ** (self._strikes - 1), self.MAX_LOCK_S)
+                self.locked_until = t + pause
+                self._last_pause = t
                 self._failures = []
-
-    def success(self, ip: str) -> None:
-        with self._lock:
-            self._in_flight = max(0, self._in_flight - 1)
-            self._hits.pop(limiter_key(ip), None)
-            self._failures = []
-            self._strikes = 0
+            return True
 
     def clear(self, ip: str) -> None:
         with self._lock:
@@ -380,17 +393,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ip = client_ip(request, settings.trusted_proxies)
         if not app.state.limiter.reserve(ip):  # reserved before the body is awaited
             return JSONResponse({"error": "too_many_attempts"}, 429)
-        ok = False
         try:
-            username, password = await _read_credentials(request)
-            user_ok = hmac.compare_digest(username.encode(), JUDGE_USER.encode())
-            pass_ok = hmac.compare_digest(password.encode(), settings.judge_password.encode())
-            ok = user_ok and pass_ok
-        finally:
-            if ok:
-                app.state.limiter.success(ip)
-            else:
-                app.state.limiter.failure()
+            username, password = await asyncio.wait_for(
+                _read_credentials(request), LOGIN_BODY_TIMEOUT_S)
+        except TimeoutError:  # the prefix attempt stays counted; the global budget does not
+            return JSONResponse({"error": "body_timeout"}, 408)
+        # No await from here to settle(): the global count is exact, never "in flight".
+        user_ok = hmac.compare_digest(username.encode(), JUDGE_USER.encode())
+        pass_ok = hmac.compare_digest(password.encode(), settings.judge_password.encode())
+        ok = user_ok and pass_ok
+        if not app.state.limiter.settle(ip, ok):
+            return JSONResponse({"error": "too_many_attempts"}, 429)
         if not ok:
             return JSONResponse({"error": "invalid_credentials"}, 401)
         response = JSONResponse({"ok": True})

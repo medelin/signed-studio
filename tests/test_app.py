@@ -332,17 +332,84 @@ def test_global_counter_locks_across_addresses(app):
     assert locked == [429]
 
 
-def test_global_backoff_grows():
+def _fail_globally(lim, t, n=None):
+    """``n`` failed logins at time ``t`` from distinct addresses (default: enough to pause)."""
+    for i in range(n or lim.GLOBAL_MAX_FAILURES):
+        ip = f"198.51.{int(t) % 200}.{i % 250}"
+        if lim.reserve(ip, now=t):
+            lim.settle(ip, False, now=t)
+
+
+def test_global_pause_grows_but_is_capped():
     lim = LoginLimiter(max_attempts=100)
     t = 1000.0
-    for _ in range(lim.GLOBAL_MAX_FAILURES):
-        lim.failure(now=t)
-    first = lim.locked_until
-    assert first > t
-    t = first + 1
-    for _ in range(lim.GLOBAL_MAX_FAILURES):
-        lim.failure(now=t)
-    assert lim.locked_until - t > first - 1000.0  # second lockout is longer
+    pauses = []
+    for _ in range(12):
+        _fail_globally(lim, t)
+        pauses.append(lim.locked_until - t)
+        t = lim.locked_until + 1
+    assert pauses[1] > pauses[0]
+    assert max(pauses) <= LoginLimiter.MAX_LOCK_S <= 300
+
+
+def test_failure_storm_never_locks_a_correct_login_beyond_the_cap():
+    """A series of failures from many prefixes cannot block the judge longer than the cap."""
+    lim = LoginLimiter()
+    t = 1000.0
+    for _ in range(30):  # sustained storm from fresh prefixes
+        _fail_globally(lim, t, n=lim.GLOBAL_MAX_FAILURES * 3)
+        t += 1
+    last_failure = t - 1
+    assert lim.locked_until <= last_failure + LoginLimiter.MAX_LOCK_S
+    t = last_failure + LoginLimiter.MAX_LOCK_S
+    assert lim.reserve("192.0.2.77", now=t)
+    assert lim.settle("192.0.2.77", True, now=t)
+
+
+def test_strikes_decay_after_quiet_period():
+    lim = LoginLimiter(max_attempts=100)
+    t = 1000.0
+    for _ in range(6):
+        _fail_globally(lim, t)
+        t = lim.locked_until + 1
+    t += LoginLimiter.STRIKE_DECAY_S + 1
+    _fail_globally(lim, t)
+    assert lim.locked_until - t == LoginLimiter.BASE_LOCK_S
+
+
+def test_paused_settle_is_refused_and_not_counted():
+    lim = LoginLimiter()
+    assert lim.reserve("192.0.2.1", now=990.0)  # reserved before the pause began
+    _fail_globally(lim, 1000.0)
+    assert not lim.settle("192.0.2.1", True, now=1001.0)  # pause applies to the result too
+    assert lim.locked_until == 1000.0 + LoginLimiter.BASE_LOCK_S  # and nothing was added
+
+
+async def _slow_then_correct(app, slow, delay_s):
+    async def slow_body():
+        await asyncio.sleep(delay_s)
+        yield b"username=judge&password=nope"
+
+    async def one(peer, content, headers):
+        transport = httpx.ASGITransport(app=app, client=peer)
+        async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as c:
+            return (await c.post("/login", content=content, headers=headers)).status_code
+
+    form = {"content-type": "application/x-www-form-urlencoded"}
+    slow_tasks = [asyncio.create_task(one((f"198.51.100.{i + 1}", 1), slow_body(), form))
+                  for i in range(slow)]
+    await asyncio.sleep(0.05)  # every slow request is in flight now
+    correct = await one(("192.0.2.200", 1), f"username=judge&password={PASSWORD}", form)
+    return correct, await asyncio.gather(*slow_tasks)
+
+
+def test_slow_bodies_do_not_use_up_the_global_budget(app, monkeypatch):
+    monkeypatch.setattr("studio.app.LOGIN_BODY_TIMEOUT_S", 0.3)
+    correct, slow = asyncio.run(
+        _slow_then_correct(app, LoginLimiter.GLOBAL_MAX_FAILURES + 5, delay_s=2.0))
+    assert correct == 200
+    assert set(slow) == {408}  # timed out reading the body, not counted as global failures
+    assert app.state.limiter.locked_until == 0.0
 
 
 def test_table_flood_does_not_reset_blocked_prefix():
