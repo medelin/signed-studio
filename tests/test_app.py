@@ -259,3 +259,98 @@ def test_export_verifies_with_published_key_and_seq(app, client, tmp_path):
     pub = Ed25519PublicKey.from_public_bytes(bytes.fromhex(key["public_key"]))
     report = verify(path, pub, min_seq=manifest["seq"], approver_keys={})
     assert report.ok, report.errors
+
+
+def _approve_with(app, key, approver):
+    from studio import approvals as ap
+    from studio import db
+
+    conn, led = app.state.conn, app.state.ledger
+    led.append("run-k", agent="community", kind="model_call")
+    with db.transaction(conn):
+        p = ap.Pending.create("reply.post", "c-1", {"m": "hi"}, ledger=led, run_id="run-k")
+        p.save(conn)
+    approval = ap.Approval(pending_id=p.id, **p.fields(approver),
+                           signature=key.sign(p.message(approver)).hex())
+    with db.transaction(conn):
+        ap.verify_and_consume(conn, approval, {"m": "hi"}, ledger=led)
+
+
+def test_key_dies_with_session_on_logout(app, client):
+    from studio import approvals as ap
+
+    login(client)
+    key = Ed25519PrivateKey.generate()
+    approver = client.post("/api/keys", json={
+        "public_key": b64url(public_key_raw(key.public_key()))}).json()["approver"]
+    client.post("/logout")
+    with pytest.raises(ap.KeyInactive):
+        _approve_with(app, key, approver)
+
+
+def test_key_works_while_session_active(app, client):
+    login(client)
+    key = Ed25519PrivateKey.generate()
+    approver = client.post("/api/keys", json={
+        "public_key": b64url(public_key_raw(key.public_key()))}).json()["approver"]
+    _approve_with(app, key, approver)
+
+
+def test_keys_from_previous_process_are_inactive(tmp_path):
+    from studio import approvals as ap
+
+    first = create_app(settings(tmp_path))
+    with TestClient(first, base_url="https://testserver") as c:
+        login(c)
+        key = Ed25519PrivateKey.generate()
+        approver = c.post("/api/keys", json={
+            "public_key": b64url(public_key_raw(key.public_key()))}).json()["approver"]
+    second = create_app(settings(tmp_path))  # sessions live in process memory
+    with pytest.raises(ap.KeyInactive):
+        _approve_with(second, key, approver)
+
+
+def test_ipv6_addresses_in_one_64_share_the_limit(app):
+    codes = [asyncio.run(_burst(app, 1, peer=(f"2001:db8:0:1::{i:x}", 4000)))[0]
+             for i in range(1, 7)]
+    assert codes == [401] * 5 + [429]
+    other = asyncio.run(_burst(app, 1, peer=("2001:db8:0:2::1", 4000)))
+    assert other == [401]
+
+
+def test_global_counter_locks_across_addresses(app):
+    for i in range(LoginLimiter.GLOBAL_MAX_FAILURES):
+        assert asyncio.run(_burst(app, 1, peer=(f"198.51.100.{i + 1}", 1))) == [401]
+    locked = asyncio.run(_burst(app, 1, password=PASSWORD, peer=("192.0.2.200", 1)))
+    assert locked == [429]
+
+
+def test_global_backoff_grows():
+    lim = LoginLimiter(max_attempts=100)
+    t = 1000.0
+    for _ in range(lim.GLOBAL_MAX_FAILURES):
+        lim.failure(now=t)
+    first = lim.locked_until
+    assert first > t
+    t = first + 1
+    for _ in range(lim.GLOBAL_MAX_FAILURES):
+        lim.failure(now=t)
+    assert lim.locked_until - t > first - 1000.0  # second lockout is longer
+
+
+def test_table_flood_does_not_reset_blocked_prefix():
+    lim = LoginLimiter(max_attempts=5, window_s=900, max_clients=10)
+    for _ in range(5):
+        assert lim.reserve("203.0.113.1", now=1.0)
+    assert not lim.reserve("203.0.113.1", now=2.0)
+    for i in range(100):
+        lim.reserve(f"198.51.100.{i}", now=3.0)
+    assert not lim.reserve("203.0.113.1", now=4.0)
+
+
+def test_full_table_of_blocked_clients_fails_closed():
+    lim = LoginLimiter(max_attempts=1, window_s=900, max_clients=3)
+    for i in range(3):
+        assert lim.reserve(f"203.0.113.{i}", now=1.0)  # each now at its limit
+    assert not lim.reserve("192.0.2.1", now=2.0)
+    assert lim.reserve("192.0.2.1", now=1000.0)  # entries expired: room again

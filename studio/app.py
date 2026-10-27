@@ -74,35 +74,105 @@ def client_ip(request: Any, trusted_proxies: frozenset[str]) -> str:
     return str(peer)
 
 
+def limiter_key(ip: str) -> str:
+    """Bucket for an address: IPv4 /32, IPv6 /64 (one subscriber's prefix)."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped:
+        addr = addr.ipv4_mapped
+    if isinstance(addr, ipaddress.IPv6Address):
+        return str(ipaddress.IPv6Network((addr, 64), strict=False))
+    return str(addr)
+
+
 class LoginLimiter:
-    """At most ``max_attempts`` per client per window; bounded memory (LRU eviction)."""
+    """Per-prefix attempt limit plus a global failure counter for the judge account.
+
+    - ``reserve`` counts the attempt atomically (before the body is read) for the client's
+      prefix and for the global account budget (attempts in flight count too);
+    - ``GLOBAL_MAX_FAILURES`` failures from any addresses lock the account with
+      exponential backoff (``BASE_LOCK_S * 2**strikes``), independent of the address;
+    - under table pressure, expired then low-count unblocked entries are evicted; blocked
+      prefixes are never evicted, and when only blocked entries remain, new clients are
+      refused (fail closed).
+    """
+
+    GLOBAL_MAX_FAILURES = 20
+    BASE_LOCK_S = 60.0
+    MAX_STRIKES = 10
 
     def __init__(self, max_attempts: int = 5, window_s: float = 900, max_clients: int = 10_000):
         self.max_attempts = max_attempts
         self.window_s = window_s
         self.max_clients = max_clients
-        self._hits: OrderedDict[str, list[float]] = OrderedDict()
+        self._hits: dict[str, list[float]] = {}
+        self._failures: list[float] = []
+        self._in_flight = 0
+        self._strikes = 0
+        self.locked_until = 0.0
         self._lock = threading.Lock()
 
     def __len__(self) -> int:
         return len(self._hits)
 
-    def reserve(self, key: str, now: float | None = None) -> bool:
-        """Atomically count one attempt; False when the client is over the limit."""
+    def _recent(self, hits: list[float], t: float) -> list[float]:
+        return [h for h in hits if t - h < self.window_s]
+
+    def _make_room(self, t: float) -> bool:
+        for k in [k for k, v in self._hits.items() if not self._recent(v, t)]:
+            del self._hits[k]
+        if len(self._hits) < self.max_clients:
+            return True
+        unblocked = [(len(self._recent(v, t)), k) for k, v in self._hits.items()
+                     if len(self._recent(v, t)) < self.max_attempts]
+        if not unblocked:
+            return False
+        del self._hits[min(unblocked)[1]]
+        return True
+
+    def reserve(self, ip: str, now: float | None = None) -> bool:
+        """Atomically count one attempt; False (429) when over any limit."""
+        t = time.time() if now is None else now
+        key = limiter_key(ip)
+        with self._lock:
+            if t < self.locked_until:
+                return False
+            self._failures = self._recent(self._failures, t)
+            if len(self._failures) + self._in_flight >= self.GLOBAL_MAX_FAILURES:
+                return False
+            if key not in self._hits and not self._make_room(t):
+                return False
+            hits = self._recent(self._hits.get(key, []), t)
+            if len(hits) >= self.max_attempts:
+                self._hits[key] = hits
+                return False
+            hits.append(t)
+            self._hits[key] = hits
+            self._in_flight += 1
+            return True
+
+    def failure(self, now: float | None = None) -> None:
         t = time.time() if now is None else now
         with self._lock:
-            hits = [h for h in self._hits.pop(key, []) if t - h < self.window_s]
-            allowed = len(hits) < self.max_attempts
-            if allowed:
-                hits.append(t)
-            self._hits[key] = hits
-            while len(self._hits) > self.max_clients:
-                self._hits.popitem(last=False)
-            return allowed
+            self._in_flight = max(0, self._in_flight - 1)
+            self._failures = [*self._recent(self._failures, t), t]
+            if len(self._failures) >= self.GLOBAL_MAX_FAILURES:
+                self._strikes = min(self._strikes + 1, self.MAX_STRIKES)
+                self.locked_until = t + self.BASE_LOCK_S * 2 ** (self._strikes - 1)
+                self._failures = []
 
-    def clear(self, key: str) -> None:
+    def success(self, ip: str) -> None:
         with self._lock:
-            self._hits.pop(key, None)
+            self._in_flight = max(0, self._in_flight - 1)
+            self._hits.pop(limiter_key(ip), None)
+            self._failures = []
+            self._strikes = 0
+
+    def clear(self, ip: str) -> None:
+        with self._lock:
+            self._hits.pop(limiter_key(ip), None)
 
 
 # -- sessions ---------------------------------------------------------------------------
@@ -145,6 +215,10 @@ class Sessions:
             return None
         with self._lock:
             return sid if self._active.get(sid) == exp else None
+
+    @staticmethod
+    def expiry(value: str) -> int:
+        return int(value.split(".")[1])
 
     def revoke(self, value: str | None) -> None:
         if value and value.count(".") == 2:
@@ -236,6 +310,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     conn = db.connect(data_dir / "studio.db")
     db.init(conn)
     ledger = db.open_ledger(conn, data_dir / "ledger.key")
+    with db.transaction(conn):
+        Keys.revoke_all(conn)  # sessions live in process memory: earlier keys are dead
 
     app = FastAPI(title="Muse Studio Lite", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
@@ -304,12 +380,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ip = client_ip(request, settings.trusted_proxies)
         if not app.state.limiter.reserve(ip):  # reserved before the body is awaited
             return JSONResponse({"error": "too_many_attempts"}, 429)
-        username, password = await _read_credentials(request)
-        user_ok = hmac.compare_digest(username.encode(), JUDGE_USER.encode())
-        pass_ok = hmac.compare_digest(password.encode(), settings.judge_password.encode())
-        if not (user_ok and pass_ok):
+        ok = False
+        try:
+            username, password = await _read_credentials(request)
+            user_ok = hmac.compare_digest(username.encode(), JUDGE_USER.encode())
+            pass_ok = hmac.compare_digest(password.encode(), settings.judge_password.encode())
+            ok = user_ok and pass_ok
+        finally:
+            if ok:
+                app.state.limiter.success(ip)
+            else:
+                app.state.limiter.failure()
+        if not ok:
             return JSONResponse({"error": "invalid_credentials"}, 401)
-        app.state.limiter.clear(ip)
         response = JSONResponse({"ok": True})
         response.set_cookie(
             COOKIE, app.state.sessions.issue(), max_age=SESSION_TTL_S, httponly=True,
@@ -321,7 +404,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def logout(request: Request) -> Response:
         if not _same_origin(request):
             return JSONResponse({"error": "cross_origin"}, 403)
-        app.state.sessions.revoke(request.cookies.get(COOKIE))
+        cookie = request.cookies.get(COOKIE)
+        sid = app.state.sessions.check(cookie)
+        app.state.sessions.revoke(cookie)
+        if sid is not None:
+            with db.transaction(conn):
+                Keys.revoke_session(conn, sid)
         response = JSONResponse({"ok": True})
         response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax",
                                secure=_cookie_secure(request, settings))
@@ -345,12 +433,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         session_hash = hashlib.sha256(guard.encode()).hexdigest()
         with db.transaction(conn):
             count = conn.execute(
-                "SELECT count(*) FROM keys WHERE session_sha256 = ?", (session_hash,)
+                "SELECT count(*) FROM keys WHERE session_sha256 = ? AND revoked_ts IS NULL",
+                (session_hash,),
             ).fetchone()[0]
             if count >= MAX_KEYS_PER_SESSION:
                 return JSONResponse({"error": "too_many_keys"}, 429)
             try:
-                approver = Keys.register(conn, guard, raw)
+                approver = Keys.register(
+                    conn, guard, raw,
+                    expires_ts=Sessions.expiry(request.cookies.get(COOKIE, "")),
+                )
             except ValueError:
                 return JSONResponse({"error": "invalid_public_key"}, 400)
         return JSONResponse({"approver": approver})

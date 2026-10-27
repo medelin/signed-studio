@@ -322,3 +322,27 @@ def test_approver_signature_checked_even_with_ledger_key(env, tmp_path):
     registry = {env["approver"]: env["key"].public_key()}
     report = verify(path, env["ledger"].public_key, approver_keys=registry)
     assert any("bad approver signature" in e for e in report.errors)
+
+
+def test_expired_key_rejected(env):
+    env["conn"].execute("UPDATE keys SET expires_ts = ?", (int(time.time()) - 1,))
+    with pytest.raises(ap.KeyInactive) as exc:
+        consume(env, sign(env))
+    assert exc.value.code == "key_inactive"
+
+
+def test_revoked_session_key_rejected(env):
+    ap.Keys.revoke_session(env["conn"], "session-1")
+    with pytest.raises(ap.KeyInactive):
+        consume(env, sign(env))
+    # still published, so past approvals signed with it stay verifiable
+    assert env["approver"] in ap.Keys.registry(env["conn"])
+
+
+def test_key_expiry_follows_session(env):
+    exp = int(time.time()) + 60
+    pub = Ed25519PrivateKey.generate().public_key()
+    approver = ap.Keys.register(env["conn"], "session-2", raw(pub), expires_ts=exp)
+    row = env["conn"].execute("SELECT expires_ts FROM keys WHERE approver = ?",
+                              (approver,)).fetchone()
+    assert row == (exp,)

@@ -40,6 +40,7 @@ __all__ = [
     "Approval",
     "ApprovalError",
     "InvalidItemId",
+    "KeyInactive",
     "Keys",
     "Pending",
     "Verified",
@@ -54,13 +55,16 @@ ACTIONS = frozenset({"campaign.create", "campaign.activate", "reply.post", "comm
 SIGNED_FIELDS = APPROVAL_SIGNED_FIELDS
 TTL_S = 900
 SKEW_S = 60
+KEY_TTL_S = 8 * 3600  # an approver key lives no longer than the session that registered it
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS keys (
     approver TEXT PRIMARY KEY,
     public_key BLOB NOT NULL CHECK (length(public_key) = 32),
     session_sha256 TEXT NOT NULL,
-    created_ts INTEGER NOT NULL
+    created_ts INTEGER NOT NULL,
+    expires_ts INTEGER NOT NULL,
+    revoked_ts INTEGER
 );
 CREATE TABLE IF NOT EXISTS approvals (
     id TEXT PRIMARY KEY,
@@ -128,6 +132,10 @@ class UnknownKey(ApprovalError):
     code, status = "unknown_key", 403
 
 
+class KeyInactive(ApprovalError):
+    code, status = "key_inactive", 403
+
+
 class BadSignature(ApprovalError):
     code, status = "bad_signature", 403
 
@@ -164,25 +172,65 @@ def payload_sha256(payload: bytes | Mapping[str, Any]) -> str:
 
 
 class Keys:
-    """Approver public keys, one id per key (its fingerprint)."""
+    """Approver public keys, one id per key (its fingerprint), bound to a login session.
+
+    A key can sign approvals only while its session is active: logout revokes it and it
+    expires with the session. Revoked keys stay published (``registry``) so that approvals
+    signed earlier remain verifiable.
+    """
 
     @staticmethod
-    def register(conn: sqlite3.Connection, session_id: str, public_key: bytes) -> str:
+    def register(
+        conn: sqlite3.Connection,
+        session_id: str,
+        public_key: bytes,
+        *,
+        expires_ts: int | None = None,
+        now: float | None = None,
+    ) -> str:
         if len(public_key) != 32:
             raise ValueError("Ed25519 public key must be 32 raw bytes")
         pub = Ed25519PublicKey.from_public_bytes(public_key)
         approver = key_id(pub)
+        created = int(time.time() if now is None else now)
+        expires = int(expires_ts if expires_ts is not None else created + KEY_TTL_S)
         conn.execute(
-            "INSERT OR IGNORE INTO keys (approver, public_key, session_sha256, created_ts) "
-            "VALUES (?, ?, ?, ?)",
-            (approver, public_key, sha256_hex(session_id), int(time.time())),
+            "INSERT INTO keys (approver, public_key, session_sha256, created_ts, expires_ts) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT (approver) DO UPDATE SET "
+            "session_sha256 = excluded.session_sha256, expires_ts = excluded.expires_ts, "
+            "revoked_ts = NULL",
+            (approver, public_key, sha256_hex(session_id), created, expires),
         )
         return approver
+
+    @staticmethod
+    def revoke_session(
+        conn: sqlite3.Connection, session_id: str, now: float | None = None
+    ) -> int:
+        cur = conn.execute(
+            "UPDATE keys SET revoked_ts = ? WHERE session_sha256 = ? AND revoked_ts IS NULL",
+            (int(time.time() if now is None else now), sha256_hex(session_id)),
+        )
+        return cur.rowcount
+
+    @staticmethod
+    def revoke_all(conn: sqlite3.Connection, now: float | None = None) -> int:
+        cur = conn.execute("UPDATE keys SET revoked_ts = ? WHERE revoked_ts IS NULL",
+                           (int(time.time() if now is None else now),))
+        return cur.rowcount
 
     @staticmethod
     def get(conn: sqlite3.Connection, approver: str) -> Ed25519PublicKey | None:
         row = conn.execute("SELECT public_key FROM keys WHERE approver = ?", (approver,)).fetchone()
         return Ed25519PublicKey.from_public_bytes(row[0]) if row else None
+
+    @staticmethod
+    def is_active(conn: sqlite3.Connection, approver: str, now: float | None = None) -> bool:
+        row = conn.execute(
+            "SELECT expires_ts, revoked_ts FROM keys WHERE approver = ?", (approver,)
+        ).fetchone()
+        clock = time.time() if now is None else now
+        return bool(row) and row[1] is None and clock < row[0]
 
     @staticmethod
     def registry(conn: sqlite3.Connection) -> dict[str, Ed25519PublicKey]:
@@ -334,6 +382,8 @@ def verify_and_consume(
     key = Keys.get(conn, approval.approver)
     if key is None:
         raise UnknownKey("approver key is not registered")
+    if not Keys.is_active(conn, approval.approver, now=clock):
+        raise KeyInactive("approver key was revoked (logout) or its session expired")
     try:
         key.verify(bytes.fromhex(approval.signature), pending.message(approval.approver))
     except (InvalidSignature, ValueError) as exc:

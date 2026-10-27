@@ -23,7 +23,7 @@ byte-exact without carrying PII; readable content never enters a receipt, only i
 | `ledger_meta` | single row: `key_epoch`, `seq` | `key_epoch` = fingerprint of the ledger key (signed into each manifest); `seq` = durable ledger version, bumped in the same transaction as every receipt write; never decreases |
 | `approvals` | pending / approved human approvals | `content_sha256`, `chain_head`, `nonce` (unique), `ts`, then `approver`, `signature`, `decided_ts` |
 | `nonces` | consumed nonces | primary key = nonce; the insert is the atomic "exactly once" step |
-| `keys` | approver public keys | id = `ed25519:<fingerprint>`; session stored only as a SHA-256 |
+| `keys` | approver public keys | id = `ed25519:<fingerprint>`; session stored only as a SHA-256; `expires_ts` = session expiry, `revoked_ts` set on logout and on restart; inactive keys cannot sign new approvals but stay published so past approvals verify |
 | `briefs` | campaign briefs (text or voice transcript) | |
 | `creatives` | generated images per placement | file path + SHA-256 |
 | `campaigns` | campaigns created through the Meta adapter | `status` is `PAUSED` unless a second approval activates it |
