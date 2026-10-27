@@ -84,10 +84,10 @@ def choose_tier(text: str, requested: str, *, source: str = "operator") -> tuple
     """``(tier, reason, model_id)`` for a call carrying ``text``."""
     if requested not in ("standard", "contributor"):
         raise ValueError(f"unknown tier {requested!r}")
-    if requested == "standard":
-        return "standard", "standard tier requested", STANDARD_MODEL
     if source in CUSTOMER_SOURCES:
         return "standard", f"customer text ({source}): contributor never used", STANDARD_MODEL
+    if requested == "standard":
+        return "standard", "standard tier requested", STANDARD_MODEL
     match = contains_pii(text)
     if match:
         return "standard", f"pii detected ({match.kind}): contributor refused", STANDARD_MODEL

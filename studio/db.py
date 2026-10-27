@@ -137,7 +137,8 @@ _COLUMNS: dict[str, tuple[str, ...]] = {
     "campaigns": ("id", "run_id", "name", "objective", "status", "daily_budget_minor",
                   "adapter", "external_id", "created_ts"),
     "comments": ("id", "post_id", "author_name", "text", "created_ts", "status"),
-    "leads": ("id", "name", "email", "phone", "source", "message", "created_ts"),
+    "leads": ("id", "name", "email", "phone", "source", "message", "city", "country",
+              "company", "kind", "created_ts"),
     "tasks": ("id", "lead_id", "title", "due_ts", "done"),
 }
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -145,11 +146,51 @@ _PHONE = re.compile(r"\+?\d[\d \-()]{7,}\d")
 _SAFE_PHONE = re.compile(r"\+48 000 000 \d{3}")
 
 
+# Columns added after day 2 (``ALTER TABLE … ADD COLUMN`` on databases created earlier).
+MIGRATIONS: dict[str, dict[str, str]] = {
+    "comments": {
+        "source": "TEXT NOT NULL DEFAULT 'seed'",
+        "external_id": "TEXT NOT NULL DEFAULT ''",
+        "sentiment": "TEXT NOT NULL DEFAULT ''",
+        "risk": "TEXT NOT NULL DEFAULT ''",
+        "requires_human": "INTEGER NOT NULL DEFAULT 0",
+        "reason": "TEXT NOT NULL DEFAULT ''",
+        "confidence": "REAL NOT NULL DEFAULT 0",
+        "flags": "TEXT NOT NULL DEFAULT '[]'",
+        "run_id": "TEXT NOT NULL DEFAULT ''",
+        "pending_id": "TEXT NOT NULL DEFAULT ''",
+        "lead_id": "TEXT NOT NULL DEFAULT ''",
+    },
+    "leads": {
+        "city": "TEXT NOT NULL DEFAULT ''",
+        "country": "TEXT NOT NULL DEFAULT ''",
+        "company": "TEXT NOT NULL DEFAULT ''",
+        "kind": "TEXT NOT NULL DEFAULT ''",
+        "persona": "TEXT NOT NULL DEFAULT ''",
+        "owner": "TEXT NOT NULL DEFAULT ''",
+        "reasons": "TEXT NOT NULL DEFAULT '[]'",
+        "next_action": "TEXT NOT NULL DEFAULT ''",
+        "comment_id": "TEXT NOT NULL DEFAULT ''",
+        "run_id": "TEXT NOT NULL DEFAULT ''",
+    },
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in MIGRATIONS.items():
+        have = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, ddl in columns.items():
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 def init(conn: sqlite3.Connection) -> None:
-    """Create every table (idempotent)."""
+    """Create every table (idempotent) and add columns introduced later."""
     conn.executescript(store.SCHEMA)
     approvals.ensure_schema(conn)
     conn.executescript(DEMO_SCHEMA)
+    with transaction(conn):
+        _migrate(conn)
 
 
 def _strings(value: Any) -> list[str]:

@@ -24,6 +24,7 @@ from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from studio import db
@@ -86,6 +87,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if app.state.open_weights is None:
             app.state.open_weights = OpenWeightsClient.from_settings(settings, ledger)
         return app.state.muse, app.state.open_weights
+
+    app.state.clients = clients
+    # action -> executor(verified, payload) -> result dict; runs after the approval commits
+    app.state.executors = {}
 
     def worker(run_id: str, brief: str) -> None:
         try:
@@ -261,10 +266,23 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": exc.code}, exc.status)
         receipt = next(r for r in reversed(ledger.receipts(verified.run_id))
                        if r.kind == "approval" and r.details.get("pending_id") == approval_id)
-        return JSONResponse({"ok": True, "approval_id": verified.pending_id,
-                             "content_sha256": verified.content_sha256,
-                             "signature": verified.signature, "approver": verified.approver,
-                             "receipt_id": receipt.id, "receipt_hash": receipt.hash})
+        out: dict[str, Any] = {"ok": True, "approval_id": verified.pending_id,
+                               "action": verified.action,
+                               "content_sha256": verified.content_sha256,
+                               "signature": verified.signature, "approver": verified.approver,
+                               "receipt_id": receipt.id, "receipt_hash": receipt.hash,
+                               "executed": False}
+        executor = app.state.executors.get(verified.action)
+        if executor is not None:
+            # Only after the approval (nonce + receipt) committed; outside the write lock.
+            try:
+                result = await run_in_threadpool(executor, verified, json.loads(row[0]))
+                out.update(executed=True, result=result)
+            except Exception as exc:  # noqa: BLE001 - reported, the approval stays consumed
+                LOG.warning("executor %s failed: %s", verified.action, type(exc).__name__)
+                out.update(executed=False, execution_error=getattr(exc, "code", "")
+                           or type(exc).__name__)
+        return JSONResponse(out)
 
 
 class _NoPayload(Exception):

@@ -1,0 +1,112 @@
+"""Inbox routes (D3-2): read-only view, simulate, triage (draft only), signed reply."""
+
+import base64
+import json
+
+import httpx
+import pytest
+from fastapi.testclient import TestClient
+
+from studio.app import create_app
+from studio.muse.client import MuseClient
+from studio.settings import Budget
+from tests.cassettes import FAKE_KEY
+from tests.test_ui_studio import login, register, settings
+
+TRIAGE = {"intent": "price", "sentiment": "neutral", "risk": "low", "requires_human": False,
+          "draft": "A mug is 89 PLN; delivery is free above 150 PLN.",
+          "reason": "asks for the price", "confidence": 0.9}
+
+
+def _fake_transport(content):
+    sent = []
+
+    def handler(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "id": "c1", "model": "muse-spark-1.3",
+            "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(content)}}],
+            "usage": {"prompt_tokens": 400, "completion_tokens": 60}})
+
+    return httpx.MockTransport(handler), sent
+
+
+@pytest.fixture
+def app(tmp_path):
+    a = create_app(settings(tmp_path))
+    tr, sent = _fake_transport(TRIAGE)
+    a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0),
+                              transport=tr)
+    a.state.sent = sent
+    return a
+
+
+def client(app):
+    return TestClient(app, base_url="https://testserver")
+
+
+def test_inbox_is_public_and_redacts_contact_data(app):
+    with client(app) as c:
+        r = c.get("/inbox")
+        assert r.status_code == 200
+        assert "ignore previous instructions" in r.text  # seeded demo comment
+        assert "visitor.b@example.com" not in r.text and "[email]" in r.text
+        assert 'src="/static/inbox.js"' in r.text
+        data = c.get("/api/comments").json()["comments"]
+        assert {x["id"] for x in data} >= {"c-1", "c-2", "c-5"}
+        assert all(x["actions"] == ["draft", "reply.post", "comment.hide"] for x in data)
+
+
+def test_writes_need_a_session(app):
+    with client(app) as c:
+        assert c.post("/api/comments/simulate", json={"text": "hi"}).status_code == 401
+        assert c.post("/api/comments/c-1/triage").status_code == 401
+        assert c.post("/api/comments/c-1/reply", json={"message": "x"}).status_code == 401
+
+
+def test_triage_stores_a_draft_and_sends_nothing(app):
+    with client(app) as c:
+        login(c)
+        r = c.post("/api/comments/c-1/triage")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert "injection_suspected" in body["flags"]
+        assert body["actions"] == ["draft", "reply.post", "comment.hide"]
+        assert c.get("/api/comments").json()["comments"]
+    kinds = [x.kind for x in app.state.ledger.receipts()]
+    assert kinds == ["model_call", "tool_call"]
+    assert app.state.ledger.receipts()[0].envelope
+    assert app.state.conn.execute("SELECT count(*) FROM approvals").fetchone()[0] == 0
+
+
+def test_reply_is_signed_over_the_exact_edited_text(app):
+    with client(app) as c:
+        login(c)
+        key, approver = register(c)
+        c.post("/api/comments/c-1/triage")
+        edited = "Kubek kosztuje 89 PLN, dostawa gratis od 150 PLN."
+        r = c.post("/api/comments/c-1/reply", json={"message": edited})
+        assert r.status_code == 201
+        approval_id = r.json()["approval_id"]
+        p = c.get(f"/api/approvals/{approval_id}/payload?approver={approver}").json()
+        assert p["content"]["message"] == edited and p["fields"]["action"] == "reply.post"
+        sig = key.sign(base64.b64decode(p["message_b64"])).hex()
+        r = c.post(f"/api/approvals/{approval_id}", json={"approver": approver,
+                                                          "signature": sig})
+        assert r.status_code == 200 and r.json()["action"] == "reply.post"
+        again = c.post(f"/api/approvals/{approval_id}", json={"approver": approver,
+                                                              "signature": sig})
+        assert again.status_code == 409
+
+
+def test_simulate_adds_a_comment_and_bad_replies_are_refused(app):
+    with client(app) as c:
+        login(c)
+        r = c.post("/api/comments/simulate", json={"text": "Czy wysyłacie do Gdańska?"})
+        assert r.status_code == 201
+        cid = r.json()["comment_id"]
+        assert c.post("/api/comments/simulate", json={"text": ""}).status_code == 400
+        assert c.post(f"/api/comments/{cid}/reply", json={"message": ""}).status_code == 400
+        assert c.post(f"/api/comments/{cid}/reply",
+                      json={"message": "x" * 601}).status_code == 400
+        assert c.post("/api/comments/nope/reply", json={"message": "x"}).status_code == 400

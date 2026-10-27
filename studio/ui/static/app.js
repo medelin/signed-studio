@@ -1,15 +1,12 @@
 // Muse Studio Lite — studio page: run a brief, follow receipts live, sign the approval.
-// The approver key is a WebCrypto Ed25519 key pair generated per session with
-// extractable=false: the private key never leaves the browser. Only the public key is
-// sent (POST /api/keys). All model output is rendered with textContent, never as HTML.
+// Keys and signing live in signer.js (non-extractable WebCrypto Ed25519). All model
+// output is rendered with textContent, never as HTML.
 "use strict";
 
 const $ = (id) => document.getElementById(id);
 const root = $("studio");
 let loggedIn = root.dataset.loggedIn === "yes";
 const readOnly = root.dataset.readOnly === "yes";
-let approverId = null;
-let keyPair = null;
 let source = null;
 let totalCost = 0;
 let shownPending = null;
@@ -27,74 +24,7 @@ function status(id, text, isError) {
   node.classList.toggle("error", Boolean(isError));
 }
 
-function b64url(bytes) {
-  let s = "";
-  for (const b of new Uint8Array(bytes)) s += String.fromCharCode(b);
-  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function hex(bytes) {
-  return Array.from(new Uint8Array(bytes), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-async function postJSON(url, body) {
-  const r = await fetch(url, {
-    method: "POST", credentials: "same-origin",
-    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
-  let data = {};
-  try { data = await r.json(); } catch (_) { /* empty body */ }
-  return { ok: r.ok, status: r.status, data };
-}
-
-// -- approver key ---------------------------------------------------------------------
-
-async function newKey() {
-  return crypto.subtle.generateKey({ name: "Ed25519" }, false, ["sign", "verify"]);
-}
-
-// The CryptoKey pair is stored in IndexedDB as an opaque, non-extractable object, so a
-// reload in the same session keeps the same registered key. Storage may be unavailable
-// (private windows): then the key lives for this page only.
-function idb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("muse-studio-approver", 1);
-    req.onupgradeneeded = () => req.result.createObjectStore("keys");
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function idbKey(action, value) {
-  try {
-    const db = await idb();
-    return await new Promise((resolve, reject) => {
-      const tx = db.transaction("keys", action === "get" ? "readonly" : "readwrite");
-      const store = tx.objectStore("keys");
-      const req = action === "get" ? store.get("approver")
-        : action === "put" ? store.put(value, "approver") : store.delete("approver");
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (_) {
-    return undefined;
-  }
-}
-
-async function registerKey() {
-  if (!loggedIn) return null;
-  if (!window.crypto || !crypto.subtle) throw new Error("WebCrypto is not available");
-  if (!keyPair) keyPair = (await idbKey("get")) || null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (!keyPair) { keyPair = await newKey(); await idbKey("put", keyPair); }
-    const raw = await crypto.subtle.exportKey("raw", keyPair.publicKey);  // public half only
-    const r = await postJSON("/api/keys", { public_key: b64url(raw) });
-    if (r.ok) { approverId = r.data.approver; return approverId; }
-    if (r.status === 409) { keyPair = null; await idbKey("delete"); continue; }  // new pair
-    throw new Error("key registration failed (" + (r.data.error || r.status) + ")");
-  }
-  throw new Error("key registration failed");
-}
+const postJSON = Signer.postJSON;
 
 // -- login ----------------------------------------------------------------------------
 
@@ -103,15 +33,13 @@ if (loginForm) {
   loginForm.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     status("login-status", "Signing in…");
-    const r = await postJSON("/login", {
-      username: $("login-user").value, password: $("login-pass").value,
-    });
+    const r = await Signer.login($("login-user").value, $("login-pass").value);
     if (!r.ok) { status("login-status", "Sign-in failed (" + (r.data.error || r.status) + ")", true); return; }
     loggedIn = true;
-    try { await registerKey(); } catch (e) { status("login-status", e.message, true); return; }
+    try { await Signer.registerKey(); } catch (e) { status("login-status", e.message, true); return; }
     $("login-panel").hidden = true;
     if (!readOnly) $("run-button").disabled = false;
-    status("run-status", "Signed in. Your approver key is " + approverId + ".");
+    status("run-status", "Signed in. Your approver key is " + Signer.approver() + ".");
     $("brief").focus();
   });
 }
@@ -240,15 +168,12 @@ async function showApproval(pendingId) {
   $("approve-h").focus();
   if (!loggedIn) { status("approve-status", "Sign in to approve this run.", true); $("approve-button").disabled = true; return; }
   try {
-    if (!approverId) await registerKey();
-    const r = await fetch("/api/approvals/" + encodeURIComponent(pendingId) + "/payload?approver=" + encodeURIComponent(approverId), { credentials: "same-origin" });
-    const data = await r.json();
-    if (!r.ok) throw new Error("cannot load the approval (" + (data.error || r.status) + ")");
+    const data = await Signer.loadPayload(pendingId);
     currentPayload = data;
     $("ap-action").textContent = data.fields.action + " (item " + data.fields.item_id + ")";
     $("ap-sha").textContent = data.content_sha256;
     $("ap-head").textContent = data.chain_head;
-    $("ap-key").textContent = approverId;
+    $("ap-key").textContent = Signer.approver();
     $("ap-exp").textContent = new Date(data.expires_ts * 1000).toLocaleTimeString();
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);
     $("ap-message").textContent = atob(data.message_b64);
@@ -260,16 +185,13 @@ async function showApproval(pendingId) {
 }
 
 $("approve-button").addEventListener("click", async () => {
-  if (!currentPayload || !keyPair) return;
+  if (!currentPayload) return;
   const btn = $("approve-button");
   btn.disabled = true;
   status("approve-status", "Signing in the browser…");
   try {
-    const bytes = Uint8Array.from(atob(currentPayload.message_b64), (c) => c.charCodeAt(0));
-    const sig = await crypto.subtle.sign({ name: "Ed25519" }, keyPair.privateKey, bytes);
-    const r = await postJSON("/api/approvals/" + encodeURIComponent(currentPayload.approval_id),
-                             { approver: approverId, signature: hex(sig) });
-    if (!r.ok) throw new Error("approval refused: " + (r.data.error || r.status));
+    const data = await Signer.sign(currentPayload);
+    const r = { data };
     $("signature").hidden = false;
     $("sig-value").textContent = r.data.signature;
     $("sig-receipt").textContent = r.data.receipt_id + " · " + r.data.receipt_hash.slice(0, 16);
@@ -324,7 +246,7 @@ $("open-form").addEventListener("submit", (ev) => {
 
 (async () => {
   if (loggedIn) {
-    try { await registerKey(); status("run-status", "Your approver key is " + approverId + "."); }
+    try { await Signer.registerKey(); status("run-status", "Your approver key is " + Signer.approver() + "."); }
     catch (e) { status("run-status", e.message, true); }
   }
   const run = new URLSearchParams(location.search).get("run");

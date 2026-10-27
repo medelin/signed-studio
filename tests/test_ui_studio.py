@@ -103,7 +103,8 @@ def test_studio_page_renders_accessible_form(app):
 def test_app_js_signs_with_non_extractable_ed25519_and_no_inner_html():
     from studio.app import UI
 
-    js = (UI / "static" / "app.js").read_text()
+    js = (UI / "static" / "signer.js").read_text()
+    assert "innerHTML" not in (UI / "static" / "app.js").read_text()
     assert 'generateKey({ name: "Ed25519" }, false, ["sign", "verify"])' in js
     assert '"/api/keys"' in js and "/payload?approver=" in js
     assert "crypto.subtle.sign" in js

@@ -48,3 +48,9 @@ button:disabled { background: #8e8e93; cursor: not-allowed; }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #f5f5f7; padding: .5rem; border-radius: .4rem; font-size: .8rem; }
 .wrap { overflow-wrap: anywhere; }
+.small { font-size: 1rem; margin: 0 0 .25rem; }
+blockquote { margin: .25rem 0 .5rem; padding: .25rem .75rem; border-left: 3px solid var(--line); overflow-wrap: anywhere; }
+.badge { background: #eef3fb; display: inline-block; margin: 0 .25rem .25rem 0; }
+.risk-high { background: #fdecea; color: #a1260d; }
+.risk-medium { background: #fff1e5; color: #8a3b00; }
+button.secondary { background: #57575c; }
