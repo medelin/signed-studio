@@ -370,7 +370,7 @@ class Verified:
 
     def write_details(self) -> dict[str, str]:
         """``details`` for the ``external_write`` receipt this approval authorises."""
-        return {"approval_id": self.pending_id, "action": self.action}
+        return {"approval_id": self.pending_id, "action": self.action, "item_id": self.item_id}
 
 
 def verify_and_consume(

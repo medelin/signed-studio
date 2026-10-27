@@ -377,6 +377,8 @@ def test_genesis_bound_pending_refused_once_the_run_has_receipts(env):
 
 def test_verified_write_details_pass_verify(env, tmp_path):
     ok = consume(env, sign(env))
+    assert ok.write_details() == {"approval_id": ok.pending_id, "action": "reply.post",
+                                  "item_id": "c-1"}
     env["ledger"].append("run-1", agent="media_buyer", kind="external_write",
                          output_sha256=ok.content_sha256, details=ok.write_details())
     path = tmp_path / "r.jsonl"

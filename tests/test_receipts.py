@@ -23,9 +23,9 @@ CONTENT = sha256_hex(b"reply text")
 
 
 def approve(led, run="run-1", content=CONTENT, action="reply.post", ts=None, nonce=None,
-            signer=APPROVER, signed=True):
+            signer=APPROVER, signed=True, item_id="c-1"):
     """Append an approval receipt as the server would after verify_and_consume."""
-    fields = {"action": action, "item_id": "c-1", "content_sha256": content,
+    fields = {"action": action, "item_id": item_id, "content_sha256": content,
               "chain_head": led.chain_head(run), "approver": AID,
               "nonce": nonce or "n_" + uuid.uuid4().hex,
               "ts": int(time.time() if ts is None else ts)}
@@ -36,9 +36,9 @@ def approve(led, run="run-1", content=CONTENT, action="reply.post", ts=None, non
     return pending_id
 
 
-def write(led, approval_id, run="run-1", content=CONTENT, action="reply.post"):
+def write(led, approval_id, run="run-1", content=CONTENT, action="reply.post", item_id="c-1"):
     led.append(run, agent="media_buyer", kind="external_write", output_sha256=content,
-               details={"approval_id": approval_id, "action": action})
+               details={"approval_id": approval_id, "action": action, "item_id": item_id})
 
 
 def check(led, tmp_path, keys=REGISTRY):
@@ -352,3 +352,19 @@ def test_verify_survives_odd_lines(tmp_path, line):
     path = tmp_path / "r.jsonl"
     path.write_text(led.export_jsonl() + line + "\n")
     assert not verify(path, led.public_key).ok
+
+
+def test_write_for_another_item_with_same_content_rejected(tmp_path):
+    """An approval for item A cannot justify a write to item B, even with identical content."""
+    led = Ledger()
+    write(led, approve(led, item_id="c-A"), item_id="c-B")
+    errors = check(led, tmp_path).errors
+    assert len(errors) == 1 and "item" in errors[0]
+
+
+def test_write_without_item_id_rejected(tmp_path):
+    led = Ledger()
+    aid = approve(led)
+    led.append("run-1", agent="media_buyer", kind="external_write", output_sha256=CONTENT,
+               details={"approval_id": aid, "action": "reply.post"})
+    assert "item" in " ".join(check(led, tmp_path).errors)

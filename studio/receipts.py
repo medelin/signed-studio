@@ -335,9 +335,11 @@ def _type_error(r: Receipt) -> str | None:
 
 @dataclass(frozen=True)
 class _Grant:
-    """What one valid approval authorises: one write of this action and content, in time."""
+    """What one valid approval authorises: one write of this action, to this item, with
+    this content, in time."""
 
     action: str
+    item_id: str
     content_sha256: str
     ts: int
 
@@ -373,7 +375,7 @@ def _check_approval(
         errors.append(f"{receipt.id}: approval chain_head is not an earlier receipt of this run")
     if errors:
         return errors, None
-    return [], _Grant(d["action"], d["content_sha256"], d["ts"])
+    return [], _Grant(d["action"], d["item_id"], d["content_sha256"], d["ts"])
 
 
 def _check_write(
@@ -396,6 +398,9 @@ def _check_write(
     if receipt.details.get("action") != grant.action:
         errors.append(f"{receipt.id}: write action does not match the approved action "
                       f"{grant.action!r}")
+    if receipt.details.get("item_id") != grant.item_id:
+        errors.append(f"{receipt.id}: write item does not match the approved item "
+                      f"{grant.item_id!r}")
     if receipt.ts - grant.ts > APPROVAL_TTL_S:
         errors.append(f"{receipt.id}: approval expired before the write "
                       f"(older than {APPROVAL_TTL_S} s)")
@@ -417,7 +422,8 @@ def verify(
     given, every approval must carry a valid approver signature over its fields.
 
     Every ``external_write`` must name (``details.approval_id``) a valid approval of the
-    same run that no earlier write used, for the same content and ``details.action``, and
+    same run that no earlier write used, for the same content, ``details.action`` and
+    ``details.item_id``, and
     happen within ``APPROVAL_TTL_S`` of the approval's signed ``ts``. A nonce may appear
     in only one approval of the whole log.
     """
