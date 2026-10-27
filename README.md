@@ -30,8 +30,23 @@ run my own real ads during the hackathon, and improving it as I go.
 
 ```bash
 make install
-make test
+make test        # offline: model calls replay recorded cassettes
+make lint        # ruff + mypy
 ```
+
+## Verify a receipt log
+
+```bash
+curl -sO https://<studio-host>/api/receipts.jsonl
+studio verify receipts.jsonl --server https://<studio-host>
+# offline: studio verify receipts.jsonl --key-file var/ledger.pub \
+#          --approver-keys approvers.json --min-seq <seq from /api/ledger-manifest>
+```
+
+`--server` fetches the published ledger key, the latest manifest `seq` (so an older,
+rolled-back export fails) and the approver public keys (so every approval signature is
+checked). `make smoke-live` makes one real Model API call with the key from `.env` and
+prints usage only.
 
 ## License
 

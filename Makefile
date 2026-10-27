@@ -18,7 +18,7 @@ demo-replay:
 	STUDIO_REPLAY=1 META_ADAPTER=mock $(PY) -m uvicorn studio.app:app --port 8000
 
 verify:
-	$(PY) -m studio.cli verify $(or $(FILE),receipts.jsonl)
+	$(PY) -m studio.cli verify $(or $(FILE),receipts.jsonl) $(ARGS)
 
 smoke-live:
 	$(PY) -m studio.cli smoke-live
