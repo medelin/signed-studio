@@ -115,7 +115,7 @@ def _analyst(client: MuseClient, rec: rec2.Recorder, key: str) -> None:
     export = client.ledger.export_jsonl()  # the recording ledger: real receipts, redacted
     (ROOT / "fixtures" / "replay").mkdir(exist_ok=True)
     (ROOT / "fixtures" / "replay" / "analyst-ledger.jsonl").write_text(export)
-    insights = json.loads((ROOT / "fixtures/seed/insights.SYNTHETIC.json").read_text())
+    insights = json.loads((ROOT / "fixtures/meta/insights.SYNTHETIC.json").read_text())
     shot = (ROOT / "fixtures/images/insights-chart.SYNTHETIC.png").read_bytes()
     summary = {"comment_intents": {"price": 2, "lead": 1, "complaint": 1, "spam": 1},
                "lead_temps": {"HOT": 1, "WARM": 1, "COLD": 1}, "campaigns": {"PAUSED": 1}}

@@ -30,7 +30,7 @@ from studio.receipts import Ledger
 from studio.routes_inbox import public_view
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
-INSIGHTS_FIXTURE = (Path(__file__).resolve().parent.parent / "fixtures" / "seed"
+INSIGHTS_FIXTURE = (Path(__file__).resolve().parent.parent / "fixtures" / "meta"
                     / "insights.SYNTHETIC.json")
 MAX_SCREENSHOT = 5 * 1024 * 1024
 Guard = Callable[[Request], "JSONResponse | str"]

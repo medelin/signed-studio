@@ -13,7 +13,7 @@ from studio.receipts import Ledger
 from studio.settings import Budget
 from tests.cassettes import FAKE_KEY, ROOT, load, mount
 
-INSIGHTS = json.loads((ROOT / "fixtures/seed/insights.SYNTHETIC.json").read_text())
+INSIGHTS = json.loads((ROOT / "fixtures/meta/insights.SYNTHETIC.json").read_text())
 SHOT = (ROOT / "fixtures/images/insights-chart.SYNTHETIC.png").read_bytes()
 CASSETTE = load("analyst_report")
 EXPORT = (ROOT / CASSETTE["ledger"]).read_text()

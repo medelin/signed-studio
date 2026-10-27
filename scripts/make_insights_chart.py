@@ -2,7 +2,7 @@
 
     .venv/bin/python scripts/make_insights_chart.py
 
-It is a plain bar chart of the synthetic insights (fixtures/seed/insights.SYNTHETIC.json),
+It is a plain bar chart of the synthetic insights (fixtures/meta/insights.SYNTHETIC.json),
 labelled SYNTHETIC: not a screenshot of Meta's product, not real ad data.
 """
 
@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
-    data = json.loads((ROOT / "fixtures/seed/insights.SYNTHETIC.json").read_text())["data"]
+    data = json.loads((ROOT / "fixtures/meta/insights.SYNTHETIC.json").read_text())["data"]
     w, h = 900, 520
     im = Image.new("RGB", (w, h), "white")
     d = ImageDraw.Draw(im)
