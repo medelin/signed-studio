@@ -19,6 +19,9 @@ from pathlib import Path
 
 MIN_SECRET_LEN = 32
 MIN_SECRET_DISTINCT = 12
+MIN_JUDGE_PASSWORD_LEN = 20
+MIN_JUDGE_PASSWORD_CLASSES = 3  # of: lower case, upper case, digits, other
+MIN_JUDGE_PASSWORD_DISTINCT = 10
 ADAPTERS = frozenset({"mock", "graph"})
 _TRUE = frozenset({"1", "true", "yes", "on"})
 _FALSE = frozenset({"", "0", "false", "no", "off"})
@@ -75,6 +78,14 @@ def _secret_is_weak(secret: str, judge_password: str) -> bool:
     return bool(judge_password) and judge_password in secret
 
 
+def _password_is_weak(password: str) -> bool:
+    """The login lock is short by design (availability), so the password carries the load."""
+    classes = sum(any(test(c) for c in password) for test in (
+        str.islower, str.isupper, str.isdigit, lambda c: not c.isalnum()))
+    return (len(password) < MIN_JUDGE_PASSWORD_LEN or classes < MIN_JUDGE_PASSWORD_CLASSES
+            or len(set(password)) < MIN_JUDGE_PASSWORD_DISTINCT)
+
+
 @dataclass(frozen=True)
 class Settings:
     model_api_key: str = field(default="", repr=False)
@@ -123,6 +134,12 @@ class Settings:
                     "unrelated to JUDGE_PASSWORD (required when JUDGE_PASSWORD is set)"
                 )
             session_secret = secret.encode()
+            if judge_password and _password_is_weak(judge_password):
+                raise ConfigError(
+                    f"JUDGE_PASSWORD must be >= {MIN_JUDGE_PASSWORD_LEN} characters from >= "
+                    f"{MIN_JUDGE_PASSWORD_CLASSES} classes (lower, upper, digits, symbols); "
+                    'generate one: python -c "import secrets;print(secrets.token_urlsafe(24))"'
+                )
         else:
             session_secret = secrets.token_bytes(32)  # process-random: sessions die on restart
 

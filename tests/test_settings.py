@@ -13,6 +13,7 @@ from studio.settings import (
 )
 
 STRONG = "q7Vh2kLm9Xp4Rt8Wz1Nc6Bf3Jd5Gs0Ya"  # 34 chars, synthetic test value
+JUDGE = "Tq4-wP9z_Lm2-Xc7_Rb5Hn"  # 22 chars, 4 classes, synthetic test value
 
 
 def test_defaults_load_without_secrets():
@@ -43,7 +44,7 @@ def test_session_secret_must_not_contain_judge_password():
 
 
 def test_strong_secret_accepted_with_judge_login():
-    s = Settings.load({"JUDGE_PASSWORD": "pw-for-tests", "SESSION_SECRET": STRONG})
+    s = Settings.load({"JUDGE_PASSWORD": JUDGE, "SESSION_SECRET": STRONG})
     assert s.judge_login_enabled
     assert s.session_secret == STRONG.encode()
 
@@ -55,10 +56,10 @@ def test_weak_secret_refused_even_without_judge_login():
 
 def test_secrets_not_in_repr():
     s = Settings.load(
-        {"JUDGE_PASSWORD": "pw-for-tests", "SESSION_SECRET": STRONG, "MODEL_API_KEY": "mk-test"}
+        {"JUDGE_PASSWORD": JUDGE, "SESSION_SECRET": STRONG, "MODEL_API_KEY": "mk-test"}
     )
     text = repr(s)
-    assert STRONG not in text and "pw-for-tests" not in text and "mk-test" not in text
+    assert STRONG not in text and JUDGE not in text and "mk-test" not in text
 
 
 @pytest.mark.parametrize("value", ["maybe", "2", "on-ish"])
@@ -158,3 +159,38 @@ def test_budget_record_counts_incurred_cost_even_over_cap():
         b.check()
     with pytest.raises(ValueError):
         b.record(float("nan"))
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        "pw-for-tests",                 # too short
+        "correct horse battery staple",  # long but only lower case + spaces (2 classes)
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaa",  # one class repeated
+        "Aa1Aa1Aa1Aa1Aa1Aa1Aa1Aa1",      # 3 classes but almost no distinct characters
+        "abcdefghijklmnopqrstuvwxyz",    # one class
+    ],
+)
+def test_weak_judge_password_refused_at_startup(password):
+    with pytest.raises(ConfigError, match="JUDGE_PASSWORD"):
+        Settings.load({"JUDGE_PASSWORD": password, "SESSION_SECRET": STRONG})
+
+
+def test_generated_judge_password_accepted():
+    import secrets
+
+    for _ in range(50):  # the documented generator always passes
+        pw = secrets.token_urlsafe(24)
+        try:
+            Settings.load({"JUDGE_PASSWORD": pw, "SESSION_SECRET": STRONG})
+        except ConfigError:
+            # token_urlsafe can, very rarely, miss a class; it must then be the class rule
+            assert sum(any(f(c) for c in pw) for f in (str.islower, str.isupper,
+                                                        str.isdigit)) < 3
+
+
+def test_env_example_documents_password_generation():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / ".env.example").read_text()
+    assert "secrets.token_urlsafe(24)" in text

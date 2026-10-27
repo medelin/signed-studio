@@ -23,6 +23,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import logging
 import secrets
 import threading
 import time
@@ -43,6 +44,7 @@ from studio.receipts import public_key_raw
 from studio.settings import ReadOnlyMode, Settings
 
 UI = Path(__file__).resolve().parent / "ui"
+LOG = logging.getLogger("studio.login")
 COOKIE = "studio_session"
 SESSION_TTL_S = 8 * 3600
 MAX_BODY = 64 * 1024
@@ -115,6 +117,7 @@ class LoginLimiter:
     BASE_LOCK_S = 5.0
     MAX_LOCK_S = 60.0
     STRIKE_DECAY_S = 900.0
+    DAILY_WARN_FAILURES = 500  # failures per 24 h before a loud warning (never a lock)
 
     def __init__(self, max_attempts: int = 5, window_s: float = 900, max_clients: int = 10_000):
         self.max_attempts = max_attempts
@@ -125,7 +128,20 @@ class LoginLimiter:
         self._strikes = 0
         self._last_pause = 0.0
         self.locked_until = 0.0
+        self._hourly: dict[int, int] = {}  # failures per hour bucket, last 24 h
+        self._warned = False
         self._lock = threading.Lock()
+
+    def _daily(self, t: float) -> int:
+        hour = int(t // 3600)
+        for h in [h for h in self._hourly if hour - h >= 24]:
+            del self._hourly[h]
+        return sum(self._hourly.values())
+
+    def failures_24h(self, now: float | None = None) -> int:
+        """Failed logins in the last ~24 h (hour buckets): a metric, not a limit."""
+        with self._lock:
+            return self._daily(time.time() if now is None else now)
 
     def __len__(self) -> int:
         return len(self._hits)
@@ -173,6 +189,16 @@ class LoginLimiter:
                 return True
             self._failures = [f for f in self._failures if t - f < self.GLOBAL_WINDOW_S]
             self._failures.append(t)
+            hour = int(t // 3600)
+            self._hourly[hour] = self._hourly.get(hour, 0) + 1
+            daily = self._daily(t)
+            if daily > self.DAILY_WARN_FAILURES and not self._warned:
+                self._warned = True
+                LOG.warning("LOGIN ATTACK? %d failed judge logins in 24 h (threshold %d); "
+                            "no lock applied, check the password strength and the logs",
+                            daily, self.DAILY_WARN_FAILURES)
+            elif daily <= self.DAILY_WARN_FAILURES:
+                self._warned = False
             if len(self._failures) >= self.GLOBAL_MAX_FAILURES:
                 if t - self._last_pause > self.STRIKE_DECAY_S:
                     self._strikes = 0
@@ -382,7 +408,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/healthz")
     def healthz() -> dict[str, Any]:
-        return {"ok": True, "read_only": settings.read_only, "seq": ledger.manifest()["seq"]}
+        return {"ok": True, "read_only": settings.read_only, "seq": ledger.manifest()["seq"],
+                "login_failures_24h": app.state.limiter.failures_24h()}
 
     @app.post("/login")
     async def login(request: Request) -> Response:

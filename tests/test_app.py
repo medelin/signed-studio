@@ -13,7 +13,7 @@ from studio.receipts import public_key_raw, verify
 from studio.settings import ConfigError, Settings
 
 SECRET = secrets.token_urlsafe(32)  # fresh per test run
-PASSWORD = "correct horse battery"
+PASSWORD = "Jd7-" + secrets.token_urlsafe(24)  # fresh per run, 4 classes
 
 
 def settings(tmp_path, **extra):
@@ -454,3 +454,26 @@ def test_key_of_one_session_cannot_be_claimed_by_another(app, tmp_path):
         with pytest.raises(ap.WrongSession):
             _approve_with(app, key, approver, _sid(b))
         _approve_with(app, key, approver, _sid(a))
+
+
+def test_daily_failure_budget_warns_without_locking(caplog):
+    import logging
+
+    lim = LoginLimiter(max_attempts=10**6)
+    t = 1000.0
+    with caplog.at_level(logging.WARNING, logger="studio.login"):
+        for i in range(LoginLimiter.DAILY_WARN_FAILURES + 1):
+            t = max(t + 0.001, lim.locked_until)
+            ip = f"198.51.{i // 250 % 250}.{i % 250}"
+            assert lim.reserve(ip, now=t)
+            assert lim.settle(ip, False, now=t)
+    assert lim.failures_24h(now=t) == LoginLimiter.DAILY_WARN_FAILURES + 1
+    warnings = [r for r in caplog.records if r.name == "studio.login"]
+    assert len(warnings) == 1 and "24 h" in warnings[0].getMessage()
+    assert lim.locked_until - t <= LoginLimiter.MAX_LOCK_S  # capped lock unchanged
+    assert lim.failures_24h(now=t + 86_401) == 0  # the window slides
+
+
+def test_healthz_reports_login_failures_metric(client):
+    login(client, "nope")
+    assert client.get("/healthz").json()["login_failures_24h"] == 1
