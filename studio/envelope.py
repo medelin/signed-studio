@@ -8,7 +8,9 @@ model is told by ``SYSTEM_RULE`` (part of the system prompt) to treat the block 
 
 This is a mitigation, not the security boundary: the boundary is that the agents reading
 this content have no tools and every external action needs a human signature. The
-``envelope`` field of a receipt says whether the call carried such a block.
+``envelope`` field of a receipt is set from the code path that wrapped the text
+(``envelope_sources=[...]`` on the client call, checked against the request before it is
+sent), never inferred from the request body.
 
 ``clean(text)`` is the display-side counterpart for the UI (no control/bidi characters,
 length cap); templates still autoescape.
@@ -19,7 +21,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
-__all__ = ["BEGIN", "END", "SOURCES", "SYSTEM_RULE", "clean", "neutralize", "present", "wrap"]
+__all__ = ["BEGIN", "END", "SOURCES", "SYSTEM_RULE", "check_declared", "clean", "neutralize",
+           "opening", "present", "wrap"]
 
 PHRASE = "UNTRUSTED EXTERNAL CONTENT"
 BEGIN = f"<<<BEGIN {PHRASE}>>>"
@@ -70,8 +73,25 @@ def wrap(text: str, source: str, *, max_chars: int = MAX_CHARS) -> str:
 
 
 def present(text: str) -> bool:
-    """True when ``text`` carries a real envelope (both markers)."""
+    """True when ``text`` contains both markers. Only meaningful for text built by code;
+    receipts never infer the envelope flag from it (see ``check_declared``)."""
     return BEGIN in text and END in text
+
+
+def opening(source: str) -> str:
+    return f"{BEGIN}\nsource={source}\n"
+
+
+def check_declared(request_text: str, sources: list[str] | tuple[str, ...]) -> None:
+    """Every declared source must have its block in the request (``ValueError`` if not).
+
+    ``request_text`` is the request as serialized; newlines appear as ``\\n`` there."""
+    for source in sources:
+        if source not in SOURCES:
+            raise ValueError(f"unknown untrusted source {source!r}")
+        marker = opening(source).replace("\n", "\\n")
+        if marker not in request_text or END not in request_text:
+            raise ValueError(f"declared untrusted source {source!r} is not wrapped")
 
 
 def clean(text: str, *, max_chars: int = 2000) -> str:

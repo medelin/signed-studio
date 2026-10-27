@@ -85,12 +85,13 @@ def structured(
     agent: str,
     max_tokens: int | None = None,
     reasoning_effort: str | None = None,
+    envelope_sources: Sequence[str] = (),
 ) -> tuple[T, MuseResult]:
     """Call ``model`` with a strict schema and return the validated object and the result."""
     result = client.chat(
         model, messages, run_id=run_id, agent=agent, response_format=response_format(schema),
         max_tokens=max_tokens, reasoning_effort=reasoning_effort, tier=tier,
-        tier_reason=tier_reason,
+        tier_reason=tier_reason, envelope_sources=envelope_sources,
     )
     try:
         return schema.model_validate_json(result.text), result

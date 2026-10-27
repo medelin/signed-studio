@@ -257,6 +257,7 @@ class MuseClient:
         tier: str = "standard",
         tier_reason: str = "",
         parallel_tool_calls: bool = True,
+        envelope_sources: Sequence[str] = (),
     ) -> MuseResult:
         """Responses API (``POST /responses``): tools, reasoning, chained turns, images."""
         body: dict[str, Any] = {"model": model, "input": input, "store": store}
@@ -274,7 +275,7 @@ class MuseClient:
         if text_format:
             body["text"] = {"format": dict(text_format)}
         return self._call("/responses", "responses", _parse_responses, body, model, tier,
-                          tier_reason, run_id, agent)
+                          tier_reason, run_id, agent, envelope_sources=envelope_sources)
 
     def chat(
         self,
@@ -290,6 +291,7 @@ class MuseClient:
         tier: str = "standard",
         tier_reason: str = "",
         parallel_tool_calls: bool = True,
+        envelope_sources: Sequence[str] = (),
     ) -> MuseResult:
         """Chat Completions (``POST /chat/completions``): strict JSON output, image parts."""
         body: dict[str, Any] = {"model": model, "messages": list(messages)}
@@ -304,7 +306,7 @@ class MuseClient:
         if reasoning_effort:
             body["reasoning_effort"] = reasoning_effort
         return self._call("/chat/completions", "chat.completions", _parse_chat, body, model,
-                          tier, tier_reason, run_id, agent)
+                          tier, tier_reason, run_id, agent, envelope_sources=envelope_sources)
 
     def images(
         self,
@@ -354,6 +356,7 @@ class MuseClient:
         run_id: str,
         agent: str,
         stream: bool = False,
+        envelope_sources: Sequence[str] = (),
     ) -> MuseResult:
         """Send one request. Once anything may have been sent, a receipt is always written:
         the success receipt, or an error receipt for network, HTTP, parse or abort."""
@@ -365,6 +368,11 @@ class MuseClient:
             raise ReadOnlyMode("STUDIO_READ_ONLY=1: model calls are disabled")
         if not self._api_key:
             raise MuseError(f"{self.key_name} is not set", code="no_api_key")
+        # The envelope flag is declared by the code path that wrapped customer text, never
+        # inferred from the body (customer text could contain marker look-alikes). Each
+        # declared source must really be wrapped in this request (checked before any I/O).
+        sources = sorted(set(envelope_sources))
+        envelope.check_declared(canonical(body).decode(), sources)
         estimate = self._estimate(model, body)
         if self.budget is not None:
             self.budget.reserve(estimate)  # atomic: concurrent calls cannot overspend
@@ -374,8 +382,7 @@ class MuseClient:
             "tier_reason": tier_reason,
             "prompt_sha256": sha256_hex(canonical(body)),
             "input_sha256": input_hashes(body),  # before sending; never raises
-            # the call carries customer text inside an untrusted envelope
-            "envelope": envelope.present(canonical(body).decode()),
+            "envelope": bool(sources),
         }
         start = time.monotonic()
         try:
@@ -421,6 +428,7 @@ class MuseClient:
         self._settle(estimate, cost)
         details: dict[str, Any] = {
             "endpoint": endpoint,
+            **({"envelope_sources": sources} if sources else {}),
             "response_id": str(data.get("id", "")),
             "finish": parsed["finish"],
             "reasoning_tokens": usage.reasoning_tokens,
