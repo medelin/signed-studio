@@ -2,3 +2,5 @@
 dd771f647231c216652df8b4e45fb05317a879ab:studio/receipts.py:generic-api-key:95
 # Same false positive after the Ledger refactor (parameter since renamed to `signer`).
 61f1819b6c9dc4788f45f66b2a150c941c774b31:studio/receipts.py:generic-api-key:190
+# Synthetic per-test session value in tests/test_app.py (now generated at runtime).
+899db85b140168597b5b801e18f10aa8144cbffa:tests/test_app.py:generic-api-key:14

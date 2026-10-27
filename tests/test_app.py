@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import secrets
 import time
 
 import httpx
@@ -11,7 +12,7 @@ from studio.app import LoginLimiter, client_ip, create_app
 from studio.receipts import public_key_raw, verify
 from studio.settings import ConfigError, Settings
 
-SECRET = "q7Vh2kLm9Xp4Rt8Wz1Nc6Bf3Jd5Gs0Ya"  # synthetic test value
+SECRET = secrets.token_urlsafe(32)  # fresh per test run
 PASSWORD = "correct horse battery"
 
 
