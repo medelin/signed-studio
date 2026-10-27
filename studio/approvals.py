@@ -1,0 +1,360 @@
+"""Human-signed approvals for every external write.
+
+A pending approval binds the exact payload (``content_sha256``), the provenance that
+produced it (``chain_head`` of the run's receipt chain), a one-time ``nonce`` and the issue
+time ``ts``. The approver's browser signs ``approval_message`` with a non-extractable
+Ed25519 key registered for its session. ``verify_and_consume`` checks everything and
+consumes the nonce inside the caller's SQLite write transaction, so the state change and
+the nonce stand or fall together and a signature can be used exactly once.
+"""
+
+from __future__ import annotations
+
+import secrets
+import sqlite3
+import time
+import uuid
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+from studio.receipts import (
+    APPROVAL_SIGNED_FIELDS,
+    Ledger,
+    approval_message,
+    canonical,
+    key_id,
+    sha256_hex,
+)
+
+__all__ = [
+    "ACTIONS",
+    "SIGNED_FIELDS",
+    "SKEW_S",
+    "TTL_S",
+    "Approval",
+    "ApprovalError",
+    "Keys",
+    "Pending",
+    "Verified",
+    "approval_message",
+    "ensure_schema",
+    "payload_sha256",
+    "transaction",
+    "verify_and_consume",
+]
+
+ACTIONS = frozenset({"campaign.create", "campaign.activate", "reply.post", "comment.hide"})
+SIGNED_FIELDS = APPROVAL_SIGNED_FIELDS
+TTL_S = 900
+SKEW_S = 60
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS keys (
+    approver TEXT PRIMARY KEY,
+    public_key BLOB NOT NULL CHECK (length(public_key) = 32),
+    session_sha256 TEXT NOT NULL,
+    created_ts INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS approvals (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    chain_head TEXT NOT NULL,
+    nonce TEXT NOT NULL UNIQUE,
+    ts INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
+    approver TEXT,
+    signature TEXT,
+    decided_ts INTEGER
+);
+CREATE TABLE IF NOT EXISTS nonces (
+    nonce TEXT PRIMARY KEY,
+    consumed_ts INTEGER NOT NULL
+);
+"""
+
+
+class ApprovalError(Exception):
+    code = "approval_error"
+    status = 400
+
+
+class NotFound(ApprovalError):
+    code, status = "not_found", 404
+
+
+class UnknownAction(ApprovalError):
+    code = "unknown_action"
+
+
+class FieldMismatch(ApprovalError):
+    code = "field_mismatch"
+
+
+class ContentMismatch(ApprovalError):
+    code = "content_mismatch"
+
+
+class ChainHeadMismatch(ApprovalError):
+    code, status = "chain_head_mismatch", 409
+
+
+class NonceMismatch(ApprovalError):
+    code = "nonce_mismatch"
+
+
+class Expired(ApprovalError):
+    code, status = "expired", 410
+
+
+class FromFuture(ApprovalError):
+    code = "from_future"
+
+
+class UnknownKey(ApprovalError):
+    code, status = "unknown_key", 403
+
+
+class BadSignature(ApprovalError):
+    code, status = "bad_signature", 403
+
+
+class NonceUsed(ApprovalError):
+    code, status = "nonce_used", 409
+
+
+def ensure_schema(conn: sqlite3.Connection) -> None:
+    conn.executescript(SCHEMA)
+
+
+@contextmanager
+def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
+    """``BEGIN IMMEDIATE`` … ``COMMIT`` (``ROLLBACK`` on error). Needs ``isolation_level=None``.
+
+    IMMEDIATE takes the write lock up front, so concurrent consumers serialize instead of
+    racing on stale snapshots.
+    """
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield conn
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")
+
+
+def payload_sha256(payload: bytes | Mapping[str, Any]) -> str:
+    """Hash of the exact bytes to send (canonical JSON for structured payloads)."""
+    return sha256_hex(payload if isinstance(payload, bytes) else canonical(dict(payload)))
+
+
+class Keys:
+    """Approver public keys, one id per key (its fingerprint)."""
+
+    @staticmethod
+    def register(conn: sqlite3.Connection, session_id: str, public_key: bytes) -> str:
+        if len(public_key) != 32:
+            raise ValueError("Ed25519 public key must be 32 raw bytes")
+        pub = Ed25519PublicKey.from_public_bytes(public_key)
+        approver = key_id(pub)
+        conn.execute(
+            "INSERT OR IGNORE INTO keys (approver, public_key, session_sha256, created_ts) "
+            "VALUES (?, ?, ?, ?)",
+            (approver, public_key, sha256_hex(session_id), int(time.time())),
+        )
+        return approver
+
+    @staticmethod
+    def get(conn: sqlite3.Connection, approver: str) -> Ed25519PublicKey | None:
+        row = conn.execute("SELECT public_key FROM keys WHERE approver = ?", (approver,)).fetchone()
+        return Ed25519PublicKey.from_public_bytes(row[0]) if row else None
+
+    @staticmethod
+    def registry(conn: sqlite3.Connection) -> dict[str, Ed25519PublicKey]:
+        rows = conn.execute("SELECT approver, public_key FROM keys ORDER BY approver")
+        return {a: Ed25519PublicKey.from_public_bytes(k) for a, k in rows}
+
+
+@dataclass(frozen=True)
+class Pending:
+    id: str
+    run_id: str
+    action: str
+    item_id: str
+    content_sha256: str
+    chain_head: str
+    nonce: str
+    ts: int
+
+    @classmethod
+    def create(
+        cls,
+        action: str,
+        item_id: str,
+        payload: bytes | Mapping[str, Any],
+        *,
+        ledger: Ledger,
+        run_id: str,
+        now: float | None = None,
+    ) -> Pending:
+        if action not in ACTIONS:
+            raise UnknownAction(f"unknown action {action!r}")
+        return cls(
+            id=uuid.uuid4().hex,
+            run_id=run_id,
+            action=action,
+            item_id=str(item_id),
+            content_sha256=payload_sha256(payload),
+            chain_head=ledger.chain_head(run_id),
+            nonce="n_" + secrets.token_hex(16),
+            ts=int(time.time() if now is None else now),
+        )
+
+    def save(self, conn: sqlite3.Connection) -> None:
+        conn.execute(
+            "INSERT INTO approvals (id, run_id, action, item_id, content_sha256, chain_head, "
+            "nonce, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (self.id, self.run_id, self.action, self.item_id, self.content_sha256,
+             self.chain_head, self.nonce, self.ts),
+        )
+
+    @classmethod
+    def load(cls, conn: sqlite3.Connection, pending_id: str) -> Pending:
+        row = conn.execute(
+            "SELECT id, run_id, action, item_id, content_sha256, chain_head, nonce, ts "
+            "FROM approvals WHERE id = ?",
+            (pending_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFound(f"no pending approval {pending_id!r}")
+        return cls(*row)
+
+    def fields(self, approver: str) -> dict[str, Any]:
+        return {
+            "action": self.action,
+            "item_id": self.item_id,
+            "content_sha256": self.content_sha256,
+            "chain_head": self.chain_head,
+            "approver": approver,
+            "nonce": self.nonce,
+            "ts": self.ts,
+        }
+
+    def message(self, approver: str) -> bytes:
+        """Canonical bytes served at ``/api/approvals/{id}/payload`` for the browser to sign."""
+        return approval_message(self.fields(approver))
+
+
+@dataclass(frozen=True)
+class Approval:
+    """What the browser submits: the signed fields plus the hex Ed25519 signature."""
+
+    pending_id: str
+    action: str
+    item_id: str
+    content_sha256: str
+    chain_head: str
+    approver: str
+    nonce: str
+    ts: int
+    signature: str
+
+
+@dataclass(frozen=True)
+class Verified:
+    """Proof that a human signed exactly this content; the only thing executors accept."""
+
+    pending_id: str
+    run_id: str
+    action: str
+    item_id: str
+    content_sha256: str
+    approver: str
+    signature: str
+
+
+def verify_and_consume(
+    conn: sqlite3.Connection,
+    approval: Approval,
+    payload: bytes | Mapping[str, Any],
+    *,
+    ledger: Ledger | None = None,
+    now: float | None = None,
+) -> Verified:
+    """Verify ``approval`` for ``payload`` and consume its nonce in the caller's transaction.
+
+    The caller must hold an open write transaction (see ``transaction``); nothing is
+    committed here. Raises a distinct ``ApprovalError`` subclass for every failure.
+    """
+    if not conn.in_transaction:
+        raise RuntimeError("verify_and_consume must run inside the caller's write transaction")
+    pending = Pending.load(conn, approval.pending_id)
+    if approval.action not in ACTIONS:
+        raise UnknownAction(f"unknown action {approval.action!r}")
+    if approval.action != pending.action or approval.item_id != pending.item_id:
+        raise FieldMismatch("action or item does not match the pending approval")
+    if approval.content_sha256 != pending.content_sha256:
+        raise ContentMismatch("signed content hash differs from the pending content")
+    if payload_sha256(payload) != pending.content_sha256:
+        raise ContentMismatch("payload was changed after the approval was requested")
+    if approval.chain_head != pending.chain_head:
+        raise ChainHeadMismatch("signed chain head differs from the provenance of the content")
+    if approval.nonce != pending.nonce:
+        raise NonceMismatch("nonce does not belong to this approval")
+    if approval.ts != pending.ts:
+        raise FieldMismatch("timestamp does not match the pending approval")
+    clock = time.time() if now is None else now
+    if clock - pending.ts > TTL_S:
+        raise Expired(f"approval older than {TTL_S} s")
+    if pending.ts - clock > SKEW_S:
+        raise FromFuture("approval timestamp is in the future")
+    key = Keys.get(conn, approval.approver)
+    if key is None:
+        raise UnknownKey("approver key is not registered")
+    try:
+        key.verify(bytes.fromhex(approval.signature), pending.message(approval.approver))
+    except (InvalidSignature, ValueError) as exc:
+        raise BadSignature("signature does not verify for this approver") from exc
+
+    decided = int(clock)
+    try:
+        conn.execute("INSERT INTO nonces (nonce, consumed_ts) VALUES (?, ?)",
+                     (pending.nonce, decided))
+    except sqlite3.IntegrityError as exc:
+        raise NonceUsed("approval was already used") from exc
+    cur = conn.execute(
+        "UPDATE approvals SET status = 'approved', approver = ?, signature = ?, decided_ts = ? "
+        "WHERE id = ? AND status = 'pending'",
+        (approval.approver, approval.signature, decided, pending.id),
+    )
+    if cur.rowcount != 1:
+        raise NonceUsed("approval was already decided")
+
+    if ledger is not None:
+        ledger.append(
+            pending.run_id,
+            agent="human",
+            kind="approval",
+            output_sha256=pending.content_sha256,
+            details={
+                **pending.fields(approval.approver),
+                "sig": approval.signature,
+                "pending_id": pending.id,
+            },
+        )
+    return Verified(
+        pending_id=pending.id,
+        run_id=pending.run_id,
+        action=pending.action,
+        item_id=pending.item_id,
+        content_sha256=pending.content_sha256,
+        approver=approval.approver,
+        signature=approval.signature,
+    )

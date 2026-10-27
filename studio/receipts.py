@@ -15,6 +15,7 @@ import re
 import threading
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
 GENESIS = "0" * 64
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review"})
@@ -41,6 +43,31 @@ def sha256_hex(data: bytes | str) -> str:
     if isinstance(data, str):
         data = data.encode()
     return hashlib.sha256(data).hexdigest()
+
+
+APPROVAL_SIGNED_FIELDS = (
+    "action",
+    "item_id",
+    "content_sha256",
+    "chain_head",
+    "approver",
+    "nonce",
+    "ts",
+)
+
+
+def approval_message(fields: Mapping[str, Any]) -> bytes:
+    """The exact bytes a human approver signs (domain-separated canonical JSON)."""
+    return canonical({"type": "approval", **{k: fields[k] for k in APPROVAL_SIGNED_FIELDS}})
+
+
+def public_key_raw(public_key: Ed25519PublicKey) -> bytes:
+    return public_key.public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+
+def key_id(public_key: Ed25519PublicKey) -> str:
+    """Stable fingerprint of an Ed25519 public key: ``ed25519:<32 hex>``."""
+    return "ed25519:" + sha256_hex(public_key_raw(public_key))[:32]
 
 
 def redact(value: Any) -> Any:
@@ -166,16 +193,52 @@ class Report:
     ok: bool
     count: int
     errors: list[str]
+    signatures: int = 0
 
 
-def verify(path: str | Path, public_key: Ed25519PublicKey, min_seq: int = 0) -> Report:
+def _check_approval(
+    receipt: Receipt,
+    seen: set[str],
+    approver_keys: Mapping[str, Ed25519PublicKey],
+) -> list[str]:
+    """Approver signature over the approval fields, bound to a real chain head of the run."""
+    d = receipt.details
+    if not d.get("sig"):
+        return [f"{receipt.id}: approval is not signed by an approver"]
+    try:
+        message = approval_message(d)
+    except KeyError as exc:
+        return [f"{receipt.id}: approval is missing signed field {exc}"]
+    key = approver_keys.get(str(d["approver"]))
+    if key is None:
+        return [f"{receipt.id}: unknown approver {d['approver']!r}"]
+    errors: list[str] = []
+    try:
+        key.verify(bytes.fromhex(str(d["sig"])), message)
+    except (InvalidSignature, ValueError):
+        errors.append(f"{receipt.id}: bad approver signature")
+    if d["chain_head"] != GENESIS and d["chain_head"] not in seen:
+        errors.append(f"{receipt.id}: approval chain_head is not an earlier receipt of this run")
+    return errors
+
+
+def verify(
+    path: str | Path,
+    public_key: Ed25519PublicKey,
+    min_seq: int = 0,
+    approver_keys: Mapping[str, Ed25519PublicKey] | None = None,
+) -> Report:
     """Check signatures, hashes, links, timestamps and approval-before-write.
 
     ``public_key`` is the ledger key published by the server (``/api/ledger-key``).
     Without it a forged log with recomputed hashes would look valid. ``min_seq`` is the
     latest manifest sequence the verifier knows; an older (rolled-back) export fails.
+    ``approver_keys`` (``/api/approver-keys``) maps approver ids to their public keys; when
+    given, every approval must carry a valid approver signature over its fields.
     """
     errors: list[str] = []
+    signatures = 0
+    seen: dict[str, set[str]] = {}
     heads: dict[str, str] = {}
     last_ts: dict[str, float] = {}
     approved: dict[str, set[str]] = {}
@@ -211,7 +274,12 @@ def verify(path: str | Path, public_key: Ed25519PublicKey, min_seq: int = 0) -> 
             errors.append(f"{receipt.id}: broken link to previous receipt")
         if receipt.ts < last_ts.get(run, 0.0):
             errors.append(f"{receipt.id}: timestamp goes backwards")
-        if receipt.kind == "approval":
+        problems: list[str] = []
+        if receipt.kind == "approval" and approver_keys is not None:
+            problems = _check_approval(receipt, seen.get(run, set()), approver_keys)
+            errors += problems
+            signatures += not problems
+        if receipt.kind == "approval" and not problems:  # a bad approval authorises nothing
             digest = str(receipt.details.get("content_sha256", ""))
             approved.setdefault(run, set()).add(digest)
         if receipt.kind == "external_write" and receipt.output_sha256 not in approved.get(
@@ -219,10 +287,11 @@ def verify(path: str | Path, public_key: Ed25519PublicKey, min_seq: int = 0) -> 
         ):
             errors.append(f"{receipt.id}: external_write without approval for this content")
         heads[run] = receipt.hash
+        seen.setdefault(run, set()).add(receipt.hash)
         last_ts[run] = receipt.ts
         counts[run] = counts.get(run, 0) + 1
     errors += _check_manifest(manifests, heads, counts, public_key, min_seq)
-    return Report(ok=not errors, count=count, errors=errors)
+    return Report(ok=not errors, count=count, errors=errors, signatures=signatures)
 
 
 def _check_manifest(
