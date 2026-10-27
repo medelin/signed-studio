@@ -195,7 +195,14 @@ $("approve-button").addEventListener("click", async () => {
     $("signature").hidden = false;
     $("sig-value").textContent = r.data.signature;
     $("sig-receipt").textContent = r.data.receipt_id + " · " + r.data.receipt_hash.slice(0, 16);
-    status("approve-status", "Signed and verified by the server. The campaign is approved (PAUSED); nothing went live.");
+    if (r.data.executed && r.data.result) {
+      status("approve-status", "Signed and verified. The media buyer created the campaign, ad set, creative and ad — all PAUSED — via the " + r.data.result.adapter + " adapter; nothing went live.");
+      showCampaign(currentPayload.content.run_id, r.data.result.campaign_item_id);
+    } else if (r.data.execution_error) {
+      status("approve-status", "Signed, but the media buyer refused or failed: " + r.data.execution_error, true);
+    } else {
+      status("approve-status", "Signed and verified by the server. The campaign is approved (PAUSED); nothing went live.");
+    }
     status("run-status", currentPayload.content.run_id + ": approved");
   } catch (e) {
     status("approve-status", e.message, true);
@@ -324,3 +331,57 @@ $("open-form").addEventListener("submit", (ev) => {
   });
   stopBtn.addEventListener("click", () => { if (recorder && recorder.state === "recording") recorder.stop(); });
 })();
+
+// -- campaign + activation ------------------------------------------------------------
+
+let currentCampaign = null;
+
+async function showCampaign(runId, itemId) {
+  const r = await fetch("/api/campaigns/" + encodeURIComponent(itemId), { credentials: "same-origin" });
+  if (!r.ok) return;
+  const c = await r.json();
+  currentCampaign = c;
+  $("campaign-panel").hidden = false;
+  $("campaign-summary").textContent = c.name + " · status " + c.status + " · " + (c.daily_budget_minor / 100).toFixed(2)
+    + " PLN/day · adapter " + c.adapter + " · ceiling " + c.ceiling_pln + " PLN/day";
+  const box = $("preview");
+  box.replaceChildren();
+  const p = c.preview || {};
+  if (p.kind === "iframe" && /^https:\/\/www\.facebook\.com\/ads\/api\/preview_iframe\.php\?/.test(p.src)) {
+    const f = el("iframe");
+    f.src = p.src; f.width = "320"; f.height = "560"; f.title = "Meta ad preview";
+    f.setAttribute("sandbox", "allow-scripts allow-same-origin");
+    box.append(f);
+  } else if (p.kind === "inline") {
+    const card = el("article", null, "card feed");
+    card.append(el("p", p.fields.message));
+    const img = el("img");
+    img.src = "/assets/" + runId + "/feed_1x1.png";
+    img.alt = "Ad image (feed 1:1)";
+    card.append(img, el("h3", p.fields.name), el("p", p.fields.description, "hint"),
+                el("span", p.fields.cta.replace(/_/g, " "), "cta"));
+    card.append(el("p", "Mock preview rendered by the studio (no Meta call).", "hint"));
+    box.append(card);
+  }
+  $("activate-button").disabled = c.status !== "PAUSED" || !loggedIn || readOnly;
+  $("campaign-h").focus();
+}
+
+$("activate-button").addEventListener("click", async () => {
+  if (!currentCampaign) return;
+  const btn = $("activate-button");
+  btn.disabled = true;
+  try {
+    const r = await postJSON("/api/campaigns/" + encodeURIComponent(currentCampaign.id) + "/activate", {});
+    if (!r.ok) throw new Error("activation refused: " + (r.data.error || r.status));
+    const payload = await Signer.loadPayload(r.data.approval_id);
+    status("activate-status", "Signing activation of " + (payload.content.daily_budget_minor / 100).toFixed(2) + " PLN/day…");
+    const done = await Signer.sign(payload);
+    if (!done.executed) throw new Error("not activated: " + (done.execution_error || "no executor"));
+    status("activate-status", "Activated via the " + done.result.adapter + " adapter (signature " + done.signature.slice(0, 16) + "…).");
+    showCampaign(currentCampaign.run_id, currentCampaign.id);
+  } catch (e) {
+    status("activate-status", e.message, true);
+    btn.disabled = false;
+  }
+});

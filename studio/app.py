@@ -39,7 +39,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from studio import db, routes_inbox, routes_report, routes_studio
-from studio.agents import community
+from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
 from studio.receipts import public_key_raw
@@ -421,6 +421,38 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return adapter.insights(row[0])  # type: ignore[no-any-return]
 
     app.state.insights = insights
+    app.state.executors["campaign.create"] = (
+        lambda verified, payload: media_buyer.create(conn, ledger, app.state.adapter, verified,
+                                                     payload, settings.data_dir))
+    app.state.executors["campaign.activate"] = (
+        lambda verified, payload: media_buyer.activate(conn, ledger, app.state.adapter,
+                                                       verified, payload,
+                                                       settings.max_daily_budget_pln))
+
+    @app.get("/api/campaigns/{item_id}")
+    def get_campaign(item_id: str) -> Response:
+        c = media_buyer.campaign(conn, item_id) if routes_inbox.COMMENT_ID.fullmatch(
+            item_id) else None
+        if c is None:
+            return JSONResponse({"error": "not_found"}, 404)
+        created = c.pop("created")
+        return JSONResponse({**c, "preview": created.get("preview"),
+                             "ceiling_pln": settings.max_daily_budget_pln})
+
+    @app.post("/api/campaigns/{item_id}/activate")
+    def request_activate(item_id: str, request: Request) -> Response:
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        if not routes_inbox.COMMENT_ID.fullmatch(item_id):
+            return JSONResponse({"error": "not_found"}, 404)
+        try:
+            pending, payload = media_buyer.request_activation(
+                conn, ledger, item_id, settings.max_daily_budget_pln)
+        except media_buyer.BuyError as exc:
+            return JSONResponse({"error": exc.code}, 404 if exc.code == "not_found" else 409)
+        return JSONResponse({"approval_id": pending.id, "content": payload,
+                             "content_sha256": pending.content_sha256}, 201)
     for action in community.SIGNED_ACTIONS:
         app.state.executors[action] = (
             lambda verified, payload: community.send(conn, ledger, app.state.adapter,

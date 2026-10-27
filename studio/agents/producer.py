@@ -34,7 +34,7 @@ from studio.approvals import Pending, transaction
 from studio.muse.client import MuseClient
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import structured
-from studio.receipts import canonical
+from studio.receipts import canonical, is_opaque
 
 AGENT = "producer"
 MODEL = "muse-spark-1.3"
@@ -52,6 +52,7 @@ class Context:
     concept: str
     data_dir: Path
     on_event: Callable[[str, dict[str, Any]], None] | None = None
+    landing_url: str = "https://example.com/"
 
 
 @dataclass
@@ -83,7 +84,16 @@ def new_run_id() -> str:
     return "run_" + secrets.token_hex(8)
 
 
-def campaign_payload(run: RunResult, variant_index: int) -> dict[str, Any]:
+def opaque_id(prefix: str) -> str:
+    """``prefix`` + random hex that redaction leaves alone (no phone-like digit runs)."""
+    while True:
+        candidate = prefix + secrets.token_hex(8)
+        if is_opaque(candidate):
+            return candidate
+
+
+def campaign_payload(run: RunResult, variant_index: int,
+                     link: str = "https://example.com/") -> dict[str, Any]:
     """The exact content a ``campaign.create`` approval authorises (built by code)."""
     assert run.plan and run.copy and run.creatives and run.review
     v = run.copy.variants[variant_index]
@@ -94,6 +104,8 @@ def campaign_payload(run: RunResult, variant_index: int) -> dict[str, Any]:
                      "daily_budget_minor": run.plan.budget_pln_daily * 100,
                      "currency": "PLN", "angle": run.plan.angles[0].name},
         "audience": run.plan.audience,
+        "targeting": {"countries": ["PL"], "age_min": 25, "age_max": 55},
+        "link": link,
         "ad": {"primary_text": v.primary_text, "headline": v.headline,
                "description": v.description, "cta": v.cta},
         "images": [{"placement": i.placement, "sha256": i.sha256}
@@ -189,8 +201,8 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
             raise ToolError("run_reviewers must finish first")
         if run.review["verdict"] == "BLOCK":
             raise ToolError("the reviewers blocked this creative; fix it before approval")
-        payload = campaign_payload(run, variant_for_review["index"])
-        item_id = "cmp_" + secrets.token_hex(8)
+        payload = campaign_payload(run, variant_for_review["index"], ctx.landing_url)
+        item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
                                  ledger=ctx.client.ledger, run_id=run.run_id)
         with transaction(ctx.conn):

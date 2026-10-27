@@ -206,6 +206,21 @@ def test_sign_exact_payload_then_replay_is_refused(finished, tmp_path):
                                                            "signature": sig})
         assert ok.status_code == 200, ok.text
         assert ok.json()["signature"] == sig
+        result = ok.json()["result"]
+        assert ok.json()["executed"] is True and result["status"] == "PAUSED"
+        item = result["campaign_item_id"]
+        campaign = c.get(f"/api/campaigns/{item}").json()
+        assert campaign["status"] == "PAUSED" and campaign["adapter"] == "mock"
+        assert campaign["preview"]["kind"] == "inline"
+        act = c.post(f"/api/campaigns/{item}/activate")
+        assert act.status_code == 201 and act.json()["content"]["ceiling_minor"] == 5000
+        ap = c.get(f"/api/approvals/{act.json()['approval_id']}/payload",
+                   params={"approver": approver}).json()
+        done = c.post(f"/api/approvals/{ap['approval_id']}", json={
+            "approver": approver, "signature": key.sign(base64.b64decode(
+                ap["message_b64"])).hex()})
+        assert done.status_code == 200 and done.json()["result"]["status"] == "ACTIVE"
+        assert c.get(f"/api/campaigns/{item}").json()["status"] == "ACTIVE"
         again = c.post(f"/api/approvals/{pending_id}", json={"approver": approver,
                                                               "signature": sig})
         assert again.status_code == 409 and again.json()["error"] == "nonce_used"
@@ -221,7 +236,10 @@ def test_sign_exact_payload_then_replay_is_refused(finished, tmp_path):
     assert report.ok, report.errors
     lines = [json.loads(line) for line in path.read_text().splitlines()]
     approvals = [r for r in lines if r.get("kind") == "approval"]
-    assert len(approvals) == 1 and approvals[0]["details"]["sig"] == sig
+    assert len(approvals) == 2 and approvals[0]["details"]["sig"] == sig
+    writes = [r for r in lines if r.get("kind") == "external_write"]
+    assert [w["details"]["action"] for w in writes] == ["campaign.create", "campaign.activate"]
+    assert report.signatures == 2
 
 
 def test_malformed_approval_body_is_400(finished):
