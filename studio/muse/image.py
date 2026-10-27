@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from typing import Any
 
 from studio.muse.client import MuseClient, MuseError, MuseResult
 from studio.muse.vision import data_url
@@ -61,3 +62,25 @@ def edit(
     body = {"model": MODEL, "prompt": prompt, "n": 1, "size": size, "output_format": "png",
             "images": [{"image_url": data_url(i)} for i in images]}
     return _one(client.images("edits", body, run_id=run_id, agent=agent))
+
+
+def respond_image(
+    client: MuseClient,
+    prompt: str,
+    images: list[bytes],
+    *,
+    size: str,
+    run_id: str,
+    agent: str,
+    previous_response_id: str | None = None,
+) -> ImageOut:
+    """Responses API turn on Muse Image (``image_generation`` tool, ``store=true``), so a
+    later turn can refine it with ``previous_response_id``."""
+    content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
+    content += [{"type": "input_image", "image_url": data_url(i)} for i in images]
+    result = client.respond(
+        MODEL, [{"role": "user", "content": content}], run_id=run_id, agent=agent,
+        tools=[{"type": "image_generation", "size": size, "output_format": "png"}],
+        previous_response_id=previous_response_id, store=True,
+    )
+    return _one(result)

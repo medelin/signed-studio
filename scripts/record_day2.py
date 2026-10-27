@@ -194,6 +194,22 @@ def _sam(client: MuseClient, rec: Recorder, key: str) -> None:
     save("sam_cutout", rec, key)
 
 
+@step("art")
+def _art(client: MuseClient, rec: Recorder, key: str) -> None:
+    import tempfile
+
+    from studio.agents import art_director
+
+    rec.name = "image_series"
+    photo = (ROOT / "fixtures" / "assets" / "product-demo.png").read_bytes()
+    with tempfile.TemporaryDirectory() as tmp:
+        cs = art_director.run(client, photo, "A Mug for Slow Mornings", run_id="rec",
+                              concept="mug", data_dir=Path(tmp))
+    for im in cs.images:
+        print(im.placement, im.size, im.width, "x", im.height, im.response_id)
+    save("image_series", rec, key)
+
+
 def main() -> None:
     rec = Recorder()
     client, key = open_client(rec)

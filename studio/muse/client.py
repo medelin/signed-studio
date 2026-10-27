@@ -261,8 +261,9 @@ class MuseClient:
         body: dict[str, Any] = {"model": model, "input": input, "store": store}
         if tools:
             body["tools"] = list(tools)
-            body["tool_choice"] = "auto"
-            body["parallel_tool_calls"] = parallel_tool_calls
+            if any(t.get("type") == "function" for t in tools):
+                body["tool_choice"] = "auto"
+                body["parallel_tool_calls"] = parallel_tool_calls
         if reasoning:
             body["reasoning"] = dict(reasoning)
         if previous_response_id:
