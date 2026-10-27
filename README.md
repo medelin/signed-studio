@@ -46,7 +46,14 @@ studio verify receipts.jsonl --server https://<studio-host>
 `--server` fetches the published ledger key, the latest manifest `seq` (so an older,
 rolled-back export fails) and the approver public keys (so every approval signature is
 checked). `make smoke-live` makes one real Model API call with the key from `.env` and
-prints usage only.
+prints usage only (and refuses under `STUDIO_READ_ONLY=1`).
+
+`--server` is **trust on first use (TOFU)**: it trusts whatever key and `seq` the server
+serves at that moment, so a compromised server could serve a matching forged key. For a
+real check, pin the ledger key once, out of band (`ledger.pub`, published with the
+release or copied from the operator), pass it with `--key-file ledger.pub` together with
+`--server` (a mismatch is refused), and keep the highest `seq` you have seen to pass as
+`--min-seq` next time, so a rollback to an older log cannot go unnoticed.
 
 ## License
 

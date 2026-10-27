@@ -24,11 +24,9 @@ BASE_URL = "https://api.meta.ai/v1"
 PROVIDER = "meta-model-api"
 
 # USD per 1M tokens: (input, cached input, output) — dev.meta.ai pricing, 2026-10-27.
+# Only models whose price was checked are listed; an unlisted model is refused.
 TOKEN_PRICES: dict[str, tuple[float, float, float]] = {
-    "muse-spark-1.1": (1.25, 0.15, 4.25),
-    "muse-spark-1.2": (1.25, 0.15, 4.25),
     "muse-spark-1.3": (1.25, 0.15, 4.25),
-    "muse-spark-1.2-contributor": (0.10, 0.002, 0.20),
     "muse-spark-1.3-contributor": (0.10, 0.002, 0.20),
     "muse-wonder-1.0": (4.00, 0.20, 20.00),
 }
@@ -237,12 +235,14 @@ class MuseClient:
         text_format: Mapping[str, Any] | None = None,
         tier: str = "standard",
         tier_reason: str = "",
+        parallel_tool_calls: bool = True,
     ) -> MuseResult:
         """Responses API (``POST /responses``): tools, reasoning, chained turns, images."""
         body: dict[str, Any] = {"model": model, "input": input, "store": store}
         if tools:
             body["tools"] = list(tools)
             body["tool_choice"] = "auto"
+            body["parallel_tool_calls"] = parallel_tool_calls
         if reasoning:
             body["reasoning"] = dict(reasoning)
         if previous_response_id:
@@ -267,6 +267,7 @@ class MuseClient:
         reasoning_effort: str | None = None,
         tier: str = "standard",
         tier_reason: str = "",
+        parallel_tool_calls: bool = True,
     ) -> MuseResult:
         """Chat Completions (``POST /chat/completions``): strict JSON output, image parts."""
         body: dict[str, Any] = {"model": model, "messages": list(messages)}
@@ -275,6 +276,7 @@ class MuseClient:
         if tools:
             body["tools"] = list(tools)
             body["tool_choice"] = "auto"
+            body["parallel_tool_calls"] = parallel_tool_calls
         if max_tokens:
             body["max_completion_tokens"] = max_tokens
         if reasoning_effort:

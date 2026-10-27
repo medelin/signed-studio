@@ -34,6 +34,16 @@ def test_smoke_live_without_key_fails_cleanly(capsys, tmp_path, monkeypatch):
     assert "MODEL_API_KEY" in capsys.readouterr().err
 
 
+def test_smoke_live_respects_read_only(capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("MODEL_API_KEY", "test-key-not-a-secret")
+    monkeypatch.setenv("STUDIO_READ_ONLY", "1")
+    with respx.mock(assert_all_called=False) as router:
+        route = router.post(url__startswith=BASE_URL)
+        rc = cli.main(["smoke-live", "--env-file", str(tmp_path / "missing.env")])
+    assert rc == 2 and not route.called
+    assert "STUDIO_READ_ONLY" in capsys.readouterr().err
+
+
 # -- studio verify -------------------------------------------------------------------
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402

@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.structured import structured
 from studio.receipts import Ledger, public_key_raw, verify
-from studio.settings import Budget, ConfigError, Settings
+from studio.settings import Budget, ConfigError, ReadOnlyMode, Settings
 
 SMOKE_MODEL = "muse-spark-1.3-contributor"
 
@@ -32,7 +32,8 @@ def smoke_live(env_file: Path, client: MuseClient | None = None) -> int:
     if client is None:
         settings = Settings.load(env_file=env_file)
         client = MuseClient(settings.model_api_key, settings.model_api_base_url,
-                            ledger=Ledger(), budget=Budget(0.05))
+                            ledger=Ledger(), budget=Budget(0.05),
+                            read_only=settings.read_only)  # the kill switch covers smoke too
     _, result = structured(
         client, SMOKE_MODEL,
         [{"role": "user", "content": "Reply with ok=true and one English word."}],
@@ -130,7 +131,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return smoke_live(args.env_file)
         if args.cmd == "verify":
             return run_verify(args)
-    except (ConfigError, MuseError, UsageError, OSError, httpx.HTTPError, ValueError,
+    except (ConfigError, MuseError, ReadOnlyMode, UsageError, OSError, httpx.HTTPError, ValueError,
             KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

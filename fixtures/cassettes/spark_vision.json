@@ -17,7 +17,7 @@
                 {
                   "type": "image_url",
                   "image_url": {
-                    "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAGElEQVR4nGO4oKBAEmIY1TAaSgrDNmkAAEt/EBAtLa0WAAAAAElFTkSuQmCC"
+                    "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAAB+0lEQVR42u3TQQkAAAjAwPUvrX8reHAJBmsK3pIAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwABgADAAGAAMAAYAA4ABwAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgAJMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAyAASTAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAYAAwABgADgAHAAGAAMAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADAAGAAOAAcAAYAAwABgADADHAllMDvLkz2XNAAAAAElFTkSuQmCC"
                   }
                 }
               ]
@@ -30,28 +30,28 @@
       "response": {
         "status": 200,
         "json": {
-          "id": "chatcmpl-01a17f54-a6dd-70ee-ab25-52dd32a9312c",
+          "id": "chatcmpl-01a17f70-4ff7-710c-9e75-6556da76b28e",
           "choices": [
             {
               "finish_reason": "stop",
               "index": 0,
               "message": {
-                "content": "grey",
+                "content": "Red",
                 "refusal": null,
                 "role": "assistant"
               },
               "logprobs": null
             }
           ],
-          "created": 1793137616,
+          "created": 1793139429,
           "model": "muse-spark-1.3",
           "object": "chat.completion",
           "usage": {
-            "completion_tokens": 446,
-            "prompt_tokens": 20,
-            "total_tokens": 466,
+            "completion_tokens": 199,
+            "prompt_tokens": 119,
+            "total_tokens": 318,
             "completion_tokens_details": {
-              "reasoning_tokens": 436
+              "reasoning_tokens": 189
             },
             "prompt_tokens_details": {
               "cached_tokens": 0

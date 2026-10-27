@@ -1,0 +1,121 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/responses",
+        "json": {
+          "model": "muse-spark-1.3",
+          "input": "Look up the price of bread and of rolls; call the tool once per product.",
+          "store": true,
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup_price",
+              "description": "Price of a product in PLN.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "product": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "product"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "parallel_tool_calls": true,
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 300
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "top_logprobs": 0,
+          "temperature": 1.0,
+          "top_p": 1.0,
+          "service_tier": "auto",
+          "model": "muse-spark-1.3",
+          "reasoning": {
+            "effort": "low"
+          },
+          "background": false,
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup_price",
+              "description": "Price of a product in PLN.",
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "product"
+                ],
+                "properties": {
+                  "product": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "truncation": "disabled",
+          "id": "resp_6ae122e7fb6fb24eecd34f32",
+          "object": "response",
+          "status": "incomplete",
+          "created_at": 1793139431.0,
+          "error": null,
+          "incomplete_details": {
+            "reason": "max_output_tokens"
+          },
+          "output": [
+            {
+              "type": "reasoning",
+              "id": "rs_6ae122e7fb6fb24eecd34f32:rs_0936cfaf-a99f-4322-b918-d89cdf87285b",
+              "summary": [],
+              "status": "completed"
+            },
+            {
+              "type": "message",
+              "id": "rs_da3e1905-05e7-4671-aa6d-1a0e182468e0",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "I'll look up the prices for both bread and rolls.",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "commentary",
+              "status": "completed"
+            }
+          ],
+          "instructions": null,
+          "usage": {
+            "input_tokens": 553,
+            "input_tokens_details": {
+              "cached_tokens": 113
+            },
+            "output_tokens": 300,
+            "output_tokens_details": {
+              "reasoning_tokens": 215
+            },
+            "total_tokens": 853
+          },
+          "parallel_tool_calls": true,
+          "store": true,
+          "max_output_tokens": 300
+        }
+      }
+    }
+  ]
+}

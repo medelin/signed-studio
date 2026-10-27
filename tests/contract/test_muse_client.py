@@ -23,7 +23,8 @@ from studio.settings import Budget, BudgetExceeded, ReadOnlyMode
 
 ROOT = Path(__file__).resolve().parents[2]
 CASSETTES = ROOT / "fixtures" / "cassettes"
-RED_PNG = (ROOT / "fixtures" / "images" / "red-16.png").read_bytes()
+RED_PNG = (ROOT / "fixtures" / "images" / "red-16.png").read_bytes()  # wire tests only
+RED_256 = (ROOT / "fixtures" / "images" / "red-256.png").read_bytes()  # recorded vision call
 FAKE_KEY = "test-key-not-a-secret"
 
 
@@ -132,23 +133,35 @@ def test_tool_call_round_trip(client, ledger):
     assert r1.details["tool_calls"] == ["lookup_price"]
 
 
-def test_vision_part_hashed_into_receipt(client, ledger):
+def test_red_256_fixture_is_a_solid_256px_png():
+    import struct
+    import zlib
+
+    assert RED_256.startswith(b"\x89PNG\r\n\x1a\n")
+    width, height = struct.unpack(">II", RED_256[16:24])
+    assert width >= 256 and height >= 256
+    idat = RED_256[RED_256.index(b"IDAT") + 4:RED_256.index(b"IEND") - 8]
+    pixels = zlib.decompress(idat)
+    assert set(pixels[1:width * 3 + 1:3]) == {255} and set(pixels[2:width * 3 + 1:3]) == {0}
+
+
+def test_vision_recognises_the_colour(client, ledger):
     with respx.mock() as router:
-        sent, _ = mount(router, "spark_vision")
+        sent, interactions = mount(router, "spark_vision")
         result = client.chat(
             "muse-spark-1.3",
             [{"role": "user", "content": [
                 {"type": "text", "text": "What colour is this square? One word."},
-                chat_image_part(RED_PNG),
+                chat_image_part(RED_256),
             ]}],
             run_id="run-1", agent="reviewer", max_tokens=1500, reasoning_effort="low",
         )
-    # Wire contract only: the recorded answer for this 16x16 swatch is not a colour check.
-    assert result.text.strip() and result.finish == "stop"
+    assert "red" in result.text.lower() and result.finish == "stop"
     url = sent[0]["messages"][0]["content"][1]["image_url"]["url"]
-    assert url.startswith("data:image/png;base64,")
+    assert url == interactions[0]["request"]["json"]["messages"][0]["content"][1][
+        "image_url"]["url"]  # the cassette was recorded on exactly this image
     receipt = ledger.receipts("run-1")[-1]
-    assert receipt.input_sha256 == [sha256_hex(RED_PNG)]
+    assert receipt.input_sha256 == [sha256_hex(RED_256)]
 
 
 def test_read_only_makes_no_call(ledger):
@@ -415,3 +428,38 @@ def test_network_error_charges_the_estimate_conservatively(client, ledger):
     receipt = ledger.receipts("r")[-1]
     assert receipt.details["cost_basis"] == "estimate" and receipt.cost_usd > 0
     assert client.budget.spent() == pytest.approx(receipt.cost_usd)
+
+
+def test_tool_calls_request_parallel_tool_calls(client, ledger):
+    """Spec: the producer runs with parallel_tool_calls=true (Responses and Chat)."""
+    tools = [{"type": "function", "name": "lookup_price",
+              "description": "Price of a product in PLN.",
+              "parameters": {"type": "object", "properties": {"product": {"type": "string"}},
+                             "required": ["product"], "additionalProperties": False}}]
+    with respx.mock() as router:
+        sent, _ = mount(router, "spark_parallel_tools")
+        result = client.respond("muse-spark-1.3",
+                                "Look up the price of bread and of rolls; call the tool once "
+                                "per product.",
+                                tools=tools, run_id="r", agent="producer",
+                                reasoning={"effort": "low"}, max_output_tokens=300)
+    assert sent[0]["parallel_tool_calls"] is True
+    # The recorded call shows the API accepts the field (HTTP 200). It spent its 300-token
+    # cap on reasoning ("incomplete"), so it is not evidence of parallel calls themselves.
+    assert result.finish == "incomplete" and result.response_id
+    with respx.mock() as router:
+        route = router.post(url__startswith=BASE_URL).mock(
+            return_value=httpx.Response(200, json=cassette("spark_structured")[0]["response"][
+                "json"]))
+        client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
+                    agent="a", tools=[{"type": "function", "function": {"name": "f"}}])
+        assert json.loads(route.calls[0].request.content)["parallel_tool_calls"] is True
+        client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
+                    agent="a")
+        assert "parallel_tool_calls" not in json.loads(route.calls[1].request.content)
+
+
+def test_unverified_model_prices_are_not_listed():
+    from studio.muse.client import TOKEN_PRICES
+
+    assert not any(m.startswith(("muse-spark-1.1", "muse-spark-1.2")) for m in TOKEN_PRICES)

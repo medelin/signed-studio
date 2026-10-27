@@ -1,7 +1,8 @@
 """Record Meta Model API cassettes for the contract tests (operator machine only).
 
-Makes 4 small real calls with the key from ``.env`` (mode 600); pass cassette names
-(``spark_structured spark_tool_call spark_vision``) to re-record only those. Cassettes keep
+Makes 5 small real calls with the key from ``.env`` (mode 600); pass cassette names
+(``spark_structured spark_tool_call spark_vision spark_parallel_tools``) to re-record only
+those. Cassettes keep
 only the request path and JSON body and the response status and JSON body; no headers are
 written, and the file is refused if the key would appear in it.
 
@@ -71,7 +72,8 @@ def main() -> None:
     client = MuseClient(key, settings.model_api_base_url, ledger=Ledger(), budget=Budget(0.5),
                         transport=rec)
     OUT.mkdir(parents=True, exist_ok=True)
-    only = set(sys.argv[1:]) or {"spark_structured", "spark_tool_call", "spark_vision"}
+    only = set(sys.argv[1:]) or {"spark_structured", "spark_tool_call", "spark_vision",
+                                 "spark_parallel_tools"}
 
     if "spark_structured" in only:
         _structured(client, rec, key)
@@ -79,6 +81,8 @@ def main() -> None:
         _tool_call(client, rec, key)
     if "spark_vision" in only:
         _vision(client, rec, key)
+    if "spark_parallel_tools" in only:
+        _parallel_tools(client, rec, key)
     print(f"total cost ${client.budget.spent():.5f}" if client.budget else "")
 
 
@@ -112,13 +116,30 @@ def _tool_call(client: MuseClient, rec: Recorder, key: str) -> None:
 
 
 def _vision(client: MuseClient, rec: Recorder, key: str) -> None:
-    image = (ROOT / "fixtures" / "images" / "red-16.png").read_bytes()
+    # >= 256 px solid swatch (scripts/make_swatch.py); a 16 px one was read as "grey".
+    image = (ROOT / "fixtures" / "images" / "red-256.png").read_bytes()
     client.chat("muse-spark-1.3",
                 [{"role": "user", "content": [
                     {"type": "text", "text": "What colour is this square? One word."},
                     chat_image_part(image)]}],
                 run_id="rec", agent="reviewer", max_tokens=1500, reasoning_effort="low")
     save("spark_vision", rec, key)
+
+
+def _parallel_tools(client: MuseClient, rec: Recorder, key: str) -> None:
+    """One Responses call with tools and parallel_tool_calls=true (spec §2.3)."""
+    tools = [{
+        "type": "function", "name": "lookup_price",
+        "description": "Price of a product in PLN.",
+        "parameters": {"type": "object", "properties": {"product": {"type": "string"}},
+                       "required": ["product"], "additionalProperties": False},
+    }]
+    client.respond("muse-spark-1.3",
+                   "Look up the price of bread and of rolls; call the tool once per product.",
+                   tools=tools,
+                   reasoning={"effort": "low"}, run_id="rec", agent="producer",
+                   max_output_tokens=300)
+    save("spark_parallel_tools", rec, key)
 
 
 if __name__ == "__main__":
