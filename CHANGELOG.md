@@ -3,6 +3,7 @@
 ## 2026-10-27 — day 2 plan (Studio act, D2-1 … D2-8)
 
 - D2-1 schemas + prompts: `studio/agents/schemas.py` (`Plan`, `CopyPack`, `CreativeSet`, `Review`, `Triage`, `Score`, `Report`; counts enforced by validators, not by schema keywords the strict subset may lack); `strict_schema` now inlines `$ref`/`$defs` so nested models are sent flat; system prompts = byte-stable prefix (synthetic brand sheet + policy checklist P1–P8) + role, for prompt caching (`studio/agents/prompts.py`); `skills.yaml` with `side_effects: none|local|external`, loader fails closed (an external skill marked model-callable, an unknown class or a missing approval action refuse to load); 21 tests.
+- D2-2 PII + tier routing: `studio/pii.py` — `contains_pii` finds e-mails, PL phones (`600 100 200`, `600-100-200`, `(12) 345 67 89`, +48/0048) and UK phones (+44, `07700 900123`, `020 7946 0958`), NIP and PESEL only with a valid checksum (prices, dates, order numbers are not PII); `choose_tier(text, requested, source=)` never picks Contributor for PII or for customer text (comment/lead/transcript), and the reason names only the PII kind (it lands in `tier_reason`); 32 tests (25-case table).
 
 ## 2026-10-27 — day 1 fix round (review)
 
