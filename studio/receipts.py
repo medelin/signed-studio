@@ -139,6 +139,9 @@ def is_opaque(value: Any) -> bool:
     return bool(_OPAQUE_ID.fullmatch(value)) and redact(value) == value
 
 
+_ID_FIELDS = ("model", "provider", "tier")
+
+
 def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
     """Redact PII. Approval receipts keep the signed fields byte-exact, so those fields
     must be opaque (ids, digests, key ids, nonce, ts); anything else is refused."""
@@ -240,6 +243,13 @@ class Ledger:
     ) -> Receipt:
         if kind not in KINDS:
             raise ValueError(f"unknown receipt kind: {kind!r}")
+        # The export is public: ids must be opaque, free text is redacted.
+        for name, value, required in (("run_id", run_id, True), ("agent", agent, True),
+                                      *((n, fields.get(n, ""), False) for n in _ID_FIELDS)):
+            if (required or value) and not is_opaque(value):
+                raise ValueError(f"receipt field {name!r} must be an opaque id, not free text")
+        if "tier_reason" in fields:
+            fields["tier_reason"] = redact(str(fields["tier_reason"]))
         details = _redact_details(kind, fields.pop("details", {}) or {})
 
         def build(prev: str, last_ts: float) -> Receipt:

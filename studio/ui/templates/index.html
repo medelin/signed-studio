@@ -18,7 +18,7 @@
         <td>{{ r.agent }}</td>
         <td><span class="kind {{ r.kind }}">{{ r.kind }}</span></td>
         <td>{{ r.provider or "—" }} · {{ r.model or "—" }}</td>
-        <td>{{ r.tier or "—" }}</td>
+        <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
         <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
         <td>${{ "%.5f" | format(r.cost_usd) }}</td>
         <td><code title="{{ r.hash }}">{{ r.hash[:12] }}</code></td>

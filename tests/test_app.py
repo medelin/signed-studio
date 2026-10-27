@@ -54,7 +54,8 @@ def test_index_is_public_and_read_only(client):
 
 
 def test_index_escapes_receipt_content(app, client):
-    app.state.ledger.append("run-x", agent="<script>alert(1)</script>", kind="model_call")
+    app.state.ledger.append("run-x", agent="community", kind="model_call",
+                            tier_reason="<script>alert(1)</script>")
     r = client.get("/")
     assert "<script>alert(1)</script>" not in r.text
     assert "&lt;script&gt;" in r.text

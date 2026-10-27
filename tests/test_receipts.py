@@ -368,3 +368,31 @@ def test_write_without_item_id_rejected(tmp_path):
     led.append("run-1", agent="media_buyer", kind="external_write", output_sha256=CONTENT,
                details={"approval_id": aid, "action": "reply.post"})
     assert "item" in " ".join(check(led, tmp_path).errors)
+
+
+# -- I4: every text field of a receipt is redacted or must be an opaque id ---------------
+
+
+def test_tier_reason_is_redacted():
+    r = Ledger().append("run-1", agent="router", kind="model_call", tier="standard",
+                        tier_reason="contains jan@example.org and +48 601 234 567")
+    assert "jan@example.org" not in r.tier_reason and "601 234 567" not in r.tier_reason
+    assert "[email]" in r.tier_reason and "[phone]" in r.tier_reason
+
+
+@pytest.mark.parametrize("field", ["run_id", "agent", "model", "provider", "tier"])
+@pytest.mark.parametrize("value", ["jan@example.org", "call +48 601 234 567", "two words"])
+def test_identifier_fields_must_be_opaque(field, value):
+    kwargs = {"run_id": "run-1", "agent": "a", "kind": "model_call", field: value}
+    run_id = kwargs.pop("run_id")
+    with pytest.raises(ValueError, match=field):
+        Ledger().append(run_id, **kwargs)
+
+
+def test_export_of_pii_laden_inputs_has_no_contact_data(tmp_path):
+    led = Ledger()
+    led.append("run-1", agent="router", kind="model_call", model="muse-spark-1.3",
+               tier="standard", tier_reason="lead jan@example.org",
+               details={"n": "+48 601 234 567"})
+    text = led.export_jsonl()
+    assert "jan@example.org" not in text and "601 234 567" not in text
