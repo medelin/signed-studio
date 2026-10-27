@@ -1,0 +1,249 @@
+{
+  "interactions": [
+    {
+      "request": {
+        "method": "POST",
+        "path": "/responses",
+        "json": {
+          "model": "muse-spark-1.3",
+          "input": "How much is the sourdough subscription? Use the tool.",
+          "store": true,
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup_price",
+              "description": "Price of a product in PLN.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "product": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "product"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "reasoning": {
+            "effort": "low"
+          },
+          "max_output_tokens": 300
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "top_logprobs": 0,
+          "temperature": 1.0,
+          "top_p": 1.0,
+          "service_tier": "auto",
+          "model": "muse-spark-1.3",
+          "reasoning": {
+            "effort": "low"
+          },
+          "background": false,
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup_price",
+              "description": "Price of a product in PLN.",
+              "parameters": {
+                "additionalProperties": false,
+                "required": [
+                  "product"
+                ],
+                "type": "object",
+                "properties": {
+                  "product": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "truncation": "disabled",
+          "id": "resp_6ae11bacdd36bf99926a40b4",
+          "object": "response",
+          "status": "completed",
+          "created_at": 1793137580.0,
+          "completed_at": 1793137580.0,
+          "error": null,
+          "incomplete_details": null,
+          "output": [
+            {
+              "type": "reasoning",
+              "id": "rs_6ae11bacdd36bf99926a40b4:rs_4daf68d6-50f2-488f-bfef-3741f85c7147",
+              "summary": [],
+              "status": "completed"
+            },
+            {
+              "type": "message",
+              "id": "rs_08a1fc6e-cb71-4824-8da5-af6ea965f8a9",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "I'll look up the sourdough subscription price for you.",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "phase": "commentary",
+              "status": "completed"
+            },
+            {
+              "type": "function_call",
+              "id": "fc_92f2f3ab-0401-46fd-978e-e15520b80d35",
+              "call_id": "call_92f2f3ab-0401-46fd-978e-e15520b80d35",
+              "name": "lookup_price",
+              "arguments": "{\"product\":\"sourdough subscription\"}",
+              "status": "completed"
+            }
+          ],
+          "instructions": null,
+          "usage": {
+            "input_tokens": 549,
+            "input_tokens_details": {
+              "cached_tokens": 113
+            },
+            "output_tokens": 176,
+            "output_tokens_details": {
+              "reasoning_tokens": 103
+            },
+            "total_tokens": 725
+          },
+          "parallel_tool_calls": true,
+          "store": true,
+          "max_output_tokens": 300
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "POST",
+        "path": "/responses",
+        "json": {
+          "model": "muse-spark-1.3",
+          "input": [
+            {
+              "type": "function_call_output",
+              "call_id": "call_92f2f3ab-0401-46fd-978e-e15520b80d35",
+              "output": "49 PLN"
+            }
+          ],
+          "store": true,
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup_price",
+              "description": "Price of a product in PLN.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "product": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "product"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "reasoning": {
+            "effort": "low"
+          },
+          "previous_response_id": "resp_6ae11bacdd36bf99926a40b4",
+          "max_output_tokens": 300
+        }
+      },
+      "response": {
+        "status": 200,
+        "json": {
+          "top_logprobs": 0,
+          "temperature": 1.0,
+          "top_p": 1.0,
+          "service_tier": "auto",
+          "previous_response_id": "resp_6ae11bacdd36bf99926a40b4",
+          "model": "muse-spark-1.3",
+          "reasoning": {
+            "effort": "low"
+          },
+          "background": false,
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup_price",
+              "description": "Price of a product in PLN.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "product": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "product"
+                ],
+                "additionalProperties": false
+              }
+            }
+          ],
+          "tool_choice": "auto",
+          "truncation": "disabled",
+          "id": "resp_6ae11bb0cdc508360e644cd3",
+          "object": "response",
+          "status": "completed",
+          "created_at": 1793137584.0,
+          "completed_at": 1793137584.0,
+          "error": null,
+          "incomplete_details": null,
+          "output": [
+            {
+              "type": "reasoning",
+              "id": "rs_6ae11bb0cdc508360e644cd3:rs_6cf29ddc-5fa6-4512-86aa-1dc53e864aec",
+              "summary": [],
+              "status": "completed"
+            },
+            {
+              "type": "message",
+              "id": "msg_3e8a41ca-55a5-484c-9d61-e1552eac8920",
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "output_text",
+                  "text": "The sourdough subscription is **49 PLN**.",
+                  "annotations": [],
+                  "logprobs": []
+                }
+              ],
+              "status": "completed"
+            }
+          ],
+          "instructions": null,
+          "usage": {
+            "input_tokens": 642,
+            "input_tokens_details": {
+              "cached_tokens": 113
+            },
+            "output_tokens": 71,
+            "output_tokens_details": {
+              "reasoning_tokens": 52
+            },
+            "total_tokens": 713
+          },
+          "parallel_tool_calls": true,
+          "store": true,
+          "max_output_tokens": 300
+        }
+      }
+    }
+  ]
+}

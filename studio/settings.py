@@ -223,6 +223,13 @@ class Budget:
             self._over(cost_usd)
             self._spent += cost_usd
 
+    def record(self, cost_usd: float) -> None:
+        """Record a cost already incurred (after a model call), even past the cap."""
+        self._valid(cost_usd)
+        with self._lock:
+            self._roll()
+            self._spent += cost_usd
+
     def spent(self) -> float:
         with self._lock:
             self._roll()

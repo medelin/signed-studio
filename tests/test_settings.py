@@ -147,3 +147,14 @@ def test_env_file_parsed_and_mode_enforced(tmp_path):
     os.chmod(path, 0o644)
     with pytest.raises(ConfigError, match="permissions"):
         read_env_file(path)
+
+
+def test_budget_record_counts_incurred_cost_even_over_cap():
+    b = Budget(1.0)
+    b.charge(0.9)
+    b.record(0.5)  # the call already happened: its cost must be counted
+    assert b.spent() == pytest.approx(1.4)
+    with pytest.raises(BudgetExceeded):
+        b.check()
+    with pytest.raises(ValueError):
+        b.record(float("nan"))

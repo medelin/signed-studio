@@ -17,7 +17,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -e '.[dev]'
       - run: python -m pytest -q
-      - run: python -m ruff check studio tests
+      - run: python -m ruff check studio tests scripts
       - run: python -m mypy studio
       - name: gitleaks (full history, pinned binary, checksum verified)
         run: |

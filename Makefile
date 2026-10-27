@@ -8,7 +8,7 @@ test:
 	$(PY) -m pytest -q
 
 lint:
-	$(PY) -m ruff check studio tests
+	$(PY) -m ruff check studio tests scripts
 	$(PY) -m mypy studio
 
 demo:
