@@ -212,9 +212,9 @@ class Ledger:
     """Signs and appends receipts; storage is pluggable (memory here, SQLite in ``db``)."""
 
     def __init__(
-        self, signing_key: Ed25519PrivateKey | None = None, store: Store | None = None
+        self, signer: Ed25519PrivateKey | None = None, store: Store | None = None
     ) -> None:
-        self._key = signing_key or Ed25519PrivateKey.generate()
+        self._key = signer or Ed25519PrivateKey.generate()
         self._store: Store = store or MemoryStore()
 
     @property

@@ -1,2 +1,4 @@
 # False positive: a type annotation (signing_key: Ed25519PrivateKey), not a secret.
 dd771f647231c216652df8b4e45fb05317a879ab:studio/receipts.py:generic-api-key:95
+# Same false positive after the Ledger refactor (parameter since renamed to `signer`).
+61f1819b6c9dc4788f45f66b2a150c941c774b31:studio/receipts.py:generic-api-key:190
