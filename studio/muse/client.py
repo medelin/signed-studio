@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from studio.receipts import Ledger, canonical, sha256_hex
+from studio.receipts import Ledger, canonical, normalize_id, sha256_hex
 from studio.settings import Budget, ReadOnlyMode, Settings
 
 BASE_URL = "https://api.meta.ai/v1"
@@ -262,6 +262,8 @@ class MuseClient:
         """Send one request. Once anything may have been sent, a receipt is always written:
         the success receipt, or an error receipt for network, HTTP, parse or abort."""
         check_tier(model, tier)
+        # Caller-supplied ids fail here, before any I/O, never in the receipt after the call.
+        Ledger.validate_ids(run_id, agent, provider=PROVIDER, model=model, tier=tier)
         if self.read_only:
             raise ReadOnlyMode("STUDIO_READ_ONLY=1: model calls are disabled")
         if self.budget is not None:
@@ -280,7 +282,7 @@ class MuseClient:
             data = self._send(path, body)
             try:
                 parsed = parser(data)
-                used_model = str(data.get("model") or model)
+                used_model, reported_sha = normalize_id(data.get("model") or model)
                 usage: Usage = parsed["usage"]
                 cost = cost_usd(used_model if used_model in TOKEN_PRICES else model, usage)
             except Exception:  # noqa: BLE001 - any malformed body is a bad response
@@ -311,6 +313,8 @@ class MuseClient:
             details["tool_calls"] = [c.name for c in parsed["tool_calls"]]
         if used_model != model:
             details["requested_model"] = model
+        if reported_sha:
+            details["reported_model_sha256"] = reported_sha
         receipt = self.ledger.append(
             run_id, agent=agent, kind="model_call", model=used_model, **audit,
             output_sha256=sha256_hex(parsed["text"]), tokens_in=usage.input_tokens,

@@ -142,6 +142,16 @@ def is_opaque(value: Any) -> bool:
 _ID_FIELDS = ("model", "provider", "tier")
 
 
+def normalize_id(value: Any) -> tuple[str, str]:
+    """An externally reported id in receipt-safe form: ``(value, "")`` when it is opaque,
+    otherwise ``("unrecognized", sha256 of the raw value)``. Never raises, so a value from
+    a server response can never prevent the receipt for an action already taken."""
+    if isinstance(value, str) and is_opaque(value):
+        return value, ""
+    raw = value if isinstance(value, str) else repr(value)
+    return "unrecognized", sha256_hex(raw)
+
+
 def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
     """Redact PII. Approval receipts keep the signed fields byte-exact, so those fields
     must be opaque (ids, digests, key ids, nonce, ts); anything else is refused."""
@@ -244,10 +254,7 @@ class Ledger:
         if kind not in KINDS:
             raise ValueError(f"unknown receipt kind: {kind!r}")
         # The export is public: ids must be opaque, free text is redacted.
-        for name, value, required in (("run_id", run_id, True), ("agent", agent, True),
-                                      *((n, fields.get(n, ""), False) for n in _ID_FIELDS)):
-            if (required or value) and not is_opaque(value):
-                raise ValueError(f"receipt field {name!r} must be an opaque id, not free text")
+        self.validate_ids(run_id, agent, **{n: fields.get(n, "") for n in _ID_FIELDS})
         if "tier_reason" in fields:
             fields["tier_reason"] = redact(str(fields["tier_reason"]))
         details = _redact_details(kind, fields.pop("details", {}) or {})
@@ -271,6 +278,19 @@ class Ledger:
 
     def receipts(self, run_id: str | None = None) -> list[Receipt]:
         return self._store.receipts(run_id)
+
+    @staticmethod
+    def validate_ids(
+        run_id: str, agent: str, *, provider: str = "", model: str = "", tier: str = ""
+    ) -> None:
+        """Raise ``ValueError`` unless the ids are opaque (``provider``/``model``/``tier`` may
+        be empty). Callers run this *before* any side effect, so a bad caller-supplied id
+        fails fast instead of producing an action without a receipt."""
+        for name, value, required in (("run_id", run_id, True), ("agent", agent, True),
+                                      ("provider", provider, False), ("model", model, False),
+                                      ("tier", tier, False)):
+            if (required or value) and not is_opaque(value):
+                raise ValueError(f"receipt field {name!r} must be an opaque id, not free text")
 
     def _sign_manifest(self, seq: int, receipts: list[Receipt]) -> dict[str, Any]:
         runs: dict[str, dict[str, Any]] = {}

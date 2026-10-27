@@ -328,3 +328,32 @@ def test_unparseable_success_body_still_leaves_receipt(client, ledger):
             client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], run_id="r",
                         agent="a")
     assert ledger.receipts("r")[-1].details["error"] == "bad_response"
+
+
+@pytest.mark.parametrize("bad", [{"agent": "two words"}, {"run_id": "jan@example.org"},
+                                 {"agent": ""}])
+def test_bad_caller_ids_fail_before_any_request(ledger, bad):
+    c = MuseClient(FAKE_KEY, ledger=ledger, budget=Budget(1.0))
+    kwargs = {"run_id": "r", "agent": "a", **bad}
+    with respx.mock(assert_all_called=False) as router:
+        route = router.post(url__startswith=BASE_URL)
+        with pytest.raises(ValueError):
+            c.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}], **kwargs)
+    assert not route.called
+    assert ledger.receipts() == []
+
+
+def test_odd_server_model_string_still_leaves_a_receipt(client, ledger):
+    body = cassette("spark_structured")[0]["response"]["json"]
+    odd = "Muse Spark <build 7> for jan@example.org"
+    with respx.mock() as router:
+        router.post(url__startswith=BASE_URL).mock(
+            return_value=httpx.Response(200, json={**body, "model": odd}))
+        result = client.chat("muse-spark-1.3", [{"role": "user", "content": "hi"}],
+                             run_id="r", agent="a")
+    receipt = ledger.receipts("r")[-1]
+    assert receipt.id == result.receipt_id
+    assert receipt.model == "unrecognized"
+    assert receipt.details["reported_model_sha256"] == sha256_hex(odd)
+    assert receipt.details["requested_model"] == "muse-spark-1.3"
+    assert "jan@example.org" not in ledger.export_jsonl()
