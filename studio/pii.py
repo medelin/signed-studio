@@ -139,36 +139,45 @@ def fold(text: str) -> str:
 
 
 def _windows(positions: list[int]) -> list[tuple[int, int]]:
-    """Merged ``(start, end)`` spans where LONG_RUN_DIGITS positions fit in the window."""
+    """Merged ``(first, last)`` index pairs where LONG_RUN_DIGITS positions fit in the
+    window (positions are indexes into the matching view)."""
     spans: list[tuple[int, int]] = []
     k = LONG_RUN_DIGITS - 1
     for i in range(len(positions) - k):
         if positions[i + k] - positions[i] < LONG_RUN_WINDOW:
-            start, end = positions[i], positions[i + k] + 1
-            if spans and start <= spans[-1][1]:
-                spans[-1] = (spans[-1][0], max(end, spans[-1][1]))
+            first, last = positions[i], positions[i + k]
+            if spans and first <= spans[-1][1]:
+                spans[-1] = (spans[-1][0], max(last, spans[-1][1]))
             else:
-                spans.append((start, end))
+                spans.append((first, last))
     return spans
 
 
 def long_digit_spans(text: str, *, letters_break: bool = False) -> list[tuple[int, int]]:
-    """Spans holding 9+ digits within 20 characters, ignoring every non-digit character.
+    """``(start, end)`` spans of ``text`` holding 9+ digits within 20 characters.
 
+    The window is measured on a matching view that keeps only letters and digits (Unicode
+    L* and N* after NFKC and digit mapping): spaces, punctuation, symbols, format
+    characters (ZWSP, U+2060, soft hyphen) and combining marks cannot stretch it.
     With ``letters_break`` (redaction), a word that contains a letter (a hex digest, an
     opaque id) is a boundary instead: its digits do not count and the window restarts."""
     folded = fold(text)
-    if not letters_break:
-        return _windows([i for i, ch in enumerate(folded) if ch.isdigit()])
-    spans: list[tuple[int, int]] = []
+    view = [i for i, ch in enumerate(folded) if unicodedata.category(ch)[0] in "LN"]
+    in_letter_word = set()
+    if letters_break:
+        for m in _WORD.finditer(folded):
+            if any(ch.isalpha() for ch in m.group()):
+                in_letter_word.update(range(m.start(), m.end()))
+    pairs: list[tuple[int, int]] = []
     positions: list[int] = []
-    for m in _WORD.finditer(folded):
-        if any(ch.isalpha() for ch in m.group()):
-            spans += _windows(positions)
+    for v, i in enumerate(view):
+        if i in in_letter_word:
+            pairs += _windows(positions)
             positions = []
-        else:
-            positions += [m.start() + i for i, ch in enumerate(m.group()) if ch.isdigit()]
-    return spans + _windows(positions)
+        elif folded[i].isdigit():
+            positions.append(v)
+    pairs += _windows(positions)
+    return [(view[first], view[last] + 1) for first, last in pairs]
 
 
 def long_digit_run(text: str) -> bool:

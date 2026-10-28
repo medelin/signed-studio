@@ -176,7 +176,7 @@ def test_unicode_phone_forms_are_detected(text):
 
 def test_window_is_nine_digits_in_twenty_characters():
     assert long_digit_run("1a2b3c4d5e6f7g8h9")  # 9 digits in 17 characters
-    assert not long_digit_run("1 2 3 4 5 6 7 8 . . . . . . 9")  # 9th digit too far
+    assert not long_digit_run("1 2 3 4 5 6 7 8 abcdefghijklmn 9")  # 9th digit too far
     assert not long_digit_run("rok 2026, 89 PLN")
 
 
@@ -188,3 +188,18 @@ def test_redaction_uses_the_same_window():
     digest = "3f9a" + "1234567890" + "b" * 50
     assert redact(digest) == digest  # a hex digest is one token with letters: kept
     assert redact("run_3fa9c2b1d4e5f607") == "run_3fa9c2b1d4e5f607"
+
+
+# Controller ruling: invisible characters and padding cannot stretch the window.
+@pytest.mark.parametrize("sep", ["​", "⁠", "­", "́", " " * 30,
+                                 " .,;-/ " * 5, "​́ ­"])
+def test_padding_between_digits_cannot_stretch_the_window(sep):
+    text = "tel " + sep.join("600123456")
+    assert long_digit_run(text), repr(sep)
+    assert choose_tier(text, "contributor")[0] == "standard"
+
+
+@pytest.mark.parametrize("text", ["Kubek za 89 PLN, oferta do końca 2026 roku.",
+                                  "Od 150 zł dostawa gratis, 350 ml, rocznik 2026."])
+def test_a_sentence_with_a_price_and_a_year_stays_on_contributor(text):
+    assert choose_tier(text, "contributor")[0] == "contributor"
