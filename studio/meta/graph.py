@@ -14,8 +14,9 @@ strings, as in the reference's cURL examples.
   hex HMAC-SHA256(key=app secret, message=the access token used), per "Securing Graph
   API Requests" (form field on writes, query parameter on reads; it does not reveal the
   token).
-- Retry matrix: Graph error codes 4, 17, 32, 613 (throttling) are transient and retried
-  with backoff (at most ``RETRIES`` times); 10, 100, 190 and anything unknown are fatal. A
+- Retry matrix: Graph error codes 4, 17, 32, 613 (throttling), 80000-80014 (business use
+  case rate limits) and any error with ``is_transient: true`` are retried with backoff (at
+  most ``RETRIES`` times); 10, 100, 190 and anything else are fatal. A
   network error on a POST is not retried (the write may have happened; a duplicate PAUSED
   object is better found by a human than created twice silently).
 - Campaign, ad set and ad bodies carry ``status=PAUSED`` from a literal; activation is
@@ -60,6 +61,7 @@ VERSION = "v25.0"
 BASE = "https://graph.facebook.com"
 TRANSIENT = frozenset({4, 17, 32, 613})
 FATAL = frozenset({10, 100, 190})
+BUC_THROTTLE = (80000, 80014)  # business use case rate limits (Marketing API)
 RETRIES = 3
 _ACCOUNT = re.compile(r"(?:act_)?(\d{1,30})")
 _OBJECT_ID = re.compile(r"[0-9_]{1,80}")
@@ -75,6 +77,15 @@ def _form(fields: Mapping[str, Any]) -> dict[str, str]:
     """Graph form fields: strings as-is, everything else JSON-encoded."""
     return {k: v if isinstance(v, str) else json.dumps(v, separators=(",", ":"))
             for k, v in fields.items()}
+
+
+def _transient(code: int, err: Any) -> bool:
+    """Throttling (4, 17, 32, 613), business-use-case rate limits (80000-80014) and any
+    error Graph marks ``is_transient: true`` — unless the code is known fatal."""
+    if code in FATAL:
+        return False
+    flagged = isinstance(err, dict) and err.get("is_transient") is True
+    return code in TRANSIENT or BUC_THROTTLE[0] <= code <= BUC_THROTTLE[1] or flagged
 
 
 def _oid(value: str) -> str:
@@ -154,11 +165,12 @@ class GraphAdapter:
             err = body.get("error") if isinstance(body, dict) else None
             code = int(err.get("code", 0)) if isinstance(err, dict) and isinstance(
                 err.get("code"), int) else 0
-            if code in TRANSIENT and attempt < RETRIES:
+            transient = _transient(code, err)
+            if transient and attempt < RETRIES:
                 self._sleep(2 ** attempt)
                 continue
             raise AdapterError(f"Graph API error {code or resp.status_code}",
-                               code="graph_error", transient=code in TRANSIENT,
+                               code="graph_error", transient=transient,
                                graph_code=code)
         raise AdapterError("Graph API retries exhausted", code="graph_error", transient=True)
 

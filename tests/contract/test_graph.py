@@ -312,3 +312,33 @@ def test_token_never_in_errors_or_logs(env, mode, caplog):
     for record in caplog.records:
         assert TOKEN not in record.getMessage() and APP_SECRET not in record.getMessage()
     assert not [r for r in ledger.receipts() if TOKEN in json.dumps(r.details)]
+
+
+def _graph_error(code, **extra):
+    return {"status": 400, "json": {"error": {"message": "x", "type": "OAuthException",
+                                              "code": code, **extra}}}
+
+
+@pytest.mark.parametrize("error", [_graph_error(80000), _graph_error(80004),
+                                   _graph_error(80014), _graph_error(2, is_transient=True)])
+def test_business_use_case_throttling_and_is_transient_are_retried(env, error):
+    conn, ledger = env
+    p = payload()
+    v = approve(conn, ledger, "campaign.create", "cmp_g12", p, "run_m1")
+    sleeps = []
+    replay = Replay(CASSETTE["interactions"][1:2], errors=[error])
+    assert adapter(replay, sleeps).create_campaign_paused(p, v) == "120200000000000101"
+    assert sleeps == [1]
+
+
+@pytest.mark.parametrize("error", [_graph_error(80015), _graph_error(2),
+                                   _graph_error(190, is_transient=True),
+                                   _graph_error(100, is_transient="true")])
+def test_other_codes_are_fatal(env, error):
+    conn, ledger = env
+    p = payload()
+    v = approve(conn, ledger, "campaign.create", "cmp_g13", p, "run_m1")
+    replay = Replay([], errors=[error])
+    with pytest.raises(AdapterError) as exc:
+        adapter(replay).create_campaign_paused(p, v)
+    assert not exc.value.transient and len(replay.sent) == 1
