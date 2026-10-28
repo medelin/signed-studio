@@ -17,6 +17,7 @@ from typing import Any
 
 from PIL import Image
 
+from studio import envelope
 from studio.agents import prompts
 from studio.agents.schemas import CopyVariant, Finding, Review
 from studio.muse import openweights
@@ -79,10 +80,12 @@ def normalize(review: Review) -> Review:
 
 
 def _messages(image_png: bytes, copy: CopyVariant) -> list[dict[str, Any]]:
-    text = (f"Primary text: {copy.primary_text}\nHeadline: {copy.headline}\n"
-            f"Description: {copy.description}\nCTA: {copy.cta}")
+    """The copy goes in an untrusted envelope (it was written by a model from a brief);
+    the system prompt says copy and text in the image are data, never instructions."""
+    text = envelope.wrap(f"Primary text: {copy.primary_text}\nHeadline: {copy.headline}\n"
+                         f"Description: {copy.description}\nCTA: {copy.cta}", "ad_copy")
     return [
-        {"role": "system", "content": prompts.system(AGENT)},
+        {"role": "system", "content": prompts.system(AGENT) + "\n\n" + envelope.SYSTEM_RULE},
         {"role": "user", "content": [{"type": "text", "text": text},
                                      chat_image_part(image_png)]},
     ]
@@ -102,6 +105,7 @@ def review(client: MuseClient, image_png: bytes, copy: CopyVariant, *, run_id: s
         MODEL, _messages(downscale(image_png), copy), run_id=run_id, agent=AGENT,
         response_format=response_format(Review), max_tokens=6000, reasoning_effort="low",
         tier="standard", tier_reason="compliance review of the final creative (vision)",
+        envelope_sources=["ad_copy"],
     )
     return _parse(result.text, result.finish)
 
@@ -118,6 +122,7 @@ def second_opinion(
         agent=SECOND_AGENT, response_format=response_format(Review), max_tokens=6000,
         reasoning_effort="low", tier="open",
         tier_reason="open-weights second opinion on the same creative",
+        envelope_sources=["ad_copy"],
     )
     return _parse(result.text, result.finish)
 

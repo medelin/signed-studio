@@ -64,10 +64,24 @@ def _analyst(client):
     return "insights", None
 
 
+def _review_reply():
+    return {"verdict": "OK", "findings": [], "summary": "s"}
+
+
+def _reviewer(client):
+    from studio.agents import reviewer
+    from studio.agents.schemas import CopyVariant
+    png = (STUDIO.parent / "fixtures/images/red-256.png").read_bytes()
+    copy = CopyVariant(primary_text=CANARY, headline=CANARY, description="d", cta="SHOP_NOW")
+    reviewer.review(client, png, copy, run_id="p4")
+    return "ad_copy", None
+
+
 PATHS = {
     "studio/agents/community.py": (_community, lambda: _chat(_triage_reply())),
     "studio/agents/lead_scorer.py": (_lead, lambda: _chat(_score_reply())),
     "studio/agents/analyst.py": (_analyst, _report_reply),
+    "studio/agents/reviewer.py": (_reviewer, lambda: _chat(_review_reply())),
 }
 
 
