@@ -14,6 +14,7 @@ Files go to ``<data_dir>/assets/<run_id>/``; every image is a receipt priced at 
 from __future__ import annotations
 
 import io
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from PIL import Image
@@ -30,6 +31,17 @@ from studio.receipts import is_opaque, sha256_hex
 AGENT = "art_director"
 DEFAULT_PLACEMENTS = ("feed_1x1", "feed_4x5", "story_9x16")
 FLATTEN_BG = (244, 239, 230)  # brand off-white
+IMAGE_COST_USD = 0.01  # Muse Image price per generated image (see muse.image)
+
+
+class CostCapReached(Exception):
+    """The run's budget would be exceeded by the next image; nothing more is rendered."""
+
+
+def clean_placements(placements: Sequence[str]) -> tuple[str, ...]:
+    """Known placements, first occurrence only, at most one per format."""
+    known = [p for p in dict.fromkeys(placements) if p in PLACEMENT_SIZES]
+    return tuple(known[:len(PLACEMENT_SIZES)])
 
 
 class ScenePrompt(BaseModel):
@@ -80,12 +92,15 @@ def run(
     concept: str,
     data_dir: Path,
     placements: tuple[str, ...] = DEFAULT_PLACEMENTS,
+    can_spend: Callable[[float], bool] | None = None,
 ) -> CreativeSet:
+    """``can_spend(usd)`` is asked before every image; ``False`` raises ``CostCapReached``."""
     if not is_opaque(run_id):
         raise ValueError("run_id must be an opaque id")
     unknown = [p for p in placements if p not in PLACEMENT_SIZES]
     if unknown or not placements:
         raise ValueError(f"unknown placements: {unknown}")
+    placements = clean_placements(placements)
     out_dir = data_dir / "assets" / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,6 +114,8 @@ def run(
     used_prompts: list[str] = []
     first_png: bytes | None = None
     for i, placement in enumerate(placements):
+        if can_spend is not None and not can_spend(IMAGE_COST_USD):
+            raise CostCapReached(f"stopped before {placement}: run budget reached")
         size = PLACEMENT_SIZES[placement]
         text = placement_prompt(scene, headline, placement, first=i == 0)
         if first_png is None:

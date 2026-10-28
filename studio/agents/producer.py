@@ -188,7 +188,8 @@ def _headline_key(text: str) -> str:
     return "".join(ch for ch in text.casefold() if ch.isalnum())
 
 
-def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
+def _handlers(ctx: Context, run: RunResult, brief: str,
+              max_cost_usd: float = MAX_COST_USD) -> dict[str, Any]:
     def emit(kind: str, **data: Any) -> None:
         _save_state(ctx.conn, run, "running")
         if ctx.on_event:
@@ -225,9 +226,15 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
         if headline is None:
             raise ToolError("headline must be one of the copy variants' headlines")
         new_content()
-        run.creatives = art_director.run(
-            ctx.client, ctx.photo_png, headline[:60], run_id=run.run_id, concept=ctx.concept,
-            data_dir=ctx.data_dir, placements=tuple(run.plan.placements))
+        run.creatives = None
+        try:
+            run.creatives = art_director.run(
+                ctx.client, ctx.photo_png, headline[:60], run_id=run.run_id,
+                concept=ctx.concept, data_dir=ctx.data_dir,
+                placements=art_director.clean_placements(run.plan.placements),
+                can_spend=lambda usd: _cost(ctx, run.run_id) + usd <= max_cost_usd)
+        except art_director.CostCapReached:
+            raise ToolError("cost cap reached while rendering; no creative set") from None
         with transaction(ctx.conn):
             for im in run.creatives.images:
                 ctx.conn.execute(
@@ -344,8 +351,8 @@ def run(
         _save_state(ctx.conn, result, "running")
         if ctx.on_event:
             ctx.on_event("plan", {})
-        dispatcher = Dispatcher(_handlers(ctx, result, brief), ledger=ctx.client.ledger,
-                                run_id=run_id)
+        dispatcher = Dispatcher(_handlers(ctx, result, brief, max_cost_usd),
+                                ledger=ctx.client.ledger, run_id=run_id)
         tools = dispatcher.tools()
         next_input: list[dict[str, Any]] = [
             {"role": "system", "content": prompts.system(AGENT)},

@@ -41,7 +41,7 @@ def env(tmp_path, monkeypatch):
                            concept="mug", data_dir=tmp_path / "var")
     calls = []
 
-    def fake_art(client, photo, headline, *, run_id, concept, data_dir, placements=()):
+    def fake_art(client, photo, headline, *, run_id, concept, data_dir, placements=(), **kw):
         calls.append((headline, placements))
         img = CreativeImage(placement=placements[0], size="1024x1280", path="x.png",
                             sha256="0" * 64, width=1, height=1, response_id="")

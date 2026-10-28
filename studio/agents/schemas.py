@@ -65,6 +65,10 @@ class Plan(_Closed):
             raise ValueError("a plan has exactly 3 angles")
         if not self.placements:
             raise ValueError("a plan needs at least one placement")
+        if len(set(self.placements)) != len(self.placements):
+            raise ValueError("placements must be unique")
+        if len(self.placements) > len(PLACEMENT_SIZES):
+            raise ValueError(f"at most {len(PLACEMENT_SIZES)} placements")
         if not 1 <= self.budget_pln_daily <= 500:
             raise ValueError("daily budget must be 1-500 PLN")
         return self

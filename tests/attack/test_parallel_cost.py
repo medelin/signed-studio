@@ -53,7 +53,7 @@ def env(tmp_path, monkeypatch):
                            concept="mug", data_dir=tmp_path / "var")
     renders = []
 
-    def fake_art(client, photo, headline, *, run_id, concept, data_dir, placements=()):
+    def fake_art(client, photo, headline, *, run_id, concept, data_dir, placements=(), **kw):
         renders.append(headline)  # each render costs $0.40 (an expensive image series)
         client.ledger.append(run_id, agent="art_director", kind="model_call",
                              model="muse-image-1.0", cost_usd=0.40)

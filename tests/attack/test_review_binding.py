@@ -64,7 +64,7 @@ def env(tmp_path, monkeypatch):
                            concept="mug", data_dir=data_dir)
     renders = []
 
-    def fake_art(client, photo, headline, *, run_id, concept, data_dir, placements=()):
+    def fake_art(client, photo, headline, *, run_id, concept, data_dir, placements=(), **kw):
         n = len(renders)
         renders.append(headline)
         out = data_dir / "assets" / run_id
