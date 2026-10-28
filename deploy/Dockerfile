@@ -12,6 +12,7 @@ WORKDIR /app
 COPY deploy/requirements.lock deploy/requirements.lock
 RUN pip install --no-cache-dir --require-hashes --no-deps -r deploy/requirements.lock
 COPY . .
+RUN chmod -R u=rwX,go=rX /app  # a checkout made with a strict umask must stay readable
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 STUDIO_DATA_DIR=/data
 USER muse
