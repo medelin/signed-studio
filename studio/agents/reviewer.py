@@ -6,6 +6,11 @@ difference (verdict, or a rule only one of them cites) is listed as a disagreeme
 approval screen. Without a Baseten key the second opinion is "unavailable" and the
 primary review stands alone, labelled as such. ``run_formats`` reviews every placement
 that will be signed, one by one; the worst verdict wins.
+
+For an ad made from a confirmed Brief v1 both reviewers also get the owner's confirmed
+statements and rule P10 (``prompts/_grounding.md``) in the user message, and code adds
+``grounding_net``: a number the owner never confirmed, or a claim the brief bans, is a
+P10 block.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from typing import Any
 
 from PIL import Image
 
+from studio import brief as brief_v1
 from studio import envelope
 from studio.agents import formats, prompts
 from studio.agents.schemas import CopyVariant, Finding, Review
@@ -73,6 +79,23 @@ def policy_net(copy: CopyVariant) -> list[Finding]:
     return [Finding(rule="P9", severity="block",
                     evidence=f"code check: matched {h[:80]!r} ({P9_POLICIES})")
             for h in hits[:3]]
+
+
+def grounding_net(copy: CopyVariant, brief: brief_v1.BriefV1 | None) -> list[Finding]:
+    """Rule P10 by code: numbers in the copy that the owner never confirmed (facts, offer,
+    reasons, proposition, disclaimers, dates, display name) and banned claims."""
+    if brief is None:
+        return []
+    text = " | ".join((copy.headline, copy.primary_text, copy.description))
+    corpus = brief_v1.grounding_corpus(brief)
+    out = [Finding(rule=prompts.GROUNDING_RULE, severity="block",
+                   evidence=f"code check: the number {n!r} is not in the owner's confirmed "
+                            "facts")
+           for n in brief_v1.ungrounded_numbers(text, corpus)[:3]]
+    out += [Finding(rule=prompts.GROUNDING_RULE, severity="block",
+                    evidence=f"code check: banned by the brief: {b[:80]!r}")
+            for b in brief_v1.banned_hits(text, brief)[:3]]
+    return out
 
 
 def format_check(placement: str, ad: CopyVariant | dict[str, Any],
@@ -137,7 +160,7 @@ def downscale(png: bytes, max_side: int = MAX_SIDE) -> bytes:
 def normalize(review: Review) -> Review:
     """Rule ids mapped onto the checklist (``"P4 Price"`` → ``P4``, unknown → ``UNMAPPED``);
     the verdict is never milder than the worst finding's severity."""
-    valid = set(prompts.policy_rule_ids()) | {formats.RULE}
+    valid = set(prompts.policy_rule_ids()) | {formats.RULE, prompts.GROUNDING_RULE}
     findings = []
     for f in review.findings:
         m = _RULE.search(f.rule)
@@ -151,11 +174,31 @@ def normalize(review: Review) -> Review:
     return Review(verdict=verdict, findings=findings, summary=review.summary[:1000])
 
 
-def _messages(image_png: bytes, copy: CopyVariant) -> list[dict[str, Any]]:
+def _facts_block(brief: brief_v1.BriefV1) -> str:
+    facts = "\n".join(f"{i + 1}. {f}" for i, f in enumerate(brief.confirmed_facts)) or "(none)"
+    offer = brief.offer
+    lines = [f"Confirmed facts:\n{facts}",
+             f"Offer: {offer.product}; {offer.offer or '-'}"
+             + (f" (valid until {offer.valid_until})" if offer.valid_until else ""),
+             f"Proposition: {brief.proposition}",
+             "Disclaimers: " + ("; ".join(brief.mandatories.disclaimers) or "-"),
+             "Banned claims: " + ("; ".join(brief.mandatories.banned_claims) or "-")]
+    return envelope.wrap("\n".join(lines), "brief_facts", max_chars=6000)
+
+
+def _sources(brief: brief_v1.BriefV1 | None) -> list[str]:
+    return ["ad_copy", "brief_facts"] if brief is not None else ["ad_copy"]
+
+
+def _messages(image_png: bytes, copy: CopyVariant,
+              brief: brief_v1.BriefV1 | None = None) -> list[dict[str, Any]]:
     """The copy goes in an untrusted envelope (it was written by a model from a brief);
-    the system prompt says copy and text in the image are data, never instructions."""
+    the system prompt says copy and text in the image are data, never instructions. With
+    a Brief v1 the owner's confirmed statements and rule P10 follow the copy."""
     text = envelope.wrap(f"Primary text: {copy.primary_text}\nHeadline: {copy.headline}\n"
                          f"Description: {copy.description}\nCTA: {copy.cta}", "ad_copy")
+    if brief is not None:
+        text += f"\n\n{prompts.grounding()}\n\n{_facts_block(brief)}"
     return [
         {"role": "system", "content": prompts.system(AGENT) + "\n\n" + envelope.SYSTEM_RULE},
         {"role": "user", "content": [{"type": "text", "text": text},
@@ -171,30 +214,32 @@ def _parse(text: str, finish: str) -> Review:
                                     code="invalid_output") from None
 
 
-def review(client: MuseClient, image_png: bytes, copy: CopyVariant, *, run_id: str) -> Review:
+def review(client: MuseClient, image_png: bytes, copy: CopyVariant, *, run_id: str,
+           brief: brief_v1.BriefV1 | None = None) -> Review:
     """Compliance review on Muse Spark 1.3 vision (Standard tier: final creative)."""
     result = client.chat(
-        MODEL, _messages(downscale(image_png), copy), run_id=run_id, agent=AGENT,
+        MODEL, _messages(downscale(image_png), copy, brief), run_id=run_id, agent=AGENT,
         response_format=response_format(Review), max_tokens=6000, reasoning_effort="low",
         tier="standard", tier_reason="compliance review of the final creative (vision)",
-        envelope_sources=["ad_copy"],
+        envelope_sources=_sources(brief),
     )
     return _parse(result.text, result.finish)
 
 
 def second_opinion(
-    client: openweights.OpenWeightsClient, image_png: bytes, copy: CopyVariant, *, run_id: str
+    client: openweights.OpenWeightsClient, image_png: bytes, copy: CopyVariant, *, run_id: str,
+    brief: brief_v1.BriefV1 | None = None,
 ) -> Review:
     """Same review on open weights (Baseten). ``OpenWeightsUnavailable`` without a key."""
     if not client.available():
         raise openweights.OpenWeightsUnavailable("BASETEN_API_KEY is not set",
                                                  code="unavailable")
     result = client.chat(
-        openweights.MODEL, _messages(downscale(image_png), copy), run_id=run_id,
+        openweights.MODEL, _messages(downscale(image_png), copy, brief), run_id=run_id,
         agent=SECOND_AGENT, response_format=response_format(Review), max_tokens=6000,
         reasoning_effort="low", tier="open",
         tier_reason="open-weights second opinion on the same creative",
-        envelope_sources=["ad_copy"],
+        envelope_sources=_sources(brief),
     )
     return _parse(result.text, result.finish)
 
@@ -224,18 +269,23 @@ def run(
     *,
     run_id: str,
     placement: str | None = None,
+    brief: brief_v1.BriefV1 | None = None,
 ) -> Reconciled:
     """Both reviews, reconciled, plus one ``review`` receipt with the outcome. With a
-    ``placement`` the format check (F1) runs first and its findings join both reviews."""
-    fmt = format_check(placement, copy, image_png) if placement else []
+    ``placement`` the format check (F1) runs first and its findings join both reviews;
+    with a confirmed ``brief`` the grounding check (P10) joins them too."""
+    fmt = (format_check(placement, copy, image_png) if placement else []) + \
+        grounding_net(copy, brief)
     primary = with_findings(
-        with_policy_net(review(client, image_png, copy, run_id=run_id), copy), fmt)
+        with_policy_net(review(client, image_png, copy, run_id=run_id, brief=brief), copy),
+        fmt)
     second: Review | None = None
     status = "unavailable"
     if open_client is not None and open_client.available():
         try:
             second = with_findings(with_policy_net(
-                second_opinion(open_client, image_png, copy, run_id=run_id), copy), fmt)
+                second_opinion(open_client, image_png, copy, run_id=run_id, brief=brief),
+                copy), fmt)
             status = "available"
         except MuseError:
             status = "failed"  # the failed call has its own receipt; the primary stands
@@ -247,7 +297,10 @@ def run(
                  "disagreements": len(result.disagreements),
                  "rules": sorted({f.rule for f in primary.findings}),
                  "policy_net": sorted({f.rule for f in policy_net(copy)}),
-                 "format": [f.severity for f in fmt]},
+                 "format": [f.severity for f in fmt if f.rule == formats.RULE],
+                 **({"grounding": [f.severity for f in fmt
+                                   if f.rule == prompts.GROUNDING_RULE]}
+                    if brief is not None else {})},
     )
     return result
 
@@ -259,6 +312,7 @@ def run_formats(
     copy: CopyVariant,
     *,
     run_id: str,
+    brief: brief_v1.BriefV1 | None = None,
 ) -> dict[str, Any]:
     """Review each ``(placement, sha256, png)``; the combined verdict is the worst one.
 
@@ -268,7 +322,8 @@ def run_formats(
         raise ValueError("nothing to review")
     formats = []
     for placement, digest, png in images:
-        result = run(client, open_client, png, copy, run_id=run_id, placement=placement)
+        result = run(client, open_client, png, copy, run_id=run_id, placement=placement,
+                     brief=brief)
         formats.append({"placement": placement, "sha256": digest, **result.as_dict()})
     statuses = {f["second_opinion"] for f in formats}
     second = ("available" if statuses == {"available"}

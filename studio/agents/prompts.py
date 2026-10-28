@@ -41,3 +41,18 @@ def system(agent: str) -> str:
 
 def policy_rule_ids() -> list[str]:
     return _RULE.findall(policy())
+
+
+GROUNDING_RULE = "P10"
+
+
+def brief_system() -> str:
+    """The Brief v1 draft prompt: the policy checklist and the drafting role, without the
+    brand sheet (a draft holds only what the owner wrote)."""
+    return f"{policy()}\n\n{_read('producer_brief')}"
+
+
+def grounding() -> str:
+    """Rule P10, sent in the user message of runs made from a confirmed Brief v1 (it
+    varies per run with the facts, so it stays out of the cached system prefix)."""
+    return _read("_grounding")

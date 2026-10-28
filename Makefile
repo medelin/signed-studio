@@ -18,7 +18,7 @@ demo-replay:
 	$(PY) -m studio.cli demo --set $(or $(SET),demo)
 
 serve-replay:
-	STUDIO_REPLAY=1 STUDIO_REPLAY_SET=$(or $(SET),demo) META_ADAPTER=mock $(PY) -m uvicorn studio.app:app --port 8000
+	STUDIO_REPLAY=1 STUDIO_REPLAY_SET=$(or $(SET),brief) META_ADAPTER=mock $(PY) -m uvicorn studio.app:app --port 8000
 
 record-demo:
 	$(PY) -m studio.cli demo --record --set $(or $(SET),demo)

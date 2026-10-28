@@ -42,6 +42,141 @@ ENTRIES: tuple[Entry, ...] = (
                "kampanię na Facebooku i Instagramie, <strong>wstrzymaną</strong>. Studio "
                "umie też przygotować odpowiedzi na komentarze, ocenić leady i napisać raport "
                "dnia."}),
+    # -- Brief v1 (studio/brief.py, routes_studio.confirm_and_start, ui/static/brief.js) --
+    Entry(
+        "brief-sections", "grace", "facts",
+        {"en": "What is in a Brief v1, section by section?",
+         "pl": "Co jest w Briefie v1, sekcja po sekcji?"},
+        {"en": "<strong>Advertiser</strong>: a person or a company, the name people see (as "
+               "on your page or your legal name; a mismatch can get ads rejected), the "
+               "countries you sell in and your landing page. No tax or registry numbers. "
+               "<strong>Confirmed facts</strong>: prices, times, guarantees, numbers; the "
+               "only facts an ad may state. <strong>Offer</strong>: the product, the offer "
+               "and until when it is valid, and reasons to believe, each resting on a "
+               "confirmed fact. <strong>Objective</strong>: exactly one Meta objective "
+               "(awareness, traffic, engagement, leads or sales) and how you measure "
+               "success; this version creates traffic campaigns and records your objective "
+               "in the signed content. <strong>Audience</strong>: places, ages (13 to 65), "
+               "languages, and who they are, what they believe, what holds them back, what "
+               "would move them; Meta treats this as suggestions. <strong>Proposition"
+               "</strong>: one sentence. <strong>Tone and brand</strong>, <strong>mandatory "
+               "items</strong> (disclaimers, banned claims, dates), <strong>budget</strong> "
+               "(daily, or a total spread over the days; in the ad account's currency, PLN "
+               "here; a daily amount above the server's ceiling is refused), "
+               "<strong>placements</strong> (automatic by default, plus the images to make) "
+               "and <strong>assets</strong>.",
+         "pl": "<strong>Reklamodawca</strong>: osoba albo firma, nazwa, którą widzą ludzie "
+               "(taka jak na Twojej stronie albo nazwa prawna; niezgodność może skończyć się "
+               "odrzuceniem reklamy), kraje, w których sprzedajesz, i strona docelowa. Bez "
+               "numerów podatkowych i rejestrowych. <strong>Potwierdzone fakty</strong>: "
+               "ceny, godziny, gwarancje, liczby; jedyne fakty, które może podać reklama. "
+               "<strong>Oferta</strong>: produkt, oferta i do kiedy jest ważna oraz powody, "
+               "by uwierzyć, każdy oparty na potwierdzonym fakcie. <strong>Cel</strong>: "
+               "dokładnie jeden cel w Mecie (rozpoznawalność, ruch, zaangażowanie, kontakty "
+               "albo sprzedaż) i miara sukcesu; ta wersja tworzy kampanie na ruch, a Twój "
+               "cel zapisuje w podpisywanej treści. <strong>Odbiorcy</strong>: miejsca, wiek "
+               "(od 13 do 65 lat), języki oraz to, kim są, w co wierzą, co ich powstrzymuje "
+               "i co by ich poruszyło; Meta traktuje to jako wskazówki. <strong>Myśl "
+               "przewodnia</strong>: jedno zdanie. <strong>Ton i marka</strong>, "
+               "<strong>elementy obowiązkowe</strong> (zastrzeżenia, zakazane twierdzenia, "
+               "daty), <strong>budżet</strong> (dzienny albo łączny rozłożony na dni; w "
+               "walucie konta reklamowego, tutaj PLN; kwota dzienna powyżej limitu serwera "
+               "jest odrzucana), <strong>umiejscowienia</strong> (domyślnie automatyczne, "
+               "plus obrazy do przygotowania) i <strong>materiały</strong>."}),
+    Entry(
+        "brief-text-or-voice", "ola", "voice",
+        {"en": "How do I fill in the brief, by typing or by speaking?",
+         "pl": "Jak wypełnić brief: pisząc czy mówiąc?"},
+        {"en": "Either way; both are equal. Type in your own words, or press "
+               "<strong>Record a voice brief</strong> and speak in Polish or English (up to "
+               "10 minutes per recording; record again to add more). "
+               "<code>muse-voice-transcribe-1.0</code> writes the text into the same box, "
+               "tuned to the language of this page, and you can correct it before anything "
+               "else happens. Then <strong>Draft Brief v1</strong>: the producer "
+               "(<code>muse-spark-1.3</code>) fills the sections from your words only. "
+               "Every field of the draft can be changed by typing, and every text field "
+               "has a <strong>Dictate</strong> button. If there is no microphone, or the "
+               "browser does not allow it, the studio says so and typing keeps working.",
+         "pl": "Jak wolisz; obie drogi są równorzędne. Wpisz brief własnymi słowami albo "
+               "naciśnij <strong>Nagraj brief głosem</strong> i mów po polsku lub po "
+               "angielsku (do 10 minut na nagranie; nagraj jeszcze raz, żeby coś dodać). "
+               "<code>muse-voice-transcribe-1.0</code> wpisuje tekst do tego samego pola, "
+               "nastawiony na język tej strony, a Ty możesz go poprawić, zanim cokolwiek się "
+               "wydarzy. Potem <strong>Przygotuj Brief v1</strong>: producent "
+               "(<code>muse-spark-1.3</code>) wypełnia sekcje wyłącznie na podstawie Twoich "
+               "słów. Każde pole szkicu możesz zmienić, pisząc, a każde pole tekstowe ma "
+               "przycisk <strong>Podyktuj</strong>. Jeśli nie ma mikrofonu albo przeglądarka "
+               "na niego nie pozwala, studio to mówi, a pisanie dalej działa."}),
+    Entry(
+        "fact-questions", "kofi", "facts",
+        {"en": "What are [FACT] questions?",
+         "pl": "Czym są pytania [FACT]?"},
+        {"en": "A [FACT] question is a claim the producer could not confirm from your "
+               "words, or a fact the brief needs that you did not give. \"Everything "
+               "included\" becomes \"Are clay and firing included in the price?\". Code "
+               "checks the draft too: a fact with a number you never wrote is turned into "
+               "a question. Answer each one in a short sentence (it becomes a confirmed "
+               "fact) or strike the claim (it will not be used). The run starts only when "
+               "none is left open. Afterwards the copywriter may use only confirmed facts, "
+               "and both reviewers check every claim against them (rule P10); a number "
+               "that is not in your facts, or a claim you banned, blocks the ad.",
+         "pl": "Pytanie [FACT] to twierdzenie, którego producent nie mógł potwierdzić na "
+               "podstawie Twoich słów, albo fakt, którego brief potrzebuje, a którego nie "
+               "podano. „Wszystko w cenie” staje się pytaniem „Czy glina i wypał są w "
+               "cenie?”. Szkic sprawdza też kod: fakt z liczbą, której nie było w Twoich "
+               "słowach, zamienia się w pytanie. Odpowiedz na każde krótkim zdaniem (stanie się "
+               "potwierdzonym faktem) albo skreśl twierdzenie (nie zostanie użyte). "
+               "Przebieg startuje dopiero wtedy, gdy żadne nie zostało otwarte. Potem "
+               "copywriter może użyć tylko potwierdzonych faktów, a obaj recenzenci "
+               "sprawdzają z nimi każde twierdzenie (zasada P10); liczba spoza Twoich "
+               "faktów albo zakazane przez Ciebie twierdzenie blokuje reklamę."}),
+    Entry(
+        "signed-facts", "harjit", "verify",
+        {"en": "Why are the facts signed?",
+         "pl": "Dlaczego fakty są podpisywane?"},
+        {"en": "Because an ad is only as true as the facts it stands on. When you confirm "
+               "the brief, its SHA-256 hash (<code>brief_sha256</code>, over the canonical "
+               "JSON) goes into a <code>brief.confirmed</code> receipt with the number of "
+               "facts and answered and struck questions. Your signature on the campaign "
+               "covers the ad's content hash <strong>and</strong> <code>brief_sha256</code>. "
+               "If a fact changes after you signed, the server refuses the approval and "
+               "<code>studio verify</code> rejects the log. The brief's text never enters "
+               "a receipt, only its hash.",
+         "pl": "Bo reklama jest tak prawdziwa jak fakty, na których stoi. Gdy potwierdzasz "
+               "brief, jego skrót SHA-256 (<code>brief_sha256</code>, liczony z kanonicznego "
+               "JSON-a) trafia do pokwitowania <code>brief.confirmed</code> razem z liczbą "
+               "faktów oraz pytań z odpowiedzią i skreślonych. Twój podpis pod kampanią "
+               "obejmuje skrót treści reklamy <strong>i</strong> <code>brief_sha256</code>. "
+               "Jeśli fakt zmieni się po podpisie, serwer odrzuca zatwierdzenie, a "
+               "<code>studio verify</code> odrzuca rejestr. Treść briefu nigdy nie trafia do "
+               "pokwitowania, tylko jej skrót."}),
+    Entry(
+        "brief-accessibility", "priya", "signed",
+        {"en": "Can I make an ad with a keyboard, a screen reader or my voice?",
+         "pl": "Czy zrobię reklamę klawiaturą, z czytnikiem ekranu albo głosem?"},
+        {"en": "Yes. Every control is a labelled form field or button, grouped in "
+               "fieldsets with legends, reachable with Tab and visibly focused. An error is "
+               "written next to its field and tied to it, and a list of all errors at the "
+               "top of the form links to each field. A live region announces each step, "
+               "the new [FACT] questions and what happened after every action. No step has "
+               "a time limit: if the 15-minute signing window closes, the studio issues a "
+               "fresh one for the same content. Voice works for the brief, for every text "
+               "field and for answering questions; <strong>Read the brief aloud</strong> "
+               "uses your browser's own speech (no network) and is hidden where the "
+               "browser cannot speak. Buttons and fields are at least 44 pixels high, and "
+               "the page follows your reduced-motion setting.",
+         "pl": "Tak. Każdy element to opisane pole formularza albo przycisk, pogrupowane w "
+               "sekcje z nagłówkami (fieldset i legend), dostępne klawiszem Tab i z "
+               "widocznym fokusem. Błąd pojawia się przy swoim polu i jest z nim powiązany, "
+               "a lista wszystkich błędów na górze formularza prowadzi do każdego pola. "
+               "Obszar na żywo ogłasza każdy krok, nowe pytania [FACT] i wynik każdej "
+               "czynności. Żaden krok nie ma limitu czasu: jeśli 15-minutowe okno podpisu "
+               "się zamknie, studio wydaje nowe dla tej samej treści. Głos działa przy "
+               "briefie, w każdym polu tekstowym i przy odpowiedziach na pytania; "
+               "<strong>Przeczytaj brief na głos</strong> korzysta z mowy wbudowanej w "
+               "przeglądarkę (bez sieci) i jest ukryte tam, gdzie przeglądarka nie umie "
+               "mówić. Przyciski i pola mają co najmniej 44 piksele wysokości, a strona "
+               "respektuje ustawienie ograniczenia ruchu."}),
     Entry(
         "spend-without-me", "tomasz", "unsigned",
         {"en": "Can it spend my money or post without me?",

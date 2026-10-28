@@ -20,24 +20,212 @@
   {% endif %}
 </section>
 
-<section class="panel" aria-labelledby="brief-h">
-  <h1 id="brief-h">{{ t("studio.brief") }}</h1>
-  <form id="brief-form" class="stack">
-    <div class="inline" id="voice-box">
-      <button type="button" id="rec-button" {% if not logged_in or read_only %}disabled{% endif %}>{{ t("studio.record") }}</button>
-      <button type="button" id="stop-button" hidden>{{ t("studio.stop") }}</button>
-      <span id="rec-timer" class="hint" aria-live="off"></span>
-    </div>
-    <p class="hint">{{ t("studio.voice_hint") }}</p>
-    <p class="status" id="voice-status" role="status" aria-live="polite"></p>
-    <ol id="turns" class="hint" aria-label="{{ t('studio.turns') }}"></ol>
-    <label for="brief">{{ t("studio.brief_label") }}</label>
-    <textarea id="brief" name="brief" rows="4" maxlength="2000" required
-      aria-describedby="brief-help">{{ t("studio.brief_default") }}</textarea>
-    <p id="brief-help" class="hint">{{ t("studio.brief_help", concept=product_concept) }}</p>
-    <button type="submit" id="run-button" {% if not logged_in or read_only %}disabled{% endif %}>{{ t("studio.run") }}</button>
+{%- macro err(id) -%}<p class="field-error" id="err-{{ id }}" hidden></p>{%- endmacro -%}
+{%- macro field(path, key, kind="text", hint=None, dictate=True, attrs="") -%}
+{%- set id = "bf-" ~ path | replace(".", "-") -%}
+<div class="bf-field" data-field="{{ path }}">
+  <label for="{{ id }}">{{ t("brief.f." ~ key) }}</label>
+  {% if hint %}<p class="hint" id="hint-{{ id }}">{{ t(hint) }}</p>{% endif %}
+  {% if kind == "lines" %}<textarea id="{{ id }}" data-path="{{ path }}" data-kind="lines" rows="3" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}hint-lines err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
+  {% elif kind == "area" %}<textarea id="{{ id }}" data-path="{{ path }}" rows="2" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
+  {% else %}<input id="{{ id }}" data-path="{{ path }}" type="{{ kind }}" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}>{% endif %}
+  {{ err(id) }}
+</div>
+{%- endmacro -%}
+
+<section class="panel brief-flow" aria-labelledby="brief-h" id="brief-panel">
+  <h1 id="brief-h" tabindex="-1">{{ t("brief.title") }}</h1>
+  <ol class="brief-steps" id="brief-steps" aria-label="{{ t('brief.steps_label') }}">
+    <li data-bstep="1" aria-current="step">{{ t("brief.step1") }}</li>
+    <li data-bstep="2">{{ t("brief.step2") }}</li>
+    <li data-bstep="3">{{ t("brief.step3") }}</li>
+    <li data-bstep="4">{{ t("brief.step4") }}</li>
+  </ol>
+  <p class="hint">{{ t("brief.no_time_limit") }} <a href="/help#brief-accessibility">{{ t("brief.a11y_link") }}</a></p>
+  <p class="sr-only" id="brief-live" role="status" aria-live="polite"></p>
+
+  <form id="brief-form" class="stack" aria-describedby="brief-paths">
+    <fieldset class="two-paths">
+      <legend>{{ t("brief.paths_legend") }}</legend>
+      <p class="hint" id="brief-paths">{{ t("brief.paths_hint") }}</p>
+      <div class="path">
+        <h2 class="path-h">{{ t("brief.path_text") }}</h2>
+        <label for="brief">{{ t("brief.text_label") }}</label>
+        <textarea id="brief" name="brief" rows="6" maxlength="4000" required
+          aria-describedby="brief-help err-brief">{{ t("studio.brief_default") }}</textarea>
+        <p id="brief-help" class="hint">{{ t("brief.text_help") }}</p>
+        {{ err("brief") }}
+      </div>
+      <div class="path" id="voice-box">
+        <h2 class="path-h">{{ t("brief.path_voice") }}</h2>
+        <p class="hint" id="voice-hint">{{ t("brief.voice_hint") }}</p>
+        <div class="inline">
+          <button type="button" id="rec-button" class="big" aria-describedby="voice-hint" {% if not logged_in or read_only %}disabled{% endif %}>{{ t("studio.record") }}</button>
+          <button type="button" id="stop-button" class="big" hidden>{{ t("studio.stop") }}</button>
+          <span id="rec-timer" class="hint" aria-live="off"></span>
+        </div>
+        <p class="status" id="voice-status" role="status" aria-live="polite"></p>
+        <ol id="turns" class="hint" aria-label="{{ t('studio.turns') }}"></ol>
+      </div>
+    </fieldset>
+    <p id="brief-hint-run" class="hint">{{ t("studio.brief_help", concept=product_concept) }}</p>
+    <button type="submit" id="run-button" class="big" {% if not logged_in or read_only %}disabled{% endif %}>{{ t("brief.draft_button") }}</button>
     <p class="status" id="run-status" role="status" aria-live="polite"></p>
   </form>
+
+  <form id="brief-v1-form" class="brief-v1" hidden novalidate aria-labelledby="bv-h">
+    <h2 id="bv-h" tabindex="-1">{{ t("brief.check_title") }}</h2>
+    <p class="hint">{{ t("brief.check_lead") }}</p>
+    <p class="hint" id="hint-lines">{{ t("brief.one_per_line") }}</p>
+    <div class="inline">
+      <button type="button" id="read-aloud" class="secondary" hidden>{{ t("brief.read_aloud") }}</button>
+      <button type="button" id="read-stop" class="secondary" hidden>{{ t("brief.read_stop") }}</button>
+    </div>
+    <div class="error-summary" id="bv-errors" tabindex="-1" hidden>
+      <h3>{{ t("brief.errors_title") }}</h3>
+      <ul id="bv-error-list"></ul>
+    </div>
+
+    <fieldset class="bv-questions" id="bv-questions">
+      <legend>{{ t("brief.s.questions") }}</legend>
+      <p class="hint" id="hint-questions">{{ t("brief.questions_hint") }}</p>
+      <p class="empty" id="bv-no-questions">{{ t("brief.no_questions") }}</p>
+      <ol id="bv-question-list" class="bv-list"></ol>
+      {{ err("bf-open_questions") }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.facts") }}</legend>
+      <p class="hint" id="hint-facts">{{ t("brief.facts_hint") }}</p>
+      <ol id="bv-fact-list" class="bv-list"></ol>
+      <button type="button" id="bv-add-fact" class="secondary">{{ t("brief.add_fact") }}</button>
+      {{ err("bf-confirmed_facts") }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.advertiser") }}</legend>
+      <div class="bf-field" data-field="advertiser.kind">
+        <fieldset class="radios" aria-describedby="err-bf-advertiser-kind">
+          <legend>{{ t("brief.f.kind") }}</legend>
+          <label><input type="radio" name="bf-kind" value="person" data-path="advertiser.kind"> {{ t("brief.kind_person") }}</label>
+          <label><input type="radio" name="bf-kind" value="company" data-path="advertiser.kind"> {{ t("brief.kind_company") }}</label>
+        </fieldset>
+        {{ err("bf-advertiser-kind") }}
+      </div>
+      {{ field("advertiser.display_name", "display_name", hint="brief.h.display_name") }}
+      {{ field("advertiser.countries", "countries", "lines", "brief.h.countries", dictate=False) }}
+      {{ field("advertiser.landing_url", "landing_url", "url", dictate=False, attrs='inputmode="url"') }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.offer") }}</legend>
+      {{ field("offer.product", "product") }}
+      {{ field("offer.offer", "offer", "area") }}
+      {{ field("offer.valid_until", "valid_until", "date", dictate=False) }}
+      <fieldset class="bv-reasons">
+        <legend>{{ t("brief.f.reasons") }}</legend>
+        <p class="hint" id="hint-reasons">{{ t("brief.reasons_hint") }}</p>
+        <ol id="bv-reason-list" class="bv-list"></ol>
+        <button type="button" id="bv-add-reason" class="secondary">{{ t("brief.add_reason") }}</button>
+      </fieldset>
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.objective") }}</legend>
+      <div class="bf-field" data-field="objective.goal">
+        <label for="bf-objective-goal">{{ t("brief.f.goal") }}</label>
+        <p class="hint" id="hint-bf-objective-goal">{{ t("brief.h.goal") }}</p>
+        <select id="bf-objective-goal" data-path="objective.goal" aria-describedby="hint-bf-objective-goal err-bf-objective-goal">
+          {% for g in ("awareness", "traffic", "engagement", "leads", "sales") %}<option value="{{ g }}">{{ t("brief.goal." ~ g) }}</option>{% endfor %}
+        </select>
+        {{ err("bf-objective-goal") }}
+      </div>
+      {{ field("objective.kpi", "kpi", hint="brief.h.kpi") }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.audience") }}</legend>
+      {{ field("audience.locations", "locations", "lines") }}
+      <div class="bf-field" data-field="audience.age">
+        <fieldset class="age" aria-describedby="err-bf-audience-age">
+          <legend>{{ t("brief.f.age") }}</legend>
+          <label for="bf-audience-age_min">{{ t("brief.f.age_min") }}</label>
+          <input id="bf-audience-age_min" data-path="audience.age_min" type="number" min="13" max="65" inputmode="numeric">
+          <label for="bf-audience-age_max">{{ t("brief.f.age_max") }}</label>
+          <input id="bf-audience-age_max" data-path="audience.age_max" type="number" min="13" max="65" inputmode="numeric">
+        </fieldset>
+        {{ err("bf-audience-age") }}
+      </div>
+      {{ field("audience.languages", "languages", "lines", dictate=False) }}
+      {{ field("audience.insight.who", "who", "area") }}
+      {{ field("audience.insight.belief", "belief", "area") }}
+      {{ field("audience.insight.barrier", "barrier", "area") }}
+      {{ field("audience.insight.trigger", "trigger", "area") }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.proposition") }}</legend>
+      {{ field("proposition", "proposition", "area", "brief.h.proposition") }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.tone") }}</legend>
+      {{ field("tone_brand.tone", "tone", "lines") }}
+      {{ field("tone_brand.colours", "colours", "lines") }}
+      {{ field("tone_brand.donts", "donts", "lines") }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.mandatories") }}</legend>
+      {{ field("mandatories.disclaimers", "disclaimers", "lines") }}
+      {{ field("mandatories.banned_claims", "banned_claims", "lines", "brief.h.banned") }}
+      {{ field("mandatories.dates", "dates", "lines") }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.budget") }}</legend>
+      <div class="bf-field" data-field="budget.kind">
+        <fieldset class="radios" aria-describedby="err-bf-budget-kind">
+          <legend>{{ t("brief.f.budget_kind") }}</legend>
+          <label><input type="radio" name="bf-budget-kind" value="daily" data-path="budget.kind"> {{ t("brief.budget_daily") }}</label>
+          <label><input type="radio" name="bf-budget-kind" value="lifetime" data-path="budget.kind"> {{ t("brief.budget_lifetime") }}</label>
+        </fieldset>
+        {{ err("bf-budget-kind") }}
+      </div>
+      {{ field("budget.amount", "amount", "number", "brief.h.amount", dictate=False, attrs='min="0" step="any" inputmode="decimal"') }}
+      {{ field("budget.currency", "currency", hint="brief.h.currency", dictate=False, attrs='maxlength="3" autocapitalize="characters"') }}
+      {{ field("budget.start", "start", "date", dictate=False) }}
+      {{ field("budget.end", "end", "date", dictate=False) }}
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.placements") }}</legend>
+      <div class="bf-field" data-field="placements.automatic">
+        <label><input type="checkbox" id="bf-placements-automatic" data-path="placements.automatic"> {{ t("brief.f.automatic") }}</label>
+      </div>
+      <div class="bf-field" data-field="placements.deliverables">
+        <fieldset class="radios" aria-describedby="err-bf-placements-deliverables">
+          <legend>{{ t("brief.f.deliverables") }}</legend>
+          {% for pl in ("feed_1x1", "feed_4x5", "story_9x16") %}<label><input type="checkbox" name="bf-deliverables" value="{{ pl }}" data-path="placements.deliverables"> {{ t("brief.pl." ~ pl) }}</label>{% endfor %}
+        </fieldset>
+        {{ err("bf-placements-deliverables") }}
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>{{ t("brief.s.assets") }}</legend>
+      <p class="hint">{{ t("brief.assets_hint", concept=product_concept) }}</p>
+      {{ field("assets", "assets", "lines") }}
+    </fieldset>
+
+    <p class="hint" id="confirm-hint">{{ t("brief.confirm_hint") }}</p>
+    <div class="inline">
+      <button type="submit" id="confirm-button" class="big" aria-describedby="confirm-hint">{{ t("brief.confirm_button") }}</button>
+      <button type="button" id="redraft-button" class="secondary big">{{ t("brief.back_button") }}</button>
+    </div>
+    <p class="status" id="confirm-status" role="status" aria-live="polite"></p>
+  </form>
+
   <form id="open-form" class="inline">
     <label for="open-run">{{ t("studio.open_label") }}</label>
     <input id="open-run" name="run" pattern="[A-Za-z0-9_-]{1,40}" placeholder="run_…">
@@ -85,6 +273,7 @@
     <dt>{{ t("studio.ap.action") }}</dt><dd id="ap-action"></dd>
     <dt>{{ t("studio.ap.sha") }}</dt><dd><code id="ap-sha"></code></dd>
     <dt>{{ t("studio.ap.head") }}</dt><dd><code id="ap-head"></code></dd>
+    <dt id="ap-brief-dt" hidden>{{ t("brief.ap_brief") }}</dt><dd id="ap-brief-dd" hidden><code id="ap-brief"></code></dd>
     <dt>{{ t("studio.ap.key") }}</dt><dd><code id="ap-key"></code></dd>
     <dt>{{ t("studio.ap.exp") }}</dt><dd id="ap-exp"></dd>
   </dl>
@@ -125,5 +314,6 @@
 </div>
 <script src="/static/signer.js" defer></script>
 <script src="/static/app.js" defer></script>
+<script src="/static/brief.js" defer></script>
 <script src="/static/motion.js" defer></script>
 {% endblock %}

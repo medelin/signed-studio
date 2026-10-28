@@ -185,6 +185,9 @@ async function showApproval(pendingId) {
     $("ap-action").textContent = T("item", { action: data.fields.action, id: data.fields.item_id });
     $("ap-sha").textContent = data.content_sha256;
     $("ap-head").textContent = data.chain_head;
+    const briefSha = data.fields.brief_sha256 || "";
+    $("ap-brief").textContent = briefSha;
+    $("ap-brief-dt").hidden = $("ap-brief-dd").hidden = !briefSha;
     $("ap-key").textContent = Signer.approver();
     $("ap-exp").textContent = new Date(data.expires_ts * 1000).toLocaleTimeString();
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);
@@ -200,6 +203,17 @@ $("approve-button").addEventListener("click", async () => {
   if (!currentPayload) return;
   const btn = $("approve-button");
   btn.disabled = true;
+  if (Date.now() / 1000 >= currentPayload.expires_ts - 5) {
+    // No time limit for the person: an expired window is re-issued for the same content,
+    // and they sign the fresh bytes when ready.
+    const r = await postJSON("/api/approvals/" + encodeURIComponent(currentPayload.approval_id) + "/renew", {});
+    if (r.ok && r.data.renewed) {
+      shownPending = r.data.approval_id;
+      await showApproval(r.data.approval_id);
+      status("approve-status", T("brief_renewed"));
+      return;
+    }
+  }
   status("approve-status", T("signing"));
   try {
     const data = await Signer.sign(currentPayload);
@@ -247,18 +261,12 @@ function follow(runId) {
   source.onerror = () => status("run-status", T("connection_lost"), true);
 }
 
-$("brief-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  $("run-button").disabled = true;
-  status("run-status", T("starting"));
-  const body = { brief: $("brief").value };
-  if (voiceBriefId) body.brief_id = voiceBriefId;
-  const r = await postJSON("/api/runs", body);
-  if (r.ok) voiceBriefId = null;
-  if (r.status === 409 && r.data.run_id) { follow(r.data.run_id); return; }
-  if (!r.ok) { status("run-status", T("cannot_start", { error: E(r.data, r.status) }), true); $("run-button").disabled = false; return; }
-  follow(r.data.run_id);
-});
+// The brief form itself (draft → confirm → run) lives in brief.js; it starts runs here.
+window.Studio = {
+  follow,
+  voiceBriefId: () => voiceBriefId,
+  clearVoiceBrief: () => { voiceBriefId = null; },
+};
 
 $("open-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
@@ -282,10 +290,10 @@ $("open-form").addEventListener("submit", (ev) => {
   const recBtn = $("rec-button");
   const stopBtn = $("stop-button");
   if (!recBtn || !window.MediaRecorder) {
-    if (recBtn) { recBtn.disabled = true; status("voice-status", T("no_recording")); }
+    if (recBtn) { recBtn.disabled = true; status("voice-status", T("no_recording") + " " + T("brief_no_mic")); }
     return;
   }
-  const MAX_REC_S = 60;
+  const MAX_REC_S = 600;  // the server's limit per recording; record again to add more
   const MAX_BYTES = 32 * 1024 * 1024;
   let recorder = null;
   let chunks = [];
@@ -300,7 +308,8 @@ $("open-form").addEventListener("submit", (ev) => {
   async function upload(blob) {
     if (blob.size > MAX_BYTES) { status("voice-status", T("too_big"), true); return; }
     status("voice-status", T("transcribing"));
-    const r = await fetch("/api/briefs/voice", {
+    const lang = document.documentElement.lang === "pl" ? "pl" : "en";  // languageBias
+    const r = await fetch("/api/briefs/voice?lang=" + lang, {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": blob.type || "audio/webm" }, body: blob,
     });
@@ -313,7 +322,7 @@ $("open-form").addEventListener("submit", (ev) => {
     ol.replaceChildren();
     for (const t of data.turns) ol.append(el("li", fmt(t.start_ms) + "–" + fmt(t.end_ms) + "  " + t.text));
     status("voice-status", T("transcribed", { seconds: data.seconds.toFixed(1), cost: data.cost_usd.toFixed(5) })
-      + " " + T(data.audio_kept ? "audio_kept" : "audio_deleted") + " " + T("edit_then_run"));
+      + " " + T(data.audio_kept ? "audio_kept" : "audio_deleted") + " " + T("brief_edit_then_draft"));
     $("brief").focus();
   }
 
@@ -342,7 +351,8 @@ $("open-form").addEventListener("submit", (ev) => {
         if (ms >= MAX_REC_S * 1000 && recorder.state === "recording") recorder.stop();
       }, 200);
     } catch (e) {
-      status("voice-status", T("no_mic", { error: e.message }), true);
+      status("voice-status", T("brief_no_mic"), true);
+      $("brief").focus();
     }
   });
   stopBtn.addEventListener("click", () => { if (recorder && recorder.state === "recording") recorder.stop(); });

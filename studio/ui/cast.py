@@ -485,7 +485,7 @@ def svg(body: str, view: str, label: str = "", cls: str = "") -> Markup:
 
 
 SCENES = ("signed", "unsigned", "blocked", "verify", "private", "budget", "edit", "reset",
-          "lost", "solo")
+          "lost", "facts", "voice", "solo")
 GAP = 16  # space between people standing side by side
 
 
@@ -542,6 +542,9 @@ def scene(key: str, kind: str = "signed", label: str = "", cls: str = "") -> Mar
     - edit: a pencil on a field of the record before the signature;
     - reset: the record with a circular arrow (hourly reset);
     - lost: 404, the record with a big ``?``;
+    - facts: Brief v1, the record waits for its facts: two confirmed chips and one ``?``
+      chip (an open [FACT] question) under it, the signature still empty;
+    - voice: the owner speaks (sound arcs at the start of the trace), the record is signed;
     - solo: the owner alone (gallery card).
     """
     if kind == "solo":
@@ -561,7 +564,7 @@ def group(keys: Sequence[str], kind: str = "signed", label: str = "", cls: str =
     nodes = lay.nodes
     rec_x, rec_y = lay.rec
     d = curve([(sx, sy), *nodes, (rec_x - 8, 132)])
-    signed = kind in ("signed", "verify", "budget", "reset", "private")
+    signed = kind in ("signed", "verify", "budget", "reset", "private", "voice")
     lit = 4
     # crop the empty band above the tallest figure and the record's corner mark
     top = max(0, int(min(min(b[1] for b in lay.boxes), 44) - 4))
@@ -577,7 +580,7 @@ def group(keys: Sequence[str], kind: str = "signed", label: str = "", cls: str =
         lit = 3
         signed = False
     body.append(trace(d, nodes, signed=signed, lit=lit))
-    mark = {"unsigned": "!", "blocked": "×", "edit": "!"}.get(kind, "")
+    mark = {"unsigned": "!", "blocked": "×", "edit": "!", "facts": "?"}.get(kind, "")
     score = {"budget": 8}.get(kind)
     body.append(record(rec_x, rec_y, signed=signed, mark=mark, score=score))
     rx = rec_x
@@ -606,6 +609,21 @@ def group(keys: Sequence[str], kind: str = "signed", label: str = "", cls: str =
         body.append(f'<path class="c-accent" d="M{_n(rx + 150)} 124l22 -26l5 4'
                     f'l-22 26l-7 2z"/><rect class="edit-field" x="{_n(rx + 82)}" '
                     f'y="88" width="70" height="12"/>')
+    elif kind == "facts":
+        for i in range(3):
+            cx = rx + 6 + i * 58
+            if i < 2:  # confirmed facts: a tick in the signed colour
+                body.append(f'<rect class="r-signed" x="{_n(cx)}" y="220" width="46" '
+                            f'height="20"/><path class="r-sig" d="M{_n(cx + 15)} 230l5 5'
+                            f'l10 -10"/>')
+            else:  # the open question
+                body.append(f'<rect class="warn-field" x="{_n(cx)}" y="220" width="46" '
+                            f'height="20"/><text class="warn-text" x="{_n(cx + 23)}" '
+                            f'y="235">?</text>')
+    elif kind == "voice":
+        for r in (10, 18, 26):  # sound arcs where the trace leaves the owner
+            body.append(f'<path class="trace-solid" d="M{_n(sx + 4)} {_n(sy - 40 - r)}'
+                        f'a{r} {r} 0 0 1 0 {_n(2 * r)}"/>')
     elif kind == "reset":
         body.append(f'<path class="trace-solid" d="M{_n(rx + 190)} 98a22 22 0 1 1 '
                     f'-8 -16"/><path class="r-score" d="M{_n(rx + 180)} 72l6 12'

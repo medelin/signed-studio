@@ -113,13 +113,25 @@ def has_unfilled_fact(v: CopyVariant) -> bool:
     return count_unfilled_facts(v) > 0
 
 
+FACTS_RULE = ("This run was made from a Brief v1 the owner confirmed. Use only these "
+              "confirmed facts: they replace the brand sheet's facts. Copy numbers, prices "
+              "and times exactly as written there. For any other fact you need, write "
+              f"{FACT}.")
+
+
 def _user_message(angle: Angle, persona: str, brief: str,
-                  brief_source: str = "operator") -> str:
+                  brief_source: str = "operator", facts: list[str] | None = None) -> str:
     lines = [f"Angle: {angle.name}", f"Hook: {angle.hook}", f"Persona: {persona}"]
     if brief and brief_source == "transcript":
-        lines.append("Brief (voice transcript):\n" + envelope.wrap(brief, "transcript"))
+        lines.append("Brief (voice transcript):\n" + envelope.wrap(brief, "transcript",
+                                                                    max_chars=8000))
     elif brief:
         lines.append(f"Brief: {brief}")
+    if facts is not None:
+        lines.append(FACTS_RULE)
+        lines.append("Confirmed facts:\n" + ("\n".join(f"{i + 1}. {f}"
+                                                       for i, f in enumerate(facts))
+                                            or "(none: state no facts at all)"))
     return "\n".join(lines)
 
 
@@ -145,11 +157,13 @@ def write(
     brief: str = "",
     brief_source: str = "operator",
     max_tokens: int = 4000,
+    facts: list[str] | None = None,
 ) -> tuple[CopyPack, MuseResult]:
     """``brief_source="transcript"``: the brief is a voice transcript — enveloped, declared,
-    and on Standard (``choose_tier(..., source="transcript")``)."""
+    and on Standard (``choose_tier(..., source="transcript")``). ``facts``: the confirmed
+    facts of a Brief v1, the only facts the copy may use."""
     transcript = bool(brief) and brief_source == "transcript"
-    user = _user_message(angle, persona, brief, brief_source)
+    user = _user_message(angle, persona, brief, brief_source, facts)
     tier, reason, model = choose_tier(user, "contributor",
                                       source="transcript" if transcript else "operator")
     system = prompts.system(AGENT) + ("\n\n" + envelope.SYSTEM_RULE if transcript else "")

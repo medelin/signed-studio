@@ -1,9 +1,11 @@
 """Human-signed approvals for every external write.
 
 A pending approval binds the exact payload (``content_sha256``), the provenance that
-produced it (``chain_head`` of the run's receipt chain), a one-time ``nonce`` and the issue
-time ``ts``. The approver's browser signs ``approval_message`` with a non-extractable
-Ed25519 key registered for its session. ``verify_and_consume`` checks everything and
+produced it (``chain_head`` of the run's receipt chain), a one-time ``nonce``, the issue
+time ``ts`` and, for content made from a confirmed Brief v1, the brief's ``brief_sha256``
+(signed too, and checked against the run's latest ``brief.confirmed`` receipt). The
+approver's browser signs ``approval_message`` with a non-extractable Ed25519 key
+registered for its session. ``verify_and_consume`` checks everything and
 consumes the nonce inside the caller's SQLite write transaction, so the state change and
 the nonce stand or fall together and a signature can be used exactly once.
 """
@@ -23,8 +25,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from studio.receipts import (
+    APPROVAL_BRIEF_FIELD,
     APPROVAL_SIGNED_FIELDS,
     APPROVAL_TTL_S,
+    BRIEF_BOUND_ACTIONS,
+    BRIEF_KIND,
     GENESIS,
     Ledger,
     approval_message,
@@ -41,6 +46,7 @@ __all__ = [
     "TTL_S",
     "Approval",
     "ApprovalError",
+    "BriefChanged",
     "InvalidItemId",
     "KeyConflict",
     "KeyInactive",
@@ -49,6 +55,7 @@ __all__ = [
     "Verified",
     "WrongSession",
     "approval_message",
+    "confirmed_brief",
     "ensure_schema",
     "payload_sha256",
     "transaction",
@@ -82,7 +89,8 @@ CREATE TABLE IF NOT EXISTS approvals (
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved')),
     approver TEXT,
     signature TEXT,
-    decided_ts INTEGER
+    decided_ts INTEGER,
+    brief_sha256 TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS nonces (
     nonce TEXT PRIMARY KEY,
@@ -156,6 +164,20 @@ class BadSignature(ApprovalError):
 
 class NonceUsed(ApprovalError):
     code, status = "nonce_used", 409
+
+
+class BriefChanged(ApprovalError):
+    """The run's confirmed brief is not the one this approval signs."""
+
+    code, status = "brief_changed", 409
+
+
+def confirmed_brief(ledger: Ledger, run_id: str) -> str:
+    """``brief_sha256`` of the run's latest ``brief.confirmed`` receipt, or ``""``."""
+    for r in reversed(ledger.receipts(run_id)):
+        if r.kind == BRIEF_KIND:
+            return str(r.details.get("brief_sha256", ""))
+    return ""
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -278,6 +300,7 @@ class Pending:
     chain_head: str
     nonce: str
     ts: int
+    brief_sha256: str = ""
 
     @classmethod
     def create(
@@ -289,12 +312,18 @@ class Pending:
         ledger: Ledger,
         run_id: str,
         now: float | None = None,
+        brief_sha256: str = "",
     ) -> Pending:
         if action not in ACTIONS:
             raise UnknownAction(f"unknown action {action!r}")
         if not isinstance(item_id, str) or not is_opaque(item_id):
             # The signed message is stored un-redacted in receipts: ids only, never text.
             raise InvalidItemId("item_id must be an internal opaque id")
+        current = confirmed_brief(ledger, run_id)
+        if brief_sha256 and brief_sha256 != current:
+            raise BriefChanged("the brief is not the run's confirmed brief")
+        if current and not brief_sha256 and action in BRIEF_BOUND_ACTIONS:
+            raise BriefChanged("this run has a confirmed brief; the approval must sign it")
         return cls(
             id=uuid.uuid4().hex,
             run_id=run_id,
@@ -304,21 +333,22 @@ class Pending:
             chain_head=ledger.chain_head(run_id),
             nonce="n_" + secrets.token_hex(16),
             ts=int(time.time() if now is None else now),
+            brief_sha256=brief_sha256,
         )
 
     def save(self, conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT INTO approvals (id, run_id, action, item_id, content_sha256, chain_head, "
-            "nonce, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "nonce, ts, brief_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (self.id, self.run_id, self.action, self.item_id, self.content_sha256,
-             self.chain_head, self.nonce, self.ts),
+             self.chain_head, self.nonce, self.ts, self.brief_sha256),
         )
 
     @classmethod
     def load(cls, conn: sqlite3.Connection, pending_id: str) -> Pending:
         row = conn.execute(
-            "SELECT id, run_id, action, item_id, content_sha256, chain_head, nonce, ts "
-            "FROM approvals WHERE id = ?",
+            "SELECT id, run_id, action, item_id, content_sha256, chain_head, nonce, ts, "
+            "brief_sha256 FROM approvals WHERE id = ?",
             (pending_id,),
         ).fetchone()
         if row is None:
@@ -326,7 +356,7 @@ class Pending:
         return cls(*row)
 
     def fields(self, approver: str) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "action": self.action,
             "item_id": self.item_id,
             "content_sha256": self.content_sha256,
@@ -335,6 +365,9 @@ class Pending:
             "nonce": self.nonce,
             "ts": self.ts,
         }
+        if self.brief_sha256:
+            out[APPROVAL_BRIEF_FIELD] = self.brief_sha256
+        return out
 
     def message(self, approver: str) -> bytes:
         """Canonical bytes served at ``/api/approvals/{id}/payload`` for the browser to sign."""
@@ -354,6 +387,7 @@ class Approval:
     nonce: str
     ts: int
     signature: str
+    brief_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -367,6 +401,7 @@ class Verified:
     content_sha256: str
     approver: str
     signature: str
+    brief_sha256: str = ""
 
     def write_details(self) -> dict[str, str]:
         """``details`` for the ``external_write`` receipt this approval authorises."""
@@ -415,6 +450,10 @@ def verify_and_consume(
         raise NonceMismatch("nonce does not belong to this approval")
     if approval.ts != pending.ts:
         raise FieldMismatch("timestamp does not match the pending approval")
+    if approval.brief_sha256 != pending.brief_sha256:
+        raise FieldMismatch("brief hash does not match the pending approval")
+    if pending.brief_sha256 and confirmed_brief(ledger, pending.run_id) != pending.brief_sha256:
+        raise BriefChanged("the run's confirmed brief changed after the approval was requested")
     clock = time.time() if now is None else now
     if clock - pending.ts > TTL_S:
         raise Expired(f"approval older than {TTL_S} s")
@@ -466,4 +505,5 @@ def verify_and_consume(
         content_sha256=pending.content_sha256,
         approver=approval.approver,
         signature=approval.signature,
+        brief_sha256=pending.brief_sha256,
     )

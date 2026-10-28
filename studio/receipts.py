@@ -32,7 +32,13 @@ from studio.pii import redact_digit_runs
 
 GENESIS = "0" * 64
 APPROVAL_TTL_S = 900  # an approval authorises one write within this many seconds of issue
-KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review"})
+KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review",
+                   "brief.confirmed"})
+BRIEF_KIND = "brief.confirmed"
+BRIEF_SCHEMA = "brief/v1"
+# Actions whose approval must sign the run's confirmed brief (``brief_sha256``) when the
+# run has one: the facts an ad stands on are part of what the human approves.
+BRIEF_BOUND_ACTIONS = frozenset({"campaign.create"})
 # The adapter steps each approved action may take (``tool_call``, ``side_effects:
 # external``). ``activate`` is the receipt of a refused activation (no adapter call).
 EXTERNAL_STEPS: dict[str, frozenset[str]] = {
@@ -69,9 +75,17 @@ APPROVAL_SIGNED_FIELDS = (
 )
 
 
+# Signed too when present: the hash of the confirmed Brief v1 the content was made from.
+APPROVAL_BRIEF_FIELD = "brief_sha256"
+
+
 def approval_message(fields: Mapping[str, Any]) -> bytes:
-    """The exact bytes a human approver signs (domain-separated canonical JSON)."""
-    return canonical({"type": "approval", **{k: fields[k] for k in APPROVAL_SIGNED_FIELDS}})
+    """The exact bytes a human approver signs (domain-separated canonical JSON). An
+    approval made from a confirmed Brief v1 also signs its ``brief_sha256``."""
+    body = {"type": "approval", **{k: fields[k] for k in APPROVAL_SIGNED_FIELDS}}
+    if fields.get(APPROVAL_BRIEF_FIELD):
+        body[APPROVAL_BRIEF_FIELD] = fields[APPROVAL_BRIEF_FIELD]
+    return canonical(body)
 
 
 def public_key_raw(public_key: Ed25519PublicKey) -> bytes:
@@ -129,6 +143,7 @@ class Receipt:
         return sha256_hex(canonical(self.body()))
 
 
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 _OPAQUE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}")
 _HEX = re.compile(r"[0-9a-f]+")
 
@@ -167,8 +182,12 @@ def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
     """Redact PII. Approval receipts keep the signed fields byte-exact, so those fields
     must be opaque (ids, digests, key ids, nonce, ts); anything else is refused."""
     if kind != "approval":
-        return dict(redact(dict(details)))
-    keep = (*APPROVAL_SIGNED_FIELDS, "sig")
+        # digests stay byte-exact (a hex digest can hold a long digit run, never PII)
+        digests = {k: v for k, v in details.items()
+                   if k.endswith("_sha256") and isinstance(v, str) and _SHA256.fullmatch(v)}
+        return {**dict(redact({k: v for k, v in details.items() if k not in digests})),
+                **digests}
+    keep = (*APPROVAL_SIGNED_FIELDS, APPROVAL_BRIEF_FIELD, "sig")
     for k in keep:
         if k in details and not is_opaque(details[k]):
             raise ValueError(f"approval field {k!r} must be an opaque value, not free text")
@@ -415,15 +434,52 @@ class _Grant:
     item_id: str
     content_sha256: str
     ts: int
+    brief_sha256: str = ""
+
+
+def _check_brief(receipt: Receipt) -> tuple[list[str], str | None]:
+    """A ``brief.confirmed`` receipt: schema ``brief/v1``, its ``brief_sha256`` is the
+    receipt's output hash, and no ``[FACT]`` question was left open."""
+    d = receipt.details
+    digest = d.get("brief_sha256")
+    if d.get("schema") != BRIEF_SCHEMA:
+        return [f"{receipt.id}: brief.confirmed with an unknown schema"], None
+    if not isinstance(digest, str) or not _SHA256.fullmatch(digest) \
+            or digest != receipt.output_sha256:
+        return [f"{receipt.id}: brief.confirmed brief_sha256 is not its output hash"], None
+    open_q = d.get("open_questions")
+    if not isinstance(open_q, int) or isinstance(open_q, bool) or open_q != 0:
+        return [f"{receipt.id}: brief confirmed with open [FACT] questions"], None
+    return [], digest
+
+
+def _check_brief_binding(receipt: Receipt, brief: str | None) -> list[str]:
+    """An approval that signs a brief must sign the run's current confirmed brief; a
+    ``campaign.create`` approval in a run with a confirmed brief must sign it."""
+    d = receipt.details
+    signed = d.get(APPROVAL_BRIEF_FIELD)
+    if signed in (None, ""):
+        if brief is not None and d.get("action") in BRIEF_BOUND_ACTIONS:
+            return [f"{receipt.id}: approval does not sign the run's confirmed brief"]
+        return []
+    if not isinstance(signed, str) or not _SHA256.fullmatch(signed):
+        return [f"{receipt.id}: approval brief_sha256 is malformed"]
+    if brief is None:
+        return [f"{receipt.id}: approval signs a brief this run never confirmed"]
+    if signed != brief:
+        return [f"{receipt.id}: approval signs another brief than the run's confirmed brief"]
+    return []
 
 
 def _check_approval(
     receipt: Receipt,
     seen: set[str],
     approver_keys: Mapping[str, Ed25519PublicKey] | None,
+    brief: str | None = None,
 ) -> tuple[list[str], _Grant | None]:
-    """Signed fields well-formed, approver signature valid (when keys are given), and bound
-    to a real chain head of the run (``GENESIS`` only for the run's first receipt)."""
+    """Signed fields well-formed, approver signature valid (when keys are given), bound
+    to a real chain head of the run (``GENESIS`` only for the run's first receipt) and,
+    for a brief-bound action, to the run's confirmed brief."""
     d = receipt.details
     missing = [k for k in APPROVAL_SIGNED_FIELDS if k not in d]
     if missing:
@@ -446,13 +502,22 @@ def _check_approval(
     head = d["chain_head"]
     if (head == GENESIS and seen) or (head != GENESIS and head not in seen):
         errors.append(f"{receipt.id}: approval chain_head is not an earlier receipt of this run")
+    errors += _check_brief_binding(receipt, brief)
     if errors:
         return errors, None
-    return [], _Grant(d["action"], d["item_id"], d["content_sha256"], d["ts"])
+    return [], _Grant(d["action"], d["item_id"], d["content_sha256"], d["ts"],
+                      str(d.get(APPROVAL_BRIEF_FIELD) or ""))
+
+
+def _brief_changed(receipt: Receipt, grant: _Grant, brief: str | None) -> list[str]:
+    if grant.brief_sha256 and grant.brief_sha256 != brief:
+        return [f"{receipt.id}: the confirmed brief changed after the approval "
+                "(the signed brief_sha256 is no longer the run's brief)"]
+    return []
 
 
 def _check_write(
-    receipt: Receipt, grants: dict[str, _Grant], used: set[str]
+    receipt: Receipt, grants: dict[str, _Grant], used: set[str], brief: str | None = None
 ) -> list[str]:
     """Consume the approval the write names; it must match action, content and TTL."""
     approval_id = receipt.details.get("approval_id")
@@ -477,11 +542,11 @@ def _check_write(
     if receipt.ts - grant.ts > APPROVAL_TTL_S:
         errors.append(f"{receipt.id}: approval expired before the write "
                       f"(older than {APPROVAL_TTL_S} s)")
-    return errors
+    return errors + _brief_changed(receipt, grant, brief)
 
 
 def _check_step(
-    receipt: Receipt, valid: Mapping[str, _Grant], used: set[str]
+    receipt: Receipt, valid: Mapping[str, _Grant], used: set[str], brief: str | None = None
 ) -> list[str]:
     """An external adapter step must ride on a valid approval of this run that has not yet
     been consumed by its write, for an action this step belongs to, within the TTL."""
@@ -501,7 +566,7 @@ def _check_step(
         return [f"{prefix}: not a step of the approved action {grant.action!r}"]
     if receipt.ts - grant.ts > APPROVAL_TTL_S:
         return [f"{prefix}: approval expired (older than {APPROVAL_TTL_S} s)"]
-    return []
+    return _brief_changed(receipt, grant, brief)
 
 
 def verify(
@@ -526,6 +591,11 @@ def verify(
     external`` (an adapter call) must name a valid approval of the same run, before that
     approval's write, for an action the step belongs to (``EXTERNAL_STEPS``), within the
     TTL — otherwise "unauthorised external step".
+
+    A ``brief.confirmed`` receipt sets the run's confirmed brief (``brief_sha256``). An
+    approval that signs a ``brief_sha256`` must sign that one, a ``campaign.create``
+    approval in a run with a confirmed brief must sign it, and a write or adapter step
+    whose approval signed a brief fails if the run's brief changed since.
     """
     errors: list[str] = []
     signatures = 0
@@ -536,6 +606,7 @@ def verify(
     valid: dict[str, dict[str, _Grant]] = {}  # every valid grant, consumed or not
     used: dict[str, set[str]] = {}
     nonces: set[str] = set()
+    briefs: dict[str, str] = {}  # run -> brief_sha256 of its latest confirmed brief
     counts: dict[str, int] = {}
     manifests: list[Any] = []
     ids: set[str] = set()
@@ -584,8 +655,14 @@ def verify(
             errors.append(f"{receipt.id}: broken link to previous receipt")
         if receipt.ts < last_ts.get(run, 0.0):
             errors.append(f"{receipt.id}: timestamp goes backwards")
+        if receipt.kind == BRIEF_KIND:
+            problems, digest = _check_brief(receipt)
+            errors += problems
+            if digest is not None:
+                briefs[run] = digest
         if receipt.kind == "approval":
-            problems, grant = _check_approval(receipt, seen.get(run, set()), approver_keys)
+            problems, grant = _check_approval(receipt, seen.get(run, set()), approver_keys,
+                                              briefs.get(run))
             nonce = receipt.details.get("nonce")
             if isinstance(nonce, str) and nonce in nonces:
                 problems.append(f"{receipt.id}: approval nonce {nonce} is used more than once")
@@ -599,10 +676,11 @@ def verify(
                 grants.setdefault(run, {})[str(pending_id or receipt.id)] = grant
                 valid.setdefault(run, {})[str(pending_id or receipt.id)] = grant
         if receipt.kind == "tool_call":
-            errors += _check_step(receipt, valid.get(run, {}), used.get(run, set()))
+            errors += _check_step(receipt, valid.get(run, {}), used.get(run, set()),
+                                  briefs.get(run))
         if receipt.kind == "external_write":
             errors += _check_write(receipt, grants.setdefault(run, {}),
-                                   used.setdefault(run, set()))
+                                   used.setdefault(run, set()), briefs.get(run))
         heads[run] = receipt.hash
         last_ids[run] = receipt.id
         seen.setdefault(run, set()).add(receipt.hash)

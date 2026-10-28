@@ -27,7 +27,8 @@ __all__ = ["BEGIN", "END", "SOURCES", "SYSTEM_RULE", "check_declared", "clean", 
 PHRASE = "UNTRUSTED EXTERNAL CONTENT"
 BEGIN = f"<<<BEGIN {PHRASE}>>>"
 END = f"<<<END {PHRASE}>>>"
-SOURCES = frozenset({"comment", "lead", "transcript", "insights", "screenshot", "ad_copy"})
+SOURCES = frozenset({"comment", "lead", "transcript", "insights", "screenshot", "ad_copy",
+                     "brief_facts"})
 ZWSP = "\u200b"
 MAX_CHARS = 4000
 

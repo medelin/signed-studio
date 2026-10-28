@@ -94,6 +94,29 @@ def test_unknown_text_falls_back_to_the_route_and_unknown_route_misses(tmp_path)
     assert tr.stats["miss"] == 1
 
 
+def test_route_fallback_prefers_the_same_output_schema(tmp_path):
+    rec = replay.RecordingTransport(httpx.MockTransport(_fake_api), blobs=tmp_path / "blobs")
+    client = MuseClient("k", ledger=Ledger(), transport=rec)
+
+    def ask(c, text, schema):
+        return c.chat("muse-spark-1.3", [{"role": "user", "content": text}],
+                      run_id="run_aaaabbbbccccdddd", agent="producer",
+                      response_format={"type": "json_schema", "json_schema": {
+                          "name": schema, "strict": True, "schema": {"type": "object"}}})
+
+    ask(client, "plan for the recorded brief", "Plan")
+    ask(client, "draft of the recorded words", "BriefV1")
+    path = tmp_path / "s" / "replay.json"
+    rec.save(path, {"brief": "b"})
+    tr = replay.ReplayTransport(json.loads(path.read_text()), blobs=tmp_path / "blobs")
+    again = MuseClient("replay", ledger=Ledger(), transport=tr)
+    # unknown words: the route fallback skips the (first, unused) Plan recording
+    assert ask(again, "draft of other words", "BriefV1").text.startswith("echo draft of")
+    assert ask(again, "draft of yet other words", "BriefV1").text.startswith("echo draft of")
+    assert ask(again, "plan for another brief", "Plan").text.startswith("echo plan for")
+    assert tr.stats == {"exact": 0, "route": 3, "miss": 0}
+
+
 def test_images_are_stored_once_downscaled(tmp_path):
     rec = replay.RecordingTransport(httpx.MockTransport(_fake_api), blobs=tmp_path / "blobs")
     with httpx.Client(transport=rec) as c:

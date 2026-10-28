@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from studio import executor
-from studio.approvals import Pending, Verified, transaction
+from studio.approvals import Pending, Verified, confirmed_brief, transaction
 from studio.meta.adapter import (
     ACTIVATION_KEYS,
     ACTIVATION_ORDER,
@@ -64,6 +64,11 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
            payload: dict[str, Any], data_dir: Path) -> dict[str, Any]:
     check_paused(payload)  # before anything: an ACTIVE creation payload is never executed
     v: Verified = executor.authorize(conn, verified, "campaign.create", payload)
+    if v.brief_sha256 and (confirmed_brief(ledger, v.run_id) != v.brief_sha256
+                           or payload.get("brief_sha256") != v.brief_sha256):
+        # the facts the ad stands on changed after the signature: nothing is created
+        executor.finish(conn, v, "failed", {"error": "brief_changed"})
+        raise BuyError("the confirmed brief changed after the approval", "brief_changed")
     created: dict[str, str] = {}
 
     def step(name: str, fn: Any, *args: Any) -> str:

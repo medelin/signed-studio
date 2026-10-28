@@ -835,6 +835,333 @@ PL: dict[str, str] = {
     "err.paused_only": "Włączyć można tylko wstrzymaną kampanię.",
 }
 
+# Brief v1 strings: their own block (merged below), English and Polish.
+EN_BRIEF: dict[str, str] = {
+    # Brief v1 (studio page): steps, two input paths, the editable form, [FACT] questions
+    "brief.title": "1 · Brief v1",
+    "brief.steps_label": "Brief steps",
+    "brief.step1": "Tell us (type or speak)", "brief.step2": "Check the draft",
+    "brief.step3": "Answer the [FACT] questions", "brief.step4": "Confirm and run",
+    "brief.no_time_limit": "No step has a time limit. Everything works with a keyboard and "
+                           "a screen reader.",
+    "brief.a11y_link": "Accessibility notes",
+    "brief.paths_legend": "Your brief: type it or say it",
+    "brief.paths_hint": "Both ways are equal. Say or write what you sell, to whom, what it "
+                        "costs and what you want from the ad. The producer turns it into a "
+                        "Brief v1 that you check before anything else happens.",
+    "brief.path_text": "Type", "brief.path_voice": "Speak",
+    "brief.text_label": "Your brief, in your own words (a voice transcript lands here too)",
+    "brief.text_help": "Edit freely, also after a recording: the producer reads exactly this "
+                       "text.",
+    "brief.voice_hint": "Speak in Polish or English, up to 10 minutes per recording; you can "
+                        "record again to add more. Muse Voice Transcribe writes the text into "
+                        "the box on the left, where you can correct it. The audio is deleted "
+                        "after transcription.",
+    "brief.draft_button": "Draft Brief v1",
+    "brief.check_title": "2 · Check your Brief v1",
+    "brief.check_lead": "This is the producer's draft. Change anything. The copywriter may use "
+                        "only the confirmed facts; every gap is a [FACT] question for you, "
+                        "never a guess.",
+    "brief.one_per_line": "One item per line.",
+    "brief.read_aloud": "Read the brief aloud", "brief.read_stop": "Stop reading",
+    "brief.errors_title": "Please fix these fields",
+    "brief.s.questions": "3 · [FACT] questions",
+    "brief.questions_hint": "Each question is a claim the producer could not confirm from your "
+                            "words. Answer it in a short sentence (it becomes a confirmed "
+                            "fact), or strike the claim (it will not be used).",
+    "brief.no_questions": "No open questions.",
+    "brief.s.facts": "Confirmed facts",
+    "brief.facts_hint": "Prices, times, guarantees, numbers: the only facts the ad may state.",
+    "brief.add_fact": "Add a fact",
+    "brief.s.advertiser": "Advertiser",
+    "brief.f.kind": "Who advertises", "brief.kind_person": "a person",
+    "brief.kind_company": "a company",
+    "brief.f.display_name": "Display name",
+    "brief.h.display_name": "As on your page or legal name; a mismatch can get ads rejected.",
+    "brief.f.countries": "Countries you sell in",
+    "brief.h.countries": "Two-letter codes, for example PL, DE, GB.",
+    "brief.f.landing_url": "Landing page (https)",
+    "brief.s.offer": "Offer",
+    "brief.f.product": "Product or service", "brief.f.offer": "Offer",
+    "brief.f.valid_until": "Offer valid until",
+    "brief.f.reasons": "Reasons to believe",
+    "brief.reasons_hint": "Each reason must rest on at least one confirmed fact.",
+    "brief.add_reason": "Add a reason",
+    "brief.s.objective": "Objective",
+    "brief.f.goal": "Meta objective (exactly one)",
+    "brief.h.goal": "What the campaign optimises for.",
+    "brief.goal.awareness": "awareness", "brief.goal.traffic": "traffic",
+    "brief.goal.engagement": "engagement", "brief.goal.leads": "leads",
+    "brief.goal.sales": "sales",
+    "brief.f.kpi": "How you measure success",
+    "brief.h.kpi": "For example: sign-ups from the form.",
+    "brief.s.audience": "Audience",
+    "brief.f.locations": "Locations", "brief.f.age": "Age range",
+    "brief.f.age_min": "from", "brief.f.age_max": "to",
+    "brief.f.languages": "Languages",
+    "brief.f.who": "Who they are", "brief.f.belief": "What they believe",
+    "brief.f.barrier": "What holds them back", "brief.f.trigger": "What would move them",
+    "brief.s.proposition": "Proposition",
+    "brief.f.proposition": "The one thing the ad says",
+    "brief.h.proposition": "One sentence.",
+    "brief.s.tone": "Tone and brand",
+    "brief.f.tone": "Tone words", "brief.f.colours": "Colours",
+    "brief.f.donts": "What not to do",
+    "brief.s.mandatories": "Mandatory items",
+    "brief.f.disclaimers": "Required disclaimers", "brief.f.banned_claims": "Banned claims",
+    "brief.h.banned": "The reviewers block any ad that makes one of these claims.",
+    "brief.f.dates": "Dates that must appear",
+    "brief.s.budget": "Budget",
+    "brief.f.budget_kind": "Budget type", "brief.budget_daily": "daily",
+    "brief.budget_lifetime": "total for the whole campaign",
+    "brief.f.amount": "Amount",
+    "brief.h.amount": "Daily budgets above the server's ceiling are refused.",
+    "brief.f.currency": "Currency",
+    "brief.h.currency": "The ad account's currency (PLN on this studio).",
+    "brief.f.start": "Start date", "brief.f.end": "End date",
+    "brief.s.placements": "Placements",
+    "brief.f.automatic": "Automatic placements (recommended by Meta)",
+    "brief.f.deliverables": "Images to make",
+    "brief.pl.feed_1x1": "feed 1:1", "brief.pl.feed_4x5": "feed 4:5",
+    "brief.pl.story_9x16": "stories 9:16",
+    "brief.s.assets": "Assets",
+    "brief.assets_hint": "This studio cuts the {concept} out of its configured product photo "
+                         "with SAM 3.1; note here what else you have.",
+    "brief.f.assets": "Your assets",
+    "brief.confirm_hint": "Confirming records the brief's hash in a receipt. Your signature on "
+                          "the ad will cover these facts too: if one changes later, the "
+                          "signature no longer counts.",
+    "brief.confirm_button": "Confirm the brief and run the studio",
+    "brief.back_button": "Back to my words",
+    "brief.ap_brief": "brief sha256 (the facts you sign too)",
+    # Brief v1, scripts
+    "js.brief_drafting": "The producer is drafting your Brief v1 (one Muse Spark call)…",
+    "js.brief_drafted": "Draft ready. {n} [FACT] questions need your answer. Step 2 of 4: "
+                        "check the brief.",
+    "js.brief_drafted_none": "Draft ready, no open questions. Step 2 of 4: check the brief.",
+    "js.brief_draft_failed": "Could not draft the brief: {error}",
+    "js.brief_step": "Step {n} of 4: {name}",
+    "js.brief_question": "Question {n}",
+    "js.brief_claim": "Your words: “{text}”",
+    "js.brief_answer": "Answer", "js.brief_strike": "Strike the claim",
+    "js.brief_answer_label": "Your answer to question {n}",
+    "js.brief_choice": "What to do with question {n}",
+    "js.brief_struck": "Struck: this claim will not be used.",
+    "js.brief_questions_left": "{n} questions still open.",
+    "js.brief_questions_done": "All questions answered or struck. Step 4 of 4: confirm.",
+    "js.brief_fact_label": "Fact {n}", "js.brief_remove": "Remove",
+    "js.brief_remove_fact": "Remove fact {n}",
+    "js.brief_reason_label": "Reason {n}", "js.brief_reason_facts": "Rests on facts",
+    "js.brief_remove_reason": "Remove reason {n}",
+    "js.brief_no_facts": "Add a confirmed fact first.",
+    "js.brief_dictate": "Dictate", "js.brief_dictate_into": "Dictate into: {label}",
+    "js.brief_dictate_stop": "Stop dictation",
+    "js.brief_dictating": "Listening… press Stop dictation when you are done.",
+    "js.brief_dictated": "Dictated text added to {label}. Check it before you go on.",
+    "js.brief_no_mic": "No microphone is available or it is not allowed in this browser. "
+                       "Everything works by typing as well.",
+    "js.brief_confirming": "Confirming the brief and starting the run…",
+    "js.brief_confirmed": "Brief confirmed (sha256 {sha}…, {facts} facts). The run has "
+                          "started.",
+    "js.brief_errors": "{n} fields need attention; the list is at the top of the form.",
+    "js.brief_reading": "Reading the brief aloud…",
+    "js.brief_err_required": "This field is required.",
+    "js.brief_err_too_long": "This is too long.",
+    "js.brief_err_too_many": "Too many items.",
+    "js.brief_err_empty_item": "Remove the empty line.",
+    "js.brief_err_bad_url": "Enter an https address, for example https://example.com/.",
+    "js.brief_err_bad_country": "Use two-letter country codes, one per line.",
+    "js.brief_err_bad_date": "Enter a valid date.",
+    "js.brief_err_date_order": "The end date is before the start date.",
+    "js.brief_err_age_range": "Ages must be between 13 and 65, from ≤ to.",
+    "js.brief_err_amount": "Enter an amount above zero.",
+    "js.brief_err_over_ceiling": "Above the daily-budget ceiling of this studio ({ceiling} "
+                                 "PLN).",
+    "js.brief_err_bad_currency": "Use a three-letter currency code, for example PLN.",
+    "js.brief_err_account_currency": "This studio's ad account books budgets in PLN.",
+    "js.brief_err_no_fact_ref": "Pick at least one fact this reason rests on.",
+    "js.brief_err_bad_fact_ref": "This reason points to a fact that no longer exists.",
+    "js.brief_err_one_sentence": "Keep it to one sentence.",
+    "js.brief_err_placeholder": "A fact cannot contain [FACT].",
+    "js.brief_err_open_question": "Answer or strike every [FACT] question.",
+    "js.brief_err_unresolved": "Answer this question or strike the claim.",
+    "js.brief_err_answer_required": "Write the answer, or strike the claim instead.",
+    "js.brief_err_duplicate": "Each placement once.",
+    "js.brief_err_invalid": "This value is not valid.",
+    "js.brief_edit_then_draft": "Check and edit the transcript, then draft Brief v1.",
+    "js.brief_renewed": "The signing window had closed; a fresh one was issued for the same "
+                        "content. Sign again when you are ready.",
+}
+
+PL_BRIEF: dict[str, str] = {
+    # Brief v1 (strona studia): kroki, dwie drogi wejścia, edytowalny formularz, pytania [FACT]
+    "brief.title": "1 · Brief v1",
+    "brief.steps_label": "Kroki briefu",
+    "brief.step1": "Opowiedz (wpisz albo powiedz)", "brief.step2": "Sprawdź szkic",
+    "brief.step3": "Odpowiedz na pytania [FACT]", "brief.step4": "Potwierdź i uruchom",
+    "brief.no_time_limit": "Żaden krok nie ma limitu czasu. Wszystko działa z klawiatury i z "
+                           "czytnikiem ekranu.",
+    "brief.a11y_link": "Uwagi o dostępności",
+    "brief.paths_legend": "Twój brief: wpisz go albo powiedz",
+    "brief.paths_hint": "Obie drogi są równorzędne. Powiedz albo napisz, co sprzedajesz, komu, "
+                        "ile to kosztuje i czego oczekujesz od reklamy. Producent zrobi z tego "
+                        "Brief v1, który sprawdzisz, zanim cokolwiek się wydarzy.",
+    "brief.path_text": "Wpisz", "brief.path_voice": "Powiedz",
+    "brief.text_label": "Twój brief, własnymi słowami (tu trafia też transkrypcja nagrania)",
+    "brief.text_help": "Poprawiaj śmiało, także po nagraniu: producent czyta dokładnie ten "
+                       "tekst.",
+    "brief.voice_hint": "Mów po polsku albo po angielsku, do 10 minut na jedno nagranie; "
+                        "możesz nagrać jeszcze raz, żeby coś dodać. Muse Voice Transcribe "
+                        "wpisze tekst do pola obok, gdzie możesz go poprawić. Nagranie jest "
+                        "usuwane po transkrypcji.",
+    "brief.draft_button": "Przygotuj Brief v1",
+    "brief.check_title": "2 · Sprawdź swój Brief v1",
+    "brief.check_lead": "To szkic producenta. Zmień, co chcesz. Copywriter może użyć tylko "
+                        "potwierdzonych faktów; każda luka to pytanie [FACT] do Ciebie, nigdy "
+                        "zgadywanie.",
+    "brief.one_per_line": "Jedna pozycja w wierszu.",
+    "brief.read_aloud": "Przeczytaj brief na głos", "brief.read_stop": "Przestań czytać",
+    "brief.errors_title": "Popraw te pola",
+    "brief.s.questions": "3 · Pytania [FACT]",
+    "brief.questions_hint": "Każde pytanie to twierdzenie, którego producent nie mógł "
+                            "potwierdzić na podstawie Twoich słów. Odpowiedz krótkim zdaniem "
+                            "(stanie się potwierdzonym faktem) albo skreśl twierdzenie (nie "
+                            "zostanie użyte).",
+    "brief.no_questions": "Brak otwartych pytań.",
+    "brief.s.facts": "Potwierdzone fakty",
+    "brief.facts_hint": "Ceny, godziny, gwarancje, liczby: jedyne fakty, które może podać "
+                        "reklama.",
+    "brief.add_fact": "Dodaj fakt",
+    "brief.s.advertiser": "Reklamodawca",
+    "brief.f.kind": "Kto się reklamuje", "brief.kind_person": "osoba",
+    "brief.kind_company": "firma",
+    "brief.f.display_name": "Nazwa wyświetlana",
+    "brief.h.display_name": "Taka jak na Twojej stronie albo nazwa prawna; niezgodność może "
+                            "skończyć się odrzuceniem reklamy.",
+    "brief.f.countries": "Kraje, w których sprzedajesz",
+    "brief.h.countries": "Dwuliterowe kody, na przykład PL, DE, GB.",
+    "brief.f.landing_url": "Strona docelowa (https)",
+    "brief.s.offer": "Oferta",
+    "brief.f.product": "Produkt lub usługa", "brief.f.offer": "Oferta",
+    "brief.f.valid_until": "Oferta ważna do",
+    "brief.f.reasons": "Powody, by uwierzyć",
+    "brief.reasons_hint": "Każdy powód musi opierać się na co najmniej jednym potwierdzonym "
+                          "fakcie.",
+    "brief.add_reason": "Dodaj powód",
+    "brief.s.objective": "Cel",
+    "brief.f.goal": "Cel w Mecie (dokładnie jeden)",
+    "brief.h.goal": "Pod co kampania jest optymalizowana.",
+    "brief.goal.awareness": "rozpoznawalność", "brief.goal.traffic": "ruch",
+    "brief.goal.engagement": "zaangażowanie", "brief.goal.leads": "kontakty (leady)",
+    "brief.goal.sales": "sprzedaż",
+    "brief.f.kpi": "Jak mierzysz sukces",
+    "brief.h.kpi": "Na przykład: zapisy z formularza.",
+    "brief.s.audience": "Odbiorcy",
+    "brief.f.locations": "Lokalizacje", "brief.f.age": "Przedział wieku",
+    "brief.f.age_min": "od", "brief.f.age_max": "do",
+    "brief.f.languages": "Języki",
+    "brief.f.who": "Kim są", "brief.f.belief": "W co wierzą",
+    "brief.f.barrier": "Co ich powstrzymuje", "brief.f.trigger": "Co by ich poruszyło",
+    "brief.s.proposition": "Myśl przewodnia",
+    "brief.f.proposition": "To jedno, co mówi reklama",
+    "brief.h.proposition": "Jedno zdanie.",
+    "brief.s.tone": "Ton i marka",
+    "brief.f.tone": "Słowa opisujące ton", "brief.f.colours": "Kolory",
+    "brief.f.donts": "Czego nie robić",
+    "brief.s.mandatories": "Elementy obowiązkowe",
+    "brief.f.disclaimers": "Wymagane zastrzeżenia", "brief.f.banned_claims": "Zakazane "
+                                                                            "twierdzenia",
+    "brief.h.banned": "Recenzenci blokują każdą reklamę, która zawiera któreś z nich.",
+    "brief.f.dates": "Daty, które muszą się pojawić",
+    "brief.s.budget": "Budżet",
+    "brief.f.budget_kind": "Rodzaj budżetu", "brief.budget_daily": "dzienny",
+    "brief.budget_lifetime": "łączny na całą kampanię",
+    "brief.f.amount": "Kwota",
+    "brief.h.amount": "Budżet dzienny powyżej limitu serwera jest odrzucany.",
+    "brief.f.currency": "Waluta",
+    "brief.h.currency": "Waluta konta reklamowego (w tym studiu PLN).",
+    "brief.f.start": "Data startu", "brief.f.end": "Data końca",
+    "brief.s.placements": "Umiejscowienia",
+    "brief.f.automatic": "Automatyczne umiejscowienia (zalecane przez Metę)",
+    "brief.f.deliverables": "Obrazy do przygotowania",
+    "brief.pl.feed_1x1": "feed 1:1", "brief.pl.feed_4x5": "feed 4:5",
+    "brief.pl.story_9x16": "relacje 9:16",
+    "brief.s.assets": "Materiały",
+    "brief.assets_hint": "To studio wycina {concept} ze skonfigurowanego zdjęcia produktu za "
+                         "pomocą SAM 3.1; zanotuj tu, co jeszcze masz.",
+    "brief.f.assets": "Twoje materiały",
+    "brief.confirm_hint": "Potwierdzenie zapisuje skrót briefu w pokwitowaniu. Twój podpis pod "
+                          "reklamą obejmie także te fakty: jeśli któryś później się zmieni, "
+                          "podpis przestaje się liczyć.",
+    "brief.confirm_button": "Potwierdź brief i uruchom studio",
+    "brief.back_button": "Wróć do moich słów",
+    "brief.ap_brief": "sha256 briefu (fakty, które też podpisujesz)",
+    # Brief v1, skrypty
+    "js.brief_drafting": "Producent przygotowuje Twój Brief v1 (jedno wywołanie Muse Spark)…",
+    "js.brief_drafted": "Szkic gotowy. Pytania [FACT] czekające na odpowiedź: {n}. Krok 2 z "
+                        "4: sprawdź brief.",
+    "js.brief_drafted_none": "Szkic gotowy, bez otwartych pytań. Krok 2 z 4: sprawdź brief.",
+    "js.brief_draft_failed": "Nie udało się przygotować briefu: {error}",
+    "js.brief_step": "Krok {n} z 4: {name}",
+    "js.brief_question": "Pytanie {n}",
+    "js.brief_claim": "Twoje słowa: „{text}”",
+    "js.brief_answer": "Odpowiedz", "js.brief_strike": "Skreśl twierdzenie",
+    "js.brief_answer_label": "Twoja odpowiedź na pytanie {n}",
+    "js.brief_choice": "Co zrobić z pytaniem {n}",
+    "js.brief_struck": "Skreślone: to twierdzenie nie zostanie użyte.",
+    "js.brief_questions_left": "Otwarte pytania: {n}.",
+    "js.brief_questions_done": "Na wszystkie pytania odpowiedziano albo je skreślono. Krok 4 "
+                               "z 4: potwierdź.",
+    "js.brief_fact_label": "Fakt {n}", "js.brief_remove": "Usuń",
+    "js.brief_remove_fact": "Usuń fakt {n}",
+    "js.brief_reason_label": "Powód {n}", "js.brief_reason_facts": "Opiera się na faktach",
+    "js.brief_remove_reason": "Usuń powód {n}",
+    "js.brief_no_facts": "Najpierw dodaj potwierdzony fakt.",
+    "js.brief_dictate": "Podyktuj", "js.brief_dictate_into": "Podyktuj do pola: {label}",
+    "js.brief_dictate_stop": "Zakończ dyktowanie",
+    "js.brief_dictating": "Słucham… naciśnij „Zakończ dyktowanie”, gdy skończysz.",
+    "js.brief_dictated": "Podyktowany tekst dodano do pola: {label}. Sprawdź go, zanim "
+                         "pójdziesz dalej.",
+    "js.brief_no_mic": "Mikrofon jest niedostępny albo ta przeglądarka nie ma na niego zgody. "
+                       "Wszystko działa także po wpisaniu tekstu.",
+    "js.brief_confirming": "Potwierdzam brief i uruchamiam przebieg…",
+    "js.brief_confirmed": "Brief potwierdzony (sha256 {sha}…, faktów: {facts}). Przebieg "
+                          "wystartował.",
+    "js.brief_errors": "Pola wymagające uwagi: {n}; lista jest na górze formularza.",
+    "js.brief_reading": "Czytam brief na głos…",
+    "js.brief_err_required": "To pole jest wymagane.",
+    "js.brief_err_too_long": "To jest za długie.",
+    "js.brief_err_too_many": "Za dużo pozycji.",
+    "js.brief_err_empty_item": "Usuń pusty wiersz.",
+    "js.brief_err_bad_url": "Wpisz adres https, na przykład https://example.com/.",
+    "js.brief_err_bad_country": "Użyj dwuliterowych kodów krajów, po jednym w wierszu.",
+    "js.brief_err_bad_date": "Wpisz poprawną datę.",
+    "js.brief_err_date_order": "Data końca jest wcześniejsza niż data startu.",
+    "js.brief_err_age_range": "Wiek musi mieścić się między 13 a 65, „od” nie większe niż "
+                              "„do”.",
+    "js.brief_err_amount": "Wpisz kwotę większą od zera.",
+    "js.brief_err_over_ceiling": "Powyżej dziennego limitu budżetu w tym studiu ({ceiling} "
+                                 "zł).",
+    "js.brief_err_bad_currency": "Użyj trzyliterowego kodu waluty, na przykład PLN.",
+    "js.brief_err_account_currency": "Konto reklamowe tego studia rozlicza budżety w PLN.",
+    "js.brief_err_no_fact_ref": "Wybierz co najmniej jeden fakt, na którym opiera się ten "
+                                "powód.",
+    "js.brief_err_bad_fact_ref": "Ten powód wskazuje fakt, którego już nie ma.",
+    "js.brief_err_one_sentence": "Zmieść to w jednym zdaniu.",
+    "js.brief_err_placeholder": "Fakt nie może zawierać [FACT].",
+    "js.brief_err_open_question": "Odpowiedz na każde pytanie [FACT] albo je skreśl.",
+    "js.brief_err_unresolved": "Odpowiedz na to pytanie albo skreśl twierdzenie.",
+    "js.brief_err_answer_required": "Wpisz odpowiedź albo zamiast tego skreśl twierdzenie.",
+    "js.brief_err_duplicate": "Każde umiejscowienie tylko raz.",
+    "js.brief_err_invalid": "Ta wartość jest niepoprawna.",
+    "js.brief_edit_then_draft": "Sprawdź i popraw transkrypcję, a potem przygotuj Brief v1.",
+    "js.brief_renewed": "Okno podpisu się zamknęło; wydano nowe dla tej samej treści. "
+                        "Podpisz, kiedy zechcesz.",
+}
+
+EN.update(EN_BRIEF)
+PL.update(PL_BRIEF)
+
 CATALOGS = {"en": EN, "pl": PL}
 
 

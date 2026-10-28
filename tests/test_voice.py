@@ -137,14 +137,58 @@ def test_voice_route_converts_transcribes_and_keeps_no_audio(tmp_path):
                       headers={"content-type": "text/plain",
                                "x-csrf-token": csrf(c)}).status_code == 415
         _mock(router)
-        r = c.post("/api/briefs/voice", content=WAV, headers={"content-type": "audio/wav"})
+        # languageBias follows the UI language (the recording is Polish)
+        r = c.post("/api/briefs/voice?lang=pl", content=WAV,
+                   headers={"content-type": "audio/wav"})
     assert r.status_code == 200, r.text
     body = r.json()
+    assert body["language"] == "pl"
     assert "kubki" in body["transcript"] and body["turns"] and body["audio_kept"] is False
     row = a.state.conn.execute("SELECT source, text FROM briefs WHERE id = ?",
                                (body["brief_id"],)).fetchone()
     assert row[0] == "voice" and "kubki" in row[1]
     assert not (tmp_path / "var" / "audio").exists()
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("query,bias", [("?lang=en", ["en"]), ("?lang=pl", ["pl"]),
+                                        ("?lang=xx", ["en"])])
+def test_language_bias_follows_the_ui_language(tmp_path, query, bias):
+    a = create_app(settings(tmp_path))
+    a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0))
+    rec = CASSETTE["interactions"][0]
+    sent = []
+
+    def handler(request):
+        sent.append(json.loads(_parts(request)["request"]))
+        return httpx.Response(200, json=rec["response"]["json"])
+
+    with TestClient(a, base_url="https://testserver") as c, respx.mock(
+            assert_all_called=False) as router:
+        router.route(host="testserver").pass_through()
+        router.post(url__startswith=BASE_URL).mock(side_effect=handler)
+        login(c)
+        r = c.post("/api/briefs/voice" + query, content=WAV,
+                   headers={"content-type": "audio/wav"})
+    assert r.status_code == 200, r.text
+    assert sent[0]["languageBias"] == bias
+
+
+@needs_ffmpeg
+def test_field_dictation_returns_text_and_makes_no_brief_row(tmp_path):
+    a = create_app(settings(tmp_path))
+    a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0))
+    with TestClient(a, base_url="https://testserver") as c, respx.mock(
+            assert_all_called=False) as router:
+        router.route(host="testserver").pass_through()
+        _mock(router)
+        login(c)
+        r = c.post("/api/briefs/voice?lang=pl&purpose=field", content=WAV,
+                   headers={"content-type": "audio/wav"})
+    assert r.status_code == 200, r.text
+    assert "kubki" in r.json()["transcript"] and "brief_id" not in r.json()
+    assert a.state.conn.execute("SELECT count(*) FROM briefs WHERE source = 'voice'"
+                                ).fetchone()[0] == 0
 
 
 def test_voice_upload_above_the_limit_is_413(tmp_path):

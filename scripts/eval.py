@@ -73,9 +73,39 @@ class _Case:
                                      details=ok.write_details())
         for _ in range(rnd.randint(1, 3)):
             self.led.append("run-2", agent="analyst", kind="model_call", model="muse-spark-1.3")
+        # run-3: a confirmed Brief v1 and a campaign approval that signs its hash (no write)
+        self.brief = sha256_hex(f"brief {rnd.random()}")
+        self.led.append("run-3", agent="producer", kind="model_call", model="muse-spark-1.3")
+        self.confirm(self.brief)
+        cpayload = {"action": "campaign.create", "brief_sha256": self.brief,
+                    "ad": {"headline": f"h {rnd.random()}"}}
+        with db.transaction(c):
+            cp = ap.Pending.create("campaign.create", "cmp_" + uuid_hex(rnd), cpayload,
+                                   ledger=self.led, run_id="run-3", brief_sha256=self.brief)
+            cp.save(c)
+        signed = {k: v for k, v in cp.fields(approver).items() if k != "brief_sha256"}
+        with db.transaction(c):
+            self.campaign = ap.verify_and_consume(c, ap.Approval(
+                pending_id=cp.id, **signed, brief_sha256=cp.brief_sha256,
+                signature=key.sign(cp.message(approver)).hex()), cpayload, ledger=self.led,
+                session_id="s1")
+        self.campaign_pending = cp
+        self.key, self.approver = key, approver
         self.approvers: dict[str, Ed25519PublicKey] = dict(ap.Keys.registry(c))
         self.tmp = tmp
         self.rnd = rnd
+
+    def confirm(self, digest: str, open_questions: int = 0) -> None:
+        self.led.append("run-3", agent="owner", kind="brief.confirmed", output_sha256=digest,
+                        details={"schema": "brief/v1", "brief_sha256": digest, "facts": 3,
+                                 "open_questions": open_questions, "answered": 1,
+                                 "struck": 0, "voice": ""})
+
+    def signed_approval(self, fields: dict[str, Any]) -> None:
+        """An approval receipt the approver really signed, written by the server."""
+        self.led.append("run-3", agent="human", kind="approval", details={
+            **fields, "sig": self.key.sign(ap.approval_message(fields)).hex(),
+            "pending_id": "p_" + uuid_hex(self.rnd)})
 
     def lines(self) -> list[dict[str, Any]]:
         return [json.loads(x) for x in self.led.export_jsonl().splitlines()]
@@ -87,6 +117,10 @@ class _Case:
         report = verify(path, self.led.public_key, min_seq=min_seq,
                         approver_keys=self.approvers if approvers is None else approvers)
         return report.ok
+
+
+def uuid_hex(rnd: random.Random) -> str:
+    return f"{rnd.getrandbits(64):016x}"
 
 
 def _receipts(lines: list[dict[str, Any]]) -> list[int]:
@@ -207,6 +241,32 @@ def _future_dated(c: _Case) -> bool:
     return c.check(c.lines())
 
 
+def _brief_edited_after_signing(c: _Case) -> bool:
+    c.confirm(sha256_hex(f"edited {c.rnd.random()}"))  # a fact changed after the signature
+    c.led.append("run-3", agent="media_buyer", kind="external_write",
+                 output_sha256=c.campaign.content_sha256, details=c.campaign.write_details())
+    return c.check(c.lines())
+
+
+def _approval_for_another_brief(c: _Case) -> bool:
+    fields = c.campaign_pending.fields(c.approver)
+    c.signed_approval({**fields, "nonce": "n_" + uuid_hex(c.rnd),
+                       "brief_sha256": sha256_hex(f"other {c.rnd.random()}")})
+    return c.check(c.lines())
+
+
+def _approval_without_brief(c: _Case) -> bool:
+    fields = {k: v for k, v in c.campaign_pending.fields(c.approver).items()
+              if k != "brief_sha256"}
+    c.signed_approval({**fields, "nonce": "n_" + uuid_hex(c.rnd)})
+    return c.check(c.lines())
+
+
+def _brief_with_open_question(c: _Case) -> bool:
+    c.confirm(c.brief, open_questions=c.rnd.randint(1, 3))
+    return c.check(c.lines())
+
+
 TAMPER: dict[str, tuple[str, Callable[[_Case], bool]]] = {
     "edited field": ("someone without the ledger key", _edit),
     "re-hashed without the ledger key": ("someone without the ledger key", _rehash),
@@ -224,6 +284,10 @@ TAMPER: dict[str, tuple[str, Callable[[_Case], bool]]] = {
     "second write on one approval": ("the server itself", _second_write),
     "external step without approval": ("the server itself", _unauthorised_step),
     "receipt dated after the manifest": ("the server itself", _future_dated),
+    "brief fact edited after signing": ("the server itself", _brief_edited_after_signing),
+    "approval for another brief": ("the server itself", _approval_for_another_brief),
+    "campaign approval without the brief": ("the server itself", _approval_without_brief),
+    "brief confirmed with an open [FACT]": ("the server itself", _brief_with_open_question),
 }
 
 
@@ -256,7 +320,8 @@ ATTACK_FILES = ["test_dispatcher.py", "test_paused_only.py", "test_injection.py"
                 "test_untrusted_paths.py", "test_external_steps.py", "test_review_binding.py",
                 "test_activation_chain.py", "test_unfilled_fact.py", "test_guest_views.py",
                 "test_comment_pii.py", "test_parallel_cost.py", "test_placements_cost.py",
-                "test_review_every_format.py", "test_voice_transcript.py"]
+                "test_review_every_format.py", "test_voice_transcript.py",
+                "test_brief_binding.py"]
 
 
 def attack_suites() -> list[dict[str, Any]]:
@@ -544,7 +609,9 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
         out.append("| Spark vision vs Spark Open agreement | pending — needs `BASETEN_API_KEY` |")
     out += ["", "## 1. Tamper suite (`studio verify`)", "",
             "Each case is a fresh ledger (random number of receipts, a signed reply approval, "
-            "its adapter step and its write, a second run), exported and then tampered with. "
+            "its adapter step and its write, a second run, and a third run with a confirmed "
+            "Brief v1 and a campaign approval that signs its `brief_sha256`), exported and "
+            "then tampered with. "
             "Verified with the ledger key, the approver registry and, for rollback, the "
             "latest known manifest seq. \"The server itself\" rows are logs signed with the "
             "real ledger key: what verify still catches if the server lies.", "",

@@ -10,6 +10,12 @@
    dispatches at most ``MAX_CALLS_PER_TURN`` calls and the expensive tools have per-run
    caps (``TOOL_LIMITS``).
 3. Every step is a receipt; ``run_state`` holds what the UI shows.
+
+Brief v1 (``studio.brief``): ``draft_brief`` turns the owner's free text or edited voice
+transcript into a draft whose gaps are open ``[FACT]`` questions. A run made from the
+confirmed brief (``Context.brief_v1``) plans from it, takes the owner's budget and
+placements over the model's, gives the copywriter and the reviewers only its confirmed
+facts, and binds ``brief_sha256`` into the approval.
 """
 
 from __future__ import annotations
@@ -24,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from studio import brief as brief_v1
 from studio import envelope
 from studio.agents import art_director, copywriter, prompts, reviewer
 from studio.agents.dispatcher import (
@@ -36,7 +43,7 @@ from studio.agents.dispatcher import (
     ToolError,
 )
 from studio.agents.schemas import CopyPack, CreativeSet, Plan
-from studio.approvals import Pending, transaction
+from studio.approvals import Pending, confirmed_brief, transaction
 from studio.muse.client import MuseClient, MuseError, ToolCall
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import structured
@@ -47,6 +54,7 @@ MODEL = "muse-spark-1.3"
 MAX_STEPS = 12
 MAX_COST_USD = 1.0
 MAX_BRIEF = 2000
+MAX_BRIEF_V1 = 8000  # a rendered Brief v1 (``brief.render``)
 MAX_CALLS_PER_TURN = 4
 # Per-run caps on the expensive tools (each art director call is a SAM + 3 image series,
 # each review is one or two vision calls per format).
@@ -67,13 +75,21 @@ class Context:
     # transcript is customer-grade text — enveloped, declared, never on Contributor.
     brief_source: str = "operator"
     max_daily_budget_pln: int = 50  # STUDIO_MAX_DAILY_BUDGET_PLN
+    # The confirmed Brief v1 this run is made from (None: a free-text brief) and its hash
+    # (the ``brief.confirmed`` receipt is written before the run starts).
+    brief_v1: brief_v1.BriefV1 | None = None
+    brief_sha256: str = ""
+
+
+def _limit(ctx: Context) -> int:
+    return MAX_BRIEF_V1 if ctx.brief_v1 is not None else MAX_BRIEF
 
 
 def brief_block(ctx: Context, brief: str) -> str:
     """The brief as it enters a prompt: plain for the operator, enveloped for a voice
     transcript."""
     if ctx.brief_source == "transcript":
-        return envelope.wrap(brief, "transcript", max_chars=MAX_BRIEF)
+        return envelope.wrap(brief, "transcript", max_chars=_limit(ctx))
     return brief
 
 
@@ -127,16 +143,19 @@ def opaque_id(prefix: str) -> str:
 
 def campaign_payload(run: RunResult, variant_index: int,
                      link: str = "https://example.com/", *,
-                     ceiling_pln: int = 50) -> dict[str, Any]:
+                     ceiling_pln: int = 50,
+                     brief: brief_v1.BriefV1 | None = None) -> dict[str, Any]:
     """The exact content a ``campaign.create`` approval authorises (built by code). A
     daily budget above the activation ceiling is refused here, before anyone signs a
-    campaign that could never be activated."""
+    campaign that could never be activated. With a confirmed ``brief`` the payload also
+    carries its ``brief_sha256``, objective, budget and the brief's targeting; the Meta
+    objective stays ``OUTCOME_TRAFFIC`` (the adapters create traffic campaigns only)."""
     assert run.plan and run.copy and run.creatives and run.review
     if run.plan.budget_pln_daily > ceiling_pln:
         raise ToolError(f"daily budget {run.plan.budget_pln_daily} PLN is above the "
                         f"{ceiling_pln} PLN ceiling; lower it in the plan")
     v = run.copy.variants[variant_index]
-    return {
+    payload = {
         "action": "campaign.create",
         "run_id": run.run_id,
         "campaign": {"objective": "OUTCOME_TRAFFIC", "status": "PAUSED",
@@ -156,6 +175,19 @@ def campaign_payload(run: RunResult, variant_index: int,
                    "formats": [{"placement": f["placement"], "sha256": f["sha256"],
                                 "verdict": f["verdict"]} for f in run.review["formats"]]},
     }
+    if brief is not None:
+        # what the owner confirmed, by hash, plus the parts the campaign is built from
+        payload.update({
+            "brief_sha256": brief_v1.brief_sha256(brief),
+            "brief": {"schema": brief_v1.SCHEMA, "goal": brief.objective.goal,
+                      "kpi": brief.objective.kpi, "budget": brief.budget.model_dump(),
+                      "automatic_placements": brief.placements.automatic,
+                      "facts": len(brief.confirmed_facts)},
+            "targeting": {"countries": list(brief.advertiser.countries),
+                          "age_min": brief.audience.age_min,
+                          "age_max": brief.audience.age_max},
+        })
+    return payload
 
 
 def review_binding(run: RunResult, variant_index: int) -> str:
@@ -202,6 +234,8 @@ def _cost(ctx: Context, run_id: str) -> float:
 
 
 def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
+    """The model's plan; with a confirmed Brief v1 the owner's daily budget and
+    deliverables replace the model's (code, not the model, copies them)."""
     plan, _ = structured(
         ctx.client, MODEL,
         [{"role": "system", "content": _system(ctx)},
@@ -213,7 +247,39 @@ def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
         run_id=run_id, agent=AGENT, max_tokens=4000, reasoning_effort="low",
         envelope_sources=_sources(ctx),
     )
+    if ctx.brief_v1 is not None:
+        plan = plan.model_copy(update={
+            "budget_pln_daily": brief_v1.daily_budget(ctx.brief_v1),
+            "placements": list(ctx.brief_v1.placements.deliverables)})
     return plan
+
+
+def draft_brief(client: MuseClient, text: str, *, run_id: str, source: str = "operator",
+                lang: str = "en",
+                landing_url: str = "https://example.com/") -> brief_v1.BriefV1:
+    """Brief v1 drafted by Muse Spark from the owner's text or edited voice transcript
+    (strict ``BriefV1`` schema), then ``brief.ground_draft``: a fact holding a number the
+    owner never wrote becomes an open ``[FACT]`` question."""
+    text = text.strip()
+    if not text or len(text) > brief_v1.MAX_SOURCE:
+        raise ValueError(f"brief text must be 1-{brief_v1.MAX_SOURCE} characters")
+    transcript = source == "transcript"
+    owner = envelope.wrap(text, "transcript", max_chars=brief_v1.MAX_SOURCE) if transcript \
+        else text
+    system = prompts.brief_system() + ("\n\n" + envelope.SYSTEM_RULE if transcript else "")
+    draft, _ = structured(
+        client, MODEL,
+        [{"role": "system", "content": system},
+         {"role": "user", "content": f"Owner's language: {lang}\nDefault landing page: "
+                                     f"{landing_url}\n\nOwner's words:\n{owner}\n\n"
+                                     "Draft the Brief v1 only."}],
+        brief_v1.BriefV1, tier="standard", tier_reason=(
+            "brief draft from a voice transcript" if transcript
+            else "brief draft from the owner's text"),
+        run_id=run_id, agent=AGENT, max_tokens=4000, reasoning_effort="low",
+        envelope_sources=["transcript"] if transcript else (),
+    )
+    return brief_v1.ground_draft(draft, text, lang=lang)
 
 
 def _headline_key(text: str) -> str:
@@ -239,8 +305,10 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         if not 0 <= args.angle_index < len(run.plan.angles):
             raise ToolError("angle_index must be 0, 1 or 2")
         angle = run.plan.angles[args.angle_index]
-        run.copy, _ = copywriter.write(ctx.client, angle, angle.persona, run_id=run.run_id,
-                                       brief=brief, brief_source=ctx.brief_source)
+        run.copy, _ = copywriter.write(
+            ctx.client, angle, angle.persona, run_id=run.run_id, brief=brief,
+            brief_source=ctx.brief_source,
+            facts=ctx.brief_v1.confirmed_facts if ctx.brief_v1 is not None else None)
         run.angle_index = args.angle_index
         emit("copy")
         return {"variants": [v.model_dump() for v in run.copy.variants],
@@ -292,7 +360,8 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 raise ToolError(f"{im.placement} changed on disk since it was rendered")
             images.append((im.placement, im.sha256, png))
         result = reviewer.run_formats(ctx.client, ctx.open_client, images,
-                                      run.copy.variants[args.variant_index], run_id=run.run_id)
+                                      run.copy.variants[args.variant_index], run_id=run.run_id,
+                                      brief=ctx.brief_v1)
         run.review = {**result, "variant_index": args.variant_index,
                       "binding": review_binding(run, args.variant_index)}
         emit("review")
@@ -323,11 +392,22 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         bad = copywriter.unsupported_character(variant)
         if bad:
             raise ToolError(bad)
-        payload = campaign_payload(run, index, ctx.landing_url,
-                                   ceiling_pln=ctx.max_daily_budget_pln)
+        link = ctx.landing_url
+        if ctx.brief_v1 is not None:
+            if confirmed_brief(ctx.client.ledger, run.run_id) != ctx.brief_sha256 or \
+                    brief_v1.brief_sha256(ctx.brief_v1) != ctx.brief_sha256:
+                raise ToolError("the confirmed brief changed during the run; confirm it again")
+            ungrounded = reviewer.grounding_net(variant, ctx.brief_v1)
+            if ungrounded:
+                raise ToolError(f"variant {index} states something the owner did not confirm "
+                                f"(rule P10): {ungrounded[0].evidence[:200]}")
+            link = ctx.brief_v1.advertiser.landing_url
+        payload = campaign_payload(run, index, link, ceiling_pln=ctx.max_daily_budget_pln,
+                                   brief=ctx.brief_v1)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
-                                 ledger=ctx.client.ledger, run_id=run.run_id)
+                                 ledger=ctx.client.ledger, run_id=run.run_id,
+                                 brief_sha256=ctx.brief_sha256)
         with transaction(ctx.conn):
             pending.save(ctx.conn)
             ctx.conn.execute(
@@ -424,8 +504,8 @@ def run(
     max_cost_usd: float = MAX_COST_USD,
 ) -> RunResult:
     brief = brief.strip()
-    if not brief or len(brief) > MAX_BRIEF:
-        raise ValueError(f"brief must be 1-{MAX_BRIEF} characters")
+    if not brief or len(brief) > _limit(ctx):
+        raise ValueError(f"brief must be 1-{_limit(ctx)} characters")
     run_id = run_id or new_run_id()
     result = RunResult(run_id=run_id, status="running")
     _save_state(ctx.conn, result, "running")

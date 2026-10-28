@@ -13,8 +13,10 @@ event streams) live once in ``fixtures/replay/blobs/<sha256>.<ext>`` and are ref
 - ``ReplayTransport`` serves the recorded response for that key; requests whose text
   carries run-specific data (the analyst reads the ledger, which is new every run) fall
   back to the next recording of the same *route* (host, path, model, tool names, stream)
-  in recorded order. Both cycle when exhausted, so a replay can be run again in the same
-  process. Anything else is a ``599 replay_miss`` (the client records an error receipt).
+  in recorded order, preferring recordings with the same strict output schema (a Brief v1
+  draft never gets a plan's answer). Both cycle when exhausted, so a replay can be run
+  again in the same process. Anything else is a ``599 replay_miss`` (the client records
+  an error receipt).
 - ``RecordingTransport`` wraps a real transport and writes a set; it stores no headers
   (no keys or tokens) and no request images.
 
@@ -115,6 +117,16 @@ def route_of(request: httpx.Request, body: Any) -> str:
         parts += [str(body.get("model", "")), "stream" if body.get("stream") else "",
                   ",".join(tools)]
     return " ".join(parts)
+
+
+def schema_name(body: Any) -> str:
+    """The strict JSON-schema name a (normalized) request asks for, or ``""``."""
+    if not isinstance(body, dict):
+        return ""
+    fmt = body.get("response_format") or (body.get("text") or {}).get("format") or {}
+    if not isinstance(fmt, dict):
+        return ""
+    return str((fmt.get("json_schema") or {}).get("name") or fmt.get("name") or "")
 
 
 def request_key(request: httpx.Request) -> tuple[str, str, Any]:
@@ -242,8 +254,14 @@ class ReplayTransport(httpx.BaseTransport):
     def _first_unused(self, idx: list[int] | None) -> int | None:
         return next((i for i in idx or [] if i not in self._used), None)
 
-    def _cycle(self, table: dict[str, list[int]], k: str) -> int | None:
-        idx = table.get(k)
+    def _same_schema(self, idx: list[int] | None, name: str) -> list[int] | None:
+        """Route recordings asking for the same output schema (all of them if none do)."""
+        same = [i for i in idx or [] if schema_name(self._items[i].get("request")) == name]
+        return same or idx
+
+    def _cycle(self, table: dict[str, list[int]], k: str,
+               idx_override: list[int] | None = None) -> int | None:
+        idx = idx_override if idx_override is not None else table.get(k)
         if not idx:
             return None
         n = self._cursor.get(k, 0)
@@ -251,7 +269,7 @@ class ReplayTransport(httpx.BaseTransport):
         return idx[n % len(idx)]
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
-        key, route, _ = request_key(request)
+        key, route, body = request_key(request)
         with self._lock:
             # A known request is always answered from its own recordings (cycling on a
             # second pass); only an unknown request falls back to its route. Otherwise a
@@ -262,9 +280,11 @@ class ReplayTransport(httpx.BaseTransport):
                 i = self._cycle(self._by_key, key)
             if i is None:
                 kind = "route"
-                i = self._first_unused(self._by_route.get(route))
+                candidates = self._same_schema(self._by_route.get(route), schema_name(body))
+                i = self._first_unused(candidates)
                 if i is None:
-                    i = self._cycle(self._by_route, route)
+                    i = self._cycle(self._by_route, route + "#" + schema_name(body),
+                                    candidates or [])
             if i is None:
                 self.stats["miss"] += 1
                 return httpx.Response(599, json={"error": {

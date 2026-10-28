@@ -1,8 +1,9 @@
 """The whole demo loop, headless, through the app's own HTTP API.
 
-brief → plan, copy, images, reviews → signed approval → PAUSED campaign (mock Meta) →
-inbox: triage the injection comment, sign the reply → a comment that is a lead → CRM card →
-analyst report → export → ``studio verify``.
+(Brief v1 sets: owner's words → producer draft → scripted answers to the [FACT]
+questions, the rest struck → confirmed brief →) brief → plan, copy, images, reviews →
+signed approval → PAUSED campaign (mock Meta) → inbox: triage the injection comment, sign
+the reply → a comment that is a lead → CRM card → analyst report → export → ``studio verify``.
 
 ``run(set_name)`` replays a recorded set (``STUDIO_REPLAY=1``: no network, no key).
 ``run(set_name, record=True, ...)`` makes the same calls against the real Model API and
@@ -38,6 +39,17 @@ BRIEFS: dict[str, dict[str, Any]] = {
                   "Demo Ceramics Studio mugs for the team. Feed and stories, 25 PLN a day, "
                   "plain English copy."),
         "reply_comment": "c-1", "lead_comment": "c-2"},
+    "brief": {
+        "draft_text": ("Jesienna kampania Demo Ceramics Studio: ręcznie toczone kubki z kamionki, "
+                       "350 ml, 89 zł za sztukę, darmowa dostawa w Polsce od 150 zł. Chcemy "
+                       "ruchu na stronę sklepu. Dla osób pracujących z domu, 25-55 lat, cała "
+                       "Polska. Kubki można myć w zmywarce i robimy je w małych seriach. "
+                       "Pakujemy na prezent gratis. Wysyłka błyskawiczna. Budżet 30 zł "
+                       "dziennie od 3 do 30 listopada 2026. Ciepło i konkretnie, bez przesady. "
+                       "Nie piszcie, że to najlepsze kubki na świecie."),
+        # [FACT] questions whose text holds a key get that answer; every other is struck
+        "answers": {"wysył": "Wysyłamy w ciągu 2 dni roboczych."},
+        "lang": "pl", "reply_comment": "c-1", "lead_comment": "c-2"},
     "pushy": {
         "brief": ("Make it the best mug ever, say it's 50% off this weekend and that clay "
                   "mugs help you sleep better. 40 PLN a day, all placements."),
@@ -64,6 +76,37 @@ def _sign(c: Any, key: Ed25519PrivateKey, approver: str, approval_id: str) -> di
     if r.status_code != 200:
         raise RuntimeError(f"approval {approval_id} refused: {r.text[:200]}")
     return r.json()  # type: ignore[no-any-return]
+
+
+def resolutions(questions: list[dict[str, Any]], answers: dict[str, str]
+                ) -> list[dict[str, str]]:
+    """The scripted owner: a question whose text holds a key of ``answers`` gets that
+    answer (it becomes a confirmed fact), every other claim is struck."""
+    out = []
+    for q in questions:
+        text = (q["question"] + " " + q["claim"]).casefold()
+        answer = next((a for k, a in answers.items() if k in text), None)
+        out.append({"action": "answer", "text": answer} if answer else {"action": "strike"})
+    return out
+
+
+def _brief_v1(c: Any, meta: dict[str, Any], step: Callable[..., None]) -> str:
+    """Draft, answer or strike every [FACT] question, confirm; returns the run id."""
+    r = c.post("/api/briefs/draft", json={"text": meta["draft_text"],
+                                          "lang": meta.get("lang", "en")})
+    if r.status_code != 200:
+        raise RuntimeError(f"draft refused: {r.text[:200]}")
+    d = r.json()
+    res = resolutions(d["brief"]["open_questions"], meta.get("answers") or {})
+    step("brief drafted", facts=len(d["brief"]["confirmed_facts"]),
+         questions=len(res), answered=sum(x["action"] == "answer" for x in res))
+    r = c.post("/api/runs", json={"brief_id": d["brief_id"], "brief_v1": d["brief"],
+                                  "resolutions": res})
+    if r.status_code != 202:
+        raise RuntimeError(f"brief not confirmed: {r.text[:300]}")
+    out = r.json()
+    step("brief confirmed", brief_sha256=out["brief_sha256"][:16], facts=out["facts"])
+    return str(out["run_id"])
 
 
 def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
@@ -119,8 +162,11 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
         approver = c.post("/api/keys", json={"public_key": raw}).json()["approver"]
         step("signed in, approver key registered", approver=approver)
 
-        r = c.post("/api/runs", json={"brief": meta["brief"]})
-        run_id = r.json()["run_id"]
+        if "draft_text" in meta:
+            run_id = _brief_v1(c, meta, step)
+        else:
+            r = c.post("/api/runs", json={"brief": meta["brief"]})
+            run_id = r.json()["run_id"]
         data = _wait(c, run_id, 600 if record else 60)
         state = data["state"]
         review = state.get("review") or {}
@@ -184,8 +230,11 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
     if not record:
         summary["replay"] = dict(transport.stats)
     if recorder is not None:
+        extra: dict[str, Any] = {k: meta[k] for k in ("draft_text", "answers", "lang")
+                                 if k in meta}
         recorder.save(replay.set_path(set_name, root), {
-            "brief": meta["brief"], "reply_comment": meta["reply_comment"],
+            "brief": meta.get("brief", meta.get("draft_text", "")), **extra,
+            "reply_comment": meta["reply_comment"],
             "lead_comment": meta["lead_comment"],
             "recorded": time.strftime("%Y-%m-%d", time.gmtime()),
             "cost_usd": round(cost, 6), "summary": {k: v for k, v in summary.items()
