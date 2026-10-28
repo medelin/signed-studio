@@ -234,12 +234,15 @@ def test_api_404_stays_json(client):
 
 
 def test_cast_gallery_is_noindex_and_shows_both_themes(client):
-    r = client.get("/style/cast")
+    r = client.get("/style/cast?lang=en")
     assert r.status_code == 200 and r.headers["x-robots-tag"] == "noindex"
     assert '<meta name="robots" content="noindex">' in r.text
     assert 'data-theme="light"' in r.text and 'data-theme="dark"' in r.text
     for p in cast.CAST:
         assert f'aria-label="{p.name}, {p.business}"' in r.text
+    pl = client.get("/style/cast?lang=pl").text
+    for p in cast.CAST:
+        assert f'aria-label="{p.name}, {p.business_pl}"' in pl
 
 
 def test_pages_load_tokens_and_illustration_css(client):

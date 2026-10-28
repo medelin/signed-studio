@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ t("brand") }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ t('meta.default') }}{% endblock %}">
   {% if noindex %}<meta name="robots" content="noindex">{% endif %}
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/style.css">

@@ -10,7 +10,7 @@
       btn.disabled = true;
       st.textContent = T("scoring");
       const r = await Signer.postJSON("/api/leads/" + encodeURIComponent(card.dataset.id) + "/score", {});
-      if (!r.ok) { st.textContent = T("scoring_failed", { error: r.data.error || r.status }); btn.disabled = false; return; }
+      if (!r.ok) { st.textContent = T("scoring_failed", { error: E(r.data, r.status) }); btn.disabled = false; return; }
       location.reload();
     });
   }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-28 — i18n audit: every visible string in English and Polish
+
+- Audit of templates, scripts and server messages. Moved into the catalogue (EN and PL, same keys): a `<meta name="description">` for every page; the labels of enum values around agent output (comment status, intent, sentiment, risk, CTA buttons, review severity, run status, `/style/cast` scene names and theme headings); the receipt hash tooltip; the "signed bytes" dump in the inbox; the scripts' remaining hard-coded errors (`signer.js`, "no preview", "no executor"); and a sentence for every API error code (`err.*`), so toasts no longer show `login_required` or `model_api_unavailable`. `InboxError` carries a code and parameters (`detail_code`, `detail_params` in the JSON; `detail` stays English for logs). The cast gallery uses the Polish business names on the Polish render.
+- Theme: the label of mode `system` is now "auto (system)" / "auto (jak w systemie)"; the value stays `system` in the cookie and the query.
+- Stays as it is: agent outputs and synthetic demo data (comments, leads, ad copy), model ids, receipt kinds, `studio verify`, `[FACT]`, verdicts `OK`/`WARN`/`BLOCK`, lead temperatures `HOT`/`WARM`/`COLD`. README and `docs/*.md` stay English.
+- Tests: both catalogues must have identical key sets (differences listed), every API error code has a sentence in both languages, scripts may not throw hard-coded sentences, and every main page is rendered in `lang=en` and `lang=pl`, signed out and signed in, asserting no leftover catalogue key, no text from the other language's catalogue, a description, and known Polish strings.
+
 ## 2026-10-28 — display: mode and colour palettes
 
 - Header selector for mode (system / light / dark) and four OKLCH palettes, each tuned for both tones: graphite (default), warm paper, green (ok-state turns blue so it never reads as the signal), high contrast. Server side: `?theme=`/`?palette=` set cookies, `<html data-theme data-palette>` is rendered on the first byte (no theme script, no flash; CSP unchanged); a plain GET form keeps the page's query and works without JS, `theme.js` only submits on change. `tests/test_themes.py` measures every palette × mode: 15 text pairs ≥ 4.5:1, 9 meaning-stroke pairs ≥ 3:1, skin tones and face lines unchanged and ≥ 3:1. Screenshots of /help and /studio for every palette in light and dark: `docs/screenshots/palettes/`.

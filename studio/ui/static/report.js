@@ -19,7 +19,7 @@
     });
     let data = {};
     try { data = await r.json(); } catch (_) { /* empty */ }
-    if (!r.ok) { st.textContent = T("report_failed", { error: data.error || r.status }); btn.disabled = false; return; }
+    if (!r.ok) { st.textContent = T("report_failed", { error: E(data, r.status) }); btn.disabled = false; return; }
     location.reload();
   });
 })();

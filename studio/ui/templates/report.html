@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t("report.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.report") }}{% endblock %}
 {% block content %}
 <div id="report" data-logged-in="{{ 'yes' if logged_in else 'no' }}">
 <section class="panel" aria-labelledby="report-h">
@@ -20,7 +21,7 @@
   <p class="hint">{{ "{:,}".format(rep.cached_tokens) }} {{ t("report.cached") }} · {{ t("report.context") }} {{ "{:,}".format(rep.context_tokens) }} ·
   {{ rep.receipts }} {{ t("report.receipts") }}{% if rep.dropped %} ({{ rep.dropped }} {{ t("report.dropped") }}){% endif %} ·
   {{ t("report.screenshot") }} {{ t("report.yes") if rep.screenshot else t("report.no") }} ·
-  {{ t("report.insights") }} <strong>{{ rep.insights or 'live' }}</strong>{% if rep.insights == 'synthetic' %} ({{ t("report.synthetic") }}){% endif %} · {{ "{:,}".format(rep.output_tokens) }} {{ t("report.output") }}
+  {{ t("report.insights") }} <strong>{{ tv('insights', rep.insights or 'live') }}</strong>{% if rep.insights == 'synthetic' %} ({{ t("report.synthetic") }}){% endif %} · {{ "{:,}".format(rep.output_tokens) }} {{ t("report.output") }}
   ({{ "{:,}".format(rep.reasoning_tokens) }} {{ t("report.reasoning") }}) · ${{ "%.4f" | format(rep.cost_usd) }} ·
   {{ t("report.model_receipt") }} <code>{{ rep.model_receipt }}</code></p>
   <p>{{ rep.report.summary }}</p>

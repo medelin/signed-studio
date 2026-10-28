@@ -1,16 +1,17 @@
 {% extends "base.html" %}
 {% block title %}{{ t("cast.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.cast") }}{% endblock %}
 {% block content %}
 <h1>{{ t("cast.title") }}</h1>
 <p class="lead">{{ t("cast.lead") }}</p>
 {% for theme in ("light", "dark") %}
 <section class="cast-theme" data-theme="{{ theme }}" aria-labelledby="cast-{{ theme }}">
-  <h2 id="cast-{{ theme }}" class="hud-label">{{ theme }}</h2>
+  <h2 id="cast-{{ theme }}" class="hud-label">{{ t("theme." ~ theme) }}</h2>
   <ul class="cast-grid">
   {% for p in cast %}
     <li class="cast-card">
-      {{ scene(p.key, "solo", label=p.name ~ ", " ~ p.business) }}
-      <p><strong>{{ p.name }}</strong>, {{ p.age }} · {{ p.business }}</p>
+      {{ scene(p.key, "solo", label=p.describe(request.state.lang)) }}
+      <p><strong>{{ p.name }}</strong>, {{ p.age }} · {{ p.business_pl if request.state.lang == "pl" else p.business }}</p>
     </li>
   {% endfor %}
   </ul>
@@ -26,7 +27,7 @@
   <h2 id="scenes-h" class="hud-label">{{ t("cast.scenes") }}</h2>
   <ul class="scene-grid">
   {% for kind in scenes if kind != "solo" %}
-    <li>{{ scene(cast[loop.index0 % cast|length].key, kind, cls="animate") }}<p class="hint">{{ kind }}</p></li>
+    <li>{{ scene(cast[loop.index0 % cast|length].key, kind, cls="animate") }}<p class="hint">{{ tv("scene", kind) }}</p></li>
   {% endfor %}
   </ul>
 </section>

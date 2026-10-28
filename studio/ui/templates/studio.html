@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t("studio.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.studio") }}{% endblock %}
 {% block content %}
 <div id="studio" data-logged-in="{{ 'yes' if logged_in else 'no' }}" data-read-only="{{ 'yes' if read_only else 'no' }}">
 

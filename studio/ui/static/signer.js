@@ -70,9 +70,9 @@ const Signer = (() => {
       const r = await postJSON("/api/keys", { public_key: b64url(raw) });
       if (r.ok) { approverId = r.data.approver; return approverId; }
       if (r.status === 409) { keyPair = null; await idbKey("delete"); continue; }  // new pair
-      throw new Error("key registration failed (" + (r.data.error || r.status) + ")");
+      throw new Error(T("key_registration_failed", { error: E(r.data, r.status) }));
     }
-    throw new Error("key registration failed");
+    throw new Error(T("key_registration_failed", { error: "" }));
   }
 
   async function login(username, password) {
@@ -84,17 +84,17 @@ const Signer = (() => {
     if (!approverId) await registerKey();
     const r = await fetch("/api/approvals/" + encodeURIComponent(pendingId) + "/payload?approver=" + encodeURIComponent(approverId), { credentials: "same-origin" });
     const data = await r.json();
-    if (!r.ok) throw new Error("cannot load the approval (" + (data.error || r.status) + ")");
+    if (!r.ok) throw new Error(T("cannot_load_approval", { error: E(data, r.status) }));
     return data;
   }
 
   async function sign(payload) {
-    if (!keyPair) throw new Error("no approver key");
+    if (!keyPair) throw new Error(T("no_key"));
     const bytes = Uint8Array.from(atob(payload.message_b64), (c) => c.charCodeAt(0));
     const sig = await crypto.subtle.sign({ name: "Ed25519" }, keyPair.privateKey, bytes);
     const r = await postJSON("/api/approvals/" + encodeURIComponent(payload.approval_id),
                              { approver: approverId, signature: hex(sig) });
-    if (!r.ok) throw new Error("approval refused: " + (r.data.error || r.status));
+    if (!r.ok) throw new Error(T("approval_refused", { error: E(r.data, r.status) }));
     return r.data;
   }
 

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t("inbox.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.inbox") }}{% endblock %}
 {% block content %}
 <div id="inbox" data-logged-in="{{ 'yes' if logged_in else 'no' }}" data-read-only="{{ 'yes' if read_only else 'no' }}">
 <section class="panel" aria-labelledby="inbox-h">
@@ -17,13 +18,13 @@
 <section aria-label="{{ t('inbox.list') }}" id="comments" class="cards">
 {% for c in comments %}
   <article class="panel comment" data-id="{{ c.id }}" data-status="{{ c.status }}" data-approval="{{ c.approval_status }}" data-pending="{{ c.pending_id }}">
-    <h2 class="small">{{ c.author_name }} <span class="hint">· {{ c.source }} · {{ c.status }}</span></h2>
+    <h2 class="small">{{ c.author_name }} <span class="hint">· {{ c.source }} · {{ tv("status", c.status) }}</span></h2>
     <blockquote>{{ c.text }}</blockquote>
     {% if c.intent %}
     <p>
-      <span class="badge">{{ t("inbox.intent") }} {{ c.intent }}</span>
-      <span class="badge">{{ t("inbox.sentiment") }} {{ c.sentiment }}</span>
-      <span class="badge risk-{{ c.risk }}">{{ t("inbox.risk") }} {{ c.risk }}</span>
+      <span class="badge">{{ t("inbox.intent") }} {{ tv("intent", c.intent) }}</span>
+      <span class="badge">{{ t("inbox.sentiment") }} {{ tv("sentiment", c.sentiment) }}</span>
+      <span class="badge risk-{{ c.risk }}">{{ t("inbox.risk") }} {{ tv("risk", c.risk) }}</span>
       {% if c.requires_human %}<span class="badge warn">{{ t("inbox.human") }}</span>{% endif %}
       {% for f in c.flags %}<span class="badge warn">{{ f }}</span>{% endfor %}
     </p>

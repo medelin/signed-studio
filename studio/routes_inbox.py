@@ -113,7 +113,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             cid = community.simulate(conn, text, author)
         except community.InboxError as exc:
-            return JSONResponse({"error": "invalid_comment", "detail": str(exc)}, 400)
+            return JSONResponse({"error": "invalid_comment", "detail": str(exc),
+                                 "detail_code": exc.code, "detail_params": exc.params}, 400)
         return JSONResponse({"comment_id": cid}, 201)
 
     @app.post("/api/comments/poll")
@@ -173,7 +174,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             pending, payload = community.request(conn, ledger, comment_id, action, message)
         except community.InboxError as exc:
-            return JSONResponse({"error": "invalid_request", "detail": str(exc)}, 400)
+            return JSONResponse({"error": "invalid_request", "detail": str(exc),
+                                 "detail_code": exc.code, "detail_params": exc.params}, 400)
         return JSONResponse({"approval_id": pending.id, "content_sha256": pending.content_sha256,
                              "content": payload}, 201)
 

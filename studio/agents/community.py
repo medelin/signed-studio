@@ -173,7 +173,13 @@ def save(conn: sqlite3.Connection, ledger: Ledger, comment_id: str, t: Triaged) 
 
 
 class InboxError(ValueError):
-    pass
+    """A refused inbox request. ``code`` and ``params`` let the page show it in its own
+    language (catalogue key ``err.<code>``); the message stays English for logs."""
+
+    def __init__(self, message: str, code: str = "", **params: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
 
 
 def _comment(conn: sqlite3.Connection, comment_id: str) -> dict[str, Any]:
@@ -181,7 +187,7 @@ def _comment(conn: sqlite3.Connection, comment_id: str) -> dict[str, Any]:
         row = conn.execute("SELECT id, external_id, status FROM comments WHERE id = ?",
                            (comment_id,)).fetchone()
     if row is None:
-        raise InboxError("no such comment")
+        raise InboxError("no such comment", "inbox_no_comment")
     return {"id": row[0], "external_id": row[1], "status": row[2]}
 
 
@@ -202,14 +208,16 @@ def request(conn: sqlite3.Connection, ledger: Ledger, comment_id: str, action: s
     ``comment.hide``. Nothing is sent: the human signs it in the inbox. At most one reply
     per comment waits for a signature at a time (until it expires after ``TTL_S``)."""
     if action not in SIGNED_ACTIONS:
-        raise InboxError("unknown inbox action")
+        raise InboxError("unknown inbox action", "inbox_unknown_action")
     comment = _comment(conn, comment_id)
     if comment["status"] in ("replied", "hidden"):
-        raise InboxError(f"comment already {comment['status']}")
+        raise InboxError(f"comment already {comment['status']}", "inbox_already",
+                         status=comment["status"])
     if action == "reply.post":
         text = envelope.clean(message, max_chars=10_000).strip()
         if not text or len(text) > MAX_REPLY:
-            raise InboxError(f"reply must be 1-{MAX_REPLY} characters")
+            raise InboxError(f"reply must be 1-{MAX_REPLY} characters", "inbox_reply_length",
+                             max=MAX_REPLY)
         payload = reply_payload(comment, text)
     else:
         payload = hide_payload(comment)
@@ -221,7 +229,8 @@ def request(conn: sqlite3.Connection, ledger: Ledger, comment_id: str, action: s
                 "SELECT 1 FROM approvals WHERE item_id = ? AND action = 'reply.post' AND "
                 "status = 'pending' AND ts > ?",
                 (item_id_for(comment_id), int(time.time()) - TTL_S)).fetchone():
-            raise InboxError("a reply to this comment is already waiting for approval")
+            raise InboxError("a reply to this comment is already waiting for approval",
+                             "inbox_reply_pending")
         pending.save(conn)
         conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
                      "VALUES (?, ?, ?, ?)",
@@ -235,7 +244,8 @@ def simulate(conn: sqlite3.Connection, text: str, author: str = "Simulated visit
     """Insert a comment as if it had arrived under the ad (sandbox / demo)."""
     text = text.strip()
     if not text or len(text) > MAX_COMMENT:
-        raise InboxError(f"comment must be 1-{MAX_COMMENT} characters")
+        raise InboxError(f"comment must be 1-{MAX_COMMENT} characters", "inbox_comment_length",
+                         max=MAX_COMMENT)
     comment_id = "sim-" + secrets.token_hex(6)
     with transaction(conn):
         conn.execute(

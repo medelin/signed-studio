@@ -37,7 +37,7 @@ if (loginForm) {
     ev.preventDefault();
     status("login-status", T("signing_in"));
     const r = await Signer.login($("login-user").value, $("login-pass").value);
-    if (!r.ok) { status("login-status", T("sign_in_failed", { error: r.data.error || r.status }), true); return; }
+    if (!r.ok) { status("login-status", T("sign_in_failed", { error: E(r.data, r.status) }), true); return; }
     loggedIn = true;
     try { await Signer.registerKey(); } catch (e) { status("login-status", e.message, true); return; }
     $("login-panel").hidden = true;
@@ -72,7 +72,7 @@ function renderCopy(copy, reviewedIndex) {
     card.append(el("h3", (i + 1) + ". " + v.headline + (i === reviewedIndex ? T("sent_for_review") : "")));
     card.append(el("p", v.primary_text));
     card.append(el("p", v.description, "hint"));
-    card.append(el("span", v.cta.replace(/_/g, " "), "cta"));
+    card.append(el("span", TV("cta", v.cta), "cta"));
     box.append(card);
   });
   if (copy.risks.length) box.append(el("p", T("risks", { list: copy.risks.join("; ") }), "hint"));
@@ -107,7 +107,7 @@ function renderReviewBlock(title, review) {
   div.append(h, el("p", review.summary));
   if (review.findings.length) {
     const ul = el("ul");
-    for (const f of review.findings) ul.append(el("li", f.rule + " (" + f.severity + "): " + f.evidence));
+    for (const f of review.findings) ul.append(el("li", f.rule + " (" + TV("severity", f.severity) + "): " + f.evidence));
     div.append(ul);
   }
   return div;
@@ -236,11 +236,11 @@ function follow(runId) {
   source.addEventListener("state", (ev) => {
     const d = JSON.parse(ev.data);
     renderState(runId, d.status, d.state || {});
-    status("run-status", runId + ": " + d.status.replace(/_/g, " "));
+    status("run-status", runId + ": " + TV("run", d.status));
   });
   source.addEventListener("end", (ev) => {
     const d = JSON.parse(ev.data);
-    status("run-status", runId + ": " + d.status.replace(/_/g, " "), d.status === "failed");
+    status("run-status", runId + ": " + TV("run", d.status), d.status === "failed");
     source.close();
     if (!readOnly && loggedIn) $("run-button").disabled = false;
   });
@@ -256,7 +256,7 @@ $("brief-form").addEventListener("submit", async (ev) => {
   const r = await postJSON("/api/runs", body);
   if (r.ok) voiceBriefId = null;
   if (r.status === 409 && r.data.run_id) { follow(r.data.run_id); return; }
-  if (!r.ok) { status("run-status", T("cannot_start", { error: r.data.error || r.status }), true); $("run-button").disabled = false; return; }
+  if (!r.ok) { status("run-status", T("cannot_start", { error: E(r.data, r.status) }), true); $("run-button").disabled = false; return; }
   follow(r.data.run_id);
 });
 
@@ -306,7 +306,7 @@ $("open-form").addEventListener("submit", (ev) => {
     });
     let data = {};
     try { data = await r.json(); } catch (_) { /* empty */ }
-    if (!r.ok) { status("voice-status", T("transcription_failed", { error: data.error || r.status }), true); return; }
+    if (!r.ok) { status("voice-status", T("transcription_failed", { error: E(data, r.status) }), true); return; }
     $("brief").value = data.transcript;
     voiceBriefId = data.brief_id;
     const ol = $("turns");
@@ -375,11 +375,11 @@ async function showCampaign(runId, itemId) {
     img.src = "/assets/" + runId + "/feed_1x1.png";
     img.alt = T("preview_alt");
     card.append(img, el("h3", p.fields.name), el("p", p.fields.description, "hint"),
-                el("span", p.fields.cta.replace(/_/g, " "), "cta"));
+                el("span", TV("cta", p.fields.cta), "cta"));
     card.append(el("p", T("mock_preview"), "hint"));
     box.append(card);
   } else {
-    box.append(el("p", T("no_preview", { error: c.preview_error || "no preview" }), "hint"));
+    box.append(el("p", T("no_preview", { error: c.preview_error || T("no_preview_default") }), "hint"));
   }
   $("activate-button").disabled = c.status !== "PAUSED" || !loggedIn || readOnly;
   $("campaign-h").focus();
@@ -391,11 +391,11 @@ $("activate-button").addEventListener("click", async () => {
   btn.disabled = true;
   try {
     const r = await postJSON("/api/campaigns/" + encodeURIComponent(currentCampaign.id) + "/activate", {});
-    if (!r.ok) throw new Error(T("activation_refused", { error: r.data.error || r.status }));
+    if (!r.ok) throw new Error(T("activation_refused", { error: E(r.data, r.status) }));
     const payload = await Signer.loadPayload(r.data.approval_id);
     status("activate-status", T("signing_activation", { budget: (payload.content.daily_budget_minor / 100).toFixed(2) }));
     const done = await Signer.sign(payload);
-    if (!done.executed) throw new Error(T("not_activated", { error: done.execution_error || "no executor" }));
+    if (!done.executed) throw new Error(T("not_activated", { error: done.execution_error || T("no_executor") }));
     status("activate-status", T("activated", { adapter: done.result.adapter, sig: done.signature.slice(0, 16) }));
     showCampaign(currentCampaign.run_id, currentCampaign.id);
   } catch (e) {

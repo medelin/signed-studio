@@ -125,7 +125,8 @@ def test_wrong_password_gives_one_generic_message(client):
     r = form_login(client, password="nope")
     assert r.status_code == 401
     assert "Sign-in failed. Check the user name and password" in r.text
-    assert "invalid_credentials" not in r.text and PASSWORD not in r.text
+    alert = re.search(r'<p class="status error"[^>]*>(.*?)</p>', r.text, re.S).group(1)
+    assert "invalid_credentials" not in alert and PASSWORD not in r.text
 
 
 def test_lockout_after_repeated_failures_with_retry_after(client):

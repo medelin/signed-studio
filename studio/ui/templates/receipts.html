@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t("receipts.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.receipts") }}{% endblock %}
 {% block content %}
 <section class="panel" aria-labelledby="receipts-h">
   <h1 id="receipts-h">{{ t("receipts.title") }}</h1>
@@ -38,7 +39,7 @@
         <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
         <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
         <td>${{ "%.5f" | format(r.cost_usd) }}</td>
-        <td><span class="chip" title="hash {{ r.hash }} · prev {{ r.prev }} · id {{ r.id }}" tabindex="0"><span class="chip-hash">{{ r.hash[:12] }}</span></span></td>
+        <td><span class="chip" title="{{ t('receipts.chip_title', hash=r.hash, prev=r.prev, id=r.id) }}" tabindex="0"><span class="chip-hash">{{ r.hash[:12] }}</span></span></td>
         <td><button type="button" class="copy-json secondary" data-target="j-{{ r.id }}" aria-label="{{ t('receipts.copy_label', id=r.id) }}">{{ t("receipts.copy") }}</button></td>
       </tr>
       <tr class="receipt-json"><td colspan="10"><details><summary>JSON · <code>{{ r.id }}</code></summary><pre class="json" id="j-{{ r.id }}">{{ v.json }}</pre></details></td></tr>

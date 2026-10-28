@@ -16,8 +16,8 @@
     const payload = await Signer.loadPayload(approvalId);
     const details = card.querySelector("details");
     details.hidden = false;
-    details.querySelector("pre").textContent = JSON.stringify(payload.content, null, 2)
-      + "\n\ncontent sha256 " + payload.content_sha256 + "\nsigned bytes " + atob(payload.message_b64);
+    details.querySelector("pre").textContent = JSON.stringify(payload.content, null, 2) + "\n\n"
+      + T("signed_dump", { sha: payload.content_sha256, bytes: atob(payload.message_b64) });
     say(st, T("signing_label", { label }));
     const done = await Signer.sign(payload);
     let text = T("label_signed", { label, sig: done.signature.slice(0, 16) });
@@ -34,13 +34,13 @@
       if (what === "triage") {
         say(st, T("triaging"));
         const r = await Signer.postJSON("/api/comments/" + encodeURIComponent(id) + "/triage", {});
-        if (!r.ok) throw new Error(T("triage_failed", { error: r.data.error || r.status }));
+        if (!r.ok) throw new Error(T("triage_failed", { error: E(r.data, r.status) }));
         location.reload();
         return;
       }
       const body = what === "reply" ? { message: card.querySelector("textarea").value } : {};
       const r = await Signer.postJSON("/api/comments/" + encodeURIComponent(id) + "/" + what, body);
-      if (!r.ok) throw new Error(T("cannot_prepare", { error: r.data.detail || r.data.error || r.status }));
+      if (!r.ok) throw new Error(T("cannot_prepare", { error: E(r.data, r.status) }));
       await signPending(card, r.data.approval_id, what === "reply" ? T("reply") : T("hide"));
     } catch (e) {
       say(st, e.message, true);
@@ -58,7 +58,7 @@
     sim.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const r = await Signer.postJSON("/api/comments/simulate", { text: document.getElementById("sim-text").value });
-      if (!r.ok) { say(top, T("cannot_add", { error: r.data.detail || r.data.error || r.status }), true); return; }
+      if (!r.ok) { say(top, T("cannot_add", { error: E(r.data, r.status) }), true); return; }
       location.reload();
     });
   }

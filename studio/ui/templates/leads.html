@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t("nav.leads") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.leads") }}{% endblock %}
 {% block content %}
 <div id="leads" data-logged-in="{{ 'yes' if logged_in else 'no' }}">
 <section class="panel" aria-labelledby="leads-h">

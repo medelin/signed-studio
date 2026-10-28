@@ -405,6 +405,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=str(UI / "templates"))
     templates.env.globals["replay"] = settings.replay
     templates.env.globals["t"] = i18n.t
+    templates.env.globals["tv"] = i18n.tv
     templates.env.globals["js_catalog"] = i18n.js_catalog
     templates.env.globals["lang_names"] = i18n.NAMES
     templates.env.globals["page_path"] = auth.page_path
