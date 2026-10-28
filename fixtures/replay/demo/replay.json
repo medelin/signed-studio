@@ -23,7 +23,7 @@
  },
  "interactions": [
   {
-   "key": "811107f91c96b7b9f489ffe8a6b774cfb9fcdfa1d2c5a0d71cc4ec2f0ce68c8d",
+   "request_sha256": "811107f91c96b7b9f489ffe8a6b774cfb9fcdfa1d2c5a0d71cc4ec2f0ce68c8d",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -141,7 +141,7 @@
    }
   },
   {
-   "key": "d46aa40d5e466df96fc95be801eed96e65353d0a5f1c85646b7d6314def2cfbb",
+   "request_sha256": "d46aa40d5e466df96fc95be801eed96e65353d0a5f1c85646b7d6314def2cfbb",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -386,7 +386,7 @@
    }
   },
   {
-   "key": "6b653d601b8be7acb63b21ba581d8abd9748fd0532399cbd29149678b9f962db",
+   "request_sha256": "6b653d601b8be7acb63b21ba581d8abd9748fd0532399cbd29149678b9f962db",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3-contributor  ",
    "request": {
     "model": "muse-spark-1.3-contributor",
@@ -501,7 +501,7 @@
    }
   },
   {
-   "key": "e09661f5f9123b5bfab6d00ae8dfe42cb58ded8ea0bd49a7d7439cf7f7242d09",
+   "request_sha256": "e09661f5f9123b5bfab6d00ae8dfe42cb58ded8ea0bd49a7d7439cf7f7242d09",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -736,7 +736,7 @@
    }
   },
   {
-   "key": "41f87bd448abb4b28bbcc8b19c41c159855b4ef9ac978e1873dad181db08d5b7",
+   "request_sha256": "41f87bd448abb4b28bbcc8b19c41c159855b4ef9ac978e1873dad181db08d5b7",
    "route": "POST api.meta.ai /v1/responses sam-3.1 stream ",
    "request": {
     "model": "sam-3.1",
@@ -766,7 +766,7 @@
    }
   },
   {
-   "key": "2e5c1a0e727cddda202b7818f04c999071a301aa7bfc8013039a14fec9126d2b",
+   "request_sha256": "2e5c1a0e727cddda202b7818f04c999071a301aa7bfc8013039a14fec9126d2b",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3-contributor  ",
    "request": {
     "model": "muse-spark-1.3-contributor",
@@ -837,7 +837,7 @@
    }
   },
   {
-   "key": "fc7206efb68e2748d01dd5757828e16cb2499dfdc49089256f916114fe806282",
+   "request_sha256": "fc7206efb68e2748d01dd5757828e16cb2499dfdc49089256f916114fe806282",
    "route": "POST api.meta.ai /v1/responses muse-image-1.0  image_generation",
    "request": {
     "model": "muse-image-1.0",
@@ -926,7 +926,7 @@
    }
   },
   {
-   "key": "2054f5c3bb66f06049928c88a076ccafc13de06761a340ed19e8103871590a4e",
+   "request_sha256": "2054f5c3bb66f06049928c88a076ccafc13de06761a340ed19e8103871590a4e",
    "route": "POST api.meta.ai /v1/images/edits muse-image-1.0  ",
    "request": {
     "response_format": "b64_json",
@@ -965,7 +965,7 @@
    }
   },
   {
-   "key": "32f453617e9b3bb11c3f4c6b6778a695dc4be450eb92877883da5dce9f758fd3",
+   "request_sha256": "32f453617e9b3bb11c3f4c6b6778a695dc4be450eb92877883da5dce9f758fd3",
    "route": "POST api.meta.ai /v1/images/edits muse-image-1.0  ",
    "request": {
     "response_format": "b64_json",
@@ -1004,7 +1004,7 @@
    }
   },
   {
-   "key": "11a4ce8f3d308c202af65762891bfb4f46647c88b2bc8be615fe841c1d4c8702",
+   "request_sha256": "11a4ce8f3d308c202af65762891bfb4f46647c88b2bc8be615fe841c1d4c8702",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -1239,7 +1239,7 @@
    }
   },
   {
-   "key": "30f96a021acbb0db3d3f9abcea0c5595317ce3d07cdb76edf624b169175af6a1",
+   "request_sha256": "30f96a021acbb0db3d3f9abcea0c5595317ce3d07cdb76edf624b169175af6a1",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -1359,7 +1359,7 @@
    }
   },
   {
-   "key": "30f96a021acbb0db3d3f9abcea0c5595317ce3d07cdb76edf624b169175af6a1",
+   "request_sha256": "30f96a021acbb0db3d3f9abcea0c5595317ce3d07cdb76edf624b169175af6a1",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -1479,7 +1479,7 @@
    }
   },
   {
-   "key": "30f96a021acbb0db3d3f9abcea0c5595317ce3d07cdb76edf624b169175af6a1",
+   "request_sha256": "30f96a021acbb0db3d3f9abcea0c5595317ce3d07cdb76edf624b169175af6a1",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -1599,7 +1599,7 @@
    }
   },
   {
-   "key": "1cb030c4c7d82a0725e36b5e70c6a8d9883262abe70bc0b240990a1e8be6d48f",
+   "request_sha256": "1cb030c4c7d82a0725e36b5e70c6a8d9883262abe70bc0b240990a1e8be6d48f",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -1819,7 +1819,7 @@
    }
   },
   {
-   "key": "f890de166cf19898cd57823a56b279f873c3b773f682d2b76cc98ad7e86017a2",
+   "request_sha256": "f890de166cf19898cd57823a56b279f873c3b773f682d2b76cc98ad7e86017a2",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -2045,7 +2045,7 @@
    }
   },
   {
-   "key": "34de7c8a479364b85973adc02bf46ef18f8bfcc192ddd4ad61317615aa4c938d",
+   "request_sha256": "34de7c8a479364b85973adc02bf46ef18f8bfcc192ddd4ad61317615aa4c938d",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -2159,7 +2159,7 @@
    }
   },
   {
-   "key": "31eb3df16ed2b3dfd2c39aa15795781f49b86f59481609cf45c0fc8763545150",
+   "request_sha256": "31eb3df16ed2b3dfd2c39aa15795781f49b86f59481609cf45c0fc8763545150",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -2273,7 +2273,7 @@
    }
   },
   {
-   "key": "641a4741d6b56d6fabe2569c4dc94e00b790b18124c2488a561339e4a53b30ae",
+   "request_sha256": "641a4741d6b56d6fabe2569c4dc94e00b790b18124c2488a561339e4a53b30ae",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -2368,7 +2368,7 @@
    }
   },
   {
-   "key": "888b7ba809b684e9a688ea5bfdd589a221da0187bb0da8358dc9453e3080998c",
+   "request_sha256": "888b7ba809b684e9a688ea5bfdd589a221da0187bb0da8358dc9453e3080998c",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",

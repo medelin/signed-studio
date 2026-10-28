@@ -23,7 +23,7 @@
  },
  "interactions": [
   {
-   "key": "94afbd99d7aabe49992fce888e7e2f5296807989d04ced3ab87a0babe698773c",
+   "request_sha256": "94afbd99d7aabe49992fce888e7e2f5296807989d04ced3ab87a0babe698773c",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -141,7 +141,7 @@
    }
   },
   {
-   "key": "867d87aacb35312a1d9521cae2b58d29dc77e0010b22412eb5554ad6eb93f73f",
+   "request_sha256": "867d87aacb35312a1d9521cae2b58d29dc77e0010b22412eb5554ad6eb93f73f",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -377,7 +377,7 @@
    }
   },
   {
-   "key": "08a78f41bf0740dfbdeb8389cc988aca0bf6646bd740d23d15e336042170ac96",
+   "request_sha256": "08a78f41bf0740dfbdeb8389cc988aca0bf6646bd740d23d15e336042170ac96",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3-contributor  ",
    "request": {
     "model": "muse-spark-1.3-contributor",
@@ -492,7 +492,7 @@
    }
   },
   {
-   "key": "53c82b4aa4dc5799a5480108c01803c451445c4993349701b6c0a6ae49bd226c",
+   "request_sha256": "53c82b4aa4dc5799a5480108c01803c451445c4993349701b6c0a6ae49bd226c",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -597,7 +597,7 @@
    }
   },
   {
-   "key": "53c82b4aa4dc5799a5480108c01803c451445c4993349701b6c0a6ae49bd226c",
+   "request_sha256": "53c82b4aa4dc5799a5480108c01803c451445c4993349701b6c0a6ae49bd226c",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -832,7 +832,7 @@
    }
   },
   {
-   "key": "41f87bd448abb4b28bbcc8b19c41c159855b4ef9ac978e1873dad181db08d5b7",
+   "request_sha256": "41f87bd448abb4b28bbcc8b19c41c159855b4ef9ac978e1873dad181db08d5b7",
    "route": "POST api.meta.ai /v1/responses sam-3.1 stream ",
    "request": {
     "model": "sam-3.1",
@@ -862,7 +862,7 @@
    }
   },
   {
-   "key": "ed3ccaae083533347f0c6d3001a9ebc223aedcc542331503247c234b96cc2f87",
+   "request_sha256": "ed3ccaae083533347f0c6d3001a9ebc223aedcc542331503247c234b96cc2f87",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3-contributor  ",
    "request": {
     "model": "muse-spark-1.3-contributor",
@@ -933,7 +933,7 @@
    }
   },
   {
-   "key": "0ee14f59254720050ee0e7c673bf9be2507f71e3b49bf2eb4ceae3c4b59f8f12",
+   "request_sha256": "0ee14f59254720050ee0e7c673bf9be2507f71e3b49bf2eb4ceae3c4b59f8f12",
    "route": "POST api.meta.ai /v1/responses muse-image-1.0  image_generation",
    "request": {
     "model": "muse-image-1.0",
@@ -1022,7 +1022,7 @@
    }
   },
   {
-   "key": "ca4224eab9d8ec055487a02a0483248b3c34969941acd1f35f8decf2e1c71ef0",
+   "request_sha256": "ca4224eab9d8ec055487a02a0483248b3c34969941acd1f35f8decf2e1c71ef0",
    "route": "POST api.meta.ai /v1/images/edits muse-image-1.0  ",
    "request": {
     "response_format": "b64_json",
@@ -1061,7 +1061,7 @@
    }
   },
   {
-   "key": "0ea16587a43869123dcb42d9d0f4fe214f93bec00d97c2ea2c0db24c3acf59ff",
+   "request_sha256": "0ea16587a43869123dcb42d9d0f4fe214f93bec00d97c2ea2c0db24c3acf59ff",
    "route": "POST api.meta.ai /v1/images/edits muse-image-1.0  ",
    "request": {
     "response_format": "b64_json",
@@ -1100,7 +1100,7 @@
    }
   },
   {
-   "key": "4628bcdd0c63d15eb714dfd91f3533fc22579fb8f8b1f8d7f7da6450ff4e46e8",
+   "request_sha256": "4628bcdd0c63d15eb714dfd91f3533fc22579fb8f8b1f8d7f7da6450ff4e46e8",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -1335,7 +1335,7 @@
    }
   },
   {
-   "key": "288ed13c1f4df28fc7c7bf64af4c44ba2a0d3fb89ce4fb389d00b1669e246c13",
+   "request_sha256": "288ed13c1f4df28fc7c7bf64af4c44ba2a0d3fb89ce4fb389d00b1669e246c13",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -1455,7 +1455,7 @@
    }
   },
   {
-   "key": "288ed13c1f4df28fc7c7bf64af4c44ba2a0d3fb89ce4fb389d00b1669e246c13",
+   "request_sha256": "288ed13c1f4df28fc7c7bf64af4c44ba2a0d3fb89ce4fb389d00b1669e246c13",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -1575,7 +1575,7 @@
    }
   },
   {
-   "key": "288ed13c1f4df28fc7c7bf64af4c44ba2a0d3fb89ce4fb389d00b1669e246c13",
+   "request_sha256": "288ed13c1f4df28fc7c7bf64af4c44ba2a0d3fb89ce4fb389d00b1669e246c13",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -1695,7 +1695,7 @@
    }
   },
   {
-   "key": "1cb030c4c7d82a0725e36b5e70c6a8d9883262abe70bc0b240990a1e8be6d48f",
+   "request_sha256": "1cb030c4c7d82a0725e36b5e70c6a8d9883262abe70bc0b240990a1e8be6d48f",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -1915,7 +1915,7 @@
    }
   },
   {
-   "key": "f890de166cf19898cd57823a56b279f873c3b773f682d2b76cc98ad7e86017a2",
+   "request_sha256": "f890de166cf19898cd57823a56b279f873c3b773f682d2b76cc98ad7e86017a2",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  request_approval,run_art_director,run_copywriter,run_reviewers",
    "request": {
     "model": "muse-spark-1.3",
@@ -2141,7 +2141,7 @@
    }
   },
   {
-   "key": "34de7c8a479364b85973adc02bf46ef18f8bfcc192ddd4ad61317615aa4c938d",
+   "request_sha256": "34de7c8a479364b85973adc02bf46ef18f8bfcc192ddd4ad61317615aa4c938d",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -2255,7 +2255,7 @@
    }
   },
   {
-   "key": "31eb3df16ed2b3dfd2c39aa15795781f49b86f59481609cf45c0fc8763545150",
+   "request_sha256": "31eb3df16ed2b3dfd2c39aa15795781f49b86f59481609cf45c0fc8763545150",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -2369,7 +2369,7 @@
    }
   },
   {
-   "key": "641a4741d6b56d6fabe2569c4dc94e00b790b18124c2488a561339e4a53b30ae",
+   "request_sha256": "641a4741d6b56d6fabe2569c4dc94e00b790b18124c2488a561339e4a53b30ae",
    "route": "POST api.meta.ai /v1/chat/completions muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",
@@ -2464,7 +2464,7 @@
    }
   },
   {
-   "key": "e76c2d04e5447fac892dd3f4c2bfaa131280b7025b41f8ade3f6ce7919f93942",
+   "request_sha256": "e76c2d04e5447fac892dd3f4c2bfaa131280b7025b41f8ade3f6ce7919f93942",
    "route": "POST api.meta.ai /v1/responses muse-spark-1.3  ",
    "request": {
     "model": "muse-spark-1.3",

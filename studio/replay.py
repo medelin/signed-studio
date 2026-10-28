@@ -2,7 +2,8 @@
 request hash, so the demo runs without network and cannot fail on it.
 
 A replay set is ``fixtures/replay/<name>/replay.json``: what the run was (brief, comments)
-and ``interactions[]`` of ``{key, route, request, response}``. Large payloads (images, long
+and ``interactions[]`` of ``{request_sha256, route, request, response}``.
+Large payloads (images, long
 event streams) live once in ``fixtures/replay/blobs/<sha256>.<ext>`` and are referenced as
 ``"@blob:<file>"``; recorded PNGs are downscaled to 512 px / 256 colours like the cassettes.
 
@@ -200,7 +201,7 @@ class ReplayTransport(httpx.BaseTransport):
         self._by_key: dict[str, list[int]] = {}
         self._by_route: dict[str, list[int]] = {}
         for i, item in enumerate(self._items):
-            self._by_key.setdefault(item["key"], []).append(i)
+            self._by_key.setdefault(item["request_sha256"], []).append(i)
             self._by_route.setdefault(item["route"], []).append(i)
         self._used: set[int] = set()
         self._cursor: dict[str, int] = {}
@@ -263,7 +264,7 @@ class RecordingTransport(httpx.BaseTransport):
         response = self.inner.handle_request(request)
         content = response.read()
         ctype = response.headers.get("content-type", "")
-        entry: dict[str, Any] = {"key": key, "route": route, "request": body,
+        entry: dict[str, Any] = {"request_sha256": key, "route": route, "request": body,
                                  "ts": round(started, 3)}
         try:
             parsed = json.loads(content) if "json" in ctype else None
