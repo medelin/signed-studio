@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-28 — day 4, round 2 (open weights live, replay repeat, P9 real texts)
+
+- Muse Spark Open on Baseten is live: the model id is `meta-models/muse-spark-open` (Baseten's Model APIs list it; `-1026` returns 404). It is a reasoning model: `reasoning_tokens` are recorded, a reply with reasoning but no answer raises `reasoning_only` (after its receipt), and its cost uses Baseten's published price ($1.25 / $0.15 cached / $4.25 per 1M tokens, `cost_basis: baseten_price`). The synthetic open-weights cassette is replaced by a real recording (`review_open`). `ui/help_texts.py` (owned by the /help work) still says `-1026`.
+- Eval: real Spark Open reviews of the 25 seeded ads (`fixtures/eval/reviews_open.json`, $0.075): same OK-vs-flag decision as Spark vision on 25/25, same verdict on 22/25 (3 WARN vs BLOCK), Spark Open blocks 5/5 P9 and 0/5 clean ads; disagreements listed in `docs/eval.md`; README headline updated.
+- P9: the code check also matches "brak obowiązku ZUS"; tests carry the verbatim texts of the operator's two Google Ads ads that were disapproved. The demo script's P9 beat uses the operator-supplied Google Ads screen (kept outside the repository).
+- Replay: a second run in the same process failed — a known request whose recordings were used took an unused recording of another call on the same route (e.g. the plan got a triage answer). A known request now always cycles its own recordings; only unknown requests fall back to the route. `tests/e2e/test_replay_repeat.py` (two runs back to back).
+- Art director: a plan without a 1:1 placement sent `1024x1280` to the Responses image tool, which accepts only square sizes (400 in a real run); the first image then goes through `/images/edits`. `tests/test_art_director_sizes.py`.
+- Producer: a chained turn that fails twice with 400 ("referenced response not found or expired", seen again after the slower two-reviewer step) is sent once more without chaining, with the whole conversation (function calls without server ids, assistant text, tool outputs).
+- Replay sets re-recorded with both reviewers (demo, office, pushy; Graph untouched): one campaign run costs $0.076–0.127, the whole loop $0.134–0.179.
+- `/receipts`: the table scrolls inside the content width, the JSON of each receipt is its own full-width row (rows stay one line high), hashes use the `chip` component.
+- Real API spend this round: $0.74 (Model API + Baseten: probe and cassette $0.006, 25 open reviews $0.075, recordings demo $0.134, office $0.082 + $0.126 (failed on the two bugs above) + $0.179, pushy $0.140). Day 4 total: about $1.39 of the $10 cap. No Graph API call.
+
 ## 2026-10-28 — UI: people side by side (operator feedback)
 
 - Illustrations show the people themselves: friendly monoline owners standing side by side with a gap, never overlapping (`cast.layout` computes each person's box from the silhouette and props; tests check no two boxes intersect and the trace and the ad start right of the last person). Removed: the soft blob behind every person, the dashed copy of the person inside the record (the record now shows the ad: image block, headline, text lines, signature or `!` field), the grid inside records, the page background grid and the `--grid` token. New group scenes (3–5 owners): help hero, index hero, 404, cast gallery. All screenshots regenerated light and dark.
