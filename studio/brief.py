@@ -34,6 +34,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from studio.google.adapter import ISO_NUMERIC
 from studio.meta import objectives
 from studio.receipts import canonical, sha256_hex
 
@@ -154,6 +155,15 @@ class Placements(_Strict):
     copy_variants: int = 1  # 1-3 copy variants run against each other (A/B)
 
 
+class Channels(_Strict):
+    """Where else the ad runs. Meta is always the primary channel; Google Search is an
+    optional second one with its own daily budget (whole units of the Google account's
+    currency): one PAUSED Search campaign made from this same brief."""
+
+    google_search: bool = False
+    google_daily_budget: float = 0
+
+
 class Asset(_Strict):
     kind: Literal["product_photo", "logo", "other"]
     note: str
@@ -178,6 +188,7 @@ class BriefV1(_Strict):
     assets: list[Asset]
     open_questions: list[FactQuestion]
     promotion: Promotion = Field(default_factory=Promotion)
+    channels: Channels = Field(default_factory=Channels)
 
 
 class Resolution(_Strict):
@@ -251,10 +262,12 @@ def _https(url: str) -> bool:
 
 
 def problems(brief: BriefV1, *, confirmed: bool = True, currency: str = "PLN",
-             ceiling_daily: float | None = None) -> dict[str, str]:
+             ceiling_daily: float | None = None,
+             google_currency: str | None = None) -> dict[str, str]:
     """``{field path: error code}`` for a brief the owner wants to confirm; empty when it
     is complete. ``currency`` is the ad account's (Meta books budgets in the account's
-    currency); ``ceiling_daily`` the server's daily-budget ceiling."""
+    currency); ``ceiling_daily`` the server's daily-budget ceiling; ``google_currency``
+    the Google Ads account's, checked when Google Search is a channel (never converted)."""
     out: dict[str, str] = {}
 
     def text(path: str, value: str, *, required: bool = True, limit: int = MAX_TEXT) -> None:
@@ -356,6 +369,16 @@ def problems(brief: BriefV1, *, confirmed: bool = True, currency: str = "PLN",
         out["budget.end"] = "required"
     if start and end and end < start:
         out["budget.end"] = "date_order"
+    ch = brief.channels
+    if ch.google_search:
+        if not (ch.google_daily_budget > 0 and ch.google_daily_budget < 10_000_000):
+            out["channels.google_daily_budget"] = "amount"
+        elif ceiling_daily is not None and ch.google_daily_budget > ceiling_daily:
+            out["channels.google_daily_budget"] = "over_ceiling"
+        if google_currency and b.currency != google_currency:
+            out["budget.currency"] = "google_account_currency"
+        if any(c not in ISO_NUMERIC for c in a.countries):
+            out.setdefault("advertiser.countries", "google_geo")
     if not brief.placements.deliverables:
         out["placements.deliverables"] = "required"
     elif len(set(brief.placements.deliverables)) != len(brief.placements.deliverables):
@@ -559,6 +582,7 @@ def render(brief: BriefV1) -> str:
            if brief.placements.copy_variants > 1 else ""),
         "Assets: " + ("; ".join(f"{x.kind} ({x.note})" for x in brief.assets) or "-"),
     ]
+
     return "\n".join(lines)
 
 

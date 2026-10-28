@@ -46,6 +46,7 @@ else changes in existing tables.
 | --- | --- |
 | Model calls | real Muse Model API (`MODEL_API_KEY`), daily cap `STUDIO_DAILY_BUDGET_USD=8` (UTC day, rebuilt from the receipts after a restart) |
 | Meta | `META_ADAPTER=mock`: campaign writes produce receipts with `adapter: mock`, status PAUSED, no Graph calls; the sandbox never holds a Meta token |
+| Google Ads | `GOOGLE_ADS_ADAPTER=mock` (default): Search campaign writes produce receipts with `adapter: mock`, status PAUSED, no Google calls; the sandbox never holds a Google credential |
 | Kill switch | `STUDIO_READ_ONLY=1`: every write and model call is a 503, pages stay up |
 | API down | `STUDIO_REPLAY=1`: recorded responses instead of live calls |
 | Health | `GET /healthz` → `{"ok": true, "read_only": false}` (public, minimal; `HEAD` works on every page for uptime monitors) |
@@ -191,3 +192,22 @@ recommendations are at most one mail per account per ten minutes (counts add up)
 account chooses campaigns and leads on `/account#notifications`; security mails cannot be
 turned off; the shared `judge` account never sends mail. A mail body holds a count and a
 link, never a lead's name or contact.
+
+## Google Ads (operator machine only)
+
+Real Google Ads writes need `GOOGLE_ADS_ADAPTER=rest` and never run in the sandbox
+(`STUDIO_SANDBOX=1` stays on the mock). The adapter uses the Google Ads REST API v23 and an
+OAuth refresh token; keep these in `.env` (mode 600), never in the repository.
+
+| Variable | Meaning |
+| --- | --- |
+| `GOOGLE_ADS_ADAPTER` | `mock` (default) or `rest` |
+| `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN` | OAuth client and refresh token; the access token is fetched from `https://oauth2.googleapis.com/token` and kept in memory |
+| `GOOGLE_ADS_CUSTOMER_ID` | the account the campaign is created in (ten digits, dashes allowed) |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | the manager account, sent as the `login-customer-id` header (optional) |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | optional: the `developer-token` header is sent only when this is set (access can be managed per Google Cloud project) |
+| `GOOGLE_ADS_ACCOUNT_CURRENCY` | optional ISO 4217 code replacing the currency read from the customer resource (the mock's currency follows `STUDIO_ACCOUNT_CURRENCY` unless this is set) |
+
+With `rest` the process refuses to start without the client id, secret, refresh token and
+customer id. The daily ceiling `STUDIO_MAX_DAILY_BUDGET` applies to the Google budget in
+the Google account's currency.

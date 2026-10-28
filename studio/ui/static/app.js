@@ -10,6 +10,7 @@ const readOnly = root.dataset.readOnly === "yes";
 let source = null;
 let totalCost = 0;
 let shownPending = null;
+let shownGoogle = null;
 // Set when the brief came from a voice recording: the run is then a transcript run
 // (enveloped, Standard tier) even after the operator edits the text.
 let voiceBriefId = null;
@@ -180,7 +181,89 @@ function renderState(runId, st, state) {
     shownPending = state.pending_id;
     showApproval(state.pending_id);
   }
+  if (state.google_pending_id && state.google_pending_id !== shownGoogle && st === "awaiting_approval") {
+    shownGoogle = state.google_pending_id;
+    showGoogle(state.google_pending_id);
+  } else if (state.google_error && shownGoogle !== "error") {
+    shownGoogle = "error";
+    $("google-panel").hidden = false;
+    $("google-spec").hidden = $("google-button").hidden = true;
+    status("google-status", T("g_error", { error: E({ error: state.google_error }, state.google_error) }), true);
+  }
 }
+
+// -- Google Search: a second approval for the same brief ---------------------------------
+
+let googleApproval = null;
+let googleCampaign = "";
+
+function fillList(id, items) {
+  const ul = $(id);
+  ul.replaceChildren();
+  for (const x of items) ul.append(el("li", x));
+}
+
+async function showGoogle(pendingId) {
+  const panel = $("google-panel");
+  panel.hidden = false;
+  $("google-spec").hidden = false;
+  $("google-button").hidden = false;
+  if (!loggedIn) { status("google-status", T("sign_to_approve"), true); $("google-button").disabled = true; return; }
+  try {
+    const data = await Signer.loadPayload(pendingId);
+    googleApproval = data;
+    const g = data.content.google;
+    $("gg-name").textContent = g.campaign.name;
+    $("gg-budget").textContent = T("g_budget", { budget: (g.campaign.daily_budget_micros / 1e6).toFixed(2), currency: g.currency });
+    $("gg-geo").textContent = g.geo.countries.join(", ");
+    fillList("gg-keywords", g.keywords.map((k) => k.text));
+    fillList("gg-headlines", g.ad.headlines);
+    fillList("gg-descriptions", g.ad.descriptions);
+    $("gg-spec").textContent = data.fields.spec_sha256 || "";
+    $("google-button").disabled = data.status !== "pending";
+    status("google-status", data.status === "pending" ? T("ready") : T("already", { status: data.status }));
+  } catch (e) {
+    status("google-status", e.message, true);
+  }
+}
+
+$("google-button").addEventListener("click", async () => {
+  if (!googleApproval) return;
+  const btn = $("google-button");
+  btn.disabled = true;
+  status("google-status", T("signing"));
+  try {
+    const done = await Signer.sign(googleApproval);
+    if (done.executed && done.result) {
+      googleCampaign = done.result.campaign_item_id;
+      status("google-status", T("g_created", { adapter: done.result.adapter, sig: done.signature.slice(0, 16) }));
+      $("google-activate").hidden = readOnly;
+    } else {
+      status("google-status", T("g_failed", { error: E({ error: done.execution_error }, done.execution_error || "") }), true);
+    }
+  } catch (e) {
+    status("google-status", e.message, true);
+    btn.disabled = false;
+  }
+});
+
+$("google-activate").addEventListener("click", async () => {
+  const btn = $("google-activate");
+  btn.disabled = true;
+  try {
+    const r = await postJSON("/api/google/" + encodeURIComponent(googleCampaign) + "/activate", {});
+    if (!r.ok) throw new Error(T("activation_refused", { error: E(r.data, r.status) }));
+    const payload = await Signer.loadPayload(r.data.approval_id);
+    const c = payload.content;
+    status("google-status", T("g_signing_activation", { budget: (c.daily_budget_micros / 1e6).toFixed(2), currency: c.currency }));
+    const done = await Signer.sign(payload);
+    if (!done.executed) throw new Error(T("not_activated", { error: done.execution_error || T("no_executor") }));
+    status("google-status", T("g_activated", { adapter: done.result.adapter, sig: done.signature.slice(0, 16) }));
+  } catch (e) {
+    status("google-status", e.message, true);
+    btn.disabled = false;
+  }
+});
 
 // -- approval -------------------------------------------------------------------------
 

@@ -37,6 +37,7 @@ from fastapi.templating import Jinja2Templates
 
 from studio import leadads
 from studio.agents import media_buyer
+from studio.google import store as google_store
 from studio.meta import measurement, objectives
 from studio.meta.adapter import AdapterError
 from studio.receipts import Ledger
@@ -101,6 +102,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
         if out.get("recommendations"):
             app.state.notifier.event("insights_ready", count=out["recommendations"])
+        google = getattr(app.state, "google", None)
+        if google is not None:
+            try:
+                pulled = await run_in_threadpool(google_store.pull_all, conn, ledger, google)
+                if pulled["google_campaigns"]:  # the Meta-only answer keeps its shape
+                    out.update(pulled)
+            except AdapterError as exc:
+                return JSONResponse({"error": "google_error", "code": exc.code}, 502)
         return JSONResponse(out)
 
     @app.get("/api/measurement")

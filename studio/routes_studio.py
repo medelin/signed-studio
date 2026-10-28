@@ -178,6 +178,17 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return adapter.account_info()["currency"] if adapter is not None else \
             settings.account_currency
 
+    def google_account_currency() -> str | None:
+        """The Google Ads account's currency (read once by the adapter)."""
+        google = getattr(app.state, "google", None)
+        return google.account_info()["currency"] if google is not None else None
+
+    def draft_google_currency() -> str:
+        try:
+            return google_account_currency() or ""
+        except AdapterError:
+            return ""
+
     def worker(run_id: str, brief: str, brief_source: str = "operator",
                confirmed: brief_v1.BriefV1 | None = None, digest: str = "") -> None:
         try:
@@ -191,7 +202,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 brief_v1=confirmed, brief_sha256=digest,
                 page_id=getattr(getattr(app.state, "adapter", None), "page_id", "")
                 or MOCK_PAGE,
-                search=getattr(getattr(app.state, "adapter", None), "search_targeting", None))
+                search=getattr(getattr(app.state, "adapter", None), "search_targeting", None),
+                google=getattr(app.state, "google", None))
             producer.run(ctx, brief, run_id=run_id)
             with conn.lock:
                 waiting = conn.execute("SELECT 1 FROM run_state WHERE run_id = ? AND "
@@ -247,7 +259,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             currency = account_currency()
         except AdapterError as exc:
             return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
+        try:
+            google_currency = google_account_currency() if confirmed.channels.google_search \
+                else None
+        except AdapterError as exc:
+            return JSONResponse({"error": "google_error", "code": exc.code}, 502)
         problems = brief_v1.problems(confirmed, ceiling_daily=settings.max_daily_budget,
+                                     google_currency=google_currency,
                                      currency=currency)
         if problems:
             return fields_error(problems)
@@ -350,6 +368,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                           ceiling_daily=settings.max_daily_budget,
                                           currency=account_currency()),
             "ceiling": settings.max_daily_budget, "currency": account_currency(),
+            "google_currency": draft_google_currency(),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 
     @app.post("/api/runs")

@@ -377,7 +377,7 @@
     const entries = Object.entries(fields);
     for (const [path, code] of entries) {
       const { p, id } = errTarget(path);
-      const msg = T(ERR_PREFIX + code, { ceiling: draft.ceiling, currency: draft.currency });
+      const msg = T(ERR_PREFIX + code, { ceiling: draft.ceiling, currency: draft.currency, google_currency: draft.google_currency || "" });
       p.textContent = msg;
       p.hidden = false;
       const holder = p.closest(".bf-field, .bv-item, fieldset");

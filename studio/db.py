@@ -28,6 +28,7 @@ from cryptography.hazmat.primitives.serialization import (
 
 from studio import accounts, approvals, executor, leadads, notify, store
 from studio.approvals import transaction
+from studio.google import store as google_store
 from studio.meta import measurement
 from studio.receipts import Ledger, key_id, public_key_raw
 from studio.settings import ConfigError
@@ -133,7 +134,7 @@ CREATE TABLE IF NOT EXISTS sandbox_meta (
 SEED_TABLES = ("briefs", "campaigns", "comments", "leads", "tasks")
 DEMO_TABLES = ("tasks", "leads", "comments", "campaigns", "creatives", "briefs", "reports",
                "pending_payloads", "run_state", "lead_forms", "recommendations",
-               "insights_snapshots")
+               "insights_snapshots", "google_insights", "google_campaigns")
 _COLUMNS: dict[str, tuple[str, ...]] = {
     "briefs": ("id", "text", "source", "created_ts"),
     "campaigns": ("id", "run_id", "name", "objective", "status", "daily_budget_minor",
@@ -219,6 +220,7 @@ def init(conn: sqlite3.Connection) -> None:
     leadads.ensure_schema(conn)
     notify.ensure_schema(conn)
     measurement.ensure_schema(conn)
+    google_store.ensure_schema(conn)
 
 
 def _strings(value: Any) -> list[str]:

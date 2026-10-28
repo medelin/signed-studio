@@ -45,6 +45,22 @@
   </article>
   {% else %}<p class="empty">{{ t("ms.empty") }}</p>{% endfor %}
 </section>
+{% if google %}
+<section class="panel" aria-labelledby="gs-h" id="google-insights">
+  <h2 id="gs-h">{{ t("report.google") }}</h2>
+  <p class="hint">{{ t("report.google_lead") }}</p>
+  {% for g in google %}
+  <article class="card" aria-labelledby="gs-{{ g.campaign_id }}">
+    <h3 id="gs-{{ g.campaign_id }}">{{ g.name }} · {{ g.status }}{% if g.provenance == 'synthetic' %} <span class="hint">({{ t("report.google_synthetic") }})</span>{% endif %}</h3>
+    <table class="receipts">
+      <thead><tr><th scope="col">{{ t("report.g.date") }}</th><th scope="col">{{ t("report.g.impressions") }}</th><th scope="col">{{ t("report.g.clicks") }}</th><th scope="col">{{ t("report.g.cost") }} ({{ g.currency }})</th><th scope="col">{{ t("report.g.conversions") }}</th><th scope="col">{{ t("report.g.ctr") }} %</th></tr></thead>
+      <tbody>{% for d in g.days %}<tr><td>{{ d.date }}</td><td>{{ d.impressions }}</td><td>{{ d.clicks }}</td><td>{{ d.cost }}</td><td>{{ d.conversions }}</td><td>{{ d.ctr }}</td></tr>{% endfor %}</tbody>
+      <tfoot><tr><th scope="row">{{ t("report.g.total") }}</th><td>{{ g.totals.impressions }}</td><td>{{ g.totals.clicks }}</td><td>{{ g.totals.cost }}</td><td>{{ g.totals.conversions }}</td><td>{{ g.totals.ctr }}</td></tr></tfoot>
+    </table>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
 {% if rep %}
 <section class="panel" aria-labelledby="counter-h">
   <h2 id="counter-h">{{ t("report.read", tokens="{:,}".format(rep.input_tokens)) }}</h2>

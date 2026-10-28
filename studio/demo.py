@@ -102,13 +102,16 @@ def resolutions(questions: list[dict[str, Any]], answers: dict[str, str]
     return out
 
 
-def _brief_v1(c: Any, meta: dict[str, Any], step: Callable[..., None]) -> str:
+def _brief_v1(c: Any, meta: dict[str, Any], step: Callable[..., None],
+              google: float = 0) -> str:
     """Draft, answer or strike every [FACT] question, confirm; returns the run id."""
     r = c.post("/api/briefs/draft", json={"text": meta["draft_text"],
                                           "lang": meta.get("lang", "en")})
     if r.status_code != 200:
         raise RuntimeError(f"draft refused: {r.text[:200]}")
     d = r.json()
+    if google:  # the owner also ticks Google Search (the prompts do not change)
+        d["brief"]["channels"] = {"google_search": True, "google_daily_budget": google}
     res = resolutions(d["brief"]["open_questions"], meta.get("answers") or {})
     step("brief drafted", facts=len(d["brief"]["confirmed_facts"]),
          questions=len(res), answered=sum(x["action"] == "answer" for x in res))
@@ -123,9 +126,11 @@ def _brief_v1(c: Any, meta: dict[str, Any], step: Callable[..., None]) -> str:
 
 def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
         model_api_key: str = "", baseten_api_key: str = "", max_cost_usd: float = 0.40,
-        log: Log = print,
-        replay_root: Path | None = None) -> dict[str, Any]:
-    """Run the loop; returns a summary (steps, timings, costs, verify result)."""
+        log: Log = print, replay_root: Path | None = None,
+        google: float = 0) -> dict[str, Any]:
+    """Run the loop; returns a summary (steps, timings, costs, verify result). With
+    ``google`` (a daily budget) a Brief v1 loop also ticks Google Search: the second
+    approval is signed, the Search campaign created paused and its insights read."""
     from fastapi.testclient import TestClient
 
     from studio import cli, replay
@@ -180,7 +185,7 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
         step("signed in, approver key registered", approver=approver)
 
         if "draft_text" in meta:
-            run_id = _brief_v1(c, meta, step)
+            run_id = _brief_v1(c, meta, step, google)
         else:
             r = c.post("/api/runs", json={"brief": meta["brief"]})
             run_id = r.json()["run_id"]
@@ -198,6 +203,14 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
             campaign = c.get(f"/api/campaigns/{item}").json() if item else {}
             step("signed campaign.create", executed=out["executed"],
                  campaign=campaign.get("status", "-"), adapter=campaign.get("adapter", "-"))
+
+        google_campaign: dict[str, Any] = {}
+        if google and state.get("google_pending_id"):
+            out = _sign(c, key, approver, state["google_pending_id"])
+            item = (out.get("result") or {}).get("campaign_item_id", "")
+            google_campaign = c.get(f"/api/google/{item}").json() if item else {}
+            step("signed google.create", executed=out["executed"],
+                 campaign=google_campaign.get("status", "-"))
 
         if campaign:
             pulled = c.post("/api/insights/pull", json={}).json()
@@ -251,6 +264,7 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
     step("studio verify", exit=rc, receipts=len(receipts))
     summary = {"set": set_name, "run_id": run_id, "status": data["status"],
                "campaign_status": campaign.get("status", ""),
+               "google_status": google_campaign.get("status", ""),
                "reply_executed": bool(reply.get("executed")),
                "lead": {k: lead.get(k) for k in ("score", "temp")} if lead else None,
                "report": bool(report), "verify_exit": rc, "receipts": len(receipts),

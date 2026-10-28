@@ -87,6 +87,8 @@ class Context:
     # the targeting search of the Meta adapter (read-only): interest and language hints →
     # Meta ids, resolved by code before the approval is requested
     search: audience.Search | None = None
+    # the Google Ads adapter (None: Google Search is not offered to this run)
+    google: Any = None
 
 
 def _limit(ctx: Context) -> int:
@@ -119,6 +121,8 @@ class RunResult:
     creatives: CreativeSet | None = None
     review: dict[str, Any] | None = None
     pending_id: str = ""
+    google_pending_id: str = ""  # the Google Search approval, when the brief chose it
+    google_error: str = ""  # why there is none (the Meta approval is unaffected)
     angle_index: int = 0  # the plan angle the current copy was written for
     steps: int = 0
     cost_usd: float = 0.0
@@ -131,6 +135,7 @@ class RunResult:
             "copy": self.copy.model_dump() if self.copy else None,
             "creatives": self.creatives.model_dump() if self.creatives else None,
             "review": self.review, "pending_id": self.pending_id,
+            "google_pending_id": self.google_pending_id, "google_error": self.google_error,
             "angle_index": self.angle_index, "steps": self.steps,
             "cost_usd": round(self.cost_usd, 6), "summary": self.summary,
             "reasoning": self.reasoning[-5:],
@@ -238,6 +243,43 @@ def campaign_payload(run: RunResult, variant_index: int,
                 au.lookalike_source_id, au.lookalike_percent, brief.advertiser.countries[0],
                 f"Muse Studio · lookalike {au.lookalike_percent}%")
     return payload
+
+
+def request_google(ctx: Context, run: RunResult, variants: list[int], link: str) -> None:
+    """When the confirmed brief chose Google Search: a second approval (``google.create``)
+    for one PAUSED Search campaign made from the same brief and the reviewed copy. A brief
+    that cannot make a valid Responsive Search Ad leaves ``google_error`` (the Meta
+    approval is unaffected)."""
+    brief = ctx.brief_v1
+    if brief is None or not brief.channels.google_search or ctx.google is None:
+        return
+    assert run.copy
+    from studio.agents import google_buyer
+    from studio.google.adapter import SpecError
+
+    item_id = opaque_id("gcmp_")
+    try:
+        info = ctx.google.account_info()
+        payload = google_buyer.payload_for(
+            run_id=run.run_id, item_id=item_id, brief=brief, brief_sha256=ctx.brief_sha256,
+            link=link, variants=[run.copy.variants[i] for i in variants],
+            customer_id=ctx.google.customer_id, currency=info["currency"],
+            ceiling=ctx.max_daily_budget)
+    except SpecError as exc:
+        run.google_error = exc.code
+        return
+    except Exception as exc:  # noqa: BLE001 - the Google account is unreachable
+        run.google_error = getattr(exc, "code", "") or type(exc).__name__
+        return
+    pending = Pending.create("google.create", item_id, payload, ledger=ctx.client.ledger,
+                             run_id=run.run_id, brief_sha256=ctx.brief_sha256)
+    with transaction(ctx.conn):
+        pending.save(ctx.conn)
+        ctx.conn.execute(
+            "INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
+            "VALUES (?, ?, ?, ?)",
+            (pending.id, run.run_id, canonical(payload).decode(), time.time()))
+    run.google_pending_id = pending.id
 
 
 def resolve_audience(ctx: Context, run_id: str,
@@ -526,6 +568,7 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 "VALUES (?, ?, ?, ?)",
                 (pending.id, run.run_id, canonical(payload).decode(), time.time()))
         run.pending_id = pending.id
+        request_google(ctx, run, [index, *ab], link)
         emit("approval")
         return {"pending_id": pending.id, "content_sha256": pending.content_sha256,
                 "note": "the human must sign this in the studio; nothing was sent"}

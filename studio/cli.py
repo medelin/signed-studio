@@ -83,6 +83,12 @@ def insights_pull(env_file: Path) -> int:
         notifier = _notifier(settings, conn, ledger)
         notifier.event("insights_ready", count=out["recommendations"])
         notifier.flush()
+    from studio.google import adapter as google_adapter
+    from studio.google import store as google_store
+
+    pulled = google_store.pull_all(conn, ledger, google_adapter.make(settings, conn=conn))
+    if pulled["google_campaigns"]:
+        out.update(pulled)
     print(" ".join(f"{k}={v}" for k, v in out.items()))
     return 0
 

@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from studio.agents import analyst
+from studio.google import store as google_store
 from studio.meta import measurement
 from studio.muse.client import MuseError
 from studio.muse.vision import strip_metadata
@@ -71,6 +72,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "logged_in": session_of(request) is not None,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
             "rep": view(request), "measurement": measurement.latest(conn),
+            "google": google_store.latest(conn),
         })
 
     @app.get("/api/reports/latest")

@@ -277,6 +277,15 @@
     </fieldset>
 
     <fieldset>
+      <legend>{{ t("brief.s.channels") }}</legend>
+      <div class="bf-field" data-field="channels.google_search">
+        <p class="hint" id="hint-bf-channels-google_search">{{ t("brief.h.google_search") }}</p>
+        <label><input type="checkbox" id="bf-channels-google_search" data-path="channels.google_search" aria-describedby="hint-bf-channels-google_search"> {{ t("brief.f.google_search") }}</label>
+      </div>
+      {{ field("channels.google_daily_budget", "google_budget", "number", "brief.h.google_budget", dictate=False, attrs='min="0" step="any" inputmode="decimal"') }}
+    </fieldset>
+
+    <fieldset>
       <legend>{{ t("brief.s.assets") }}</legend>
       <p class="hint">{{ t("brief.assets_hint", concept=product_concept) }}</p>
       {{ field("assets", "assets", "lines") }}
@@ -357,6 +366,23 @@
     <p><code id="sig-value" class="wrap"></code></p>
     <p>{{ t("studio.ap.receipt") }} <code id="sig-receipt"></code></p>
   </div>
+</section>
+
+<section class="panel" aria-labelledby="google-h" id="google-panel" hidden>
+  <h2 id="google-h" tabindex="-1">{{ t("studio.google") }}</h2>
+  <p>{{ t("studio.google_lead") }}</p>
+  <dl class="kv" id="google-spec">
+    <dt>{{ t("studio.gg.name") }}</dt><dd id="gg-name"></dd>
+    <dt>{{ t("studio.gg.budget") }}</dt><dd id="gg-budget"></dd>
+    <dt>{{ t("studio.gg.geo") }}</dt><dd id="gg-geo"></dd>
+    <dt>{{ t("studio.gg.keywords") }}</dt><dd><ul id="gg-keywords" class="plain"></ul></dd>
+    <dt>{{ t("studio.gg.headlines") }}</dt><dd><ul id="gg-headlines" class="plain"></ul></dd>
+    <dt>{{ t("studio.gg.descriptions") }}</dt><dd><ul id="gg-descriptions" class="plain"></ul></dd>
+    <dt>{{ t("studio.gg.spec") }}</dt><dd><code id="gg-spec"></code></dd>
+  </dl>
+  <button type="button" id="google-button">{{ t("studio.google_button") }}</button>
+  <button type="button" id="google-activate" class="secondary" hidden>{{ t("studio.google_activate") }}</button>
+  <p class="status" id="google-status" role="status" aria-live="polite"></p>
 </section>
 
 <section class="panel" aria-labelledby="campaign-h" id="campaign-panel" hidden>

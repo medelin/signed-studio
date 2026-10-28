@@ -66,7 +66,8 @@ __all__ = [
 ]
 
 ACTIONS = frozenset({"campaign.create", "campaign.activate", "campaign.update", "reply.post",
-                     "comment.hide"})
+                     "comment.hide", "google.create", "google.activate"})
+SPEC_BLOCKS = {"campaign.create": "delivery", "google.create": "google"}
 SIGNED_FIELDS = APPROVAL_SIGNED_FIELDS
 TTL_S = APPROVAL_TTL_S  # the verifier enforces the same window between approval and write
 SKEW_S = 60
@@ -202,10 +203,11 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 
 def spec_of(action: str, payload: bytes | Mapping[str, Any]) -> str:
     """``spec_sha256`` a ``campaign.create`` approval signs: the hash of the payload's
-    ``delivery`` block (objective mapping), or ``""`` when it has none."""
-    if action != "campaign.create" or not isinstance(payload, Mapping):
+    ``delivery`` block (objective mapping); a ``google.create`` approval signs the hash of
+    its ``google`` block (what will be created). ``""`` when there is none."""
+    if action not in SPEC_BLOCKS or not isinstance(payload, Mapping):
         return ""
-    spec = payload.get("delivery")
+    spec = payload.get(SPEC_BLOCKS[action])
     return sha256_hex(canonical(dict(spec))) if isinstance(spec, Mapping) else ""
 
 

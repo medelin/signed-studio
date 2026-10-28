@@ -131,4 +131,30 @@ META_ENTRIES: tuple[tuple[str, str, str, dict[str, str], dict[str, str]], ...] =
                "budżetu albo wstrzymanie to nowe zatwierdzenie, które podpisujesz, pod tym "
                "samym limitem dziennym; włączenie kampanii to nadal osobny podpis."},
     ),
+    (
+        "google-search", "grace", "signed",
+        {"en": "Can the same brief also run on Google Search?",
+         "pl": "Czy ten sam brief może działać też w wyszukiwarce Google?"},
+        {"en": "Yes, as a second, smaller channel; Meta stays the main one. Tick <em>Also "
+               "run on Google Search</em> in the brief and give a daily budget in the Google "
+               "account's currency (a brief in another currency is refused, never "
+               "converted). Next to the Meta approval you get a second one for a single "
+               "Search campaign: one ad group, keywords the code takes from your product and "
+               "places, one text ad whose headlines (30 characters at most) and descriptions "
+               "(90 at most) come from the copy that was reviewed, and your countries as the "
+               "target. Text that does not fit is left out, never cut. You sign what will be "
+               "created, it is created paused after a dry run, and turning it on is a third, "
+               "separate signature. The Report page shows its last seven days by day.",
+         "pl": "Tak, jako drugi, mniejszy kanał; głównym zostaje Meta. Zaznacz w briefie "
+               "<em>Pokaż też w Google (wyszukiwarka)</em> i podaj dzienny budżet w walucie "
+               "konta Google (brief w innej walucie jest odrzucany, nigdy nie przeliczany). "
+               "Obok zatwierdzenia dla Mety dostajesz drugie, dla jednej kampanii w "
+               "wyszukiwarce: jedna grupa reklam, słowa kluczowe, które kod bierze z twojego "
+               "produktu i miejsc, jedna reklama tekstowa, której nagłówki (do 30 znaków) i "
+               "opisy (do 90) pochodzą ze sprawdzonych tekstów, a celem są twoje kraje. "
+               "Tekst, który się nie mieści, jest pomijany, nigdy obcinany. Podpisujesz to, "
+               "co powstanie; powstaje wstrzymane po próbie bez skutków, a włączenie to "
+               "trzeci, osobny podpis. Strona Raport pokazuje ostatnie siedem dni dzień po "
+               "dniu."},
+    ),
 )
