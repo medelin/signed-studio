@@ -48,3 +48,13 @@ def test_demo_script_opens_with_what_was_built_and_has_the_p9_beat():
 def test_security_names_the_residual_risks():
     text = (ROOT / "docs" / "SECURITY.md").read_text()
     assert "TOFU" in text and "Heuristic PII" in text
+
+
+def test_policy_doc_cites_official_sources_and_explains_p9():
+    text = (ROOT / "docs" / "policy.md").read_text()
+    for url in ("https://www.facebook.com/business/ads-guide/update/image/facebook-feed",
+                "https://support.google.com/google-ads/answer/7684791",
+                "https://ads.tiktok.com/help/article/tiktok-auction-in-feed-ads"):
+        assert url in text
+    assert "retrieved **2026-10-28**" in text and "model-invented legal/tax claim" in text
+    assert "docs/policy.md" in README

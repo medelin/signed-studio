@@ -19,7 +19,7 @@ from typing import Any
 from PIL import Image
 
 from studio import envelope
-from studio.agents import prompts
+from studio.agents import formats, prompts
 from studio.agents.schemas import CopyVariant, Finding, Review
 from studio.muse import openweights
 from studio.muse.client import MuseClient, MuseError
@@ -33,7 +33,7 @@ MODEL = "muse-spark-1.3"
 MAX_SIDE = 1024  # reviewers see a downscaled copy: enough for policy, fewer image tokens
 _RANK = {"OK": 0, "WARN": 1, "BLOCK": 2}
 _SEVERITY_FLOOR = {"info": "OK", "warn": "WARN", "block": "BLOCK"}
-_RULE = re.compile(r"\bP\d+\b")
+_RULE = re.compile(r"\b[PF]\d+\b")
 
 # P9, checked by code as well as by both models: claims of registering companies or
 # providing official documents, and absolute tax/legal promises. Patterns run on
@@ -73,6 +73,28 @@ def policy_net(copy: CopyVariant) -> list[Finding]:
     return [Finding(rule="P9", severity="block",
                     evidence=f"code check: matched {h[:80]!r} ({P9_POLICIES})")
             for h in hits[:3]]
+
+
+def format_check(placement: str, ad: CopyVariant | dict[str, Any],
+                 image_png: bytes | None = None) -> list[Finding]:
+    """Rule F1, deterministic, before the model reviewers: the platform's own limits for
+    this placement (``formats.PLATFORMS``). Hard limits are ``block``, recommended lengths
+    ``warn`` with the truncation point."""
+    fields = ad.model_dump() if isinstance(ad, CopyVariant) else dict(ad)
+    size = None
+    if image_png is not None:
+        im = Image.open(io.BytesIO(image_png))
+        size = im.size
+    return [Finding.model_validate({"rule": formats.RULE, "evidence": f.evidence[:500],
+                                    "severity": f.severity})
+            for f in formats.check(placement, fields, size)]
+
+
+def with_findings(review: Review, extra: list[Finding]) -> Review:
+    if not extra:
+        return review
+    return normalize(Review(verdict=review.verdict, findings=[*review.findings, *extra],
+                            summary=review.summary))
 
 
 def with_policy_net(review: Review, copy: CopyVariant) -> Review:
@@ -115,7 +137,7 @@ def downscale(png: bytes, max_side: int = MAX_SIDE) -> bytes:
 def normalize(review: Review) -> Review:
     """Rule ids mapped onto the checklist (``"P4 Price"`` → ``P4``, unknown → ``UNMAPPED``);
     the verdict is never milder than the worst finding's severity."""
-    valid = set(prompts.policy_rule_ids())
+    valid = set(prompts.policy_rule_ids()) | {formats.RULE}
     findings = []
     for f in review.findings:
         m = _RULE.search(f.rule)
@@ -201,15 +223,19 @@ def run(
     copy: CopyVariant,
     *,
     run_id: str,
+    placement: str | None = None,
 ) -> Reconciled:
-    """Both reviews, reconciled, plus one ``review`` receipt with the outcome."""
-    primary = with_policy_net(review(client, image_png, copy, run_id=run_id), copy)
+    """Both reviews, reconciled, plus one ``review`` receipt with the outcome. With a
+    ``placement`` the format check (F1) runs first and its findings join both reviews."""
+    fmt = format_check(placement, copy, image_png) if placement else []
+    primary = with_findings(
+        with_policy_net(review(client, image_png, copy, run_id=run_id), copy), fmt)
     second: Review | None = None
     status = "unavailable"
     if open_client is not None and open_client.available():
         try:
-            second = with_policy_net(
-                second_opinion(open_client, image_png, copy, run_id=run_id), copy)
+            second = with_findings(with_policy_net(
+                second_opinion(open_client, image_png, copy, run_id=run_id), copy), fmt)
             status = "available"
         except MuseError:
             status = "failed"  # the failed call has its own receipt; the primary stands
@@ -220,7 +246,8 @@ def run(
         details={"verdict": result.verdict, "second_opinion": result.second_status,
                  "disagreements": len(result.disagreements),
                  "rules": sorted({f.rule for f in primary.findings}),
-                 "policy_net": sorted({f.rule for f in policy_net(copy)})},
+                 "policy_net": sorted({f.rule for f in policy_net(copy)}),
+                 "format": [f.severity for f in fmt]},
     )
     return result
 
@@ -241,7 +268,7 @@ def run_formats(
         raise ValueError("nothing to review")
     formats = []
     for placement, digest, png in images:
-        result = run(client, open_client, png, copy, run_id=run_id)
+        result = run(client, open_client, png, copy, run_id=run_id, placement=placement)
         formats.append({"placement": placement, "sha256": digest, **result.as_dict()})
     statuses = {f["second_opinion"] for f in formats}
     second = ("available" if statuses == {"available"}

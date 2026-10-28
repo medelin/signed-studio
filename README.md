@@ -12,7 +12,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 
 - Live sandbox (judge login; the password is in the submission): **https://muse.udun.eu**
 - Numbers: **[docs/eval.md](docs/eval.md)** · how it works: [docs/architecture.md](docs/architecture.md) ·
-  threat model: [docs/SECURITY.md](docs/SECURITY.md) · video script: [docs/demo-script.md](docs/demo-script.md)
+  threat model: [docs/SECURITY.md](docs/SECURITY.md) · review policy and platform limits: [docs/policy.md](docs/policy.md) · video script: [docs/demo-script.md](docs/demo-script.md)
 
 <!-- screenshots: docs/screenshots/ (studio run, signed approval, PAUSED campaign, studio verify) -->
 

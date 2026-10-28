@@ -1,0 +1,237 @@
+{
+ "_provenance": "synthetic",
+ "_synthetic": true,
+ "_note": "Hand-written format cases for rule F1 (studio/agents/formats.py): each expects the set of severities the deterministic check must return. Limits from the platforms' own pages, retrieved 2026-10-28 (docs/policy.md).",
+ "cases": [
+  {
+   "id": "meta-feed-ok",
+   "placement": "feed_1x1",
+   "ad": {
+    "primary_text": "Hand-thrown stoneware, 350 ml, 89 PLN.",
+    "headline": "A mug for slow mornings",
+    "description": "89 PLN"
+   },
+   "image": [
+    1600,
+    1600
+   ],
+   "expect": []
+  },
+  {
+   "id": "meta-fb-headline-long",
+   "placement": "feed_1x1",
+   "ad": {
+    "headline": "A hand-thrown mug for every slow morning"
+   },
+   "image": [
+    1600,
+    1600
+   ],
+   "expect": [
+    "warn"
+   ]
+  },
+  {
+   "id": "meta-ig-primary-long",
+   "placement": "feed_4x5",
+   "ad": {
+    "primary_text": "Hand-thrown stoneware mugs from Demo Ceramics Studio, 350 ml, dishwasher safe, made in small batches, free delivery in Poland above 150 PLN."
+   },
+   "image": [
+    1408,
+    1760
+   ],
+   "expect": [
+    "warn"
+   ]
+  },
+  {
+   "id": "meta-feed-4x5-too-small",
+   "placement": "feed_4x5",
+   "ad": {},
+   "image": [
+    480,
+    600
+   ],
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "meta-feed-wrong-ratio",
+   "placement": "feed_1x1",
+   "ad": {},
+   "image": [
+    1080,
+    1920
+   ],
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "meta-story-ok",
+   "placement": "story_9x16",
+   "ad": {
+    "primary_text": "Slow mornings, one mug."
+   },
+   "image": [
+    1152,
+    2048
+   ],
+   "expect": []
+  },
+  {
+   "id": "meta-reels-primary-long",
+   "placement": "story_9x16",
+   "ad": {
+    "primary_text": "Hand-thrown stoneware mugs for slow mornings at home."
+   },
+   "image": [
+    1152,
+    2048
+   ],
+   "expect": [
+    "warn"
+   ]
+  },
+  {
+   "id": "meta-story-square-image",
+   "placement": "story_9x16",
+   "ad": {},
+   "image": [
+    1600,
+    1600
+   ],
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "meta-link-too-long",
+   "placement": "feed_1x1",
+   "ad": {
+    "link": "https://example.com/?q=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+   },
+   "image": [
+    1600,
+    1600
+   ],
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "google-rsa-ok",
+   "placement": "google_rsa",
+   "ad": {
+    "headline": "Hand-thrown mugs, 89 PLN",
+    "description": "Stoneware, 350 ml, dishwasher safe. Free delivery in Poland above 150 PLN."
+   },
+   "expect": []
+  },
+  {
+   "id": "google-rsa-headline-31",
+   "placement": "google_rsa",
+   "ad": {
+    "headline": "Hand-thrown stoneware mugs 89zl"
+   },
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "google-rsa-description-91",
+   "placement": "google_rsa",
+   "ad": {
+    "description": "Hand-thrown stoneware mugs from Demo Ceramics Studio, 350 ml, dishwasher safe, small batches."
+   },
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "google-rsa-cjk-headline",
+   "placement": "google_rsa",
+   "ad": {
+    "headline": "手作りの陶器マグカップ手作りの陶器マグカップ"
+   },
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "google-pmax-business-name",
+   "placement": "google_pmax",
+   "ad": {
+    "business_name": "Demo Ceramics Studio Poland Ltd"
+   },
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "google-pmax-portrait-ok",
+   "placement": "google_pmax",
+   "ad": {
+    "long_headline": "Hand-thrown stoneware mugs for slow mornings"
+   },
+   "image": [
+    960,
+    1200
+   ],
+   "expect": []
+  },
+  {
+   "id": "google-pmax-story-image",
+   "placement": "google_pmax",
+   "ad": {},
+   "image": [
+    1152,
+    2048
+   ],
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "google-demand-gen-headline-40",
+   "placement": "google_demand_gen",
+   "ad": {
+    "headline": "Hand-thrown stoneware mugs, made slowly"
+   },
+   "expect": []
+  },
+  {
+   "id": "google-demand-gen-headline-41",
+   "placement": "google_demand_gen",
+   "ad": {
+    "headline": "Hand-thrown stoneware mugs, made so slowly"
+   },
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "tiktok-name-long",
+   "placement": "tiktok_in_feed",
+   "ad": {
+    "display_name": "Demo Ceramics Studio PL"
+   },
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "tiktok-hashtags",
+   "placement": "tiktok_in_feed",
+   "ad": {
+    "display_name": "Demo Ceramics",
+    "primary_text": "Slow mornings #mugs @democeramics"
+   },
+   "expect": [
+    "warn"
+   ]
+  }
+ ]
+}
