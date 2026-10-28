@@ -23,6 +23,7 @@ import re
 import secrets
 import threading
 import time
+import weakref
 from collections.abc import AsyncIterator, Callable
 from functools import partial
 from typing import Any
@@ -58,6 +59,56 @@ SSE_MAX_S = 20 * 60
 MAX_STREAMS = 8
 
 Guard = Callable[[Request], "JSONResponse | str"]
+
+
+class _Slot:
+    """One of the ``MAX_STREAMS`` stream slots, released exactly once — whichever comes
+    first: the stream ends, its body is closed (even unstarted), the response finishes or
+    fails (client gone before the first byte), or the response is garbage-collected."""
+
+    def __init__(self, free: Callable[[], None]) -> None:
+        self._free: Callable[[], None] | None = free
+        self._lock = threading.Lock()
+
+    def release(self) -> None:
+        with self._lock:
+            free, self._free = self._free, None
+        if free is not None:
+            free()
+
+
+class _SlotIterator:
+    """The SSE body; closing it releases the slot even if iteration never started (an
+    unstarted async generator skips its ``finally``)."""
+
+    def __init__(self, inner: AsyncIterator[bytes], slot: _Slot) -> None:
+        self._inner = inner
+        self._slot = slot
+
+    def __aiter__(self) -> _SlotIterator:
+        return self
+
+    async def __anext__(self) -> bytes:
+        return await self._inner.__anext__()
+
+    async def aclose(self) -> None:
+        try:
+            await self._inner.aclose()  # type: ignore[attr-defined]
+        finally:
+            self._slot.release()
+
+
+class _SlotStreamingResponse(StreamingResponse):
+    def __init__(self, content: _SlotIterator, slot: _Slot, **kwargs: Any) -> None:
+        super().__init__(content, **kwargs)
+        weakref.finalize(self, slot.release)
+        self._slot = slot
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._slot.release()
 
 
 def receipt_event(r: Receipt) -> dict[str, Any]:
@@ -235,6 +286,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 return JSONResponse({"error": "too_many_streams"}, 429)
             app.state.streams += 1
 
+        def free() -> None:
+            with stream_lock:
+                app.state.streams -= 1
+
+        slot = _Slot(free)
+
         async def stream() -> AsyncIterator[bytes]:
             sent = 0
             seen_seq = -1
@@ -262,12 +319,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                     await asyncio.sleep(SSE_POLL_S)
                 yield _sse("end", {"status": "timeout"})
             finally:
-                with stream_lock:
-                    app.state.streams -= 1
+                slot.release()
 
-        return StreamingResponse(stream(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-store",
-                                          "X-Accel-Buffering": "no"})
+        return _SlotStreamingResponse(_SlotIterator(stream(), slot), slot,
+                                      media_type="text/event-stream",
+                                      headers={"Cache-Control": "no-store",
+                                               "X-Accel-Buffering": "no"})
 
     @app.get("/assets/{run_id}/{name}.png")
     def asset(run_id: str, name: str) -> Response:

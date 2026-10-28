@@ -288,3 +288,67 @@ def test_stream_reads_receipts_only_when_the_ledger_changed(tmp_path, monkeypatc
         body = c.get("/api/runs/run_idle/events").text
     assert '"timeout"' in body
     assert len(reads) <= 1  # dozens of polls, one read of an unchanged ledger
+
+
+def _events_endpoint(a):
+    return next(r.endpoint for r in a.routes
+                if getattr(r, "path", "") == "/api/runs/{run_id}/events")
+
+
+def _session_request(a, c):
+    from starlette.requests import Request
+    cookie = "; ".join(f"{k}={v}" for k, v in c.cookies.items())
+    return Request({"type": "http", "method": "GET", "path": "/", "query_string": b"",
+                    "headers": [(b"cookie", cookie.encode())]})
+
+
+def test_stream_slot_is_freed_when_the_client_leaves_before_the_stream_starts(tmp_path):
+    import asyncio
+
+    from studio import db
+    a = create_app(settings(tmp_path))
+    with db.transaction(a.state.conn):
+        a.state.conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
+                             "VALUES ('run_gone', 'running', '{}', 1)")
+    with new_client(a) as c:
+        login(c)
+        request = _session_request(a, c)
+    endpoint = _events_endpoint(a)
+
+    async def scenario():
+        # 1) the response is built (slot taken) but never sent: the client is gone
+        resp = await endpoint("run_gone", request)
+        assert a.state.streams == 1
+        await resp.body_iterator.aclose()  # what the server does with an unsent body
+        sent = []
+
+        async def receive():
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            sent.append(message)
+            raise OSError("client went away")
+
+        try:
+            await resp({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        except Exception:  # noqa: BLE001, S110 - the disconnect surfaces as an error
+            pass
+        assert a.state.streams == 0
+        # 2) disconnect right at the first send of a fresh stream
+        resp2 = await endpoint("run_gone", request)
+        try:
+            await resp2({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        except Exception:  # noqa: BLE001, S110
+            pass
+        assert a.state.streams == 0
+
+    asyncio.run(scenario())
+    for _ in range(12):  # well past MAX_STREAMS: no slot leaked
+        asyncio.run(_build_and_drop(endpoint, request))
+    assert a.state.streams == 0
+
+
+async def _build_and_drop(endpoint, request):
+    resp = await endpoint("run_gone", request)
+    await resp.body_iterator.aclose()
+    del resp
