@@ -1,0 +1,18 @@
+# Muse Studio Lite: one objective-aware insights snapshot of every campaign (read-only on
+# Meta) and fresh recommendations. Executing a recommendation still needs a signature.
+[Unit]
+Description=Muse Studio Lite insights snapshot
+After=muse-studio-lite.service
+
+[Service]
+Type=oneshot
+User=muse
+Group=muse
+WorkingDirectory=/opt/muse-studio-lite/current
+EnvironmentFile=/etc/muse-studio-lite/env
+Environment=STUDIO_SANDBOX=1 STUDIO_DATA_DIR=/var/lib/muse-studio-lite PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/muse-studio-lite/current/.venv/bin/python -m studio.cli insights-pull --env-file /dev/null
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/muse-studio-lite
+PrivateTmp=yes

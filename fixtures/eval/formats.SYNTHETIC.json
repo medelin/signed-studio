@@ -232,6 +232,58 @@
    "expect": [
     "warn"
    ]
+  },
+  {
+   "id": "meta-carousel-card-ok",
+   "placement": "card_1",
+   "ad": {
+    "primary_text": "Three mugs, one shelf.",
+    "headline": "Slow mornings",
+    "description": "350 ml"
+   },
+   "image": [
+    1080,
+    1080
+   ],
+   "expect": []
+  },
+  {
+   "id": "meta-carousel-headline-long",
+   "placement": "card_2",
+   "ad": {
+    "headline": "A mug for very slow mornings"
+   },
+   "image": [
+    1080,
+    1080
+   ],
+   "expect": [
+    "warn"
+   ]
+  },
+  {
+   "id": "meta-carousel-card-portrait",
+   "placement": "card_3",
+   "ad": {},
+   "image": [
+    1080,
+    1350
+   ],
+   "expect": [
+    "block"
+   ]
+  },
+  {
+   "id": "meta-video-poster-square",
+   "placement": "video_9x16",
+   "ad": {},
+   "image": [
+    1080,
+    1080
+   ],
+   "expect": [
+    "block"
+   ]
   }
  ]
 }

@@ -64,11 +64,22 @@ replays that flow headless. `make test` runs the suite offline, `make eval` rege
 |---|---|---|
 | `muse-spark-1.3` | Producer, compliance reviewer (vision), community triage, lead rationale, analyst | Responses API with function tools, `parallel_tool_calls`, `reasoning.summary`, `previous_response_id`; strict JSON schemas; images in user messages; the analyst reads the whole ledger (long context) plus an Ads Manager screenshot |
 | `muse-spark-1.3-contributor` | Copywriter and image-prompt writer | chosen by code only when the input has no personal data (`pii.choose_tier`); the reason is in every receipt |
-| `muse-image-1.0` | Art director | first placement as a Responses turn with the cut-out, the others via `/images/edits` with the cut-out and the first image, so the series matches |
+| `muse-image-1.0` | Art director | first placement as a Responses turn with the cut-out, the others (and up to 10 carousel cards) via `/images/edits` with the cut-out and the first image, so the series matches |
 | `sam-3.1` | Art director | product cut-out from the photo: streamed transport, batch parse (`meta_sam_parser`) |
 | `muse-voice-transcribe-1.0` | Voice brief, dictation into any Brief v1 field and [FACT] answers | `POST /asr/transcribe`, `ENDPOINTING`, `languageBias` from the page language (`pl` or `en`), turns with timestamps |
 | `meta-models/muse-spark-open` | Second-opinion reviewer (open weights, on Baseten) | same `Review` schema, different weights; BLOCK from either side wins; disagreements shown before signing |
-| `muse-wonder-1.0` | not in the runtime path | priced in the client so a call would be budgeted; kept out of the sandbox |
+| `muse-wonder-1.0` | Art director, optional video placement | strict-JSON storyboard: which reviewed image comes when and for how long; code cuts the 9:16 MP4 with ffmpeg (Wonder reads images and writes text, it does not render video); code orders the shots if the call fails |
+
+## Meta advertising capabilities
+
+| Capability | What the studio does | Who decides |
+|---|---|---|
+| Objectives | All six ODAX objectives with Meta's sub-choices (reach, ad recall, link clicks, landing page views, post engagement, messages on Messenger/Instagram/WhatsApp, event responses, instant form, website leads, app installs, website sales, catalog sales), mapped by one code table to objective, optimisation goal, billing, destination and promoted object ([docs/brief.md](docs/brief.md#objectives-code-table-studiometaobjectivespy)) | the owner picks; code maps; the mapping is signed (`spec_sha256`) |
+| Lead ads | instant form with the owner's questions and privacy page, created through the API; leads polled or pushed by a signature-checked webhook into the lead store and scorer | the owner signs the form with the campaign |
+| Audiences | Advantage+ audience by default, hints resolved to Meta ids by the targeting search and shown before signing, exclusions, the owner's custom audiences, lookalikes from the owner's source audience; no user data uploaded | the owner |
+| Formats | feed and stories images, carousel (2–10 cards), 9:16 video, copy A/B (dynamic creative where supported, else separate ads) | both reviewers check every creative and variant, then the owner signs |
+| Measurement | results and cost per result for the objective, reach, frequency, CPM, spend, CTR, link clicks, by age and gender, placement and region, with the attribution setting; hourly `insights.snapshot` receipts; code-rule recommendations | a budget change or pause runs only after a new signature |
+| Currency | budgets in the ad account's currency (read from the account), minor units by Meta's offsets | the ad account |
 
 Development used **Muse Code** for the Muse-specific modules and prompt tuning; session
 exports go to [docs/build-log/](docs/build-log/).
@@ -91,10 +102,11 @@ third party:
 - Every model call, tool call, review, approval and write is a **receipt** in a hash chain
   per run, signed by the server's ledger key and closed by a signed manifest.
   `studio verify` re-checks it offline and exits 2 naming the receipt when anything is off:
-  in [docs/eval.md](docs/eval.md) it rejects **500/500 tampered exports across 20 tamper
+  in [docs/eval.md](docs/eval.md) it rejects **575/575 tampered exports across 23 tamper
   classes** (edited, re-hashed, deleted, reordered, truncated, rolled back, forged
-  signatures, writes the server logged without an approval, and a Brief v1 fact edited
-  after signing) and accepts every clean one.
+  signatures, writes the server logged without an approval, a Brief v1 fact edited
+  after signing, a campaign created with another objective or promoted object than the one
+  signed, and a recommendation executed without approval) and accepts every clean one.
 - The reviewer stops **19 of 20 seeded bad ads** (all **5/5 P9** ads blocked by the model
   alone), with **0 of 5** clean ads blocked. The open-weights second opinion (Muse Spark
   Open on Baseten) makes the **same OK-vs-flag decision on 25/25** ads (same verdict on
@@ -127,8 +139,10 @@ release or copied from the operator), pass it with `--key-file ledger.pub` toget
 
 - Meta writes go through `META_ADAPTER=graph` (Marketing API v25.0, own ad account,
   PAUSED-only) or the mock adapter; the sandbox always runs the mock and never holds a Meta
-  token. The graph adapter is tested against hand-written cassettes until the live smoke on
-  the operator's own account is recorded.
+  token. The graph adapter's writes are tested against hand-written cassettes until the
+  live PAUSED smoke on the operator's own account is recorded; its reads (account currency,
+  targeting search, insights fields, lead forms) were checked live, read-only, and recorded
+  (`fixtures/cassettes/graph_readonly.json`).
 - Every fixture says what it is: `"_provenance": "recorded"` (a real API response) or
   `"synthetic"` (hand-written, `*.SYNTHETIC.json`, with a `_note`). The demo brand, comments
   and leads are synthetic; the demo product photo is model-generated (set

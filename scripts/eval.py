@@ -15,6 +15,7 @@ Usage: ``python scripts/eval.py [--n 25] [--write docs/eval.md] [--record-review
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import random
 import sys
@@ -35,7 +36,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (  # noqa: E402
 
 from studio import approvals as ap  # noqa: E402
 from studio import db  # noqa: E402
-from studio.receipts import Receipt, public_key_raw, sha256_hex, verify  # noqa: E402
+from studio.meta import objectives  # noqa: E402
+from studio.receipts import Receipt, canonical, public_key_raw, sha256_hex, verify  # noqa: E402
 
 EVAL = ROOT / "fixtures" / "eval"
 REVIEWS = EVAL / "reviews.json"
@@ -77,8 +79,10 @@ class _Case:
         self.brief = sha256_hex(f"brief {rnd.random()}")
         self.led.append("run-3", agent="producer", kind="model_call", model="muse-spark-1.3")
         self.confirm(self.brief)
+        self.delivery = objectives.delivery("sales", page_id="mock-page", promotion={
+            "pixel_id": str(rnd.randint(10**14, 10**15))})
         cpayload = {"action": "campaign.create", "brief_sha256": self.brief,
-                    "ad": {"headline": f"h {rnd.random()}"}}
+                    "delivery": self.delivery, "ad": {"headline": f"h {rnd.random()}"}}
         with db.transaction(c):
             cp = ap.Pending.create("campaign.create", "cmp_" + uuid_hex(rnd), cpayload,
                                    ledger=self.led, run_id="run-3", brief_sha256=self.brief)
@@ -262,6 +266,42 @@ def _approval_without_brief(c: _Case) -> bool:
     return c.check(c.lines())
 
 
+def _created_with(c: _Case, spec: dict[str, Any]) -> bool:
+    """The server logs the signed campaign as created with ``spec`` (its own ledger key)."""
+    details = {"spec_sha256": sha256_hex(canonical(spec)), "objective": spec["objective"]}
+    for tool in ("campaign", "adset"):
+        c.led.append("run-3", agent="media_buyer", kind="tool_call", provider="meta-mock",
+                     details={"tool": tool, "status": "ok", "side_effects": "external",
+                              "approval_id": c.campaign.pending_id, **details})
+    c.led.append("run-3", agent="media_buyer", kind="external_write",
+                 output_sha256=c.campaign.content_sha256,
+                 details={**c.campaign.write_details(), **details})
+    return c.check(c.lines())
+
+
+def _objective_changed(c: _Case) -> bool:
+    other = objectives.delivery("traffic", page_id="mock-page")
+    return _created_with(c, other)
+
+
+def _promoted_object_changed(c: _Case) -> bool:
+    other = copy.deepcopy(c.delivery)
+    other["promoted_object"]["pixel_id"] = str(c.rnd.randint(10**14, 10**15))
+    return _created_with(c, other)
+
+
+def _recommendation_without_approval(c: _Case) -> bool:
+    approval_id = uuid_hex(c.rnd) * 2
+    c.led.append("run-3", agent="media_buyer", kind="tool_call", provider="meta-mock",
+                 details={"tool": "update_budget", "status": "ok", "side_effects": "external",
+                          "approval_id": approval_id, "change": "budget"})
+    c.led.append("run-3", agent="media_buyer", kind="external_write",
+                 output_sha256=sha256_hex(str(c.rnd.random())),
+                 details={"approval_id": approval_id, "action": "campaign.update",
+                          "item_id": c.campaign.item_id, "change": "budget"})
+    return c.check(c.lines())
+
+
 def _brief_with_open_question(c: _Case) -> bool:
     c.confirm(c.brief, open_questions=c.rnd.randint(1, 3))
     return c.check(c.lines())
@@ -288,6 +328,10 @@ TAMPER: dict[str, tuple[str, Callable[[_Case], bool]]] = {
     "approval for another brief": ("the server itself", _approval_for_another_brief),
     "campaign approval without the brief": ("the server itself", _approval_without_brief),
     "brief confirmed with an open [FACT]": ("the server itself", _brief_with_open_question),
+    "objective changed after signing": ("the server itself", _objective_changed),
+    "promoted_object changed after signing": ("the server itself", _promoted_object_changed),
+    "recommendation executed without approval": ("the server itself",
+                                                 _recommendation_without_approval),
 }
 
 
@@ -321,7 +365,8 @@ ATTACK_FILES = ["test_dispatcher.py", "test_paused_only.py", "test_injection.py"
                 "test_activation_chain.py", "test_unfilled_fact.py", "test_guest_views.py",
                 "test_comment_pii.py", "test_parallel_cost.py", "test_placements_cost.py",
                 "test_review_every_format.py", "test_voice_transcript.py",
-                "test_brief_binding.py", "test_approval_renew.py"]
+                "test_brief_binding.py", "test_approval_renew.py", "test_objective_binding.py",
+                "test_lead_ads.py", "test_recommendations.py"]
 
 
 def attack_suites() -> list[dict[str, Any]]:
@@ -610,7 +655,8 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
     out += ["", "## 1. Tamper suite (`studio verify`)", "",
             "Each case is a fresh ledger (random number of receipts, a signed reply approval, "
             "its adapter step and its write, a second run, and a third run with a confirmed "
-            "Brief v1 and a campaign approval that signs its `brief_sha256`), exported and "
+            "Brief v1 and a campaign approval that signs its `brief_sha256` and the "
+            "`spec_sha256` of its objective mapping), exported and "
             "then tampered with. "
             "Verified with the ledger key, the approver registry and, for rollback, the "
             "latest known manifest seq. \"The server itself\" rows are logs signed with the "

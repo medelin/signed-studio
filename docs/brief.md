@@ -30,15 +30,38 @@ A free-text brief (`POST /api/runs {"brief": "..."}`) still runs as before, with
 | `advertiser` | `kind` (`person` or `company`), `display_name`, `countries` (ISO 3166-1 alpha-2), `landing_url` (https) | A display name that does not match the page or legal name gets ads rejected. Global: no national registry or tax ids. |
 | `confirmed_facts` | short statements | The only facts an ad may state: prices, times, guarantees, numbers. |
 | `offer` | `product`, `offer`, `valid_until` (`YYYY-MM-DD` or empty), `reasons_to_believe[{text, facts}]` | Each reason names the indices of the confirmed facts it rests on; a reason without a fact is refused. |
-| `objective` | `goal` (exactly one of `awareness`, `traffic`, `engagement`, `leads`, `sales`), `kpi` | Meta's campaign objectives. This version creates `OUTCOME_TRAFFIC` campaigns; the goal and KPI are carried in the signed payload (`brief.goal`, `brief.kpi`). |
-| `audience` | `locations`, `age_min`, `age_max` (13–65), `languages`, `insight{who, belief, barrier, trigger}` | Advantage+ treats audience details as suggestions; the age range and the advertiser's countries go into the ad set's targeting. |
+| `objective` | `goal` (exactly one of `awareness`, `traffic`, `engagement`, `leads`, `app_promotion`, `sales`), `kpi`, `sub` (Meta's sub-choice, `""` = the goal's default) | Meta's six campaign objectives. Code maps goal and sub-choice to Meta's fields (table below); the mapping is the payload's signed `delivery` block. |
+| `promotion` | `pixel_id`, `custom_event_type`, `application_id`, `object_store_url`, `event_id`, `product_catalog_id`, `product_set_id`, `privacy_policy_url`, `lead_fields` | The ids the chosen objective needs, as the owner gives them. A missing one is the field error `required_for_objective`; an id or URL the draft holds but the owner never wrote is cleared (`ground_ids`). |
+| `audience` | `locations`, `age_min`, `age_max` (13–65), `languages`, `insight{who, belief, barrier, trigger}`, `advantage_audience` (default true), `genders`, `interests`, `excluded_interests`, `excluded_countries`, `custom_audience_ids`, `excluded_custom_audience_ids`, `lookalike_source_id`, `lookalike_percent` | With Advantage+ audience the age range, genders and interests are suggestions and locations, the minimum age (18–25), languages and excluded audiences are controls. Interests and languages are resolved to Meta ids by code through the targeting search before the approval; audience ids come only from the owner (never guessed, never uploaded data). |
 | `proposition` | one sentence | The single thing the ad says. |
 | `tone_brand` | `tone`, `colours`, `donts` | Brand guidance for copy and images. |
 | `mandatories` | `disclaimers`, `banned_claims`, `dates` | Banned claims are blocked by code and by both reviewers (P10). |
-| `budget` | `kind` (`daily` or `lifetime`), `amount`, `currency`, `start`, `end` | The currency must be the ad account's (PLN on this studio). A daily amount above `STUDIO_MAX_DAILY_BUDGET_PLN` is refused at confirmation; a lifetime amount is spread over its days, rounded up. Code, not the model, puts the owner's daily budget into the plan. |
-| `placements` | `automatic` (default `true`), `deliverables` (`feed_1x1`, `feed_4x5`, `story_9x16`) | The deliverables replace the plan's placements. |
+| `budget` | `kind` (`daily` or `lifetime`), `amount`, `currency`, `start`, `end` | The currency must be the ad account's (read from the account; the field error names it, nothing is converted). A daily amount above `STUDIO_MAX_DAILY_BUDGET` (in that currency) is refused at confirmation; a lifetime amount is spread over its days, rounded up. Code, not the model, puts the owner's daily budget into the plan, in the currency's minor units. |
+| `placements` | `automatic` (default `true`), `deliverables` (`feed_1x1`, `feed_4x5`, `story_9x16`), `carousel_cards` (0, or 2–10), `video` (a 9:16 video ad), `copy_variants` (1–3) | The deliverables replace the plan's placements; carousel cards, the video poster and every A/B variant are reviewed like the other creatives. Event and catalog ads take one image and one variant. |
 | `assets` | `[{kind, note}]` (`product_photo`, `logo`, `other`) | The product photo for the SAM 3.1 cut-out is configured on the server (`STUDIO_PRODUCT_PHOTO`); notes record what else the owner has. |
 | `open_questions` | `[{question, claim}]` | The gaps. Must be empty when the brief is confirmed. |
+
+Fields added after the first version have defaults, so briefs and recordings made before
+them still validate.
+
+## Objectives (code table, `studio/meta/objectives.py`)
+
+| Goal | Sub-choice | Meta objective | Optimisation goal | Destination | Promoted object | The owner gives |
+|---|---|---|---|---|---|---|
+| awareness | reach / ad_recall_lift | `OUTCOME_AWARENESS` | `REACH` / `AD_RECALL_LIFT` | — | `page_id` | — |
+| traffic | link_clicks / landing_page_views | `OUTCOME_TRAFFIC` | `LINK_CLICKS` / `LANDING_PAGE_VIEWS` | `WEBSITE` | — | — |
+| engagement | post_engagement | `OUTCOME_ENGAGEMENT` | `POST_ENGAGEMENT` | `ON_POST` | — | — |
+| engagement | messenger / instagram_direct / whatsapp | `OUTCOME_ENGAGEMENT` | `CONVERSATIONS` | `MESSENGER` / `INSTAGRAM_DIRECT` / `WHATSAPP` | `page_id` | — (WhatsApp: a number on the Page) |
+| engagement | event_responses | `OUTCOME_ENGAGEMENT` | `EVENT_RESPONSES` | `ON_EVENT` | — | `event_id` |
+| leads | instant_form | `OUTCOME_LEADS` | `LEAD_GENERATION` | `ON_AD` | `page_id` | `privacy_policy_url`, questions |
+| leads | website | `OUTCOME_LEADS` | `OFFSITE_CONVERSIONS` | `WEBSITE` | `pixel_id`, `custom_event_type` (LEAD) | `pixel_id` |
+| app_promotion | app_installs | `OUTCOME_APP_PROMOTION` | `APP_INSTALLS` | — | `application_id`, `object_store_url` | both |
+| sales | website | `OUTCOME_SALES` | `OFFSITE_CONVERSIONS` | `WEBSITE` | `pixel_id`, `custom_event_type` (PURCHASE) | `pixel_id` |
+| sales | catalog | `OUTCOME_SALES` | `OFFSITE_CONVERSIONS` | `WEBSITE` | ad set: `pixel_id`, `custom_event_type`, `product_set_id`; campaign: `product_catalog_id` | all three |
+
+Billing is `IMPRESSIONS` for every row; conversion rows (website leads, app, sales) set
+`attribution_spec` to 7-day click, 1-day view. Sources: the ODAX mapping table of the
+campaign reference and the lead ads guide (cited in the module).
 
 The Pydantic models are strict (`extra="forbid"`, no type coercion) and are also the
 producer's strict JSON schema, so length limits live in `brief.problems` (field path →
@@ -85,12 +108,14 @@ On confirmation the ledger gets:
 (`briefs.brief_v1`), never in a receipt. `voice` names the transcription model when any part
 of the brief was spoken, and such a brief runs as a transcript (enveloped, Standard tier).
 
-The `campaign.create` payload carries `brief_sha256`, and the approval message the browser
-signs gains one field:
+The `campaign.create` payload carries `brief_sha256` and its objective mapping (`delivery`),
+and the approval message the browser signs gains two fields (`spec_sha256` is the hash of
+the `delivery` block):
 
 ```json
 {"type": "approval", "action": "campaign.create", "item_id": "...", "content_sha256": "...",
- "chain_head": "...", "approver": "...", "nonce": "...", "ts": 0, "brief_sha256": "..."}
+ "chain_head": "...", "approver": "...", "nonce": "...", "ts": 0, "brief_sha256": "...",
+ "spec_sha256": "..."}
 ```
 
 The server refuses to issue such an approval for a brief that is not the run's latest
@@ -137,3 +162,10 @@ PAUSED). `make demo-replay SET=brief` replays it headless and runs `studio verif
 `make serve-replay` serves the UI on it (the default set for the UI). In replay, a draft request whose words differ
 from the recording falls back to the recorded draft (route fallback prefers the same strict
 output schema), so the form can be explored offline.
+
+`fixtures/replay/muse/` is the second example: this studio advertised as an open-source
+tool for one-person businesses (traffic to the sandbox, 6 GBP a day for 7 days, Poland, no
+company named), recorded on an ad account that books in GBP (`account_currency` in the
+set). `make demo-replay SET=muse` replays it; `make serve-replay SET=muse` serves the UI on
+it. In the studio both examples are in the "Example brief" list; the ceramics one is the
+default.

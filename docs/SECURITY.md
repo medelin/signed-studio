@@ -60,6 +60,9 @@ There is no self-registration: the operator creates accounts with `studio accoun
 | `test_review_binding.py`, `test_review_every_format.py` | content swapped after review; unreviewed placements |
 | `test_unfilled_fact.py` | `[FACT]` placeholders hidden with look-alike characters |
 | `test_parallel_cost.py`, `test_placements_cost.py` | cost cap bypass through parallel tool calls and placements |
+| `test_objective_binding.py` | every objective created PAUSED from the signed delivery only; a signed but invalid mapping, a payload without one, another Page: no call; verify rejects a step that sent another mapping |
+| `test_lead_ads.py` | the instant form without the owner's privacy page; unsigned, wrongly signed or unconfigured leadgen webhooks; leads for forms the studio did not make; contact data in receipts |
+| `test_recommendations.py` | a recommendation executed without, or twice on, a signed `campaign.update`; a budget over the ceiling; a "pause" that activates; verify on an update logged without approval |
 
 Accounts: `tests/test_account_pages.py` (wrong current password, a reused TOTP code, a
 recovery code used twice, CSRF missing or forged on every account form, cross-origin posts,
@@ -69,6 +72,16 @@ limit on the second step, session fixation, one generic failure), `tests/test_ac
 
 Plus `tests/test_verify_cli.py` (19 tamper classes → exit 2 naming the receipt) and the
 generated tamper suite in [`docs/eval.md`](eval.md).
+
+## Meta webhook
+
+`POST /api/meta/webhook` takes Page `leadgen` events. It is refused (403) unless
+`X-Hub-Signature-256` is `sha256=` + the HMAC-SHA256 of the raw body keyed with
+`META_APP_SECRET` (constant-time compare); without an app secret every request is refused.
+A valid event can only make the studio fetch a lead of a form it created itself, on its own
+Page, and store it once; it cannot write to Meta or approve anything. The route sits behind
+the login gate like every other, so it answers only where `STUDIO_REQUIRE_LOGIN` is off
+(the operator's machine); the sandbox never receives Meta events.
 
 ## Residual risks
 

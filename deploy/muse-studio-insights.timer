@@ -1,0 +1,11 @@
+# Hourly insights snapshot (deploy/muse-studio-insights.service).
+[Unit]
+Description=Hourly Muse Studio Lite insights snapshot
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=120
+Persistent=true
+
+[Install]
+WantedBy=timers.target

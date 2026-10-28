@@ -57,6 +57,32 @@ transaction that starts the run. The copywriter gets only the confirmed facts, t
 reviewers check them (rule P10), and the `campaign.create` approval signs `brief_sha256`
 next to the content hash; `studio verify` checks that binding.
 
+## Meta capabilities
+
+Everything below is code; models only draft copy, images, the video's shot order and the
+analyst's prose. Every write still needs a consumed, signed approval and creates objects
+PAUSED.
+
+| Capability | Module | What happens | Graph API (v25.0) |
+|---|---|---|---|
+| Six objectives | `studio/meta/objectives.py` | The Brief v1 goal and sub-choice select one row of a table (objective, optimisation goal, billing event, destination type, promoted object, creative kind, call to action, insights result). `delivery` puts that row into the `campaign.create` payload; `Pending.create` signs its hash as `spec_sha256`; `objectives.check` (both adapters) refuses anything that is not a row or promotes another Page. | `POST /act_{id}/campaigns`, `/adsets` |
+| Lead ads | `studio/leadads.py` | The instant form (owner's questions and privacy page) is a signed block, created before the creative; leads are polled or pushed by the `leadgen` webhook (HMAC `X-Hub-Signature-256` with `META_APP_SECRET`, refused otherwise), stored once per Meta lead id and scored by the lead scorer's rules. | `POST /{page_id}/leadgen_forms`, `GET /{form_id}/leads`, `GET /{lead_id}` |
+| Audiences | `studio/meta/audience.py` | Advantage+ audience by default; interest and language hints resolved through the targeting search (read-only, a `targeting.search` receipt) and listed on the approval screen; exclusions; the owner's custom audiences; a lookalike of the owner's source audience. | `GET /search?type=adinterest\|adlocale`, `POST /act_{id}/customaudiences` |
+| Formats | `studio/agents/art_director.py`, `video.py`, `meta/adapter.py` (`ads_plan`, `creative_spec`) | Carousel cards and a 9:16 video (shots ordered by `muse-wonder-1.0`, cut by ffmpeg, poster reviewed); copy A/B as dynamic creative (`asset_feed_spec`, `is_dynamic_creative`) where the optimisation goal supports it, else one ad per variant. Activation activates every ad, then the ad set, then the campaign. | `POST /act_{id}/adimages`, `/advideos`, `/adcreatives`, `/ads` |
+| Measurement | `studio/meta/measurement.py` | Objective-aware insights and breakdowns into an `insights.snapshot` receipt and the `insights_snapshots` table; code rules make recommendations; an executable one becomes a signed `campaign.update` (`media_buyer.update`: one budget change under the ceiling, or a pause). | `GET /{campaign_id}/insights`, `POST /{adset_id}` `daily_budget`, `POST /{campaign_id}` `status=PAUSED` |
+| Currency | `studio/meta/currency.py` | The ad account's currency (`GET /act_{id}?fields=currency,timezone_name`, read once) is the brief's and the ceiling's; minor units by Meta's offsets. | — |
+
+`studio verify` adds two rules: a `campaign` or `ad set` step under a spec-signed approval,
+and any step or write that names a `spec_sha256`, must name the one the human signed; a
+`campaign.update` step or write follows the same approval-before-write rules as every
+other action.
+
+The measurement rules (thresholds in the module): a placement whose cost per result is
+1.5× the campaign's while taking 20 % or more of the spend is reported (Advantage+
+placements shift budget themselves; information only); spend of two daily budgets with no
+result proposes a pause; an average frequency of 4 or more proposes a 20 % lower budget;
+results at a frequency under 2 propose a 20 % higher budget, capped at the ceiling.
+
 ## Replay mode
 
 `STUDIO_REPLAY=1` swaps the HTTP transport of the Model API, Baseten and Graph clients for
@@ -88,14 +114,16 @@ byte-exact without carrying PII; readable content never enters a receipt, only i
 | `runs` | one row per agent run | created on first receipt |
 | `receipts` | the ledger | `seq` order, full receipt JSON in `body`; `UNIQUE(run_id, prev)` forbids forks; `hash` unique |
 | `ledger_meta` | single row: `key_epoch`, `seq` | `key_epoch` = fingerprint of the ledger key (signed into each manifest); `seq` = durable ledger version, bumped in the same transaction as every receipt write; never decreases |
-| `approvals` | pending / approved human approvals | `content_sha256`, `chain_head`, `nonce` (unique), `ts`, `brief_sha256` (signed when set), then `approver`, `signature`, `decided_ts` |
+| `approvals` | pending / approved human approvals | `content_sha256`, `chain_head`, `nonce` (unique), `ts`, `brief_sha256` and `spec_sha256` (signed when set), then `approver`, `signature`, `decided_ts` |
 | `nonces` | consumed nonces | primary key = nonce; the insert is the atomic "exactly once" step |
 | `keys` | approver public keys | id = `ed25519:<fingerprint>`; session stored only as a SHA-256; `expires_ts` = session expiry, `revoked_ts` set on logout and on restart; inactive keys cannot sign new approvals but stay published so past approvals verify |
 | `briefs` | campaign briefs (text or voice transcript) | Brief v1: `draft`, `draft_run_id`, `brief_v1` (confirmed, JSON) and `brief_sha256` |
 | `creatives` | generated images per placement | file path + SHA-256 |
-| `campaigns` | campaigns created through the Meta adapter | `status` is `PAUSED` unless a second approval activates it; `external_id`, `adset_external_id`, `ad_external_id` are the Meta objects that approval names (activated ad → ad set → campaign) |
+| `campaigns` | campaigns created through the Meta adapter | `status` is `PAUSED` unless a second approval activates it; `external_id`, `adset_external_id`, `ad_external_id` (and `more_ad_ids` for A/B variants, carousel and video ads) are the Meta objects that approval names (activated ads → ad set → campaign); `currency` is the ad account's |
 | `comments` | incoming comments (untrusted text) | `new / drafted / replied / hidden` |
-| `leads`, `tasks` | lead cards and follow-ups | |
+| `leads`, `tasks` | lead cards and follow-ups | instant-form leads carry `external_id` (unique) and `form_id` |
+| `lead_forms` | instant forms this studio created | the webhook accepts only these forms |
+| `insights_snapshots`, `recommendations` | measurement snapshots and code-made recommendations | a recommendation is `open`, `requested` (an approval exists), `executed` or `failed` |
 | `reports` | analyst reports | |
 | `sandbox_meta` | key/value, e.g. `last_reset` | |
 

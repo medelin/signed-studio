@@ -45,6 +45,24 @@ Why: P9 and the `[FACT]` placeholder stop invented claims in the copy; P10 close
 between the copy and the owner, so an ad can only say what the owner confirmed, and the
 owner's signature covers those facts (`brief_sha256`).
 
+## Every creative and every text variant
+
+Carousel cards, the video's poster frame and every copy variant that will run (copy A/B)
+go through the same three checks as the feed and story images: F1, both model reviewers
+(P1–P9, P10 for a Brief v1 run), then the human signature. The video itself is cut by code
+from images that were reviewed; its poster is reviewed as its own creative. For a Brief v1
+run the reviewers judge the brand name (P5) and prices and offers (P4) against the owner's
+advertiser and confirmed statements, not against the demo brand sheet of the system
+prompt.
+
+## Changes after a campaign exists
+
+A recommendation from the measurement rules (`studio/meta/measurement.py`) is a proposal.
+A budget change (within the daily ceiling, in the ad account's currency) or a pause is a
+new `campaign.update` approval the owner signs; the executor makes the one call it names.
+A recommendation can never activate anything: activation stays its own signed
+`campaign.activate`.
+
 ## F1 — format limits from each platform's own specifications
 
 `studio/agents/formats.py`, `reviewer.format_check(placement, ad)`. A platform's **hard**
@@ -53,7 +71,7 @@ cut off or performs worse) is a **WARN** that names the truncation point. Only *
 wired to publishing; the **Google Ads** and **TikTok** rules check copy variants exported for
 those platforms. All sources official, retrieved **2026-10-28**.
 
-### Meta (Facebook / Instagram) — placements `feed_1x1`, `feed_4x5`, `story_9x16`
+### Meta (Facebook / Instagram) — placements `feed_1x1`, `feed_4x5`, `story_9x16`, carousel cards, the video
 
 | Check | Value | Kind | Source |
 |---|---|---|---|
@@ -67,6 +85,10 @@ those platforms. All sources official, retrieved **2026-10-28**.
 | Stories / Reels image | 9:16, tolerance 1 %, min width 500 px; 1440×2560 recommended | hard | Stories and Reels pages above |
 | Stories / Reels safe zone | keep ~14 % top, 35 % bottom, 6 % each side free of text and logos | guidance (model reviewers, P6; not measured by code) | same |
 | Link URL | 1000 characters | hard | https://developers.facebook.com/docs/marketing-api/reference/ad-creative |
+| Carousel cards | 2 to 10 | hard (refused before signing) | https://www.facebook.com/business/ads-guide/update/carousel/facebook-feed |
+| Carousel card image (`card_<n>`) | 1:1, tolerance 3 %, min 600 × 600 px; at least 1080 × 1080 recommended (warn) | hard / recommended | same |
+| Carousel primary text / headline / description | 80 / 20 / 18 characters | recommended | same |
+| Reels video (`video_9x16`) | 9:16 poster, tolerance 1 %, min width 500 px; duration up to 15 minutes; file up to 4 GB; MP4 | hard | https://www.facebook.com/business/ads-guide/update/video/instagram-reels |
 | Marketing API title / body | 25 / 90 characters, labelled "recommended" by the API reference | not enforced (the placement lengths above apply) | same |
 
 Text in images: none of the official pages read states a current percentage rule; the

@@ -153,3 +153,14 @@ curl -sI https://studio.example.org/healthz
 (`Caddyfile`, same headers and limits as ours), with `STUDIO_SANDBOX=1`,
 `META_ADAPTER=mock` and `TRUSTED_PROXY` pinned to Caddy's fixed address on the compose
 network. Without a real `MODEL_API_KEY`, set `STUDIO_REPLAY=1` to serve recorded responses.
+
+## Insights snapshots
+
+`studio insights-pull` reads an objective-aware insights snapshot of every campaign the
+configured adapter created (read-only on Meta; the mock serves synthetic insights) and
+writes one `insights.snapshot` receipt each, plus fresh recommendations. The hourly
+`deploy/muse-studio-insights.timer` runs it; it is not enabled by `remote-install.sh`
+(enable it with `systemctl enable --now muse-studio-insights.timer`). A recommendation
+never executes by itself: a budget change or a pause is a new approval signed on `/report`.
+`studio leads-poll` does the same for instant-form leads.
+
