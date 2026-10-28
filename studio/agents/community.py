@@ -28,7 +28,7 @@ from studio.agents.schemas import Triage
 from studio.approvals import Pending, transaction
 from studio.muse.client import MuseClient, MuseResult
 from studio.muse.structured import structured
-from studio.pii import choose_tier, contains_pii
+from studio.pii import choose_tier, contains_pii, long_digit_run
 from studio.receipts import Ledger, canonical, is_opaque, sha256_hex
 
 AGENT = "community"
@@ -102,7 +102,7 @@ def enforce(triage: Triage, comment: str) -> tuple[Triage, list[str]]:
     if _INJECTION.search(envelope.neutralize(comment)):
         flags.append("injection_suspected")
         at_least("medium")
-    if contains_pii(comment):
+    if contains_pii(comment) or long_digit_run(comment):
         flags.append("pii_in_comment")
     if triage.intent == "complaint":
         human = True
@@ -117,7 +117,7 @@ def enforce(triage: Triage, comment: str) -> tuple[Triage, list[str]]:
         flags.append("link_in_draft")
         human = True
         at_least("medium")
-    if contains_pii(draft):
+    if contains_pii(draft) or long_digit_run(draft):
         flags.append("pii_in_draft")
         human = True
         at_least("medium")

@@ -14,6 +14,7 @@ names only the kind of PII, never its value.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 
 STANDARD_MODEL = "muse-spark-1.3"
@@ -23,9 +24,11 @@ CUSTOMER_SOURCES = frozenset({"comment", "lead", "transcript"})
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 # A run of digits with the separators people type; classified after normalisation.
 _RUN = re.compile(r"(?<![\w+])(?:\+|00)?\(?\d[\d \-()./]{5,}\d(?!\w)")
-# Fail-closed routing: digits joined only by the separators people type.
-_DIGIT_RUN = re.compile(r"\d(?:[\s.\-()/]*\d)+")
+# Fail-closed rule: LONG_RUN_DIGITS digits (any script) within any LONG_RUN_WINDOW
+# characters, whatever lies between them.
 LONG_RUN_DIGITS = 9
+LONG_RUN_WINDOW = 20
+_WORD = re.compile(r"\w+")
 _MAX_CANDIDATE_DIGITS = 14  # longest form classified: 00 + 44 + 10 digits
 _NIP_W = (6, 5, 7, 2, 3, 4, 5, 6, 7)
 _PESEL_W = (1, 3, 7, 9, 1, 3, 7, 9, 1, 3)
@@ -111,11 +114,73 @@ def _phones(text: str) -> list[tuple[str, int, int]]:
     return sorted(out, key=lambda m: (m[1], m[2]))
 
 
+def fold(text: str) -> str:
+    """Position-preserving ASCII view for matching: every character that is a digit after
+    NFKC (fullwidth, Arabic-Indic, superscript...) becomes its ASCII digit, every dash
+    (Pd, U+2212) becomes ``-`` and every space separator (Zs) becomes `` ``."""
+    out = []
+    for ch in text:
+        if ch.isascii():
+            out.append(ch)
+            continue
+        n = unicodedata.normalize("NFKC", ch)
+        d = unicodedata.digit(n, None) if len(n) == 1 else None
+        if d is None and len(n) == 1:
+            d = unicodedata.decimal(n, None)
+        if d is not None:
+            out.append(str(d))
+        elif ch == "\u2212" or unicodedata.category(ch) == "Pd":
+            out.append("-")
+        elif unicodedata.category(ch) == "Zs":
+            out.append(" ")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _windows(positions: list[int]) -> list[tuple[int, int]]:
+    """Merged ``(start, end)`` spans where LONG_RUN_DIGITS positions fit in the window."""
+    spans: list[tuple[int, int]] = []
+    k = LONG_RUN_DIGITS - 1
+    for i in range(len(positions) - k):
+        if positions[i + k] - positions[i] < LONG_RUN_WINDOW:
+            start, end = positions[i], positions[i + k] + 1
+            if spans and start <= spans[-1][1]:
+                spans[-1] = (spans[-1][0], max(end, spans[-1][1]))
+            else:
+                spans.append((start, end))
+    return spans
+
+
+def long_digit_spans(text: str, *, letters_break: bool = False) -> list[tuple[int, int]]:
+    """Spans holding 9+ digits within 20 characters, ignoring every non-digit character.
+
+    With ``letters_break`` (redaction), a word that contains a letter (a hex digest, an
+    opaque id) is a boundary instead: its digits do not count and the window restarts."""
+    folded = fold(text)
+    if not letters_break:
+        return _windows([i for i, ch in enumerate(folded) if ch.isdigit()])
+    spans: list[tuple[int, int]] = []
+    positions: list[int] = []
+    for m in _WORD.finditer(folded):
+        if any(ch.isalpha() for ch in m.group()):
+            spans += _windows(positions)
+            positions = []
+        else:
+            positions += [m.start() + i for i, ch in enumerate(m.group()) if ch.isdigit()]
+    return spans + _windows(positions)
+
+
 def long_digit_run(text: str) -> bool:
-    """True if ``text`` holds a run of ``LONG_RUN_DIGITS`` or more digits (separated at most
-    by spaces, dots, dashes, parentheses or slashes), whatever it is."""
-    return any(len(re.sub(r"\D", "", m.group())) >= LONG_RUN_DIGITS
-               for m in _DIGIT_RUN.finditer(text))
+    """True if ``text`` holds 9+ digits within any 20 characters (fail-closed routing)."""
+    return bool(long_digit_spans(text))
+
+
+def redact_digit_runs(text: str, mark: str = "[phone]") -> str:
+    """Every long digit span (``letters_break``) replaced by ``mark``."""
+    for start, end in reversed(long_digit_spans(text, letters_break=True)):
+        text = text[:start] + mark + text[end:]
+    return text
 
 
 def contains_pii(text: str) -> Match | None:
@@ -124,7 +189,7 @@ def contains_pii(text: str) -> Match | None:
     m = _EMAIL.search(text)
     if m:
         found.append(Match("email", m.start(), m.end()))
-    phones = _phones(text)
+    phones = _phones(fold(text))
     if phones:
         kind, start, end = phones[0]
         found.append(Match(kind, start, end))
@@ -153,7 +218,7 @@ def find_email(text: str) -> str:
 
 
 def find_phone(text: str) -> str:
-    for kind, start, end in _phones(text):
+    for kind, start, end in _phones(fold(text)):
         if kind == "phone":
             return text[start:end]
     return ""

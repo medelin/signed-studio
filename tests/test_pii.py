@@ -143,6 +143,48 @@ def test_any_long_digit_run_forces_standard(text):
 
 
 @pytest.mark.parametrize("text", ["89 PLN, 350 ml", "Promocja do 2026-10-31", "12 345 678 zł",
-                                  "1 500 PLN od 150 zł", "rok 2026, 24/7, 3x2"])
+                                  "1 500 PLN od 150 zł", "rok 2026, 24/7"])
 def test_short_numbers_stay_on_contributor(text):
     assert choose_tier(text, "contributor")[0] == "contributor", text
+
+
+# Controller ruling: Unicode digits and separators, and a 9-digits-in-20-characters window.
+UNICODE_RUNS = [
+    "tel. 600‑123‑456",                    # non-breaking hyphen
+    "tel. 600−123−456",                    # minus sign
+    "tel. 600 123 456",                    # narrow no-break space
+    "tel. 600 123 456",                    # no-break space
+    "tel. 600 123 456",                   # thin space
+    "tel. 600—123—456",                    # em dash
+    "tel. ６００１２３４５６",  # fullwidth digits
+    "tel. ٦٠٠١٢٣٤٥٦",  # Arabic-Indic digits
+    "tel. 6_0_0 1_2_3 4_5_6",                        # any non-digit filler
+]
+
+
+@pytest.mark.parametrize("text", UNICODE_RUNS)
+def test_unicode_digit_runs_are_routed_to_standard(text):
+    tier, reason, model = choose_tier(text, "contributor")
+    assert (tier, model) == ("standard", STANDARD_MODEL), text
+
+
+@pytest.mark.parametrize("text", UNICODE_RUNS[:8])
+def test_unicode_phone_forms_are_detected(text):
+    m = contains_pii(text)
+    assert m is not None and m.kind == "phone", text
+
+
+def test_window_is_nine_digits_in_twenty_characters():
+    assert long_digit_run("1a2b3c4d5e6f7g8h9")  # 9 digits in 17 characters
+    assert not long_digit_run("1 2 3 4 5 6 7 8 . . . . . . 9")  # 9th digit too far
+    assert not long_digit_run("rok 2026, 89 PLN")
+
+
+def test_redaction_uses_the_same_window():
+    from studio.receipts import redact
+
+    for text in UNICODE_RUNS[:8]:
+        assert redact(text) != text and "[phone]" in redact(text), text
+    digest = "3f9a" + "1234567890" + "b" * 50
+    assert redact(digest) == digest  # a hex digest is one token with letters: kept
+    assert redact("run_3fa9c2b1d4e5f607") == "run_3fa9c2b1d4e5f607"

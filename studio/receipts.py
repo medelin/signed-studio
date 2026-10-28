@@ -28,6 +28,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
+from studio.pii import redact_digit_runs
+
 GENESIS = "0" * 64
 APPROVAL_TTL_S = 900  # an approval authorises one write within this many seconds of issue
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review"})
@@ -75,7 +77,7 @@ def key_id(public_key: Ed25519PublicKey) -> str:
 def redact(value: Any) -> Any:
     """Replace e-mail addresses and phone numbers in any nested structure."""
     if isinstance(value, str):
-        return _PHONE.sub("[phone]", _EMAIL.sub("[email]", value))
+        return redact_digit_runs(_PHONE.sub("[phone]", _EMAIL.sub("[email]", value)))
     if isinstance(value, dict):
         return {k: redact(v) for k, v in value.items()}
     if isinstance(value, list):

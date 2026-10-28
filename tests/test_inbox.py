@@ -194,3 +194,13 @@ def test_poll_ingests_comments_from_the_adapter_once(app):
         first = c.post("/api/comments/poll", json={"object_id": "200_300"}).json()
         second = c.post("/api/comments/poll", json={"object_id": "200_300"}).json()
     assert len(first["new"]) == 1 and second["new"] == []
+
+
+def test_draft_with_a_unicode_phone_needs_a_human():
+    from studio.agents import community
+    from studio.agents.schemas import Triage
+
+    t = Triage(intent="question", sentiment="neutral", risk="low", requires_human=False,
+               draft="Zadzwoń: 600‑123‑456", reason="r", confidence=0.9)
+    checked, flags = community.enforce(t, "Jak się skontaktować?")
+    assert checked.requires_human and "pii_in_draft" in flags
