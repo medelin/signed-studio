@@ -1,4 +1,5 @@
 {
+  "_provenance": "synthetic",
   "_synthetic": true,
   "_note": "Hand-written, NOT a recording: there is no Meta token yet. Request paths, form fields and response shapes follow the Graph API v25.0 reference pages (Marketing API: ad-account campaigns, adsets, adimages, adcreatives, ads; adgroup previews; ad, ad set and campaign update (status=ACTIVE, in the order ad, ad set, campaign); Graph API object comments, comment update; error handling), read on 2026-10-28. Ids are made up. Replace with a real recording in the D5-2 live smoke.",
   "interactions": [

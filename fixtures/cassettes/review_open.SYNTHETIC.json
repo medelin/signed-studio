@@ -1,4 +1,5 @@
 {
+  "_provenance": "synthetic",
   "_synthetic": true,
   "_note": "Hand-written, NOT recorded: no BASETEN_API_KEY yet. Shape follows the OpenAI-compatible Chat Completions response Baseten documents. Replace with a recorded cassette (review_open.json) once the key exists; see CHANGELOG TODO.",
   "interactions": [

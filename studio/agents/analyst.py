@@ -63,6 +63,7 @@ class AnalystResult:
     result: MuseResult
     unverified_refs: list[str] = field(default_factory=list)
     screenshot: bool = False
+    insights_provenance: str = "live"  # "synthetic" for the demo fixture
 
     def as_dict(self) -> dict[str, Any]:
         u = self.result.usage
@@ -71,7 +72,8 @@ class AnalystResult:
                 "output_tokens": u.output_tokens, "reasoning_tokens": u.reasoning_tokens,
                 "estimated_tokens": self.packed.est_tokens, "context_tokens": CONTEXT_TOKENS,
                 "receipts": len(self.packed.receipt_ids), "dropped": self.packed.dropped,
-                "screenshot": self.screenshot, "cost_usd": round(self.result.cost_usd, 6),
+                "screenshot": self.screenshot, "insights": self.insights_provenance,
+                "cost_usd": round(self.result.cost_usd, 6),
                 "model_receipt": self.result.receipt_id,
                 "reasoning_summary": self.result.reasoning_summary[:1000]}
 
@@ -184,7 +186,9 @@ def report(
     refs = [r for r in rep.evidence_refs if r in known]
     unverified = [r[:80] for r in rep.evidence_refs if r not in known]
     rep = rep.model_copy(update={"evidence_refs": refs})
-    return AnalystResult(rep, packed, result, unverified, bool(screenshot_png))
+    provenance = insights.get("_provenance") if isinstance(insights, dict) else None
+    return AnalystResult(rep, packed, result, unverified, bool(screenshot_png),
+                         provenance if provenance in ("synthetic", "recorded") else "live")
 
 
 def inbox_summary(conn: sqlite3.Connection) -> dict[str, Any]:

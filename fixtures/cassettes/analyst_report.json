@@ -1,4 +1,5 @@
 {
+  "_provenance": "recorded",
   "ledger": "fixtures/replay/analyst-ledger.jsonl",
   "summary": {
     "comment_intents": {

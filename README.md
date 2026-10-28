@@ -34,6 +34,12 @@ make test        # offline: model calls replay recorded cassettes
 make lint        # ruff + mypy
 ```
 
+Every fixture says what it is: `"_provenance": "recorded"` (a real API response captured
+by `scripts/record_*.py`) or `"synthetic"` (hand-written, file name `*.SYNTHETIC.json`,
+with a `_note` on its source — the Graph API campaign flow, the open-weights review and the
+ad insights, until live recordings exist). A report built on synthetic insights says so on
+the page.
+
 ## Run the studio
 
 ```bash

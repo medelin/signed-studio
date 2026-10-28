@@ -1,4 +1,5 @@
 {
+  "_provenance": "recorded",
   "audio": "fixtures/audio/brief-pl.synthetic.wav",
   "note": "synthetic speech (Piper TTS, pl_PL voice), not a recording of a person",
   "interactions": [

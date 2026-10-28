@@ -56,7 +56,8 @@ class Recorder(httpx.BaseTransport):
 
 
 def save(name: str, rec: Recorder, key: str) -> None:
-    text = json.dumps({"interactions": rec.interactions}, indent=2, ensure_ascii=False) + "\n"
+    text = json.dumps({"_provenance": "recorded", "interactions": rec.interactions}, indent=2,
+                      ensure_ascii=False) + "\n"
     if key and key in text:
         raise SystemExit(f"refusing to write {name}: API key found in cassette")
     (OUT / f"{name}.json").write_text(text)

@@ -1,4 +1,5 @@
 {
+ "_provenance": "synthetic",
  "_synthetic": true,
  "_note": "Hand-made insights in the shape of the Marketing API /insights response (fields impressions, reach, clicks, ctr, spend, cpc; strings as the API returns them). Not real ad data.",
  "campaign": "Autumn mugs (demo)",
