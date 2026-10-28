@@ -107,7 +107,7 @@ def test_images_are_stored_once_downscaled(tmp_path):
     with httpx.Client(transport=tr) as c:
         r = c.post("https://api.meta.ai/v1/images/generations", json={"prompt": "mug"})
     png = base64.b64decode(r.json()["data"][0]["b64_json"])
-    assert Image.open(io.BytesIO(png)).size == (512, 341)
+    assert Image.open(io.BytesIO(png)).size == (900, 600)  # scaled back to the original
 
 
 def test_event_streams_and_form_bodies(tmp_path):

@@ -139,6 +139,29 @@ def fixture_png(png: bytes) -> bytes:
     return out.getvalue()
 
 
+def _png_size(png: bytes) -> tuple[int, int]:
+    import struct
+
+    w, h = struct.unpack(">II", png[16:24])
+    return int(w), int(h)
+
+
+def _upscale(png: bytes, size: str) -> bytes:
+    """The stored copy at its recorded size (``WxH``)."""
+    from PIL import Image
+
+    m = re.fullmatch(r"(\d{1,5})x(\d{1,5})", size)
+    if not m:
+        raise ReplayMiss(f"bad blob size {size!r}")
+    w, h = int(m.group(1)), int(m.group(2))
+    if _png_size(png) == (w, h):
+        return png
+    im = Image.open(io.BytesIO(png)).convert("RGB").resize((w, h), Image.Resampling.BILINEAR)
+    out = io.BytesIO()
+    im.save(out, "PNG", compress_level=1)
+    return out.getvalue()
+
+
 def _put_blob(data: bytes, ext: str, blobs: Path) -> str:
     blobs.mkdir(parents=True, exist_ok=True)
     name = f"{hashlib.sha256(data).hexdigest()[:32]}.{ext}"
@@ -155,7 +178,10 @@ def _store_payloads(value: Any, blobs: Path) -> Any:
         except (binascii.Error, ValueError):
             return value
         if raw[:8] == b"\x89PNG\r\n\x1a\n":
-            return _put_blob(fixture_png(raw), "png", blobs)
+            # the original size travels with the reference: replay scales the stored
+            # 512-px copy back up, so size checks (format rule F1) see what the API sent
+            w, h = _png_size(raw)
+            return _put_blob(fixture_png(raw), "png", blobs) + f"#{w}x{h}"
         return _put_blob(raw, "bin", blobs)
     if isinstance(value, dict):
         return {k: _store_payloads(v, blobs) for k, v in value.items()}
@@ -166,10 +192,12 @@ def _store_payloads(value: Any, blobs: Path) -> Any:
 
 def _inflate(value: Any, blobs: Path) -> Any:
     if isinstance(value, str) and value.startswith("@blob:"):
-        name = value[6:]
+        name, _, size = value[6:].partition("#")
         if "/" in name or name.startswith("."):
             raise ReplayMiss(f"bad blob name {name!r}")
         data = (blobs / name).read_bytes()
+        if size and name.endswith(".png"):
+            data = _upscale(data, size)
         return data.decode() if name.endswith(".txt") else base64.b64encode(data).decode()
     if isinstance(value, dict):
         return {k: _inflate(v, blobs) for k, v in value.items()}

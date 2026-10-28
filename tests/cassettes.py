@@ -3,7 +3,8 @@
 A cassette holds ``interactions[]`` of ``{request: {method, path, json}, response: {status,
 json} | {status, sse: [event, ...]}}``. Large base64 payloads are stored as PNG files next to
 the cassettes and referenced as ``"@file:<path relative to the repo>"``; they are inflated
-back to base64 here. Inline images in recorded requests are replaced by
+back to base64 here (``#WxH`` after the path: scaled back to the size the API returned).
+Inline images in recorded requests are replaced by
 ``data:<mime>;sha256,<hex>`` (tests compare paths, not image bytes).
 
 Replay checks each sent request against the recorded one: the path, and in the body the
@@ -27,7 +28,12 @@ FAKE_KEY = "test-key-not-a-secret"
 
 def inflate(value: Any) -> Any:
     if isinstance(value, str) and value.startswith("@file:"):
-        return base64.b64encode((ROOT / value[6:]).read_bytes()).decode()
+        path, _, size = value[6:].partition("#")
+        data = (ROOT / path).read_bytes()
+        if size:  # a downscaled recording served at the size the API returned
+            from studio.replay import _upscale
+            data = _upscale(data, size)
+        return base64.b64encode(data).decode()
     if isinstance(value, dict):
         return {k: inflate(v) for k, v in value.items()}
     if isinstance(value, list):

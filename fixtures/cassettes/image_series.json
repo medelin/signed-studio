@@ -360,7 +360,7 @@
               "type": "image_generation_call",
               "id": "ig_eyJwZXJtYW5lbnRfdXJsIjoiR0tPdUJ6U2JxMFlGUm1sakFNSW0zSmY2d1ZFaWJnMWlBUUFEIiwicmVzdW1lX2lkIjoiczoyNGU3NzY1Zi1jMjBjLTRjYTktYmYwNy03MTM2MDgwYTg2NjI6R0hjRmhqQzFBMHpwTm9ZR0FFRTBrNHdMeW1RWWJnMWlBUUJqIiwiYmluZGluZyI6eyJhcHBfaWQiOjIyMjAyMzIzMzIyNTA3NTEsIm1vZGVsIjoibXVzZS1pbWFnZS0xLjAifSwidmVyc2lvbiI6MSwiY3JlYXRlZF9hdCI6MTc5MzE0MDYzM30.Q8WLFwFRo9gL3TabBftkhG9dzkG5",
               "status": "completed",
-              "result": "@file:fixtures/cassettes/files/image_series-1.png"
+              "result": "@file:fixtures/cassettes/files/image_series-1.png#1600x1600"
             }
           ],
           "instructions": null,
@@ -406,7 +406,7 @@
           "created": 1793140649,
           "data": [
             {
-              "b64_json": "@file:fixtures/cassettes/files/image_series-2.png"
+              "b64_json": "@file:fixtures/cassettes/files/image_series-2.png#1408x1760"
             }
           ],
           "output_format": "png",
@@ -446,7 +446,7 @@
           "created": 1793140667,
           "data": [
             {
-              "b64_json": "@file:fixtures/cassettes/files/image_series-3.png"
+              "b64_json": "@file:fixtures/cassettes/files/image_series-3.png#1152x2048"
             }
           ],
           "output_format": "png",

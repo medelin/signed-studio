@@ -18,9 +18,10 @@ from studio.muse.client import BASE_URL, MuseClient, ToolCall
 from studio.receipts import sha256_hex
 from studio.settings import Budget
 from tests.cassettes import FAKE_KEY, ROOT
+from tests.images import placement_png
 
 PHOTO = (ROOT / "fixtures" / "assets" / "product-demo.png").read_bytes()
-PNG = (ROOT / "fixtures" / "images" / "red-16.png").read_bytes()
+PNG = placement_png("feed_1x1")
 PLACEMENTS = ("feed_1x1", "feed_4x5", "story_9x16")
 PLAN = {"audience": "a", "angles": [{"name": "n", "hook": "h", "persona": "p"}] * 3,
         "budget_pln_daily": 30, "placements": list(PLACEMENTS), "tasks": ["t"]}
@@ -50,7 +51,7 @@ def env(tmp_path):
     out = data_dir / "assets" / run.run_id
     out.mkdir(parents=True)
     for n, placement in enumerate(PLACEMENTS):
-        png = PNG + bytes([n])
+        png = placement_png(placement) + bytes([n])
         (out / f"{placement}.png").write_bytes(png)
         images.append(CreativeImage(placement=placement, size="1024x1024",
                                     path=f"assets/{run.run_id}/{placement}.png",

@@ -902,7 +902,7 @@
        "type": "image_generation_call",
        "id": "ig_eyJwZXJtYW5lbnRfdXJsIjoiR0pMS0JEVHdIUTlxUjZRRkFLNjFRT21PODVWT2JnMWlBUUFEIiwicmVzdW1lX2lkIjoiczphZWY0NjI5ZS1jZTEzLTQzMWItODE5Zi1mYWExNWMzOTBmOGM6R0pIS0JEU053SGVvQk1NR0FBWFk4dUVZWVlOZ2JnMWlBUUJqIiwiYmluZGluZyI6eyJhcHBfaWQiOjIyMjAyMzIzMzIyNTA3NTEsIm1vZGVsIjoibXVzZS1pbWFnZS0xLjAifSwidmVyc2lvbiI6MSwiY3JlYXRlZF9hdCI6MTc5MzE1Nzc2MX0.Q8WLFwE-BnzqSTew8TUm1uIgIw-f",
        "status": "completed",
-       "result": "@blob:573c4afc34556c9400933a3c343f1b91.png"
+       "result": "@blob:573c4afc34556c9400933a3c343f1b91.png#1600x1600"
       }
      ],
      "instructions": null,
@@ -947,7 +947,7 @@
      "created": 1793157776,
      "data": [
       {
-       "b64_json": "@blob:bd5f40daddaf9ef76c69fdba0aa0dca2.png"
+       "b64_json": "@blob:bd5f40daddaf9ef76c69fdba0aa0dca2.png#1408x1760"
       }
      ],
      "output_format": "png",
@@ -986,7 +986,7 @@
      "created": 1793157788,
      "data": [
       {
-       "b64_json": "@blob:15deddf9abdcbe1bece8f4a6f3a0568b.png"
+       "b64_json": "@blob:15deddf9abdcbe1bece8f4a6f3a0568b.png#1152x2048"
       }
      ],
      "output_format": "png",

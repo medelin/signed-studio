@@ -19,9 +19,10 @@ from studio.muse.client import BASE_URL, MuseClient, ToolCall
 from studio.receipts import sha256_hex
 from studio.settings import Budget
 from tests.cassettes import FAKE_KEY, ROOT
+from tests.images import placement_png
 
 PHOTO = (ROOT / "fixtures" / "assets" / "product-demo.png").read_bytes()
-PNG = (ROOT / "fixtures" / "images" / "red-16.png").read_bytes()
+PNG = placement_png("feed_1x1")  # a creative of the size the format rule (F1) accepts
 PLAN = {"audience": "a", "angles": [{"name": f"angle {i}", "hook": "h", "persona": "p"}
                                     for i in range(3)],
         "budget_pln_daily": 30, "placements": ["feed_1x1"], "tasks": ["t"]}
