@@ -42,7 +42,7 @@
   {% if rep.reasoning_summary %}<details><summary>Reasoning summary</summary><pre>{{ rep.reasoning_summary }}</pre></details>{% endif %}
 </section>
 {% else %}
-<p class="empty">No report yet.</p>
+<p class="empty">No report yet. {% if logged_in and not read_only %}Write one above: the analyst reads every receipt in one long-context prompt.{% else %}Once a judge writes one, the analyst’s summary, KPIs and evidence links appear here.{% endif %}</p>
 {% endif %}
 </div>
 <script src="/static/signer.js" defer></script>
