@@ -38,7 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from studio import db, routes_inbox, routes_report, routes_studio, sandbox
+from studio import db, routes_inbox, routes_receipts, routes_report, routes_studio, sandbox
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
@@ -402,6 +402,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_inbox.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_inbox.register_leads(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
+    routes_receipts.register(app, settings, ledger, templates, session_of)
 
     # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
     # each runs only for a consumed, signed approval (studio.executor.authorize).

@@ -6,7 +6,8 @@
   {% if logged_in %}you are signed in as the judge.{% elif login_enabled %}judges sign in to run the studio.{% else %}sign-in is disabled on this instance.{% endif %}</p>
 </section>
 <section>
-  <h1>Receipts</h1>
+  <h1>Latest receipts</h1>
+  <p class="hint"><a href="/receipts">All receipts, filter by run, copy as JSON →</a></p>
   {% if receipts %}
   <table class="receipts">
     <thead><tr><th>time (UTC)</th><th>run</th><th>agent</th><th>kind</th><th>provider · model</th><th>tier</th><th>tokens in/out</th><th>cost</th><th>hash</th></tr></thead>

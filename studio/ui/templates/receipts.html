@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Receipts · Muse Studio Lite{% endblock %}
+{% block content %}
+<section class="panel" aria-labelledby="receipts-h">
+  <h1 id="receipts-h">Receipts</h1>
+  <p class="hint">Every model call, tool call, review, human approval and external write leaves
+  a receipt: hash-chained per run and signed with the ledger key. Hover a hash for the full
+  value; copy any receipt as JSON. Check the whole export offline with
+  <code>studio verify receipts.jsonl --server &lt;this site&gt;</code>.
+  {% if not logged_in %}<span class="badge">visitor view: e-mails and phone numbers redacted</span>{% endif %}</p>
+  <form class="inline" method="get" action="/receipts" aria-label="Filter receipts">
+    <label for="f-run">Run</label>
+    <select id="f-run" name="run">
+      <option value="">all runs</option>
+      {% for r in runs %}<option value="{{ r }}"{% if r == run %} selected{% endif %}>{{ r }}</option>{% endfor %}
+    </select>
+    <label for="f-kind">Kind</label>
+    <select id="f-kind" name="kind">
+      <option value="">all kinds</option>
+      {% for k in kinds %}<option value="{{ k }}"{% if k == kind %} selected{% endif %}>{{ k }}</option>{% endfor %}
+    </select>
+    <button type="submit">Filter</button>
+    {% if run or kind %}<a href="/receipts">Clear filter</a>{% endif %}
+  </form>
+  <p class="hint" role="status">Showing {{ views | length }} of {{ matched }} matching receipts ({{ total }} in the ledger{% if matched > limit %}; newest {{ limit }} shown — the full log is <a href="/api/receipts.jsonl">receipts.jsonl</a>{% endif %}).</p>
+</section>
+<section aria-label="Receipt list">
+{% if views %}
+  <table class="receipts">
+    <caption class="sr-only">Receipts, newest first</caption>
+    <thead><tr><th scope="col">time (UTC)</th><th scope="col">run</th><th scope="col">agent</th><th scope="col">kind</th><th scope="col">provider · model</th><th scope="col">tier</th><th scope="col">tokens in/out</th><th scope="col">cost</th><th scope="col">hash</th><th scope="col">JSON</th></tr></thead>
+    <tbody>
+    {% for v in views %}{% set r = v.r %}
+      <tr>
+        <td>{{ r.ts | utc }}</td>
+        <td><a href="/receipts?run={{ r.run_id | urlencode }}"><code>{{ r.run_id }}</code></a></td>
+        <td>{{ r.agent }}</td>
+        <td><span class="kind {{ r.kind }}">{{ r.kind }}</span>{% if r.envelope %} <span class="badge" title="customer text was wrapped in the untrusted-content envelope">envelope</span>{% endif %}</td>
+        <td>{{ r.provider or "—" }} · {{ r.model or "—" }}</td>
+        <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
+        <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
+        <td>${{ "%.5f" | format(r.cost_usd) }}</td>
+        <td><code title="hash {{ r.hash }} · prev {{ r.prev }} · id {{ r.id }}" tabindex="0">{{ r.hash[:12] }}</code></td>
+        <td><button type="button" class="copy-json secondary" data-target="j-{{ r.id }}" aria-label="Copy receipt {{ r.id }} as JSON">Copy</button>
+          <details><summary>{{ r.id[:8] }}</summary><pre class="json" id="j-{{ r.id }}">{{ v.json }}</pre></details></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% elif total == 0 %}
+  <p class="empty">No receipts yet. Start a run in the <a href="/studio">studio</a> or triage a comment in the <a href="/inbox">inbox</a>; every call appears here.</p>
+{% else %}
+  <p class="empty">No receipts match this filter. <a href="/receipts">Show all receipts</a>.</p>
+{% endif %}
+</section>
+<p class="status" id="copy-status" role="status" aria-live="polite"></p>
+<script src="/static/receipts.js" defer></script>
+{% endblock %}
