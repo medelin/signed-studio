@@ -32,6 +32,9 @@ AGENT = "art_director"
 DEFAULT_PLACEMENTS = ("feed_1x1", "feed_4x5", "story_9x16")
 FLATTEN_BG = (244, 239, 230)  # brand off-white
 IMAGE_COST_USD = 0.01  # Muse Image price per generated image (see muse.image)
+# The Responses image_generation tool takes only these sizes (a real run got
+# "unknown value `1024x1280`"); other first placements go through /images/edits.
+RESPONSES_SIZES = frozenset({"1024x1024"})
 
 
 class CostCapReached(Exception):
@@ -118,7 +121,10 @@ def run(
             raise CostCapReached(f"stopped before {placement}: run budget reached")
         size = PLACEMENT_SIZES[placement]
         text = placement_prompt(scene, headline, placement, first=i == 0)
-        if first_png is None:
+        if first_png is None and size not in RESPONSES_SIZES:
+            out = image.edit(client, [product], text, size=size, run_id=run_id, agent=AGENT)
+            first_png = out.png
+        elif first_png is None:
             out = image.respond_image(client, text, [product], size=size, run_id=run_id,
                                       agent=AGENT)
             first_png = out.png

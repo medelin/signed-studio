@@ -225,15 +225,18 @@ class ReplayTransport(httpx.BaseTransport):
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         key, route, _ = request_key(request)
         with self._lock:
+            # A known request is always answered from its own recordings (cycling on a
+            # second pass); only an unknown request falls back to its route. Otherwise a
+            # second run would take an unused recording of another call on the same route.
             kind = "exact"
             i = self._first_unused(self._by_key.get(key))
+            if i is None and key in self._by_key:
+                i = self._cycle(self._by_key, key)
             if i is None:
                 kind = "route"
                 i = self._first_unused(self._by_route.get(route))
-            if i is None:  # every recording of this route served: cycle (a second pass)
-                kind = "exact" if key in self._by_key else "route"
-                i = self._cycle(self._by_key, key) if kind == "exact" else self._cycle(
-                    self._by_route, route)
+                if i is None:
+                    i = self._cycle(self._by_route, route)
             if i is None:
                 self.stats["miss"] += 1
                 return httpx.Response(599, json={"error": {

@@ -22,8 +22,11 @@ def _run(tmp_path, failures):
     items = interactions("producer_loop")
     last = len(items) - 1
     state = {"i": 0, "failed": 0}
+    bodies = []
 
     def handler(request):
+        import json as _json
+        bodies.append(_json.loads(request.content))
         i = state["i"]
         if i == last and state["failed"] < failures:
             state["failed"] += 1
@@ -46,6 +49,7 @@ def _run(tmp_path, failures):
     producer.TURN_RETRY_DELAY_S = 0.0
     result = producer.run(ctx, load("producer_loop")["brief"], run_id="run-res")
     status = conn.execute("SELECT status FROM run_state WHERE run_id = 'run-res'").fetchone()[0]
+    _run.bodies = bodies
     return result, status, ledger
 
 
@@ -61,6 +65,20 @@ def test_an_expired_previous_response_is_retried_once(tmp_path):
     assert status == "awaiting_approval" and result.summary
     errors = [r for r in ledger.receipts("run-res") if r.details.get("error_status") == 400]
     assert len(errors) == 1
+
+
+def test_twice_expired_falls_back_to_the_full_transcript_without_chaining(tmp_path):
+    result, status, ledger = _run(tmp_path, failures=2)
+    assert status == "awaiting_approval" and result.summary
+    last = _run.bodies[-1]
+    assert "previous_response_id" not in last
+    kinds = [i.get("type") or i.get("role") for i in last["input"]]
+    assert kinds[:2] == ["system", "user"]
+    assert "function_call" in kinds and "function_call_output" in kinds
+    calls = [i for i in last["input"] if i.get("type") == "function_call"]
+    assert all(set(c) == {"type", "call_id", "name", "arguments"} for c in calls)
+    outs = {i["call_id"] for i in last["input"] if i.get("type") == "function_call_output"}
+    assert {c["call_id"] for c in calls} == outs  # every call answered
 
 
 def test_a_failed_summary_after_the_approval_request_keeps_the_run(tmp_path):

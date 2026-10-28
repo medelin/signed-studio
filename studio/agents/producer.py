@@ -368,27 +368,51 @@ def _dispatch_turn(ctx: Context, dispatcher: Dispatcher, calls: list[ToolCall],
 TURN_RETRY_DELAY_S = 1.5
 
 
+def _replayable(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A turn's output as input for a stateless request: function calls and assistant
+    text only (no item ids, no reasoning items that live only on the server)."""
+    out: list[dict[str, Any]] = []
+    for item in items:
+        if item.get("type") == "function_call":
+            out.append({"type": "function_call", "call_id": item.get("call_id", ""),
+                        "name": item.get("name", ""), "arguments": item.get("arguments", "")})
+        elif item.get("type") == "message":
+            text = "".join(str(c.get("text", "")) for c in item.get("content") or []
+                           if isinstance(c, dict) and c.get("type") == "output_text")
+            if text:
+                out.append({"role": "assistant", "content": text})
+    return out
+
+
 def _turn(ctx: Context, next_input: list[dict[str, Any]], run_id: str,
-          tools: list[dict[str, Any]], previous: str | None) -> Any:
-    """One producer turn. A 400 on a chained turn ("referenced response not found or
-    expired", seen in real runs right after the previous response) is retried once."""
-    def call() -> Any:
+          tools: list[dict[str, Any]], previous: str | None,
+          transcript: list[dict[str, Any]] | None = None) -> Any:
+    """One producer turn. A chained turn that gets a 400 ("referenced response not found
+    or expired", seen in real runs) is retried once; if it fails again, the whole
+    conversation so far (``transcript`` + ``next_input``) is sent without chaining."""
+    def call(inp: list[dict[str, Any]], prev: str | None) -> Any:
         return ctx.client.respond(
-            MODEL, next_input, run_id=run_id, agent=AGENT, tools=tools,
+            MODEL, inp, run_id=run_id, agent=AGENT, tools=tools,
             reasoning={"effort": "medium", "summary": "auto"},
-            previous_response_id=previous, max_output_tokens=4000,
+            previous_response_id=prev, max_output_tokens=4000,
             tier="standard", tier_reason="producer loop", parallel_tool_calls=True,
-            # the brief is only in the first turn; later turns chain to it
-            envelope_sources=_sources(ctx) if previous is None else (),
+            # the brief travels in the first turn (or the full transcript); later turns
+            # chain to it
+            envelope_sources=_sources(ctx) if prev is None else (),
         )
 
-    try:
-        return call()
-    except MuseError as exc:
-        if previous is None or exc.status != 400:
-            raise
-    time.sleep(TURN_RETRY_DELAY_S)
-    return call()
+    for attempt in range(2):
+        try:
+            return call(next_input, previous)
+        except MuseError as exc:
+            if previous is None or exc.status != 400:
+                raise
+        if attempt == 0:
+            time.sleep(TURN_RETRY_DELAY_S)
+    if transcript is None:
+        raise MuseError("chained turn failed twice and there is no transcript",
+                        status=400, code="previous_response_unavailable")
+    return call([*transcript, *next_input], None)
 
 
 def run(
@@ -420,6 +444,7 @@ def run(
                 f"{result.plan.model_dump_json()}\n\nRun the plan with your tools now.")},
         ]
         previous: str | None = None
+        transcript: list[dict[str, Any]] = []  # everything before next_input (fallback)
         used: Counter[str] = Counter()
         result.status = "max_steps"
         for step in range(max_steps):
@@ -427,7 +452,7 @@ def run(
                 result.status = "max_cost"
                 break
             try:
-                turn = _turn(ctx, next_input, run_id, tools, previous)
+                turn = _turn(ctx, next_input, run_id, tools, previous, transcript)
             except MuseError as exc:
                 if not result.pending_id:
                     raise
@@ -446,6 +471,7 @@ def run(
                 break
             outcomes = _dispatch_turn(ctx, dispatcher, turn.tool_calls, used, max_cost_usd,
                                       run_id)
+            transcript += [*next_input, *_replayable(turn.output_items)]
             next_input = [o.as_input() for o in outcomes]
     except Exception:
         result.cost_usd = _cost(ctx, run_id)
