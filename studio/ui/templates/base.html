@@ -39,7 +39,8 @@
         <select id="pref-palette" name="palette">{% for p in palettes %}<option value="{{ p }}"{% if p == request.state.palette %} selected{% endif %}>{{ t("palette." ~ p) }}</option>{% endfor %}</select>
         <button type="submit" class="secondary theme-apply">{{ t("theme.apply") }}</button>
       </form>
-      {% if logged_in %}<form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">{{ t("auth.sign_out") }}</button></form>
+      {% if logged_in %}<a href="/account"{% if here.startswith("/account") %} aria-current="page"{% endif %}>{{ t("nav.account") }}</a>
+      <form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">{{ t("auth.sign_out") }}</button></form>
       {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">{{ t("auth.sign_in") }}</a>{% endif %}
     </span>
   </header>

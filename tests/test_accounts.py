@@ -310,3 +310,97 @@ def test_challenges_of_an_account_can_be_dropped():
     mine, other = ch.open("acct_a", "/"), ch.open("acct_b", "/")
     ch.drop_account("acct_a")
     assert ch.get(mine) is None and ch.get(other) is not None
+
+
+# -- stale challenges and the per-account code limit ------------------------------------
+
+
+def wrong(secret):
+    near = {accounts.totp_code(secret, accounts.totp_step() + k) for k in range(-2, 3)}
+    return next(c for c in ("000000", "111111", "222222", "333333") if c not in near)
+
+
+@pytest.mark.parametrize("change", ["reset", "disable", "change", "2fa_off", "2fa_reset"])
+def test_a_credential_change_makes_an_open_challenge_stale(store, change):
+    a = store.create("ola", PASSWORD)
+    secret, codes = enrol(store, a)
+    gen = store.credential_gen(a.id)  # what the challenge remembers at the password step
+    if change == "reset":
+        store.reset_password("ola", "Fresh-pass-2026x")
+    elif change == "disable":
+        store.set_status("ola", "disabled")
+        store.set_status("ola", "active")
+    elif change == "change":
+        store.change_password(a.id, PASSWORD, "Fresh-pass-2026x", "Fresh-pass-2026x",
+                              keep_sid="")
+    elif change == "2fa_off":
+        store.totp_disable(a.id, PASSWORD, codes[0])
+        secret, _ = enrol(store, a)
+    else:
+        store.reset_password("ola", "Fresh-pass-2026x", clear_2fa=True)
+    assert store.credential_gen(a.id) != gen
+    following = accounts.totp_code(secret, accounts.totp_step() + 1)
+    assert not store.verify_second_factor(a.id, following, gen=gen)
+
+
+def test_code_failures_lock_the_account_across_challenges(store):
+    clock = [1_000_000.0]
+    store.clock = lambda: clock[0]
+    a = store.create("ola", PASSWORD)
+    secret = store.totp_begin(a.id, PASSWORD)
+    store.totp_confirm(a.id, accounts.totp_code(secret, accounts.totp_step(clock[0])))
+    gen = store.credential_gen(a.id)
+    bad = next(c for c in ("000000", "111111", "222222") if c not in {
+        accounts.totp_code(secret, accounts.totp_step(clock[0]) + k) for k in range(-2, 3)})
+    for _ in range(accounts.FREE_CODE_FAILURES):  # each could be a fresh challenge
+        assert not store.verify_second_factor(a.id, bad, gen=gen)
+    assert store.code_lock_remaining(a.id) == 0
+    assert not store.verify_second_factor(a.id, bad, gen=gen)  # 6th: the lock starts
+    assert store.code_lock_remaining(a.id) == accounts.CODE_LOCK_BASE_S
+    good = accounts.totp_code(secret, accounts.totp_step(clock[0]) + 1)
+    assert not store.verify_second_factor(a.id, good, gen=gen)  # even the right code waits
+    with pytest.raises(accounts.SecondFactorLocked):
+        store.totp_disable(a.id, PASSWORD, good)
+    clock[0] += accounts.CODE_LOCK_BASE_S + 1
+    assert not store.verify_second_factor(a.id, bad, gen=gen)  # 7th: twice as long
+    assert store.code_lock_remaining(a.id) == 2 * accounts.CODE_LOCK_BASE_S
+    clock[0] += 2 * accounts.CODE_LOCK_BASE_S + 1
+    good = accounts.totp_code(secret, accounts.totp_step(clock[0]))
+    assert store.verify_second_factor(a.id, good, gen=gen)  # success resets the count
+    row = store.conn.execute("SELECT code_failures, code_locked_until FROM accounts "
+                             "WHERE id = ?", (a.id,)).fetchone()
+    assert tuple(row) == (0, 0)
+
+
+def test_a_new_password_clears_the_code_lock(store):
+    a = store.create("ola", PASSWORD)
+    secret, _ = enrol(store, a)
+    for _ in range(accounts.FREE_CODE_FAILURES + 1):
+        store.verify_second_factor(a.id, wrong(secret))
+    assert store.code_lock_remaining(a.id) > 0
+    store.reset_password("ola", "Fresh-pass-2026x")
+    assert store.code_lock_remaining(a.id) == 0
+    for _ in range(accounts.FREE_CODE_FAILURES + 1):
+        store.verify_second_factor(a.id, wrong(secret))
+    store.change_password(a.id, "Fresh-pass-2026x", "Other-pass-2027y", "Other-pass-2027y",
+                          keep_sid="")
+    assert store.code_lock_remaining(a.id) == 0
+
+
+def test_the_demo_account_never_locks(store):
+    judge = store.seed_demo(PASSWORD)
+    for _ in range(accounts.FREE_CODE_FAILURES + 3):
+        assert not store.verify_second_factor(judge.id, "123456")
+    assert store.code_lock_remaining(judge.id) == 0  # no second factor: nothing is counted
+    assert store.authenticate("judge", PASSWORD) is not None
+
+
+def test_older_accounts_tables_get_the_new_columns(tmp_path):
+    conn = sqlite3.connect(tmp_path / "old.db", isolation_level=None)
+    old = accounts.SCHEMA.split("CREATE TABLE IF NOT EXISTS recovery_codes")[0]
+    for col in ("credential_gen", "code_failures", "code_locked_until"):
+        old = "\n".join(line for line in old.splitlines() if not line.strip().startswith(col))
+    conn.executescript(old.replace("deleted_ts REAL,", "deleted_ts REAL"))
+    db.init(conn)
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(accounts)")}
+    assert {"credential_gen", "code_failures", "code_locked_until"} <= cols

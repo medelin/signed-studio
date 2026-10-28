@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}{{ t("account.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.account") }}{% endblock %}
+{%- macro error_of(form, id) -%}
+{%- set e = errors.get(form) -%}
+{%- if e -%}
+<p class="status error" id="{{ id }}" role="alert">{% if e[0] == "err.invalid_profile" and e[1] %}{{ t("account.profile.invalid", field=t("account.profile." ~ e[1])) }}{% else %}{{ t(e[0]) }}{% endif %}</p>
+{%- endif -%}
+{%- endmacro -%}
+{%- macro invalid(form, id, field="", extra="") -%}
+{%- set e = errors.get(form) -%}
+{%- set bad = e and (not field or e[1] == field) -%}
+{%- set ids = ([extra] if extra else []) + ([id] if bad else []) -%}
+{%- if ids %} aria-describedby="{{ ids | join(' ') }}"{% endif %}{% if bad %} aria-invalid="true"{% endif -%}
+{%- endmacro -%}
+{% block content %}
+<section class="account-head" aria-labelledby="account-h">
+  <div>
+    <h1 id="account-h">{{ t("account.title") }}</h1>
+    <p class="lead">{{ t("account.lead", name=account.display_name or account.username) }}</p>
+    {% if account.is_demo %}<p class="hint" id="demo-note">{{ t("account.demo_note") }}</p>{% endif %}
+    <p class="status ok" id="account-status" role="status" aria-live="polite">{% if done %}{{ t("account.done." ~ done) }}{% endif %}</p>
+  </div>
+  <div class="il-place account-art">{{ people(["priya", "harjit"], t("account.art")) }}</div>
+</section>
+<nav class="account-toc" aria-label="{{ t('account.sections') }}">
+  <ul>{% for s in sections %}<li><a href="#{{ s }}">{{ t("account.section." ~ s) }}</a></li>{% endfor %}</ul>
+</nav>
+<p class="hint">{{ t("account.help_html") }}</p>
+
+<section class="panel account-part" id="profile" aria-labelledby="profile-h">
+  <h2 id="profile-h">{{ t("account.section.profile") }}</h2>
+  <form method="post" action="/account/profile" class="stack">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    {{ error_of("profile", "profile-error") }}
+    <fieldset>
+      <legend>{{ t("account.profile.you") }}</legend>
+      <p class="hint">{{ t("account.profile.user") }}: <code>{{ account.username }}</code></p>
+      <label for="pf-display">{{ t("account.profile.display_name") }}</label>
+      <input id="pf-display" name="display_name" maxlength="80" autocomplete="name" value="{{ values.display_name }}"{{ invalid("profile", "profile-error", "display_name") }}>
+      <label for="pf-email">{{ t("account.profile.email") }}</label>
+      <input id="pf-email" name="email" type="email" maxlength="254" autocomplete="email" value="{{ values.email }}"{{ invalid("profile", "profile-error", "email", "pf-email-hint") }}>
+      <p class="hint" id="pf-email-hint">{{ t("account.profile.email_hint") }}</p>
+    </fieldset>
+    <fieldset>
+      <legend>{{ t("account.profile.defaults") }}</legend>
+      <label for="pf-lang">{{ t("account.profile.lang") }}</label>
+      <select id="pf-lang" name="lang"><option value="">{{ t("account.profile.keep") }}</option>{% for code in langs %}<option value="{{ code }}" lang="{{ code }}"{% if values.lang == code %} selected{% endif %}>{{ lang_names[code] }}</option>{% endfor %}</select>
+      <label for="pf-theme">{{ t("account.profile.theme") }}</label>
+      <select id="pf-theme" name="theme"><option value="">{{ t("account.profile.keep") }}</option>{% for m in themes %}<option value="{{ m }}"{% if values.theme == m %} selected{% endif %}>{{ t("theme." ~ m) }}</option>{% endfor %}</select>
+      <label for="pf-palette">{{ t("account.profile.palette") }}</label>
+      <select id="pf-palette" name="palette"><option value="">{{ t("account.profile.keep") }}</option>{% for p in palettes %}<option value="{{ p }}"{% if values.palette == p %} selected{% endif %}>{{ t("palette." ~ p) }}</option>{% endfor %}</select>
+    </fieldset>
+    <fieldset aria-describedby="pf-billing">
+      <legend>{{ t("account.profile.advertiser") }}</legend>
+      <div class="choices">{% for kind in advertiser_types %}
+        <label class="choice"><input type="radio" name="advertiser_type" value="{{ kind }}"{% if values.advertiser_type == kind %} checked{% endif %}> {{ t("account.profile." ~ kind) }}</label>{% endfor %}
+      </div>
+      <p class="hint" id="pf-company-hint">{{ t("account.profile.company_hint") }}</p>
+      <label for="pf-legal">{{ t("account.profile.legal_name") }}</label>
+      <input id="pf-legal" name="legal_name" maxlength="160" autocomplete="organization" value="{{ values.legal_name }}"{{ invalid("profile", "profile-error", "legal_name", "pf-company-hint") }}>
+      <label for="pf-country">{{ t("account.profile.country") }}</label>
+      <input id="pf-country" name="country" maxlength="80" autocomplete="country-name" value="{{ values.country }}"{{ invalid("profile", "profile-error", "country", "pf-company-hint") }}>
+      <label for="pf-tax">{{ t("account.profile.tax_id") }}</label>
+      <input id="pf-tax" name="tax_id" maxlength="40" autocomplete="off" value="{{ values.tax_id }}"{{ invalid("profile", "profile-error", "tax_id", "pf-tax-hint") }}>
+      <p class="hint" id="pf-tax-hint">{{ t("account.profile.tax_hint") }}</p>
+      <p class="hint" id="pf-billing">{{ t("account.profile.billing_note") }}</p>
+    </fieldset>
+    <button type="submit"{% if read_only %} disabled{% endif %}>{{ t("account.profile.save") }}</button>
+  </form>
+</section>
+
+<section class="panel account-part" id="password" aria-labelledby="password-h">
+  <h2 id="password-h">{{ t("account.section.password") }}</h2>
+  {% if account.is_demo %}
+  <p class="hint">{{ t("account.password.demo") }}</p>
+  {% else %}
+  <p class="hint" id="pw-lead">{{ t("account.password.lead") }}</p>
+  <form method="post" action="/account/password" class="stack" aria-describedby="pw-lead">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <input type="hidden" name="username" value="{{ account.username }}" autocomplete="username">
+    {{ error_of("password", "password-error") }}
+    <label for="pw-current">{{ t("account.password.current") }}</label>
+    <input id="pw-current" name="current" type="password" autocomplete="current-password" required{{ invalid("password", "password-error", "current") }}>
+    <label for="pw-new">{{ t("account.password.new") }}</label>
+    <input id="pw-new" name="new" type="password" autocomplete="new-password" minlength="{{ min_password }}" maxlength="256" required{{ invalid("password", "password-error", "new", "pw-new-hint") }}>
+    <p class="hint" id="pw-new-hint">{{ t("account.password.new_hint", min=min_password) }}</p>
+    <label for="pw-confirm">{{ t("account.password.confirm") }}</label>
+    <input id="pw-confirm" name="confirm" type="password" autocomplete="new-password" minlength="{{ min_password }}" maxlength="256" required>
+    <button type="submit"{% if read_only %} disabled{% endif %}>{{ t("account.password.submit") }}</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="panel account-part" id="two-factor" aria-labelledby="two-factor-h">
+  <h2 id="two-factor-h">{{ t("account.section.two-factor") }}</h2>
+  <p class="hint">{{ t("account.2fa.lead") }}</p>
+  {{ error_of("two_factor", "two-factor-error") }}
+  {% if codes %}
+  <div class="recovery" role="region" aria-labelledby="codes-h">
+    <h3 id="codes-h">{{ t("account.2fa.codes_title") }}</h3>
+    <p>{{ t("account.2fa.codes_lead") }}</p>
+    <ol class="codes">{% for code in codes %}<li><code>{{ code }}</code></li>{% endfor %}</ol>
+  </div>
+  {% elif account.is_demo %}
+  <p class="state down">{{ t("account.2fa.off") }}</p>
+  <p class="hint">{{ t("account.2fa.demo") }}</p>
+  {% elif account.totp_enabled %}
+  <p class="state ok">{{ t("account.2fa.on") }}</p>
+  <p class="hint">{{ t("account.2fa.codes_left", n=codes_left) }}</p>
+  <p class="hint" id="tf-off-lead">{{ t("account.2fa.disable_lead") }}</p>
+  <form method="post" action="/account/2fa/disable" class="stack" aria-describedby="tf-off-lead">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <label for="tf-off-pass">{{ t("account.2fa.password") }}</label>
+    <input id="tf-off-pass" name="password" type="password" autocomplete="current-password" required{{ invalid("two_factor", "two-factor-error") }}>
+    <label for="tf-off-code">{{ t("account.2fa.code_or_recovery") }}</label>
+    <input id="tf-off-code" name="code" autocomplete="one-time-code" maxlength="40" required{{ invalid("two_factor", "two-factor-error") }}>
+    <button type="submit" class="secondary"{% if read_only %} disabled{% endif %}>{{ t("account.2fa.disable") }}</button>
+  </form>
+  {% elif pending_secret %}
+  <p id="tf-scan">{{ t("account.2fa.scan") }}</p>
+  <div class="enrol">
+    <figure class="qr-place">{{ qr_svg(pending_uri, t("account.2fa.qr_label")) | safe }}</figure>
+    <div class="stack">
+      <p><span class="hud-label" id="tf-secret-label">{{ t("account.2fa.secret_label") }}</span><br><code class="secret" aria-labelledby="tf-secret-label">{{ format_secret(pending_secret) }}</code></p>
+      <form method="post" action="/account/2fa/confirm" class="stack" aria-describedby="tf-scan">
+        <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+        <label for="tf-code">{{ t("account.2fa.code") }}</label>
+        <input id="tf-code" name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" autocomplete="one-time-code" required{{ invalid("two_factor", "two-factor-error") }}>
+        <button type="submit"{% if read_only %} disabled{% endif %}>{{ t("account.2fa.confirm") }}</button>
+      </form>
+      <form method="post" action="/account/2fa/cancel">
+        <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+        <button type="submit" class="secondary">{{ t("account.2fa.cancel") }}</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <p class="state down">{{ t("account.2fa.off") }}</p>
+  <form method="post" action="/account/2fa/start" class="stack">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <label for="tf-pass">{{ t("account.2fa.password") }}</label>
+    <input id="tf-pass" name="password" type="password" autocomplete="current-password" required{{ invalid("two_factor", "two-factor-error") }}>
+    <button type="submit"{% if read_only %} disabled{% endif %}>{{ t("account.2fa.start") }}</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="panel account-part" id="sessions" aria-labelledby="sessions-h">
+  <h2 id="sessions-h">{{ t("account.section.sessions") }}</h2>
+  <p class="hint">{{ t("account.sessions.lead") }}</p>
+  {{ error_of("sessions", "sessions-error") }}
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="sessions-caption">
+  <table class="receipts sessions">
+    <caption id="sessions-caption" class="sr-only">{{ t("account.sessions.caption") }}</caption>
+    <thead><tr><th scope="col">{{ t("account.sessions.agent") }}</th><th scope="col">{{ t("account.sessions.created") }}</th><th scope="col">{{ t("account.sessions.last_seen") }}</th><th scope="col">{{ t("account.sessions.action") }}</th></tr></thead>
+    <tbody>
+    {% for s in sessions %}
+      <tr><td>{{ s.user_agent }}</td><td>{{ s.created_ts | utc }}</td><td>{{ s.last_seen_ts | utc }}</td>
+      <td>{% if s.current %}<span class="kind approval">{{ t("account.sessions.this") }}</span>{% else %}<form method="post" action="/account/sessions/revoke" class="inline-form"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><input type="hidden" name="ref" value="{{ s.ref }}"><button type="submit" class="secondary small-button" aria-label="{{ t('account.sessions.revoke_label', agent=s.user_agent, created=s.created_ts | utc) }}">{{ t("account.sessions.revoke") }}</button></form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if sessions | length > 1 %}
+  <form method="post" action="/account/sessions/revoke-others" class="inline">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <button type="submit" class="secondary">{{ t("account.sessions.revoke_others") }}</button>
+  </form>
+  {% else %}
+  <p class="hint">{{ t("account.sessions.none_other") }}</p>
+  {% endif %}
+</section>
+
+<section class="panel account-part" id="export" aria-labelledby="export-h">
+  <h2 id="export-h">{{ t("account.section.export") }}</h2>
+  <p class="hint">{{ t("account.export.lead") }}</p>
+  <p><a class="cta" href="/account/export.json" download>{{ t("account.export.download") }}</a></p>
+</section>
+
+<section class="panel account-part" id="delete" aria-labelledby="delete-h">
+  <h2 id="delete-h">{{ t("account.section.delete") }}</h2>
+  <div class="delete-body">
+    <div>
+      <p id="del-lead">{{ t("account.delete.lead") }}</p>
+      <p class="hint" id="del-receipts">{{ t("account.delete.receipts") }}</p>
+      {% if account.is_demo %}
+      <p class="hint">{{ t("account.delete.demo") }}</p>
+      {% else %}
+      <form method="post" action="/account/delete" class="stack" aria-describedby="del-lead del-receipts">
+        <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+        {{ error_of("delete", "delete-error") }}
+        <label for="del-confirm">{{ t("account.delete.confirm", user=account.username) }}</label>
+        <input id="del-confirm" name="confirm" autocomplete="off" autocapitalize="none" spellcheck="false" required{{ invalid("delete", "delete-error") }}>
+        <label for="del-pass">{{ t("account.delete.password") }}</label>
+        <input id="del-pass" name="password" type="password" autocomplete="current-password" required{{ invalid("delete", "delete-error") }}>
+        {% if account.totp_enabled %}
+        <label for="del-code">{{ t("account.delete.code") }}</label>
+        <input id="del-code" name="code" autocomplete="one-time-code" maxlength="40" required{{ invalid("delete", "delete-error") }}>
+        {% endif %}
+        <button type="submit" class="danger"{% if read_only %} disabled{% endif %}>{{ t("account.delete.submit") }}</button>
+      </form>
+      {% endif %}
+    </div>
+    <figure class="il-place small">{{ scene("mei", "verify", t("account.delete.art")) }}</figure>
+  </div>
+</section>
+{% endblock %}

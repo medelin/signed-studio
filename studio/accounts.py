@@ -78,7 +78,10 @@ CREATE TABLE IF NOT EXISTS accounts (
     created_ts REAL NOT NULL,
     updated_ts REAL NOT NULL,
     password_changed_ts REAL NOT NULL DEFAULT 0,
-    deleted_ts REAL
+    deleted_ts REAL,
+    credential_gen INTEGER NOT NULL DEFAULT 0,  -- bumped by every password/2FA/status change
+    code_failures INTEGER NOT NULL DEFAULT 0,   -- wrong codes since the last right one
+    code_locked_until REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS recovery_codes (
     account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
@@ -107,6 +110,12 @@ TOTP_PERIOD_S = 30
 TOTP_DIGITS = 6
 TOTP_WINDOW = 1  # steps either side of now (clock skew)
 TOUCH_EVERY_S = 60.0  # last_seen is written at most this often per session
+# Wrong second-factor codes per account, whatever the client or challenge: after
+# FREE_CODE_FAILURES, every further failure locks code checks for BASE * 2**(n - FREE) s,
+# capped. A right code resets the count. (The judge demo account has no second factor.)
+FREE_CODE_FAILURES = 5
+CODE_LOCK_BASE_S = 30.0
+CODE_LOCK_MAX_S = 3600.0
 ISSUER = "Muse Studio Lite"
 ADVERTISER_TYPES = ("person", "company")
 LIMITS = {"display_name": 80, "email": 254, "legal_name": 160, "country": 80, "tax_id": 40}
@@ -181,6 +190,10 @@ class TwoFactorState(AccountError):
     code = "two_factor_state"
 
 
+class SecondFactorLocked(AccountError):
+    code = "second_factor_locked"
+
+
 @dataclass(frozen=True)
 class Account:
     id: str
@@ -222,8 +235,18 @@ def _account(row: tuple[Any, ...]) -> Account:
                    updated, changed)
 
 
+# Columns added after the accounts table first shipped (``ALTER TABLE … ADD COLUMN``).
+_LATER_COLUMNS = {"credential_gen": "INTEGER NOT NULL DEFAULT 0",
+                  "code_failures": "INTEGER NOT NULL DEFAULT 0",
+                  "code_locked_until": "REAL NOT NULL DEFAULT 0"}
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    have = {row[1] for row in conn.execute("PRAGMA table_info(accounts)")}
+    for name, ddl in _LATER_COLUMNS.items():
+        if name not in have:
+            conn.execute(f"ALTER TABLE accounts ADD COLUMN {name} {ddl}")
 
 
 # -- passwords --------------------------------------------------------------------------
@@ -503,9 +526,10 @@ class Accounts:
         fresh = "" if verify_password(stored, password) else hash_password(password)
         with transaction(self.conn) as c:
             c.execute("UPDATE accounts SET status = 'active', is_demo = 1, totp_secret = '', "
-                      "totp_pending = '', password_hash = CASE WHEN ? = '' THEN password_hash "
+                      "totp_pending = '', credential_gen = credential_gen + CASE WHEN ? = '' "
+                      "THEN 0 ELSE 1 END, password_hash = CASE WHEN ? = '' THEN password_hash "
                       "ELSE ? END, updated_ts = ? WHERE id = ?",
-                      (fresh, fresh, now, current.id))
+                      (fresh, fresh, fresh, now, current.id))
             c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (current.id,))
         return self.get(current.id)
 
@@ -523,8 +547,8 @@ class Accounts:
         account = self._operator_target(username)
         now = self.clock()
         with transaction(self.conn) as c:
-            c.execute("UPDATE accounts SET status = ?, updated_ts = ? WHERE id = ?",
-                      (status, now, account.id))
+            c.execute("UPDATE accounts SET status = ?, credential_gen = credential_gen + 1, "
+                      "updated_ts = ? WHERE id = ?", (status, now, account.id))
             if status == "disabled":
                 self._revoke_sessions(c, account.id, keep="", now=now)
         result = self.get(account.id)
@@ -541,7 +565,9 @@ class Accounts:
         now = self.clock()
         with transaction(self.conn) as c:
             c.execute("UPDATE accounts SET password_hash = ?, password_changed_ts = ?, "
-                      "updated_ts = ? WHERE id = ?", (digest, now, now, account.id))
+                      "credential_gen = credential_gen + 1, code_failures = 0, "
+                      "code_locked_until = 0, updated_ts = ? WHERE id = ?",
+                      (digest, now, now, account.id))
             if clear_2fa:
                 self._clear_totp(c, account.id)
             self._revoke_sessions(c, account.id, keep="", now=now)
@@ -599,14 +625,69 @@ class Accounts:
         if cur.rowcount != 1:
             raise WrongCode("the code is not correct or was used already")
 
-    def verify_second_factor(self, account_id: str, code: str) -> bool:
-        """The login's second step: True once per TOTP step or recovery code."""
+    def credential_gen(self, account_id: str) -> int:
+        """Changes whenever the password, the second factor or the status changes: a pending
+        second step opened before that is refused (``verify_second_factor(gen=…)``)."""
+        with self._read() as c:
+            row = c.execute("SELECT credential_gen FROM accounts WHERE id = ?",
+                            (account_id,)).fetchone()
+        return int(row[0]) if row else -1
+
+    def _code_gate(self, account_id: str) -> None:
+        """Refuse any code check while the account's code lock runs."""
+        with self._read() as c:
+            row = c.execute("SELECT code_locked_until FROM accounts WHERE id = ?",
+                            (account_id,)).fetchone()
+        if row and self.clock() < row[0]:
+            raise SecondFactorLocked("too many wrong codes; wait and try again")
+
+    def _code_failed(self, account_id: str) -> None:
+        """Count a wrong code for the account (own transaction: the failed check rolled
+        back) and lock code checks once the free attempts are used up."""
+        now = self.clock()
+        with transaction(self.conn) as c:
+            row = c.execute("SELECT code_failures FROM accounts WHERE id = ?",
+                            (account_id,)).fetchone()
+            if row is None:
+                return
+            failures = int(row[0]) + 1
+            locked = 0.0
+            if failures > FREE_CODE_FAILURES:
+                exponent = min(failures - FREE_CODE_FAILURES - 1, 16)
+                locked = now + min(CODE_LOCK_BASE_S * 2 ** exponent, CODE_LOCK_MAX_S)
+            c.execute("UPDATE accounts SET code_failures = ?, code_locked_until = ? "
+                      "WHERE id = ?", (failures, locked, account_id))
+
+    def code_lock_remaining(self, account_id: str) -> float:
+        with self._read() as c:
+            row = c.execute("SELECT code_locked_until FROM accounts WHERE id = ?",
+                            (account_id,)).fetchone()
+        return max(0.0, float(row[0]) - self.clock()) if row else 0.0
+
+    def _checked_code(self, c: sqlite3.Connection, account_id: str, sealed: str,
+                      last_step: int, code: str) -> None:
+        """``_check_code`` that also resets the account's failure count on success."""
+        self._check_code(c, account_id, sealed, last_step, code)
+        c.execute("UPDATE accounts SET code_failures = 0, code_locked_until = 0 WHERE id = ?",
+                  (account_id,))
+
+    def verify_second_factor(self, account_id: str, code: str, gen: int | None = None
+                             ) -> bool:
+        """The login's second step: True once per TOTP step or recovery code. Refused when
+        ``gen`` (the credential generation when the challenge was opened) is stale, the
+        account is not active, or its code lock runs; a wrong code counts per account."""
         try:
+            self._code_gate(account_id)
             with transaction(self.conn) as c:
                 row = self._require(c, account_id)
-                if row[2] != "active" or not row[4]:
-                    raise WrongCode("no second factor")
-                self._check_code(c, account_id, row[4], row[6], code)
+                current = c.execute("SELECT credential_gen FROM accounts WHERE id = ?",
+                                    (account_id,)).fetchone()[0]
+                if row[2] != "active" or not row[4] or (gen is not None and gen != current):
+                    raise TwoFactorState("the challenge is stale")
+                self._checked_code(c, account_id, row[4], row[6], code)
+        except WrongCode:
+            self._code_failed(account_id)
+            return False
         except AccountError:
             return False
         return True
@@ -641,7 +722,9 @@ class Accounts:
         now = self.clock()
         with transaction(self.conn) as c:
             c.execute("UPDATE accounts SET password_hash = ?, password_changed_ts = ?, "
-                      "updated_ts = ? WHERE id = ?", (digest, now, now, account_id))
+                      "credential_gen = credential_gen + 1, code_failures = 0, "
+                      "code_locked_until = 0, updated_ts = ? WHERE id = ?",
+                      (digest, now, now, account_id))
             return self._revoke_sessions(c, account_id, keep=keep_sid, now=now)
 
     # -- second factor ---------------------------------------------------------------------
@@ -686,7 +769,8 @@ class Accounts:
                 raise WrongCode("the code is not correct")
             codes = [_new_recovery_code() for _ in range(RECOVERY_CODES)]
             c.execute("UPDATE accounts SET totp_secret = totp_pending, totp_pending = '', "
-                      "totp_last_step = ?, updated_ts = ? WHERE id = ?",
+                      "credential_gen = credential_gen + 1, code_failures = 0, "
+                      "code_locked_until = 0, totp_last_step = ?, updated_ts = ? WHERE id = ?",
                       (step, now, account_id))
             c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (account_id,))
             c.executemany("INSERT INTO recovery_codes (account_id, code_sha256) VALUES (?, ?)",
@@ -699,10 +783,15 @@ class Accounts:
         if not row[4]:
             raise TwoFactorState("two-step sign-in is off")
         self._check_password(row[1], password)
-        with transaction(self.conn) as c:
-            row = self._require(c, account_id)
-            self._check_code(c, account_id, row[4], row[6], code)
-            self._clear_totp(c, account_id)
+        self._code_gate(account_id)
+        try:
+            with transaction(self.conn) as c:
+                row = self._require(c, account_id)
+                self._checked_code(c, account_id, row[4], row[6], code)
+                self._clear_totp(c, account_id)
+        except WrongCode:
+            self._code_failed(account_id)
+            raise
 
     def recovery_codes_left(self, account_id: str) -> int:
         with self._read() as c:
@@ -711,8 +800,9 @@ class Accounts:
 
     @staticmethod
     def _clear_totp(c: sqlite3.Connection, account_id: str) -> None:
-        c.execute("UPDATE accounts SET totp_secret = '', totp_pending = '', totp_last_step = 0 "
-                  "WHERE id = ?", (account_id,))
+        c.execute("UPDATE accounts SET totp_secret = '', totp_pending = '', totp_last_step = 0, "
+                  "credential_gen = credential_gen + 1, code_failures = 0, "
+                  "code_locked_until = 0 WHERE id = ?", (account_id,))
         c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (account_id,))
 
     # -- sessions --------------------------------------------------------------------------
@@ -823,20 +913,31 @@ class Accounts:
             raise ConfirmationMismatch("type your user name to confirm")
         self._check_password(row[1], password)
         now = self.clock()
-        with transaction(self.conn) as c:
-            row = self._require(c, account_id)
-            if row[4]:
-                self._check_code(c, account_id, row[4], row[6], code)
-            self._revoke_sessions(c, account_id, keep="", now=now)
-            c.execute("UPDATE accounts SET username = NULL, password_hash = '', "
-                      "status = 'deleted', display_name = '', email = '', lang = '', "
-                      "theme = '', palette = '', advertiser_type = 'person', legal_name = '', "
-                      "country = '', tax_id = '', totp_secret = '', totp_pending = '', "
-                      "totp_last_step = 0, updated_ts = ?, deleted_ts = ? WHERE id = ?",
-                      (now, now, account_id))
-            c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (account_id,))
-            c.execute("UPDATE account_sessions SET user_agent = '', last_seen_ts = created_ts "
-                      "WHERE account_id = ?", (account_id,))
+        if row[4]:
+            self._code_gate(account_id)
+        try:
+            with transaction(self.conn) as c:
+                row = self._require(c, account_id)
+                if row[4]:
+                    self._check_code(c, account_id, row[4], row[6], code)
+                self._erase(c, account_id, now)
+        except WrongCode:
+            self._code_failed(account_id)
+            raise
+
+    def _erase(self, c: sqlite3.Connection, account_id: str, now: float) -> None:
+        """Revoke every session and key, erase every personal field, keep the tombstone."""
+        self._revoke_sessions(c, account_id, keep="", now=now)
+        c.execute("UPDATE accounts SET username = NULL, password_hash = '', "
+                  "status = 'deleted', display_name = '', email = '', lang = '', "
+                  "theme = '', palette = '', advertiser_type = 'person', legal_name = '', "
+                  "country = '', tax_id = '', totp_secret = '', totp_pending = '', "
+                  "totp_last_step = 0, credential_gen = credential_gen + 1, "
+                  "updated_ts = ?, deleted_ts = ? WHERE id = ?",
+                  (now, now, account_id))
+        c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (account_id,))
+        c.execute("UPDATE account_sessions SET user_agent = '', last_seen_ts = created_ts "
+                  "WHERE account_id = ?", (account_id,))
 
     def approvals(self, account_id: str) -> list[dict[str, Any]]:
         """Approvals signed with keys registered by this account's sessions."""
@@ -952,6 +1053,7 @@ class Challenge:
     account_id: str
     next: str
     expires: float
+    gen: int = 0  # the account's credential generation when the password step passed
     failures: int = 0
 
 
@@ -967,11 +1069,12 @@ class Challenges:
         self._items: OrderedDict[str, Challenge] = OrderedDict()
         self._lock = threading.Lock()
 
-    def open(self, account_id: str, nxt: str, now: float | None = None) -> str:
+    def open(self, account_id: str, nxt: str, now: float | None = None, *, gen: int = 0
+             ) -> str:
         t = time.time() if now is None else now
         token = secrets.token_urlsafe(32)
         with self._lock:
-            self._items[sha256_hex(token)] = Challenge(account_id, nxt, t + self.TTL_S)
+            self._items[sha256_hex(token)] = Challenge(account_id, nxt, t + self.TTL_S, gen)
             while len(self._items) > self.MAX:
                 self._items.popitem(last=False)
         return token

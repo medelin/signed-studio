@@ -165,6 +165,8 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.two_factor_state": "Two-step sign-in changed meanwhile; reload the page.",
     "err.invalid_form": "The form could not be read.",
     "err.unknown_session": "That session is not active any more.",
+    "err.second_factor_locked": "Too many wrong codes for this account; wait a while and try "
+                                "again.",
 }
 
 PL_ACCOUNTS: dict[str, str] = {
@@ -317,4 +319,6 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.two_factor_state": "Logowanie dwuetapowe w międzyczasie się zmieniło; odśwież stronę.",
     "err.invalid_form": "Nie udało się odczytać formularza.",
     "err.unknown_session": "Ta sesja nie jest już aktywna.",
+    "err.second_factor_locked": "Za dużo błędnych kodów dla tego konta; odczekaj chwilę i "
+                                "spróbuj ponownie.",
 }

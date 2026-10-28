@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}{{ t("account.deleted.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.account_deleted") }}{% endblock %}
+{% block content %}
+<section class="help-head" aria-labelledby="deleted-h">
+  <div>
+    <h1 id="deleted-h">{{ t("account.deleted.title") }}</h1>
+    <p class="lead" role="status" aria-live="polite">{{ t("account.deleted.lead") }}</p>
+    <p><a href="/">{{ t("account.deleted.back") }}</a></p>
+  </div>
+  <div class="il-place wide">{{ group(["tomasz", "leila"], "verify") }}</div>
+</section>
+{% endblock %}

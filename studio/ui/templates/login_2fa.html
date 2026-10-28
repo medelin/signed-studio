@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ t("login.2fa_title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.login_2fa") }}{% endblock %}
+{% block content %}
+<section class="login" aria-labelledby="login-2fa-h">
+  <div class="login-art il-place">{{ people(["kofi", "grace"]) }}</div>
+  <div class="panel login-panel">
+    <h1 id="login-2fa-h">{{ t("login.2fa_title") }}</h1>
+    <p class="hint" id="l2-hint">{{ t("login.2fa_hint") }}</p>
+    <form method="post" action="/login/2fa" class="stack" aria-describedby="l2-hint">
+      <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+      <label for="l2-code">{{ t("login.2fa_code") }}</label>
+      <input id="l2-code" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="40" required aria-describedby="l2-code-hint{% if error %} l2-error{% endif %}"{% if error %} aria-invalid="true"{% endif %} autofocus>
+      <p class="hint" id="l2-code-hint">{{ t("login.2fa_code_hint") }}</p>
+      {% if error %}<p class="status error" id="l2-error" role="alert">{{ error }}</p>{% endif %}
+      <button type="submit">{{ t("login.2fa_submit") }}</button>
+    </form>
+    <p class="hint"><a href="/login">{{ t("login.2fa_back") }}</a></p>
+  </div>
+</section>
+{% endblock %}

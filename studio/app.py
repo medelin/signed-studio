@@ -5,7 +5,8 @@ Security notes:
   concurrent requests cannot all slip past the check; the body must arrive within
   ``LOGIN_BODY_TIMEOUT_S``; only completed attempts count towards the short, capped global
   pause (see ``LoginLimiter``); success clears the client's bucket;
-- credentials are compared as bytes in constant time (non-ASCII input is a 401, not a 500);
+- passwords are verified with argon2id (``studio.accounts``); an unknown user name costs the
+  same verification against a dummy hash (non-ASCII input is a 401, not a 500);
 - sessions are HMAC-signed with the dedicated ``SESSION_SECRET`` and also tracked server
   side, so ``POST /logout`` revokes them; cookies are HttpOnly, SameSite=Strict, Secure;
 - ``X-Forwarded-For`` is used only when the direct peer is a ``TRUSTED_PROXY``, and then
@@ -49,6 +50,7 @@ from studio import (
     auth,
     db,
     prefs,
+    routes_account,
     routes_help,
     routes_inbox,
     routes_receipts,
@@ -210,14 +212,18 @@ class LoginLimiter:
                 waits.append(hits[0] + self.window_s - t)
         return max(1, math.ceil(max(waits)))
 
-    def settle(self, ip: str, ok: bool, now: float | None = None) -> bool:
-        """Record a completed attempt. False (429, nothing recorded) while paused."""
+    def settle(self, ip: str, ok: bool, now: float | None = None, *, clear: bool = True
+               ) -> bool:
+        """Record a completed attempt. False (429, nothing recorded) while paused. A success
+        clears the client's bucket unless ``clear=False`` (a password step with a second step
+        still to come keeps its attempts counted)."""
         t = time.time() if now is None else now
         with self._lock:
             if t < self.locked_until:
                 return False
             if ok:
-                self._hits.pop(limiter_key(ip), None)
+                if clear:
+                    self._hits.pop(limiter_key(ip), None)
                 return True
             self._failures = [f for f in self._failures if t - f < self.GLOBAL_WINDOW_S]
             self._failures.append(t)
@@ -402,6 +408,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ledger = ledger
     app.state.limiter = LoginLimiter()
     app.state.sessions = Sessions(settings.session_secret)
+    routes_account.install(app, settings, conn)  # accounts, judge demo account, 2FA state
     templates = Jinja2Templates(directory=str(UI / "templates"))
     templates.env.globals["replay"] = settings.replay
     templates.env.globals["t"] = i18n.t
@@ -454,6 +461,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_receipts.register(app, settings, ledger, templates, session_of)
     routes_help.register(app, settings, ledger, templates, session_of)
+    routes_account.register(app, settings, ledger, conn, templates, session_of)
 
     # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
     # each runs only for a consumed, signed approval (studio.executor.authorize).
@@ -559,7 +567,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                    headers: dict[str, str] | None = None) -> Response:
         return templates.TemplateResponse(request, "login.html", {
             "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": False,
-            "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
+            "login_enabled": routes_account.login_enabled(app, settings),
+            "read_only": settings.read_only,
             "next": auth.safe_next(nxt), "error": error, "noindex": True,
         }, status_code=status, headers=headers)
 
@@ -581,7 +590,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                   status, headers)
             return JSONResponse({"error": code}, status, headers=headers)
 
-        if not settings.judge_login_enabled:
+        if not routes_account.login_enabled(app, settings):
             return fail("login_disabled", 403)
         if not _same_origin(request):
             return fail("cross_origin", 403)
@@ -599,19 +608,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             app.state.limiter.settle(ip, False)  # a forged form counts as a failure
             return fail("csrf", 403)
         # No await from here to settle(): the global count is exact, never "in flight".
-        user_ok = hmac.compare_digest(username.encode(), JUDGE_USER.encode())
-        pass_ok = hmac.compare_digest(password.encode(), settings.judge_password.encode())
-        ok = user_ok and pass_ok
-        if not app.state.limiter.settle(ip, ok):
+        account = app.state.accounts.authenticate(username, password)  # argon2id, no enum
+        two_step = account is not None and account.totp_enabled
+        if not app.state.limiter.settle(ip, account is not None, clear=not two_step):
             return fail("too_many_attempts", 429, app.state.limiter.retry_after(ip))
-        if not ok:
+        if account is None:
             return fail("invalid_credentials", 401)
+        if two_step:
+            return routes_account.second_step(app, request, account, auth.safe_next(nxt), html)
         response: Response = (RedirectResponse(auth.safe_next(nxt), 303) if html
                               else JSONResponse({"ok": True}))
-        response.set_cookie(
-            COOKIE, app.state.sessions.issue(), max_age=SESSION_TTL_S, httponly=True,
-            samesite="strict", secure=_cookie_secure(request, settings), path="/",
-        )
+        routes_account.start_session(app, request, response, account)  # always a new session
         return response
 
     @app.post("/logout")

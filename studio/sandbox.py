@@ -4,8 +4,9 @@ Enabled with ``STUDIO_SANDBOX=1`` (off by default, so local runs and tests are u
 The public pages stay readable by anyone; everything else is layered on top of the app's own
 guards (``write_guard``, ``BodyLimit``, the login limiter, the daily model budget):
 
-- **judge-only writes**: any state-changing request except ``/login`` and ``/logout`` needs a
-  valid judge session *before* its body is read (401 otherwise), whatever the route does;
+- **signed-in writes**: any state-changing request except ``/login``, ``/login/2fa`` and
+  ``/logout`` needs a valid session (the judge's or an operator-created account's) *before*
+  its body is read (401 otherwise), whatever the route does;
 - **HEAD** requests are routed as ``GET`` (for uptime monitors; the server sends no body);
 - **limits**: per client prefix (IPv4 /32, IPv6 /64) for all requests and for writes, and
   per session for writes per minute and per hour (429 with ``Retry-After``); the tables are
@@ -49,7 +50,7 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 MARKER = "last_reset"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
-SESSION_PATHS = frozenset({"/login", "/logout"})  # guarded by the login limiter / same-origin
+SESSION_PATHS = frozenset({"/login", "/logout", "/login/2fa"})  # login limiter / same-origin
 QUIET_S = 120.0  # a reset waits until no judge has written for this long ...
 TICK_S = 60.0
 MIN_INTERVAL_S = 300.0

@@ -222,3 +222,28 @@ button.dictate[aria-pressed="true"] { background: var(--signal); color: var(--si
   .brief-flow *, .brief-flow { transition: none !important; animation: none !important; }
 }
 .brief-v1 > p, .brief-v1 > h2 { margin: 0; }
+
+/* account (/account, /login/2fa) */
+.account-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem); gap: 1.5rem; align-items: end; margin: 0 0 1rem; }
+.account-art .il { max-height: 11rem; }
+.account-toc ul { list-style: none; display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; padding: 0; margin: 0 0 .5rem; }
+.account-part { scroll-margin-top: 1rem; }
+.account-part:target { border-color: var(--signal); }
+.account-part fieldset { display: grid; gap: .4rem; border: 1px solid var(--rule-soft); padding: .6rem .8rem .8rem; margin: 0 0 .5rem; }
+.account-part legend { font: 600 .75rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); padding: 0 .3rem; }
+.choices { display: flex; flex-wrap: wrap; gap: .4rem 1.2rem; }
+.choice { font-weight: 400; display: inline-flex; gap: .4rem; align-items: center; }
+.status.ok { color: var(--ok); font-weight: 600; }
+.enrol { display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-start; }
+.qr-place { margin: 0; padding: .5rem; background: var(--bg); border: 1px solid var(--rule-soft); }
+.qr-place svg { display: block; width: 12rem; height: 12rem; }
+code.secret { font-size: 1rem; letter-spacing: .06em; overflow-wrap: anywhere; }
+.recovery { border: 1px solid var(--ok); background: var(--ok-soft); padding: .6rem .9rem; margin: 0 0 .75rem; }
+.recovery h3 { margin: 0 0 .25rem; font-size: 1rem; }
+.codes { columns: 2 12rem; margin: .25rem 0; padding-left: 1.6rem; font-variant-numeric: tabular-nums slashed-zero; }
+.inline-form { display: inline; margin: 0; }
+button.small-button { padding: .25rem .6rem; font-size: .72rem; }
+button.danger { background: var(--signal); color: var(--signal-ink); }
+.delete-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem); gap: 1.25rem; align-items: start; }
+.delete-body figure { margin: 0; }
+@media (max-width: 760px) { .account-head, .delete-body { grid-template-columns: 1fr; } .account-art { max-width: 14rem; } }

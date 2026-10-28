@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from studio.ui.help_accounts import ACCOUNT_ENTRIES
+
 
 @dataclass(frozen=True)
 class Entry:
@@ -356,6 +358,8 @@ ENTRIES: tuple[Entry, ...] = (
                "się weryfikują). Piaskownica nie ma tokenu Mety: zapisy kampanii idą do "
                "atrapy adaptera, wstrzymane."}),
 )
+
+ENTRIES += tuple(Entry(*e) for e in ACCOUNT_ENTRIES)  # studio/ui/help_accounts.py
 
 
 def entries(lang: str) -> list[dict[str, str]]:
