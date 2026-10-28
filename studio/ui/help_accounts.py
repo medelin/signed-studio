@@ -91,4 +91,32 @@ ACCOUNT_ENTRIES: tuple[tuple[str, str, str, dict[str, str], dict[str, str]], ...
                "danych. Aby wypróbować logowanie dwuetapowe albo usuwanie, poproś operatora "
                "o własne konto."},
     ),
+    (
+        "notifications", "priya", "signed",
+        {"en": "Which e-mails does the studio send me?",
+         "pl": "Jakie e-maile wysyła mi studio?"},
+        {"en": "If the operator has set up mail and your profile has an address, the studio "
+               "writes to you when something needs you: an approval is waiting for your "
+               "signature, a campaign was created (paused), launched or paused, new leads "
+               "arrived, or the insights have new recommendations. Those mails carry a "
+               "count and a link, never a lead's name or contact, and leads and "
+               "recommendations are at most one mail per ten minutes (the counts add up). "
+               "Security notices (password changed, two-step sign-in on or off, a new "
+               "sign-in, a data export, account deletion) always come. Choose campaigns "
+               "and leads under <a href=\"/account#notifications\">Notifications</a> on "
+               "your account page. Each mail sent, or failed, leaves a receipt that holds no "
+               "address. The shared judge account never sends mail.",
+         "pl": "Jeśli operator skonfigurował pocztę, a w profilu masz adres, studio pisze "
+               "do Ciebie, gdy coś Cię potrzebuje: zatwierdzenie czeka na podpis, kampania "
+               "została utworzona (wstrzymana), uruchomiona lub wstrzymana, pojawiły się "
+               "nowe leady albo statystyki mają nowe rekomendacje. Takie wiadomości zawierają "
+               "liczbę i link, nigdy imienia ani kontaktu leada, a o leadach i rekomendacjach "
+               "dostajesz najwyżej jeden e-mail na dziesięć minut (liczby się sumują). "
+               "Powiadomienia o bezpieczeństwie (zmiana hasła, logowanie dwuetapowe włączone "
+               "lub wyłączone, nowe logowanie, eksport danych, usunięcie konta) przychodzą "
+               "zawsze. Kampanie i leady wybierasz w sekcji <a "
+               "href=\"/account#notifications\">Powiadomienia</a> na stronie konta. Każdy "
+               "wysłany lub nieudany e-mail zostawia pokwitowanie bez adresu. Wspólne konto "
+               "jury nigdy nie wysyła poczty."},
+    ),
 )
