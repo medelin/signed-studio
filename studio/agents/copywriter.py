@@ -17,10 +17,19 @@ from studio.pii import choose_tier
 
 AGENT = "copywriter"
 FACT = "[FACT]"
-# Secondary net only (the allowlist below is the control): bracketed "fact" after NFKC and
-# with format characters removed.
-_FACT = re.compile(r"[\[({<\u27e6\u3010\u3014]\W*f\W*a\W*c\W*t\W*[\])}>\u27e7\u3011\u3015]",
-                   re.IGNORECASE)
+# Secondary net only (the allowlist below is the control): "fact" between any two
+# bracket-like characters (Unicode Ps/Pe/Pi/Pf, plus < >), after NFKC with format
+# characters removed and every bracket folded to "[" / "]".
+_FACT = re.compile(r"\[\W*f\W*a\W*c\W*t\W*\]", re.IGNORECASE)
+
+
+def _fold_bracket(ch: str) -> str:
+    if ch == "<" or unicodedata.category(ch) in ("Ps", "Pi"):
+        return "["
+    if ch == ">" or unicodedata.category(ch) in ("Pe", "Pf"):
+        return "]"
+    return ch
+
 
 # What a signed copy field may contain (checked after NFKC and on the original text):
 # Latin letters incl. Polish diacritics, digits, space/newline, common punctuation, emoji.
@@ -32,8 +41,29 @@ _ZWJ, _VS16 = "\u200d", "\ufe0f"
 SIGNED_FIELDS = ("headline", "primary_text", "description", "cta")
 
 
+# Emoji = explicit code points / ranges with emoji presentation (Unicode emoji-data),
+# not whole blocks: the dingbat blocks also hold ornamental brackets and quotation marks
+# (U+2768-2775, U+275B-2760) that must not pass as emoji.
+_EMOJI_RANGES = (
+    (0x1F300, 0x1F64F), (0x1F680, 0x1F6FF), (0x1F7E0, 0x1F7EB), (0x1F7F0, 0x1F7F0),
+    (0x1F900, 0x1F9FF), (0x1FA70, 0x1FAFF),
+)
+_EMOJI_BMP = frozenset(
+    [*range(0x2600, 0x2605), 0x260E, 0x2611, 0x2614, 0x2615, 0x2618, 0x261D, 0x2620,
+     0x2622, 0x2623, 0x2626, 0x262A, 0x262E, 0x262F, *range(0x2638, 0x263B), 0x2640,
+     0x2642, *range(0x2648, 0x2654), 0x265F, 0x2660, 0x2663, 0x2665, 0x2666, 0x2668,
+     0x267B, 0x267E, 0x267F, *range(0x2692, 0x2698), 0x2699, 0x269B, 0x269C, 0x26A0,
+     0x26A1, 0x26A7, 0x26AA, 0x26AB, 0x26B0, 0x26B1, 0x26BD, 0x26BE, 0x26C4, 0x26C5,
+     0x26C8, 0x26CE, 0x26CF, 0x26D1, 0x26D3, 0x26D4, 0x26E9, 0x26EA, *range(0x26F0, 0x26F6),
+     *range(0x26F7, 0x26FB), 0x26FD, 0x2702, 0x2705, *range(0x2708, 0x270E), 0x270F,
+     0x2712, 0x2714, 0x2716, 0x271D, 0x2721, 0x2728, 0x2733, 0x2734, 0x2744, 0x2747,
+     0x274C, 0x274E, 0x2753, 0x2754, 0x2755, 0x2757, 0x2763, 0x2764, 0x2795, 0x2796,
+     0x2797, 0x27A1, 0x27B0, 0x27BF])
+
+
 def _emoji(ch: str) -> bool:
-    return 0x1F300 <= ord(ch) <= 0x1FAFF or 0x2600 <= ord(ch) <= 0x27BF
+    cp = ord(ch)
+    return cp in _EMOJI_BMP or any(lo <= cp <= hi for lo, hi in _EMOJI_RANGES)
 
 
 def _unsupported(text: str, *, extra: frozenset[str] = frozenset()) -> str | None:
@@ -67,9 +97,9 @@ def unsupported_character(v: CopyVariant) -> str | None:
 
 def normalise(text: str) -> str:
     """NFKC with Unicode format characters (category Cf: zero-width, soft hyphen, bidi)
-    removed."""
+    removed and bracket-like characters folded to ``[`` / ``]``."""
     folded = unicodedata.normalize("NFKC", text)
-    return "".join(ch for ch in folded if unicodedata.category(ch) != "Cf")
+    return "".join(_fold_bracket(ch) for ch in folded if unicodedata.category(ch) != "Cf")
 
 
 def count_unfilled_facts(v: CopyVariant) -> int:

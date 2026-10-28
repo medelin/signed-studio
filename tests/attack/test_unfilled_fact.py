@@ -154,3 +154,37 @@ def test_code_count_overrides_a_model_that_reports_zero():
                                                  CLEAN, CLEAN], "risks": [],
                                     "unfilled_facts": 0})
     assert copywriter.flag_unfilled_facts(pack).unfilled_facts == 1
+
+
+# Review follow-up: dingbat brackets inside the emoji blocks must not wrap a placeholder.
+@pytest.mark.parametrize("token", ["❨FACT❩", "❮fact❯", "❲FACT❳",
+                                   "❛FACT❜", "❴ FACT ❵"])
+def test_ornamental_brackets_cannot_wrap_a_placeholder(ctx, token):
+    out = _approve(ctx, _run({**CLEAN, "headline": f"Glazed {token}"}, []))
+    assert out.status == "error", token
+    assert ctx.conn.execute("SELECT count(*) FROM approvals").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("emoji", ["\U0001f389", "☕", "✅", "❤️",
+                                   "\U0001f44d\U0001f3fd", "✨"])
+def test_real_emoji_are_still_allowed(ctx, emoji):
+    assert _approve(ctx, _run({**CLEAN, "headline": f"Nowe kubki {emoji}"}, [])).status == "ok"
+
+
+def test_every_bracket_the_allowlist_accepts_is_caught_by_the_net():
+    import sys
+    import unicodedata
+
+    from studio.agents import copywriter
+
+    opens = [chr(c) for c in range(sys.maxunicode + 1)
+             if unicodedata.category(chr(c)) in ("Ps", "Pi")]
+    closes = [chr(c) for c in range(sys.maxunicode + 1)
+              if unicodedata.category(chr(c)) in ("Pe", "Pf")]
+    tokens = [f"{o}FACT)" for o in opens] + [f"(FACT{c}" for c in closes] + ["<FACT>"]
+    for token in tokens:
+        ch = token[0] if token[0] != "(" else token[-1]
+        v = CopyPack.model_validate({"variants": [{**CLEAN, "headline": token}] * 3,
+                                     "risks": []}).variants[0]
+        assert copywriter.unsupported_character(v) or copywriter.has_unfilled_fact(v), \
+            f"U+{ord(ch):04X}"
