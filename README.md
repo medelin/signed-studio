@@ -102,11 +102,12 @@ third party:
 - Every model call, tool call, review, approval and write is a **receipt** in a hash chain
   per run, signed by the server's ledger key and closed by a signed manifest.
   `studio verify` re-checks it offline and exits 2 naming the receipt when anything is off:
-  in [docs/eval.md](docs/eval.md) it rejects **575/575 tampered exports across 23 tamper
+  in [docs/eval.md](docs/eval.md) it rejects **600/600 tampered exports across 24 tamper
   classes** (edited, re-hashed, deleted, reordered, truncated, rolled back, forged
   signatures, writes the server logged without an approval, a Brief v1 fact edited
   after signing, a campaign created with another objective or promoted object than the one
-  signed, and a recommendation executed without approval) and accepts every clean one.
+  signed, a Google Search campaign created with another spec than the one signed, and a
+  recommendation executed without approval) and accepts every clean one.
 - The reviewer stops **19 of 20 seeded bad ads** (all **5/5 P9** ads blocked by the model
   alone), with **0 of 5** clean ads blocked. The open-weights second opinion (Muse Spark
   Open on Baseten) makes the **same OK-vs-flag decision on 25/25** ads (same verdict on
@@ -143,6 +144,11 @@ release or copied from the operator), pass it with `--key-file ledger.pub` toget
   live PAUSED smoke on the operator's own account is recorded; its reads (account currency,
   targeting search, insights fields, lead forms) were checked live, read-only, and recorded
   (`fixtures/cassettes/graph_readonly.json`).
+- Google Search is a minimal second channel (`GOOGLE_ADS_ADAPTER=rest`, Google Ads REST API
+  v23, no client library): tick it in the brief and a second approval signs one Search
+  campaign (its spec hashed into the signature, created paused after a dry run, activated
+  by a third signature). Tested against the mock and recorded REST shapes; the live call
+  is run by the operator ([docs/SANDBOX.md](docs/SANDBOX.md)).
 - Every fixture says what it is: `"_provenance": "recorded"` (a real API response) or
   `"synthetic"` (hand-written, `*.SYNTHETIC.json`, with a `_note`). The demo brand, comments
   and leads are synthetic; the demo product photo is model-generated (set
