@@ -163,7 +163,7 @@ def long_digit_spans(text: str, *, letters_break: bool = False) -> list[tuple[in
     opaque id) is a boundary instead: its digits do not count and the window restarts."""
     folded = fold(text)
     view = [i for i, ch in enumerate(folded) if unicodedata.category(ch)[0] in "LN"]
-    in_letter_word = set()
+    in_letter_word: set[int] = set()
     if letters_break:
         for m in _WORD.finditer(folded):
             if any(ch.isalpha() for ch in m.group()):
