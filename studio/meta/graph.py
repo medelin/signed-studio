@@ -5,8 +5,15 @@ token. Shapes follow the Graph API v25.0 reference (campaigns, adsets, adimages,
 adcreatives, ads, previews, comments). Writes are form-encoded with nested values as JSON
 strings, as in the reference's cURL examples.
 
-- The token is sent only as ``Authorization: Bearer <token>``; URLs never carry it and
-  error messages never include the response body.
+- Token transport (``META_TOKEN_TRANSPORT``): ``form`` (default) sends ``access_token``
+  as a field of the POST form body, as in the reference's cURL examples; ``bearer`` sends
+  ``Authorization: Bearer <token>`` instead. Reads (GET) carry the token in the
+  ``Authorization`` header in both modes. A URL never carries the token, and logs,
+  receipts and error messages never include it or the response body.
+- With ``META_APP_SECRET`` set, every call also carries ``appsecret_proof`` =
+  hex HMAC-SHA256(key=app secret, message=the access token used), per "Securing Graph
+  API Requests" (form field on writes, query parameter on reads; it does not reveal the
+  token).
 - Retry matrix: Graph error codes 4, 17, 32, 613 (throttling) are transient and retried
   with backoff (at most ``RETRIES`` times); 10, 100, 190 and anything unknown are fatal. A
   network error on a POST is not retried (the write may have happened; a duplicate PAUSED
@@ -20,6 +27,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import re
 import time
@@ -55,6 +63,12 @@ FATAL = frozenset({10, 100, 190})
 RETRIES = 3
 _ACCOUNT = re.compile(r"(?:act_)?(\d{1,30})")
 _OBJECT_ID = re.compile(r"[0-9_]{1,80}")
+TRANSPORTS = ("form", "bearer")
+
+
+def appsecret_proof(token: str, app_secret: str) -> str:
+    """``appsecret_proof`` for ``token``: hex HMAC-SHA256 keyed with the app secret."""
+    return hmac.new(app_secret.encode(), token.encode(), hashlib.sha256).hexdigest()
 
 
 def _form(fields: Mapping[str, Any]) -> dict[str, str]:
@@ -75,10 +89,16 @@ class GraphAdapter:
     def __init__(self, access_token: str, ad_account_id: str, page_id: str,
                  page_token: str = "", *, version: str = VERSION,
                  transport: httpx.BaseTransport | None = None,
-                 sleep: Callable[[float], None] = time.sleep, timeout: float = 30.0) -> None:
+                 sleep: Callable[[float], None] = time.sleep, timeout: float = 30.0,
+                 token_transport: str = "form",  # noqa: S107 - a mode name, not a token
+                 app_secret: str = "") -> None:
         m = _ACCOUNT.fullmatch(ad_account_id or "")
         if not access_token or m is None or not page_id:
             raise ValueError("graph adapter needs a token, an ad account id and a page id")
+        if token_transport not in TRANSPORTS:
+            raise ValueError(f"token transport must be one of {TRANSPORTS}")
+        self._transport_mode = token_transport
+        self._app_secret = app_secret
         self._token = access_token
         self._page_token = page_token or access_token
         self.account = f"act_{m.group(1)}"
@@ -90,7 +110,9 @@ class GraphAdapter:
     @classmethod
     def from_settings(cls, settings: Any, **kwargs: Any) -> GraphAdapter:
         return cls(settings.meta_access_token, settings.meta_ad_account_id,
-                   settings.meta_page_id, settings.meta_page_token, **kwargs)
+                   settings.meta_page_id, settings.meta_page_token,
+                   token_transport=settings.meta_token_transport,
+                   app_secret=settings.meta_app_secret, **kwargs)
 
     def __repr__(self) -> str:
         return f"GraphAdapter(base={self.base!r})"
@@ -100,12 +122,23 @@ class GraphAdapter:
     def _request(self, method: str, path: str, *, data: Mapping[str, Any] | None = None,
                  params: Mapping[str, Any] | None = None, page: bool = False) -> dict[str, Any]:
         token = self._page_token if page else self._token
-        headers = {"Authorization": f"Bearer {token}"}
+        headers: dict[str, str] = {}
+        form = _form(data) if data is not None else None
+        query = dict(params or {})
+        proof = {"appsecret_proof": appsecret_proof(token, self._app_secret)} if (
+            self._app_secret) else {}
+        if form is not None and self._transport_mode == "form":
+            form = {**form, "access_token": token, **proof}
+        else:
+            headers["Authorization"] = f"Bearer {token}"
+            if form is not None:
+                form.update(proof)
+            else:
+                query.update(proof)
         for attempt in range(RETRIES + 1):
             try:
                 resp = self._http.request(method, f"{self.base}/{path}", headers=headers,
-                                          data=_form(data) if data is not None else None,
-                                          params=dict(params or {}))
+                                          data=form, params=query)
             except httpx.HTTPError as exc:
                 if method == "GET" and attempt < RETRIES:
                     self._sleep(2 ** attempt)

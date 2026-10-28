@@ -291,3 +291,12 @@ def test_graph_adapter_requires_a_landing_url():
 def test_landing_url_must_be_https_with_a_host(url):
     with pytest.raises(ConfigError, match="https URL"):
         Settings.load({"META_LANDING_URL": url})
+
+
+def test_meta_token_transport_and_app_secret():
+    s = Settings.load({})
+    assert s.meta_token_transport == "form" and s.meta_app_secret == ""
+    s = Settings.load({"META_TOKEN_TRANSPORT": "bearer", "META_APP_SECRET": "as-hidden-1"})
+    assert s.meta_token_transport == "bearer" and "as-hidden-1" not in repr(s)
+    with pytest.raises(ConfigError, match="META_TOKEN_TRANSPORT"):
+        Settings.load({"META_TOKEN_TRANSPORT": "query"})

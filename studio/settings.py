@@ -104,6 +104,9 @@ class Settings:
     meta_ad_account_id: str = field(default="", repr=False)
     meta_page_id: str = field(default="", repr=False)
     meta_page_token: str = field(default="", repr=False)
+    # form (access_token in the POST body) | bearer
+    meta_token_transport: str = "form"  # noqa: S105 - a mode name, not a token
+    meta_app_secret: str = field(default="", repr=False)  # enables appsecret_proof
     session_secret: bytes = field(default=b"", repr=False)
     judge_password: str = field(default="", repr=False)
     read_only: bool = False
@@ -195,6 +198,9 @@ class Settings:
         if not 1 <= ceiling <= 500:
             raise ConfigError("STUDIO_MAX_DAILY_BUDGET_PLN must be 1-500")
         landing = _landing_url(e, adapter)
+        transport = e.get("META_TOKEN_TRANSPORT", "") or "form"
+        if transport not in ("form", "bearer"):
+            raise ConfigError("META_TOKEN_TRANSPORT must be form or bearer")
         return cls(
             model_api_key=e.get("MODEL_API_KEY", ""),
             model_api_base_url=base_url.rstrip("/"),
@@ -204,6 +210,8 @@ class Settings:
             meta_ad_account_id=e.get("META_AD_ACCOUNT_ID", ""),
             meta_page_id=e.get("META_PAGE_ID", ""),
             meta_page_token=e.get("META_PAGE_TOKEN", ""),
+            meta_token_transport=transport,
+            meta_app_secret=e.get("META_APP_SECRET", ""),
             session_secret=session_secret,
             judge_password=judge_password,
             read_only=_bool(e, "STUDIO_READ_ONLY", False),

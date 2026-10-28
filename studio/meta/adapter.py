@@ -15,7 +15,8 @@ Rules every implementation follows, enforced by ``require`` and ``check_paused``
   (``PausedOnly``). Activation is a separate write needing a ``campaign.activate``
   approval whose payload names all three objects; it sets ``ACTIVE`` on the ad, then the
   ad set, then the campaign (``ACTIVATION_ORDER``), one call each.
-- The access token goes only in the ``Authorization`` header, never in a URL.
+- The access token goes in the POST form body or the ``Authorization`` header, never in
+  a URL (``graph.py``).
 """
 
 from __future__ import annotations
