@@ -1,5 +1,62 @@
 # Architecture
 
+## The loop
+
+```mermaid
+flowchart LR
+    subgraph Browser["Browser (operator / judge)"]
+        UI["Studio · Inbox · Leads · Report · Receipts"]
+        KEY["WebCrypto Ed25519 key<br/>(non-extractable)"]
+    end
+    subgraph Server["FastAPI app (studio/)"]
+        P["Producer<br/>muse-spark-1.3 · tools"]
+        D["Dispatcher<br/>skills.yaml: none / local / external"]
+        CW["Copywriter<br/>muse-spark-1.3-contributor<br/>(Standard if PII)"]
+        AD["Art director<br/>sam-3.1 + muse-image-1.0"]
+        RV["Reviewers<br/>muse-spark-1.3 vision<br/>+ Spark Open (Baseten)<br/>+ P9 code check"]
+        CM["Community<br/>muse-spark-1.3 · envelope · no tools"]
+        LS["Lead scorer<br/>rules + Spark rationale"]
+        AN["Analyst<br/>muse-spark-1.3 · 1M context + vision"]
+        AP["Approvals<br/>nonce · TTL · chain head · signature"]
+        MB["Media buyer / executor<br/>(code, not a model)"]
+        L[("Ledger<br/>hash chain per run<br/>Ed25519 ledger key")]
+    end
+    META["Meta Marketing + Pages API<br/>(graph adapter, PAUSED only)<br/>or mock adapter"]
+    V["studio verify<br/>(offline CLI)"]
+
+    UI -->|brief / voice| P
+    P --> D
+    D --> CW & AD & RV
+    D -->|request_approval| AP
+    UI -->|comment| CM --> LS
+    AP -->|exact bytes| KEY -->|signature| AP
+    AP -->|consumed approval| MB --> META
+    P & CW & AD & RV & CM & LS & AN & AP & MB -.receipt.-> L
+    L -->|receipts.jsonl + signed manifest| V
+    L --> AN
+```
+
+- **Models only draft.** No model has a tool that writes outside the studio: the dispatcher
+  builds the producer's tool list from `skills.yaml` and never includes an `external` skill;
+  `request_approval` only creates a pending approval for a payload built by code.
+- **A human signs the exact bytes.** The approval message binds the content hash, the run's
+  chain head, a one-time nonce and the time; the browser's non-extractable key signs it.
+- **Only code with a consumed approval reaches Meta.** The media buyer and the inbox sender
+  run after the approval transaction committed, re-check the approval in the database, and
+  create every object `PAUSED`; activation is a second signed approval under a budget
+  ceiling.
+- **Everything leaves a receipt**, and `studio verify` re-checks the whole log offline.
+
+## Replay mode
+
+`STUDIO_REPLAY=1` swaps the HTTP transport of the Model API, Baseten and Graph clients for
+`studio.replay.ReplayTransport`, which serves recorded responses
+(`fixtures/replay/<set>/replay.json`, large payloads in `fixtures/replay/blobs/`) keyed by a
+hash of the normalized request (images out, run ids and timestamps folded). Everything else
+— dispatcher, approvals, signatures, adapters, receipts, verify — runs unchanged. Receipts
+name the provider `meta-model-api-replay`. `make demo-replay` drives the whole loop headless
+through the HTTP API (`studio/demo.py`) and ends with `studio verify`.
+
 ## Trust model in one paragraph
 
 Agents (Muse models) only ever produce drafts. Every model call, tool call, review and

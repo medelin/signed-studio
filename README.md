@@ -1,73 +1,111 @@
 # Muse Studio Lite
 
-**An AI ad agency for one-person businesses — every agent leaves a receipt, and no agent can spend a cent without your signature.**
+**The AI ad agency that works on Meta's real ad platform — and can't spend a cent without your signature.**
+
+Seven Muse agents plan, write, draw, cut out, review and report; code — never a model —
+creates the Facebook/Instagram campaign through the Marketing API, **PAUSED**, and only
+after a person signed the exact bytes in the browser. Every step leaves a receipt that
+anyone can check offline with `studio verify`.
 
 Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for Your World).
+**Everything in this repository was built during the event (27 Oct – 4 Nov 2026).**
 
-Small businesses run Facebook and Instagram ads, answer comments and chase leads by hand, and
-they are afraid to let an AI post or spend on their behalf. Muse Studio Lite runs that work with
-cooperating Meta Muse agents and keeps a human in charge of everything that leaves the system:
+- Live sandbox (read-only for visitors, judge login for writes): **https://muse.udun.eu**
+- Numbers: **[docs/eval.md](docs/eval.md)** · how it works: [docs/architecture.md](docs/architecture.md) ·
+  threat model: [docs/SECURITY.md](docs/SECURITY.md) · video script: [docs/demo-script.md](docs/demo-script.md)
 
-- **Producer** plans the campaign from a brief (Muse Spark).
-- **Copywriter** and **Art director** write the ad and design the creative (Muse Image, SAM 3.1 cut-outs).
-- **Reviewer** checks the result with Muse Spark vision, with a second opinion from open weights.
-- **Community** and **Lead scorer** answer comments and route leads.
-- **Human gate** — nothing is posted and no campaign is created until a person signs the exact content.
+<!-- screenshots: docs/screenshots/ (studio run, signed approval, PAUSED campaign, studio verify) -->
 
-## Verifiable agents
+## Before / after, for a one-person business
 
-Every model call, tool call, review and approval is a **receipt**: hash-chained, signed by the
-server's Ed25519 ledger key, closed by a signed export manifest. `studio verify` checks the whole
-log and rejects any edited, truncated or re-ordered history, and any external write that was not
-preceded by a human approval for exactly the same content.
+**Before.** I run ads for my own small firm. A campaign takes an evening: write three
+variants, make images for feed and stories, check them against ad policies, click through
+Ads Manager. A comment that arrives at 21:03 ("how much is it?") waits until the morning. And
+I would never hand an AI my ad account — one bad post or one wrong budget is my money and my
+name.
 
-## Status
+**After.** I type (or say, in Polish) one brief. The studio returns a plan, three copy
+variants, a product cut-out and three matching placements, two compliance reviews of every
+image — and one approval screen with the content hash. I sign; code creates the campaign,
+ad set, creative and ad, all **PAUSED**, and shows the ad preview. A comment gets a draft
+reply in seconds (prompt injections included, they fail); I edit one word and sign; the
+commenter becomes a scored lead. At the end of the day the analyst reads the whole ledger in
+one prompt and tells me what changed. When a human-written ad of mine was rejected by an ad
+platform for "Załóż spółkę … bez ZUS", the reviewer now catches that before publishing
+(policy rule P9).
 
-In active development during the event (see [CHANGELOG.md](CHANGELOG.md)). I'm using it to make and
-run my own real ads during the hackathon, and improving it as I go.
+## The demo loop
 
-## Run the tests
+brief (text or Polish voice) → **Producer** plan → **Copywriter** three variants →
+**Art director** SAM 3.1 cut-out + three Muse Image placements → **Reviewers** (Spark vision
++ Spark Open second opinion + P9 code check) → **human signature** → **Media buyer** (code)
+creates the campaign PAUSED → **Community** drafts a reply to a comment → signature → reply
+→ **Lead scorer** card → **Analyst** report → `studio verify` on the exported log.
+
+## Run it in 3 commands
 
 ```bash
-make install
-make test        # offline: model calls replay recorded cassettes
-make lint        # ruff + mypy
+make install       # Python 3.12+, uv
+make demo-replay   # the whole loop offline from a recorded run, then studio verify (10–15 s)
+make demo          # the UI at http://localhost:8000/studio (MODEL_API_KEY in .env for live calls)
 ```
 
-Every fixture says what it is: `"_provenance": "recorded"` (a real API response captured
-by `scripts/record_*.py`) or `"synthetic"` (hand-written, file name `*.SYNTHETIC.json`,
-with a `_note` on its source — the Graph API campaign flow, the open-weights review and the
-ad insights, until live recordings exist). A report built on synthetic insights says so on
-the page.
+`make serve-replay` serves the UI on recorded answers (no key, no network; the header says
+**replay**). `make test` runs the suite offline, `make eval` regenerates
+[docs/eval.md](docs/eval.md).
 
-## Run the studio
+## Meta models used (exact ids from the code)
+
+| Model id | Where | How |
+|---|---|---|
+| `muse-spark-1.3` | Producer, compliance reviewer (vision), community triage, lead rationale, analyst | Responses API with function tools, `parallel_tool_calls`, `reasoning.summary`, `previous_response_id`; strict JSON schemas; images in user messages; the analyst reads the whole ledger (long context) plus an Ads Manager screenshot |
+| `muse-spark-1.3-contributor` | Copywriter and image-prompt writer | chosen by code only when the input has no personal data (`pii.choose_tier`); the reason is in every receipt |
+| `muse-image-1.0` | Art director | first placement as a Responses turn with the cut-out, the others via `/images/edits` with the cut-out and the first image, so the series matches |
+| `sam-3.1` | Art director | product cut-out from the photo: streamed transport, batch parse (`meta_sam_parser`) |
+| `muse-voice-transcribe-1.0` | Voice brief | `POST /asr/transcribe`, `ENDPOINTING`, `languageBias: ["pl"]`, turns with timestamps |
+| `meta-models/muse-spark-open-1026` | Second-opinion reviewer (open weights, on Baseten) | same `Review` schema, different weights; BLOCK from either side wins; disagreements shown before signing |
+| `muse-wonder-1.0` | not in the runtime path | priced in the client so a call would be budgeted; kept out of the sandbox |
+
+Development used **Muse Code** for the Muse-specific modules and prompt tuning; session
+exports go to [docs/build-log/](docs/build-log/).
+
+## What is different here: a signature bound to bytes, and a log anyone can check
+
+Human approval buttons are common. Here the approval is cryptographic and checkable by a
+third party:
+
+- The browser holds a **non-extractable WebCrypto Ed25519 key**. "Approve" signs
+  `{action, item_id, content_sha256, chain_head, approver, nonce, ts}` — the exact payload
+  hash *and* the provenance chain that produced it. The server consumes the one-time nonce in
+  the same transaction as the approval receipt; a replay, an edit after signing or a stale
+  approval is refused.
+- No model can write outside the studio: external skills are not in any tool list; the media
+  buyer is code that runs only on a consumed approval, creates every object PAUSED, and
+  activation is a second signature under a daily budget ceiling.
+- Every model call, tool call, review, approval and write is a **receipt** in a hash chain
+  per run, signed by the server's ledger key and closed by a signed manifest.
+  `studio verify` re-checks it offline and exits 2 naming the receipt when anything is off:
+  in [docs/eval.md](docs/eval.md) it rejects **400/400 tampered exports across 16 tamper
+  classes** (edited, re-hashed, deleted, reordered, truncated, rolled back, forged
+  signatures — and writes the server logged without an approval) and accepts every clean one.
+- The reviewer stops **19 of 20 seeded bad ads** (all **5/5 P9** ads blocked by the model
+  alone), with **0 of 5** clean ads blocked; one campaign run (brief → pending approval)
+  costs about **$0.07** in Model API calls.
+
+### Verify a receipt log
 
 ```bash
-make demo        # http://localhost:8000/studio — sign in as the judge, run a brief
-```
-
-One brief → plan (Muse Spark 1.3) → three copy variants (Spark Contributor) → SAM 3.1
-cut-out of the product photo → three placements (Muse Image 1.0) → two reviews of every
-placement (Spark vision + Spark Open on Baseten) → a pending approval. SAM 3.1 is a
-streamed transport, batch parse: the cut-out request is a streamed Responses call, and the
-mask lane is parsed once the stream has ended (no partial masks are used). The browser signs the exact approval
-bytes with a non-extractable WebCrypto Ed25519 key; every step is a receipt in the live
-ticker. The demo product photo is synthetic (model-generated); set `STUDIO_PRODUCT_PHOTO`
-and `STUDIO_PRODUCT_CONCEPT` to use your own.
-
-## Verify a receipt log
-
-```bash
-curl -sO https://<studio-host>/api/receipts.jsonl
-studio verify receipts.jsonl --server https://<studio-host>
-# offline: studio verify receipts.jsonl --key-file var/ledger.pub \
+curl -sO https://muse.udun.eu/api/receipts.jsonl
+studio verify receipts.jsonl --server https://muse.udun.eu
+# offline: studio verify receipts.jsonl --key-file ledger.pub \
 #          --approver-keys approvers.json --min-seq <seq from /api/ledger-manifest>
 ```
 
-`--server` fetches the published ledger key, the latest manifest `seq` (so an older,
-rolled-back export fails) and the approver public keys (so every approval signature is
-checked). `make smoke-live` makes one real Model API call with the key from `.env` and
-prints usage only (and refuses under `STUDIO_READ_ONLY=1`).
+Exit codes: 0 chain OK, 2 chain INVALID (each problem names the receipt or run), 3 the
+check could not run. `--server` fetches the published ledger key, the latest manifest `seq`
+(so an older, rolled-back export fails) and the approver public keys (so every approval
+signature is checked). The receipts page (`/receipts`) filters by run, shows full hashes as
+tooltips and copies any receipt as JSON.
 
 `--server` is **trust on first use (TOFU)**: it trusts whatever key and `seq` the server
 serves at that moment, so a compromised server could serve a matching forged key. For a
@@ -75,6 +113,20 @@ real check, pin the ledger key once, out of band (`ledger.pub`, published with t
 release or copied from the operator), pass it with `--key-file ledger.pub` together with
 `--server` (a mismatch is refused), and keep the highest `seq` you have seen to pass as
 `--min-seq` next time, so a rollback to an older log cannot go unnoticed.
+
+## Honest status
+
+- Meta writes go through `META_ADAPTER=graph` (Marketing API v25.0, own ad account,
+  PAUSED-only) or the mock adapter; the sandbox always runs the mock and never holds a Meta
+  token. The graph adapter is tested against hand-written cassettes until the live smoke on
+  the operator's own account is recorded.
+- Every fixture says what it is: `"_provenance": "recorded"` (a real API response) or
+  `"synthetic"` (hand-written, `*.SYNTHETIC.json`, with a `_note`). The demo brand, comments
+  and leads are synthetic; the demo product photo is model-generated (set
+  `STUDIO_PRODUCT_PHOTO` and `STUDIO_PRODUCT_CONCEPT` to use your own).
+- The second-opinion reviewer needs `BASETEN_API_KEY`; without it the screen says
+  "unavailable".
+- Day-by-day changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
