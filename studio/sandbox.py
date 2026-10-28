@@ -102,6 +102,8 @@ class SandboxConfig:
             raise ConfigError("STUDIO_SANDBOX=1 requires JUDGE_PASSWORD and SESSION_SECRET")
         if settings.meta_adapter != "mock":
             raise ConfigError("STUDIO_SANDBOX=1 requires META_ADAPTER=mock")
+        if settings.google_adapter != "mock":
+            raise ConfigError("STUDIO_SANDBOX=1 requires GOOGLE_ADS_ADAPTER=mock")
         if not settings.cookie_secure:
             raise ConfigError("STUDIO_SANDBOX=1 requires COOKIE_SECURE=1")
 

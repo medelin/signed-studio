@@ -70,6 +70,14 @@ def test_sandbox_refuses_the_graph_adapter(tmp_path):
         SandboxConfig(enabled=True).validate(s)
 
 
+def test_sandbox_refuses_the_google_rest_adapter(tmp_path):
+    s = settings(tmp_path, GOOGLE_ADS_ADAPTER="rest", GOOGLE_ADS_CLIENT_ID="a",
+                 GOOGLE_ADS_CLIENT_SECRET="b", GOOGLE_ADS_REFRESH_TOKEN="c",
+                 GOOGLE_ADS_CUSTOMER_ID="1234567890")
+    with pytest.raises(ConfigError, match="GOOGLE_ADS_ADAPTER=mock"):
+        SandboxConfig(enabled=True).validate(s)
+
+
 # -- reset semantics ----------------------------------------------------------------------
 
 
