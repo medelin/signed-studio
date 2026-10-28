@@ -20,6 +20,7 @@ import io
 import shutil
 import subprocess
 import tempfile
+import threading
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -33,6 +34,8 @@ MAX_BYTES = 32 * 1024 * 1024
 MAX_SECONDS = 600
 SAMPLE_RATE = 24_000
 FFMPEG_TIMEOUT_S = 60
+MAX_CONVERSIONS = 2  # concurrent ffmpeg processes; more uploads get 429, not a queue
+_SLOTS = threading.BoundedSemaphore(MAX_CONVERSIONS)
 
 
 class VoiceError(ValueError):
@@ -116,10 +119,7 @@ def check_upload(data: bytes) -> None:
         raise VoiceError(f"audio larger than {MAX_BYTES} bytes", "audio_too_large", 413)
 
 
-def to_wav(data: bytes) -> bytes:
-    """Convert an upload with ffmpeg and enforce the duration limit."""
-    check_upload(data)
-    demuxer = sniff(data)  # before ffmpeg ever sees the bytes
+def _convert(data: bytes, demuxer: str) -> bytes:
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise VoiceError("ffmpeg is not installed", "no_ffmpeg", 503)
@@ -134,7 +134,20 @@ def to_wav(data: bytes) -> bytes:
             raise VoiceError("audio conversion timed out", "convert_timeout") from exc
         if proc.returncode != 0 or not dst.exists():
             raise VoiceError("audio could not be decoded", "bad_audio")
-        wav = dst.read_bytes()
+        return dst.read_bytes()
+
+
+def to_wav(data: bytes) -> bytes:
+    """Convert an upload with ffmpeg (at most ``MAX_CONVERSIONS`` at once; 429 ``busy``
+    otherwise) and enforce the duration limit."""
+    check_upload(data)
+    demuxer = sniff(data)  # before ffmpeg ever sees the bytes
+    if not _SLOTS.acquire(blocking=False):
+        raise VoiceError("too many audio conversions at once; try again", "busy", 429)
+    try:
+        wav = _convert(data, demuxer)
+    finally:
+        _SLOTS.release()
     seconds = wav_seconds(wav)
     if seconds > MAX_SECONDS:
         raise VoiceError(f"audio longer than {MAX_SECONDS // 60} minutes", "audio_too_long",

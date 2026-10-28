@@ -199,3 +199,23 @@ def test_route_rejects_a_playlist_with_415(tmp_path):
         r = c.post("/api/briefs/voice", content=b"#EXTM3U\nfile:///etc/passwd\n",
                    headers={"content-type": "audio/webm"})
     assert r.status_code == 415 and r.json()["error"] == "unsupported_audio_type"
+
+
+def test_ffmpeg_conversions_are_capped(monkeypatch):
+    import threading
+
+    from studio.muse import voice
+    ran = []
+    monkeypatch.setattr(voice.subprocess, "run",
+                        lambda *a, **k: ran.append(a) or type("P", (), {"returncode": 1})())
+    slots = threading.BoundedSemaphore(1)
+    monkeypatch.setattr(voice, "_SLOTS", slots)
+    assert voice.MAX_CONVERSIONS >= 1
+    slots.acquire()  # a conversion is running
+    with pytest.raises(voice.VoiceError) as exc:
+        voice.to_wav(WAV)
+    assert exc.value.code == "busy" and exc.value.status == 429 and ran == []
+    slots.release()
+    with pytest.raises(voice.VoiceError):  # the fake ffmpeg wrote nothing: bad_audio …
+        voice.to_wav(WAV)
+    assert slots.acquire(blocking=False)  # … and the slot was given back
