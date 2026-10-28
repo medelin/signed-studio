@@ -11,7 +11,7 @@ skills:
     agent: art_director
     side_effects: local
     model_callable: true
-    description: Cut the product out of the photo and render one image per placement.
+    description: Cut the product out of the photo and render one image per plan placement, with the headline of one copy variant (pass that headline).
   - name: run_reviewers
     agent: reviewer
     side_effects: none

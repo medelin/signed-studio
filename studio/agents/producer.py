@@ -73,6 +73,7 @@ class RunResult:
     creatives: CreativeSet | None = None
     review: dict[str, Any] | None = None
     pending_id: str = ""
+    angle_index: int = 0  # the plan angle the current copy was written for
     steps: int = 0
     cost_usd: float = 0.0
     summary: str = ""
@@ -83,7 +84,8 @@ class RunResult:
             "plan": self.plan.model_dump() if self.plan else None,
             "copy": self.copy.model_dump() if self.copy else None,
             "creatives": self.creatives.model_dump() if self.creatives else None,
-            "review": self.review, "pending_id": self.pending_id, "steps": self.steps,
+            "review": self.review, "pending_id": self.pending_id,
+            "angle_index": self.angle_index, "steps": self.steps,
             "cost_usd": round(self.cost_usd, 6), "summary": self.summary,
             "reasoning": self.reasoning[-5:],
         }
@@ -111,7 +113,7 @@ def campaign_payload(run: RunResult, variant_index: int,
         "run_id": run.run_id,
         "campaign": {"objective": "OUTCOME_TRAFFIC", "status": "PAUSED",
                      "daily_budget_minor": run.plan.budget_pln_daily * 100,
-                     "currency": "PLN", "angle": run.plan.angles[0].name},
+                     "currency": "PLN", "angle": run.plan.angles[run.angle_index].name},
         "audience": run.plan.audience,
         "targeting": {"countries": ["PL"], "age_min": 25, "age_max": 55},
         "link": link,
@@ -182,6 +184,10 @@ def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
     return plan
 
 
+def _headline_key(text: str) -> str:
+    return "".join(ch for ch in text.casefold() if ch.isalnum())
+
+
 def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
     def emit(kind: str, **data: Any) -> None:
         _save_state(ctx.conn, run, "running")
@@ -202,18 +208,26 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
         angle = run.plan.angles[args.angle_index]
         run.copy, _ = copywriter.write(ctx.client, angle, angle.persona, run_id=run.run_id,
                                        brief=brief)
+        run.angle_index = args.angle_index
         emit("copy")
         return {"variants": [v.model_dump() for v in run.copy.variants],
                 "risks": run.copy.risks}
 
     def run_art_director(args: ArtDirectorArgs) -> dict[str, Any]:
-        headline = args.headline.strip()[:60]
-        if not headline:
-            raise ToolError("headline is required")
+        """The headline in the image is a copy variant's headline (the model only picks
+        which one); the placements are the plan's."""
+        assert run.plan
+        if run.copy is None:
+            raise ToolError("run_copywriter must finish first")
+        wanted = _headline_key(args.headline)
+        headline = next((v.headline for v in run.copy.variants
+                         if _headline_key(v.headline) == wanted), None)
+        if headline is None:
+            raise ToolError("headline must be one of the copy variants' headlines")
         new_content()
         run.creatives = art_director.run(
-            ctx.client, ctx.photo_png, headline, run_id=run.run_id, concept=ctx.concept,
-            data_dir=ctx.data_dir)
+            ctx.client, ctx.photo_png, headline[:60], run_id=run.run_id, concept=ctx.concept,
+            data_dir=ctx.data_dir, placements=tuple(run.plan.placements))
         with transaction(ctx.conn):
             for im in run.creatives.images:
                 ctx.conn.execute(

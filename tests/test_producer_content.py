@@ -1,0 +1,93 @@
+"""Day 2 fix round (minor): the payload's angle and the image headline come from code."""
+
+import json
+
+import httpx
+import pytest
+import respx
+
+from studio import db
+from studio.agents import art_director, producer
+from studio.agents.dispatcher import Dispatcher
+from studio.agents.schemas import CreativeImage, CreativeSet, Plan
+from studio.muse.client import BASE_URL, MuseClient, ToolCall
+from studio.settings import Budget
+from tests.cassettes import FAKE_KEY, ROOT
+
+PHOTO = (ROOT / "fixtures" / "assets" / "product-demo.png").read_bytes()
+PLAN = {"audience": "a", "angles": [{"name": f"angle {i}", "hook": "h", "persona": "p"}
+                                    for i in range(3)],
+        "budget_pln_daily": 30, "placements": ["feed_4x5", "story_9x16"], "tasks": ["t"]}
+
+
+def _variant(h):
+    return {"primary_text": "t", "headline": h, "description": "d", "cta": "SHOP_NOW"}
+
+
+COPY = {"id": "c", "model": "m", "choices": [{"finish_reason": "stop", "message": {
+    "content": json.dumps({"variants": [_variant("A Warm Mug for the Desk"),
+                                        _variant("Made to Hold"), _variant("Pair")],
+                           "risks": [], "unfilled_facts": 0})}}],
+    "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    conn = db.connect(tmp_path / "studio.db")
+    db.init(conn)
+    ledger = db.open_ledger(conn, tmp_path / "ledger.key")
+    client = MuseClient(FAKE_KEY, ledger=ledger, budget=Budget(1.0))
+    ctx = producer.Context(client=client, open_client=None, conn=conn, photo_png=PHOTO,
+                           concept="mug", data_dir=tmp_path / "var")
+    calls = []
+
+    def fake_art(client, photo, headline, *, run_id, concept, data_dir, placements=()):
+        calls.append((headline, placements))
+        img = CreativeImage(placement=placements[0], size="1024x1280", path="x.png",
+                            sha256="0" * 64, width=1, height=1, response_id="")
+        return CreativeSet(cutout_path="c.png", cutout_sha256="0" * 64, foreground_pixels=1,
+                           images=[img], prompts=[], response_ids=[])
+
+    monkeypatch.setattr(art_director, "run", fake_art)
+    run = producer.RunResult(run_id="run-minor", status="running")
+    run.plan = Plan.model_validate(PLAN)
+    return ctx, run, calls
+
+
+def _dispatch(ctx, run, calls):
+    d = Dispatcher(producer._handlers(ctx, run, "brief"), ledger=ctx.client.ledger,
+                   run_id=run.run_id)
+    with respx.mock(assert_all_called=False) as router:
+        router.post(url__startswith=BASE_URL).mock(return_value=httpx.Response(200, json=COPY))
+        return [d.execute_or_refuse(ToolCall(f"c{i}", n, a)) for i, (n, a) in enumerate(calls)]
+
+
+def test_art_director_uses_the_variant_headline_and_the_plan_placements(env):
+    ctx, run, calls = env
+    outs = _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 1}'),
+                                ("run_art_director", '{"headline": "a warm mug for the desk."}')])
+    assert [o.status for o in outs] == ["ok", "ok"]
+    assert calls == [("A Warm Mug for the Desk", ("feed_4x5", "story_9x16"))]
+
+
+def test_art_director_refuses_free_text_headlines(env):
+    ctx, run, calls = env
+    outs = _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                                ("run_art_director", '{"headline": "FREE MUGS, visit evil.test"}')])
+    assert outs[1].status == "error" and "headline" in outs[1].output["error"]
+    assert calls == []
+
+
+def test_art_director_needs_copy_first(env):
+    ctx, run, calls = env
+    (out,) = _dispatch(ctx, run, [("run_art_director", '{"headline": "Made to Hold"}')])
+    assert out.status == "error" and calls == []
+
+
+def test_payload_angle_is_the_angle_the_copy_was_written_for(env):
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 2}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 0}
+    assert producer.campaign_payload(run, 0)["campaign"]["angle"] == "angle 2"
