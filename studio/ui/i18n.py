@@ -89,9 +89,12 @@ EN: dict[str, str] = {
     "studio.turns": "Transcript turns",
     "studio.brief_label": "Campaign brief (type it, or record it above)",
     "studio.brief_default": "Autumn campaign for Demo Ceramics Studio: hand-thrown stoneware "
-                            "mugs, 89 PLN, free delivery in Poland above 150 PLN. Audience: "
-                            "people working from home in Poland, 25-55. Budget 30 PLN per day. "
-                            "Facebook and Instagram feed plus stories.",
+                            "mugs, 350 ml, 89 PLN each, free delivery in Poland above 150 PLN. We"
+                            " want traffic to the shop website. For people working from home, "
+                            "aged 25-55, all of Poland. The mugs are dishwasher safe and we make "
+                            "them in small batches. Free gift wrapping. Lightning-fast shipping. "
+                            "Budget 30 PLN per day from 3 to 30 November 2026. Warm and concrete,"
+                            " no hype. Don't say these are the best mugs in the world.",
     "studio.brief_help": "The producer plans, the copywriter writes, the art director cuts the "
                          "{concept} out of the product photo with SAM 3.1 and renders three "
                          "placements with Muse Image, two reviewers check it. Nothing is "
@@ -489,10 +492,14 @@ PL: dict[str, str] = {
                          "usuwane po transkrypcji.",
     "studio.turns": "Fragmenty transkrypcji",
     "studio.brief_label": "Brief kampanii (wpisz albo nagraj powyżej)",
-    "studio.brief_default": "Jesienna kampania dla Demo Ceramics Studio: ręcznie toczone "
-                            "kubki z kamionki, 89 zł, darmowa dostawa w Polsce powyżej 150 zł. "
-                            "Odbiorcy: osoby pracujące z domu w Polsce, 25-55 lat. Budżet 30 zł "
-                            "dziennie. Feed i relacje na Facebooku i Instagramie.",
+    "studio.brief_default": "Jesienna kampania Demo Ceramics Studio: ręcznie toczone kubki z "
+                            "kamionki, 350 ml, 89 zł za sztukę, darmowa dostawa w Polsce od 150 "
+                            "zł. Chcemy ruchu na stronę sklepu. Dla osób pracujących z domu, "
+                            "25-55 lat, cała Polska. Kubki można myć w zmywarce i robimy je w "
+                            "małych seriach. Pakujemy na prezent gratis. Wysyłka błyskawiczna. "
+                            "Budżet 30 zł dziennie od 3 do 30 listopada 2026. Ciepło i "
+                            "konkretnie, bez przesady. Nie piszcie, że to najlepsze kubki na "
+                            "świecie.",
     "studio.brief_help": "Producent planuje, copywriter pisze, dyrektor artystyczny wycina "
                          "{concept} ze zdjęcia produktu za pomocą SAM 3.1 i rysuje trzy "
                          "formaty w Muse Image, dwóch recenzentów to sprawdza. Nic nie jest "
