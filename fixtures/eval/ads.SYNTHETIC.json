@@ -1,5 +1,6 @@
 {
   "_provenance": "synthetic",
+  "_synthetic": true,
   "_note": "Hand-written test ads for the reviewer evaluation (docs/eval.md). 20 ads that break one checklist rule each (expect != OK, the rule cited) and 5 brand-correct ads (expect OK or WARN without BLOCK). Images are drawn by scripts/make_eval_images.py from the demo product image; no real person, brand or customer.",
   "ads": [
     {"id": "p1-lonely", "expect": "P1", "image": "product", "copy": {"primary_text": "Lonely at your desk again? A warm mug from Demo Ceramics Studio understands you.", "headline": "Feeling alone?", "description": "350 ml stoneware", "cta": "SHOP_NOW"}},
