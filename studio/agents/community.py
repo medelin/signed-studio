@@ -27,7 +27,7 @@ from typing import Any
 from studio import envelope
 from studio.agents import prompts
 from studio.agents.schemas import Triage
-from studio.approvals import Pending, transaction
+from studio.approvals import TTL_S, Pending, transaction
 from studio.muse.client import MuseClient, MuseResult
 from studio.muse.structured import structured
 from studio.pii import choose_tier, contains_pii, long_digit_run, redact
@@ -199,7 +199,8 @@ def hide_payload(comment: dict[str, Any]) -> dict[str, Any]:
 def request(conn: sqlite3.Connection, ledger: Ledger, comment_id: str, action: str,
             message: str = "") -> tuple[Pending, dict[str, Any]]:
     """A pending ``reply.post`` (for the exact, human-edited ``message``) or
-    ``comment.hide``. Nothing is sent: the human signs it in the inbox."""
+    ``comment.hide``. Nothing is sent: the human signs it in the inbox. At most one reply
+    per comment waits for a signature at a time (until it expires after ``TTL_S``)."""
     if action not in SIGNED_ACTIONS:
         raise InboxError("unknown inbox action")
     comment = _comment(conn, comment_id)
@@ -216,6 +217,11 @@ def request(conn: sqlite3.Connection, ledger: Ledger, comment_id: str, action: s
     pending = Pending.create(action, item_id_for(comment_id), payload, ledger=ledger,
                              run_id=run_id)
     with transaction(conn):
+        if action == "reply.post" and conn.execute(
+                "SELECT 1 FROM approvals WHERE item_id = ? AND action = 'reply.post' AND "
+                "status = 'pending' AND ts > ?",
+                (item_id_for(comment_id), int(time.time()) - TTL_S)).fetchone():
+            raise InboxError("a reply to this comment is already waiting for approval")
         pending.save(conn)
         conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
                      "VALUES (?, ?, ?, ?)",

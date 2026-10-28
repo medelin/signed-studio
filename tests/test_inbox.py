@@ -204,3 +204,22 @@ def test_draft_with_a_unicode_phone_needs_a_human():
                draft="Zadzwoń: 600‑123‑456", reason="r", confidence=0.9)
     checked, flags = community.enforce(t, "Jak się skontaktować?")
     assert checked.requires_human and "pii_in_draft" in flags
+
+
+def test_one_pending_reply_per_comment(tmp_path, monkeypatch):
+    from studio import db
+    from studio.agents import community
+    from studio.approvals import TTL_S
+    conn = db.connect(tmp_path / "s.db")
+    db.init(conn)
+    db.seed(conn)
+    ledger = db.open_ledger(conn, tmp_path / "ledger.key")
+    community.request(conn, ledger, "c-1", "reply.post", "89 PLN.")
+    with pytest.raises(community.InboxError, match="already waiting"):
+        community.request(conn, ledger, "c-1", "reply.post", "Another wording.")
+    community.request(conn, ledger, "c-1", "comment.hide")  # hiding is a separate decision
+    community.request(conn, ledger, "c-2", "reply.post", "89 PLN.")  # other comments too
+    import time as _time
+    later = _time.time() + TTL_S + 5
+    monkeypatch.setattr(community.time, "time", lambda: later)
+    community.request(conn, ledger, "c-1", "reply.post", "Fresh, after expiry.")
