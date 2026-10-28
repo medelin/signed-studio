@@ -14,6 +14,7 @@ import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pydantic import BaseModel
 
+from studio import cli_account
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.structured import structured
 from studio.receipts import Ledger, public_key_raw, verify
@@ -159,6 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="real Model API calls; writes fixtures/replay/<set>/replay.json")
     p_demo.add_argument("--env-file", type=Path, default=Path(".env"))
     p_demo.add_argument("--max-cost", type=float, default=0.40, help="USD cap for --record")
+    cli_account.add_parser(sub)
     args = parser.parse_args(argv)
     try:
         if args.cmd == "smoke-live":
@@ -167,8 +169,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_verify(args)
         if args.cmd == "demo":
             return run_demo(args)
-    except (ConfigError, MuseError, ReadOnlyMode, UsageError, OSError, httpx.HTTPError, ValueError,
-            KeyError) as exc:
+        if args.cmd == "account":
+            return cli_account.run(args)
+    except (ConfigError, MuseError, ReadOnlyMode, UsageError, cli_account.UsageError, OSError,
+            httpx.HTTPError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
     except Exception as exc:  # noqa: BLE001 - a verifier reports, it never dumps a traceback

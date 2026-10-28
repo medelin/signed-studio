@@ -18,6 +18,8 @@ from typing import Any
 from jinja2 import pass_context
 from markupsafe import Markup
 
+from studio.ui.i18n_accounts import EN_ACCOUNTS, PL_ACCOUNTS
+
 LANGS = ("en", "pl")
 DEFAULT = "en"
 NAMES = {"en": "English", "pl": "Polski"}
@@ -1181,6 +1183,8 @@ PL_BRIEF: dict[str, str] = {
 
 EN.update(EN_BRIEF)
 PL.update(PL_BRIEF)
+EN.update(EN_ACCOUNTS)
+PL.update(PL_ACCOUNTS)
 
 CATALOGS = {"en": EN, "pl": PL}
 
