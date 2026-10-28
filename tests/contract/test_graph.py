@@ -49,6 +49,8 @@ class Replay:
 
 
 def adapter(replay, sleeps=None, **kw):
+    kw.setdefault("dsa_beneficiary", "Demo Ceramics")
+    kw.setdefault("dsa_payor", "Demo Ceramics")
     return GraphAdapter(TOKEN, "act_100000000000001", "600000000000001", PAGE_TOKEN,
                         transport=httpx.MockTransport(replay),
                         sleep=(sleeps.append if sleeps is not None else lambda s: None),
@@ -73,6 +75,18 @@ def _assert_token_transport(replay, token=TOKEN, mode="form"):
         else:
             assert "access_token" not in form and token not in request.content.decode()
             assert request.headers["authorization"] == f"Bearer {token}"
+
+
+def test_an_eu_ad_set_without_dsa_names_is_refused_before_any_post(env):
+    conn, ledger = env
+    p = payload()  # targets PL
+    v = approve(conn, ledger, "campaign.create", "cmp_g2", p, "run_m2")
+    replay = Replay(CASSETTE["interactions"])
+    g = adapter(replay, dsa_beneficiary="", dsa_payor="")
+    with pytest.raises(AdapterError) as exc:
+        g.create_adset_paused("120200000000000101", p, v)
+    assert exc.value.code == "dsa_missing"
+    assert not [r for r, _ in replay.sent if r.url.path.endswith("/adsets")]
 
 
 def test_campaign_sequence_is_paused_in_every_creation_body(env):
@@ -100,6 +114,7 @@ def test_campaign_sequence_is_paused_in_every_creation_body(env):
     assert posts["campaigns"]["objective"] == "OUTCOME_TRAFFIC"
     assert posts["adsets"]["daily_budget"] == "3000"
     assert json.loads(posts["adsets"]["targeting"])["geo_locations"] == {"countries": ["PL"]}
+    assert posts["adsets"]["dsa_beneficiary"] == posts["adsets"]["dsa_payor"] == "Demo Ceramics"
     spec = json.loads(posts["adcreatives"]["object_story_spec"])
     assert spec["link_data"]["image_hash"] == image
     assert spec["link_data"]["message"] == "A mug for slow mornings."

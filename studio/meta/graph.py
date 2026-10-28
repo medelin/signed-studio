@@ -34,7 +34,7 @@ import re
 import time
 from collections.abc import Callable, Mapping
 from datetime import datetime
-from typing import Any
+from typing import Any, Final
 
 import httpx
 
@@ -73,6 +73,11 @@ BUC_THROTTLE = (80000, 80014)  # business use case rate limits (Marketing API)
 RETRIES = 3
 _ACCOUNT = re.compile(r"(?:act_)?(\d{1,30})")
 _OBJECT_ID = re.compile(r"[0-9_]{1,80}")
+# EU member states: an ad set reaching any of them must name its beneficiary and payor
+# (Digital Services Act; Marketing API ad set fields ``dsa_beneficiary``/``dsa_payor``)
+EU_COUNTRIES: Final = frozenset({
+    "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT",
+    "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"})
 TRANSPORTS = ("form", "bearer")
 
 
@@ -110,8 +115,10 @@ class GraphAdapter:
                  transport: httpx.BaseTransport | None = None,
                  sleep: Callable[[float], None] = time.sleep, timeout: float = 30.0,
                  token_transport: str = "form",  # noqa: S107 - a mode name, not a token
-                 app_secret: str = "", conn: Any = None) -> None:
+                 app_secret: str = "", conn: Any = None,
+                 dsa_beneficiary: str = "", dsa_payor: str = "") -> None:
         self._conn = conn
+        self._dsa = {"dsa_beneficiary": dsa_beneficiary, "dsa_payor": dsa_payor}
         m = _ACCOUNT.fullmatch(ad_account_id or "")
         if not access_token or m is None or not page_id:
             raise ValueError("graph adapter needs a token, an ad account id and a page id")
@@ -132,7 +139,9 @@ class GraphAdapter:
         return cls(settings.meta_access_token, settings.meta_ad_account_id,
                    settings.meta_page_id, settings.meta_page_token,
                    token_transport=settings.meta_token_transport,
-                   app_secret=settings.meta_app_secret, **kwargs)
+                   app_secret=settings.meta_app_secret,
+                   dsa_beneficiary=settings.meta_dsa_beneficiary,
+                   dsa_payor=settings.meta_dsa_payor, **kwargs)
 
     def __repr__(self) -> str:
         return f"GraphAdapter(base={self.base!r})"
@@ -257,6 +266,14 @@ class GraphAdapter:
         spec = self._delivery(payload, approval)
         fields = adset_fields(payload, spec, _oid(lookalike_id) if lookalike_id else "")
         fields["daily_budget"] = str(fields["daily_budget"])
+        geo = fields["targeting"].get("geo_locations") or {}
+        countries = set(geo.get("countries") or [])
+        # regions, cities and zips carry no country list: treat them as possibly in the EU
+        if countries & EU_COUNTRIES or set(geo) - {"countries", "location_types"}:
+            if not all(self._dsa.values()):
+                raise AdapterError("an ad set reaching the EU needs META_DSA_BENEFICIARY and "
+                                   "META_DSA_PAYOR", code="dsa_missing")
+            fields.update(self._dsa)
         return self._id(self._post(f"{self.account}/adsets", {
             "name": campaign_name(payload) + " · ad set", "campaign_id": _oid(campaign_id),
             **fields, "bid_strategy": "LOWEST_COST_WITHOUT_CAP", "status": PAUSED}))

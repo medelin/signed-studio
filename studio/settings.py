@@ -110,6 +110,9 @@ class Settings:
     # form (access_token in the POST body) | bearer
     meta_token_transport: str = "form"  # noqa: S105 - a mode name, not a token
     meta_app_secret: str = field(default="", repr=False)  # enables appsecret_proof
+    # EU DSA: who an ad set reaching the EU is for and who pays (shown in the Ad Library)
+    meta_dsa_beneficiary: str = ""
+    meta_dsa_payor: str = ""
     # the token Meta echoes when subscribing the leadgen webhook (GET /api/meta/webhook)
     meta_webhook_verify_token: str = field(default="", repr=False)
     session_secret: bytes = field(default=b"", repr=False)
@@ -263,6 +266,8 @@ class Settings:
             meta_page_token=e.get("META_PAGE_TOKEN", ""),
             meta_token_transport=transport,
             meta_app_secret=e.get("META_APP_SECRET", ""),
+            meta_dsa_beneficiary=_dsa_name(e, "META_DSA_BENEFICIARY"),
+            meta_dsa_payor=_dsa_name(e, "META_DSA_PAYOR"),
             meta_webhook_verify_token=e.get("META_WEBHOOK_VERIFY_TOKEN", ""),
             session_secret=session_secret,
             judge_password=judge_password,
@@ -293,6 +298,13 @@ class Settings:
             google_account_currency=(_currency(e["GOOGLE_ADS_ACCOUNT_CURRENCY"])
                                      if e.get("GOOGLE_ADS_ACCOUNT_CURRENCY") else ""),
         )
+
+
+def _dsa_name(e: Mapping[str, str], name: str) -> str:
+    value = e.get(name, "").strip()
+    if len(value) > 100 or not value.isprintable():
+        raise ConfigError(f"{name} must be a printable name of at most 100 characters")
+    return value
 
 
 def _public_url(url: str) -> str:

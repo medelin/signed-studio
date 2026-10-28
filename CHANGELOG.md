@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-28 — EU ad sets name their beneficiary and payor
+
+- The first live PAUSED run on the operator's ad account created the image and the campaign, then Meta refused the ad set (error 3858081, "no advertiser specified"): an ad set reaching the EU must carry the Digital Services Act fields `dsa_beneficiary` and `dsa_payor`. `META_DSA_BENEFICIARY` and `META_DSA_PAYOR` now fill them; an ad set that reaches an EU country (or a region, city or zip without a country list) without both is refused with `dsa_missing` before anything is posted.
+
 ## 2026-10-28 — MCP server: an external agent drafts, a human still signs
 
 - `studio mcp` (`studio/mcp_server.py`, [docs/mcp.md](docs/mcp.md)): a stdio MCP server (official SDK, `mcp==1.30.0`; no network listener) on the studio's own database, bound to one active account (`--account`, checked on every call). Eleven tools: `list_briefs`, `read_brief`, `list_campaigns`, `read_run`, `read_campaign`, `draft_brief`, `run_pipeline`, `request_launch`, `read_receipts`, `read_report`, `verify_export`. Drafts and runs use recorded answers (`--replay-set`, default `brief`) and a read-only mock Meta surface; the brief confirmation is the UI's (`routes_studio.check_confirmation`, now a function both use).
