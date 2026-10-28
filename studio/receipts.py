@@ -538,6 +538,9 @@ def verify(
     nonces: set[str] = set()
     counts: dict[str, int] = {}
     manifests: list[Any] = []
+    ids: set[str] = set()
+    last_ids: dict[str, str] = {}
+    latest: tuple[float, str] = (0.0, "")  # newest receipt (ts, id)
     count = 0
     for line_no, line in enumerate(Path(path).read_text().splitlines(), start=1):
         if not line.strip():
@@ -551,18 +554,25 @@ def verify(
             manifests.append(raw["manifest"])
             continue
         count += 1
+        where = f"line {line_no}"
+        if isinstance(raw, dict) and isinstance(raw.get("id"), str) and is_opaque(raw["id"]):
+            where += f" ({raw['id']})"
         try:
             if not isinstance(raw, dict):
                 raise TypeError("not a JSON object")
             receipt = Receipt(**raw)
         except (TypeError, ValueError) as exc:
-            errors.append(f"line {line_no}: unreadable receipt ({exc})")
+            errors.append(f"{where}: unreadable receipt ({exc})")
             continue
         problem = _type_error(receipt)
         if problem is not None:
-            errors.append(f"line {line_no}: unreadable receipt ({problem})")
+            errors.append(f"{where}: unreadable receipt ({problem})")
             continue
         run = receipt.run_id
+        if receipt.id in ids:
+            errors.append(f"{receipt.id}: receipt appears more than once")
+        ids.add(receipt.id)
+        latest = max(latest, (receipt.ts, receipt.id))
         if receipt.compute_hash() != receipt.hash:
             errors.append(f"{receipt.id}: hash mismatch (content was changed)")
         else:
@@ -594,11 +604,16 @@ def verify(
             errors += _check_write(receipt, grants.setdefault(run, {}),
                                    used.setdefault(run, set()))
         heads[run] = receipt.hash
+        last_ids[run] = receipt.id
         seen.setdefault(run, set()).add(receipt.hash)
         last_ts[run] = receipt.ts
         counts[run] = counts.get(run, 0) + 1
-    errors += _check_manifest(manifests, heads, counts, public_key, min_seq)
+    errors += _check_manifest(manifests, heads, counts, public_key, min_seq, last_ids, latest)
     return Report(ok=not errors, count=count, errors=errors, signatures=signatures)
+
+
+def _count(entry: Any) -> str:
+    return str(entry.get("count")) if isinstance(entry, dict) else "?"
 
 
 def _check_manifest(
@@ -607,6 +622,8 @@ def _check_manifest(
     counts: dict[str, int],
     public_key: Ed25519PublicKey,
     min_seq: int,
+    last_ids: Mapping[str, str] | None = None,
+    latest: tuple[float, str] = (0.0, ""),
 ) -> list[str]:
     if len(manifests) != 1:
         return [f"expected exactly one signed manifest, found {len(manifests)}"]
@@ -628,6 +645,9 @@ def _check_manifest(
         errors.append(f"manifest key epoch {body['epoch']} does not match the ledger key")
     if body["seq"] < min_seq:
         errors.append(f"manifest seq {body['seq']} is older than the latest known {min_seq}")
+    if latest[1] and latest[0] > body["ts"]:
+        errors.append(f"{latest[1]}: receipt is dated after the manifest that covers it")
+    last_ids = last_ids or {}
     listed: dict[str, Any] = body["runs"]
     for run in sorted(set(listed) | set(counts)):
         entry = listed.get(run)
@@ -637,5 +657,7 @@ def _check_manifest(
             errors.append(f"run {run}: listed in the manifest but missing from the log")
         elif (not isinstance(entry, dict) or entry.get("head") != heads[run]
               or entry.get("count") != counts[run]):
-            errors.append(f"run {run}: log does not match manifest (truncated or receipts missing)")
+            errors.append(f"run {run}: log does not match manifest (truncated or receipts "
+                          f"missing): the log ends at {last_ids.get(run, '?')} after "
+                          f"{counts[run]} receipts, the manifest lists {_count(entry)}")
     return errors

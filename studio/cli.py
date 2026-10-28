@@ -20,6 +20,8 @@ from studio.receipts import Ledger, public_key_raw, verify
 from studio.settings import Budget, ConfigError, ReadOnlyMode, Settings
 
 SMOKE_MODEL = "muse-spark-1.3-contributor"
+EXIT_INVALID = 2  # verify: the chain is broken; every problem names a receipt (or run)
+EXIT_ERROR = 3  # the command could not run: usage, I/O, network, configuration
 
 
 class _Smoke(BaseModel):
@@ -108,7 +110,7 @@ def run_verify(args: argparse.Namespace) -> int:
     print(f"chain INVALID, {report.count} receipts, {len(report.errors)} problems:")
     for err in report.errors:
         print(f"  - {err}")
-    return 1
+    return EXIT_INVALID
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -134,11 +136,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ConfigError, MuseError, ReadOnlyMode, UsageError, OSError, httpx.HTTPError, ValueError,
             KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_ERROR
     except Exception as exc:  # noqa: BLE001 - a verifier reports, it never dumps a traceback
         print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 2
-    return 1
+        return EXIT_ERROR
+    return EXIT_ERROR
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ def test_smoke_live_prints_usage_only(capsys, tmp_path):
 
 def test_smoke_live_without_key_fails_cleanly(capsys, tmp_path, monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
-    assert cli.main(["smoke-live", "--env-file", str(tmp_path / "missing.env")]) == 2
+    assert cli.main(["smoke-live", "--env-file", str(tmp_path / "missing.env")]) == 3
     assert "MODEL_API_KEY" in capsys.readouterr().err
 
 
@@ -40,7 +40,7 @@ def test_smoke_live_respects_read_only(capsys, tmp_path, monkeypatch):
     with respx.mock(assert_all_called=False) as router:
         route = router.post(url__startswith=BASE_URL)
         rc = cli.main(["smoke-live", "--env-file", str(tmp_path / "missing.env")])
-    assert rc == 2 and not route.called
+    assert rc == 3 and not route.called
     assert "STUDIO_READ_ONLY" in capsys.readouterr().err
 
 
@@ -96,7 +96,7 @@ def test_verify_reports_tampered_id(tmp_path, capsys):
     lines[0] = json.dumps(rec)
     path.write_text("\n".join(lines) + "\n")
     rc = cli.main(["verify", str(path), "--key-file", str(pub), "--approver-keys", str(keys)])
-    assert rc == 1
+    assert rc == 2
     assert rec["id"] in capsys.readouterr().out
 
 
@@ -104,12 +104,12 @@ def test_verify_rejects_stale_export(tmp_path, capsys):
     led, path, keys, pub = _export(tmp_path)
     rc = cli.main(["verify", str(path), "--key-file", str(pub), "--approver-keys", str(keys),
                    "--min-seq", str(led.manifest()["seq"] + 1)])
-    assert rc == 1 and "older than the latest known" in capsys.readouterr().out
+    assert rc == 2 and "older than the latest known" in capsys.readouterr().out
 
 
 def test_verify_requires_an_approver_registry(tmp_path, capsys):
     _, path, _, pub = _export(tmp_path)
-    assert cli.main(["verify", str(path), "--key-file", str(pub)]) == 2
+    assert cli.main(["verify", str(path), "--key-file", str(pub)]) == 3
     assert "approver" in capsys.readouterr().err
     rc = cli.main(["verify", str(path), "--key-file", str(pub), "--skip-approver-signatures"])
     assert rc == 0
@@ -132,7 +132,7 @@ def test_verify_against_server(tmp_path, capsys):
 
 def test_verify_server_must_be_https(tmp_path, capsys):
     _, path, _, _ = _export(tmp_path)
-    assert cli.main(["verify", str(path), "--server", "http://studio.example"]) == 2
+    assert cli.main(["verify", str(path), "--server", "http://studio.example"]) == 3
     assert "https" in capsys.readouterr().err
 
 
@@ -144,7 +144,7 @@ def test_verify_reports_unexpected_errors_instead_of_a_traceback(tmp_path, capsy
 
     monkeypatch.setattr(cli, "verify", boom)
     rc = cli.main(["verify", str(path), "--key-file", str(pub), "--approver-keys", str(keys)])
-    assert rc == 2
+    assert rc == 3
     assert "unexpected" in capsys.readouterr().err
 
 
@@ -152,5 +152,5 @@ def test_verify_bad_approver_keys_file_is_a_clean_error(tmp_path, capsys):
     _, path, keys, pub = _export(tmp_path)
     keys.write_text("[1, 2]")
     rc = cli.main(["verify", str(path), "--key-file", str(pub), "--approver-keys", str(keys)])
-    assert rc == 2
+    assert rc == 3
     assert capsys.readouterr().err.startswith("error:")
