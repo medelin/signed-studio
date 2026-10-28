@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from studio import accounts, auth, db, prefs
+from studio import accounts, auth, db, notify, prefs
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
 from studio.receipts import Ledger
 from studio.settings import Settings
@@ -29,8 +29,8 @@ from studio.ui import i18n
 
 CHALLENGE_COOKIE = "studio_2fa"
 DONE = frozenset({"profile", "password", "2fa_started", "2fa_cancelled", "2fa_off",
-                  "session_revoked", "sessions_revoked"})
-SECTIONS = ("profile", "password", "two-factor", "sessions", "export", "delete")
+                  "session_revoked", "sessions_revoked", "notify"})
+SECTIONS = ("profile", "password", "two-factor", "sessions", "notifications", "export", "delete")
 NO_STORE = {"Cache-Control": "no-store"}
 MAX_FIELDS = 20
 
@@ -82,6 +82,7 @@ def start_session(app: FastAPI, request: Request, response: Response, account: A
     response.delete_cookie(CHALLENGE_COOKIE, path="/login", httponly=True, samesite="strict",
                            secure=secure)
     _pref_cookies(response, account, secure)
+    app.state.notifier.security("signin", account)
 
 
 def second_step(app: FastAPI, request: Request, account: Account, nxt: str, html: bool
@@ -141,13 +142,15 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "themes": prefs.THEMES, "palettes": prefs.PALETTES,
             "advertiser_types": accounts.ADVERTISER_TYPES, "sections": SECTIONS,
             "min_password": accounts.MIN_PASSWORD_LEN,
+            "notify_prefs": notify.preferences(conn, account.id),
         }, status_code=status, headers=NO_STORE)
         return response
 
     def done(key: str) -> Response:
         anchor = {"profile": "profile", "password": "password", "2fa_started": "two-factor",
                   "2fa_cancelled": "two-factor", "2fa_off": "two-factor",
-                  "session_revoked": "sessions", "sessions_revoked": "sessions"}[key]
+                  "session_revoked": "sessions", "sessions_revoked": "sessions",
+                  "notify": "notifications"}[key]
         return RedirectResponse(f"/account?done={key}#{anchor}", 303, headers=NO_STORE)
 
     async def posted(request: Request) -> tuple[str, Account, dict[str, str]] | Response:
@@ -194,6 +197,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "login_required"}, 401)
         sid, account = me
         data = store.export(account.id, ledger.receipts(), sid)
+        app.state.notifier.security("export_ready", account)
         body = json.dumps(data, indent=1, ensure_ascii=False, sort_keys=True)
         return Response(body, media_type="application/json", headers={
             **NO_STORE, "Content-Disposition":
@@ -237,6 +241,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                         errors={"password": ("err." + exc.code, field)})
         app.state.limiter.settle(ip, True)
         app.state.challenges.drop_account(account.id)
+        app.state.notifier.security("password_changed", account)
         return done("password")
 
     @app.post("/account/2fa/start")
@@ -275,6 +280,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         app.state.limiter.settle(ip, True)
         fresh = store.get(account.id)
         assert fresh is not None
+        app.state.notifier.security("two_factor_on", fresh)
         return page(request, sid, fresh, codes=codes)
 
     @app.post("/account/2fa/cancel")
@@ -304,6 +310,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                         errors={"two_factor": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
         app.state.challenges.drop_account(account.id)
+        app.state.notifier.security("two_factor_off", account)
         return done("2fa_off")
 
     @app.post("/account/sessions/revoke")
@@ -326,6 +333,18 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         store.revoke_others(account.id, current_sid=sid)
         return done("sessions_revoked")
 
+    @app.post("/account/notifications")
+    async def save_notifications(request: Request) -> Response:
+        got = await posted(request)
+        if isinstance(got, Response):
+            return got
+        _, account, fields = got
+        if account.is_demo:  # the shared demo account never sends mail
+            return JSONResponse({"error": "demo_account"}, 403)
+        notify.set_preferences(conn, account.id, campaigns="campaigns" in fields,
+                               leads="leads" in fields)
+        return done("notify")
+
     @app.post("/account/delete")
     async def delete(request: Request) -> Response:
         got = await posted(request)
@@ -345,6 +364,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                         errors={"delete": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
         app.state.challenges.drop_account(account.id)
+        app.state.notifier.security("deletion_requested", account)  # address read before erasure
         app.state.sessions.revoke(request.cookies.get(COOKIE))
         response = templates.TemplateResponse(request, "account_deleted.html",
                                               base(request, False), headers=NO_STORE)

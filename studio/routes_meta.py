@@ -37,6 +37,7 @@ from fastapi.templating import Jinja2Templates
 
 from studio import leadads
 from studio.agents import media_buyer
+from studio.google import store as google_store
 from studio.meta import measurement, objectives
 from studio.meta.adapter import AdapterError
 from studio.receipts import Ledger
@@ -80,9 +81,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 return None
         return None
 
-    app.state.executors["campaign.update"] = (
-        lambda verified, payload: media_buyer.update(conn, ledger, app.state.adapter, verified,
-                                                     payload, settings.max_daily_budget))
+    def updated(verified: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        result = media_buyer.update(conn, ledger, app.state.adapter, verified, payload,
+                                    settings.max_daily_budget)
+        if (payload.get("change") or {}).get("kind") != "budget":
+            app.state.notifier.event("campaign_paused")  # a signed pause
+        return result
+
+    app.state.executors["campaign.update"] = updated
 
     @app.post("/api/insights/pull")
     async def pull_insights(request: Request) -> Response:
@@ -94,6 +100,16 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                           app.state.adapter, settings.max_daily_budget)
         except AdapterError as exc:
             return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
+        if out.get("recommendations"):
+            app.state.notifier.event("insights_ready", count=out["recommendations"])
+        google = getattr(app.state, "google", None)
+        if google is not None:
+            try:
+                pulled = await run_in_threadpool(google_store.pull_all, conn, ledger, google)
+                if pulled["google_campaigns"]:  # the Meta-only answer keeps its shape
+                    out.update(pulled)
+            except AdapterError as exc:
+                return JSONResponse({"error": "google_error", "code": exc.code}, 502)
         return JSONResponse(out)
 
     @app.get("/api/measurement")
@@ -127,6 +143,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                           client())
         except AdapterError as exc:
             return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
+        if out.get("new"):
+            app.state.notifier.event("lead_new", count=out["new"])
         return JSONResponse(out)
 
     @app.get("/api/meta/webhook")
@@ -165,4 +183,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 n += leadads.ingest(conn, ledger, client(), lead, via="webhook") is not None
             return n
 
-        return JSONResponse({"received": await run_in_threadpool(ingest)})
+        received = await run_in_threadpool(ingest)
+        if received:
+            app.state.notifier.event("lead_new", count=received)
+        return JSONResponse({"received": received})

@@ -1,0 +1,14 @@
+{
+  "_provenance": "synthetic",
+  "_synthetic": true,
+  "_note": "Invented numbers for the mock Google Ads adapter (a Search campaign, GBP). Not a recording.",
+  "rows": [
+    {"impressions": 412, "clicks": 21, "cost": 7.84, "conversions": 1.0, "ctr": 5.1},
+    {"impressions": 455, "clicks": 26, "cost": 9.12, "conversions": 2.0, "ctr": 5.71},
+    {"impressions": 390, "clicks": 18, "cost": 6.55, "conversions": 0.0, "ctr": 4.62},
+    {"impressions": 501, "clicks": 31, "cost": 10.4, "conversions": 2.0, "ctr": 6.19},
+    {"impressions": 478, "clicks": 27, "cost": 9.3, "conversions": 1.0, "ctr": 5.65},
+    {"impressions": 366, "clicks": 17, "cost": 6.1, "conversions": 1.0, "ctr": 4.64},
+    {"impressions": 420, "clicks": 24, "cost": 8.2, "conversions": 1.0, "ctr": 5.71}
+  ]
+}

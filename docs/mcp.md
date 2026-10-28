@@ -61,8 +61,10 @@ nothing else there; warnings go to stderr.
 | `verify_export` | none | `studio verify` with this studio's ledger key and approver keys, on a `.jsonl` export or on a fresh export of the whole ledger |
 
 Drafts and runs are served from the recorded replay set (no Model API key, no network, no
-spend) against the mock Meta adapter, wrapped so that only the account currency, the Page id
-and the read-only targeting search are reachable. Live drafting stays in the web UI. A replay
+spend) against the mock Meta and Google Ads adapters, wrapped so that only the account
+currencies, the Page id, the Google customer id and the read-only targeting search are
+reachable (never the Graph or Google Ads REST adapter, whatever the env file says). A brief
+that chose Google Search gets its `google.create` approval pending next to the Meta one. Live drafting stays in the web UI. A replay
 answers any brief with recorded output, so the copy and images are the recorded ones; the
 point is to exercise the whole path up to the signature.
 

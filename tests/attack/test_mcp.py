@@ -2,18 +2,20 @@
 every tool, invents tools that sign, approve or send, forges an approval, and puts a
 prompt injection into the brief it submits.
 
-Every function that signs, consumes an approval, executes, writes to Meta or changes an
-account is a tripwire for the whole module: it records the hit and raises. The tests fail
-on any hit, on any network call, and on any approval, external write or campaign the MCP
-calls produced. ``studio verify`` rejects an export whose write leans on an MCP receipt or
-on the unsigned pending approval."""
+Every function that signs, consumes an approval, executes, writes to Meta or Google Ads
+or changes an account is a tripwire for the whole module: it records the hit and raises.
+The tests fail on any hit, on any network call, and on any approval, external write or
+campaign the MCP calls produced. ``studio verify`` rejects an export whose write leans on
+an MCP receipt or on the unsigned pending approval."""
 
 import httpx
 import pytest
 
 from studio import approvals, executor, mcp_server, replay, routes_studio
 from studio.accounts import Accounts
-from studio.agents import community, media_buyer
+from studio.agents import community, google_buyer, media_buyer
+from studio.google.mock import MockAdapter as GoogleMock
+from studio.google.rest import RestAdapter as GoogleRest
 from studio.meta.graph import GraphAdapter
 from studio.meta.mock import MockAdapter
 from studio.receipts import verify
@@ -31,7 +33,11 @@ TRIPWIRES = (
      (executor, "authorize"), (executor, "record_write"), (executor, "record_step"),
      (media_buyer, "create"), (media_buyer, "activate"), (media_buyer, "update"),
      (media_buyer, "request_activation"), (media_buyer, "request_update"),
-     (community, "send"), (GraphAdapter, "_post"), (GraphAdapter, "_request")]
+     (community, "send"), (GraphAdapter, "_post"), (GraphAdapter, "_request"),
+     (google_buyer, "create"), (google_buyer, "activate"),
+     (google_buyer, "request_activation"), (GoogleMock, "create_search_campaign"),
+     (GoogleMock, "activate"), (GoogleRest, "create_search_campaign"),
+     (GoogleRest, "activate"), (GoogleRest, "_post")]
     + [(MockAdapter, n) for n in META_WRITES] + [(GraphAdapter, n) for n in META_WRITES]
     + [(Accounts, n) for n in ACCOUNT_WRITES])
 

@@ -83,6 +83,27 @@ placements shift budget themselves; information only); spend of two daily budget
 result proposes a pause; an average frequency of 4 or more proposes a 20 % lower budget;
 results at a frequency under 2 propose a 20 % higher budget, capped at the ceiling.
 
+## Google Search (second channel)
+
+A minimal secondary channel built on the Meta pattern (`studio/google/`). Meta stays the
+primary channel; Google adds one Search campaign per brief, only when the owner ticks
+*Also run on Google Search* (`channels.google_search`, with its own `google_daily_budget`
+in the Google account's currency) in the confirmed Brief v1.
+
+| Piece | Module | What happens |
+|---|---|---|
+| Adapter | `studio/google/adapter.py` (interface, spec, operations), `mock.py` (default), `rest.py` | `GOOGLE_ADS_ADAPTER=mock\|rest`. `rest` is the Google Ads REST API **v23** over `httpx`, no client library: OAuth refresh-token flow (`https://oauth2.googleapis.com/token`), `login-customer-id` for the manager account, `developer-token` only when `GOOGLE_ADS_DEVELOPER_TOKEN` is set (this project's access is managed per Google Cloud project). Tokens are never logged, never in a URL, never in an error. |
+| Spec | `adapter.build_spec`, `check_spec` | What will be created, as one block (`payload["google"]`): campaign (Search, budget in micros, `targetSpend` bidding), geo criteria from the brief's countries (`2000 + ISO numeric`; a country without one is refused), one ad group, up to 8 phrase keywords derived by code from the product and places, one Responsive Search Ad. Headlines (3-15, at most 30 characters) and descriptions (2-4, at most 90) are validated in code; text that does not fit is dropped, never cut. The text comes only from the reviewed copy variants and what the owner confirmed (name, product, offer, proposition, facts). |
+| Signing | `approvals.spec_of`, `receipts.verify` | A `google.create` approval signs the brief hash and the hash of the `google` block as `spec_sha256`, exactly like a Meta delivery. Both adapter steps (`google_validate`, `google_create`) and the write name that hash; `studio verify` rejects a log whose step names another one. |
+| Creation | `studio/agents/google_buyer.py` | After the signature: `googleAds:mutate` with `validateOnly` (the dry run), then the same request for real: budget, campaign, geo, ad group, keywords, ad in **one atomic request** with temporary ids. Campaign, ad group and ad are `PAUSED` from a literal; keywords are `ENABLED` inside the paused ad group, so nothing delivers. |
+| Activation | `google_buyer.request_activation` / `activate` | A separate `google.activate` approval naming the campaign, ad group and ad, with the daily ceiling (`STUDIO_MAX_DAILY_BUDGET`, in the Google account's currency) re-checked at execution; one mutate enables the ad, the ad group, then the campaign. |
+| Currency | `settings.google_account_currency`, `RestAdapter.account_info` | Read once from the customer resource (`SELECT customer.currency_code … FROM customer`), or `GOOGLE_ADS_ACCOUNT_CURRENCY`. A brief whose currency differs is a field error (`google_account_currency`), never converted. |
+| Insights | `studio/google/store.py` | `googleAds:search` (GAQL: `impressions`, `clicks`, `cost_micros`, `conversions`, `ctr` by `segments.date`, last 7 days) into the `google_insights` table and an `insights.snapshot` receipt (`channel: google_search`); the Report page lists them by day. Read by *Read insights now* and `studio insights-pull`. |
+
+Not in scope: Performance Max, Display, shopping, conversion tracking set-up, language
+targeting, bid strategies other than maximise clicks, and budget or pause recommendations
+for Google campaigns.
+
 ## Replay mode
 
 `STUDIO_REPLAY=1` swaps the HTTP transport of the Model API, Baseten and Graph clients for

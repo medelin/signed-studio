@@ -103,18 +103,19 @@ def finish(conn: sqlite3.Connection, verified: Verified, status: str,
 
 
 def record_write(ledger: Ledger, verified: Verified, *, agent: str, adapter: str,
-                 details: Mapping[str, Any]) -> Receipt:
+                 details: Mapping[str, Any], channel: str = "meta") -> Receipt:
     return ledger.append(verified.run_id, agent=agent, kind="external_write",
-                         provider=f"meta-{adapter}", output_sha256=verified.content_sha256,
+                         provider=f"{channel}-{adapter}", output_sha256=verified.content_sha256,
                          details={**verified.write_details(), "adapter": adapter,
                                   **dict(details)})
 
 
 def record_step(ledger: Ledger, verified: Verified, *, agent: str, adapter: str, step: str,
-                status: str, details: Mapping[str, Any] | None = None) -> Receipt:
+                status: str, details: Mapping[str, Any] | None = None,
+                channel: str = "meta") -> Receipt:
     """One adapter call inside an approved write (``tool_call``, side effects external)."""
     return ledger.append(verified.run_id, agent=agent, kind="tool_call",
-                         provider=f"meta-{adapter}",
+                         provider=f"{channel}-{adapter}",
                          details={"tool": step, "status": status, "side_effects": "external",
                                   "adapter": adapter, "approval_id": verified.pending_id,
                                   **dict(details or {})})

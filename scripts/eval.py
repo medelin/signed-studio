@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (  # noqa: E402
 
 from studio import approvals as ap  # noqa: E402
 from studio import db  # noqa: E402
+from studio.google.adapter import MOCK_CUSTOMER, build_spec, spec_sha256  # noqa: E402
 from studio.meta import objectives  # noqa: E402
 from studio.receipts import Receipt, canonical, public_key_raw, sha256_hex, verify  # noqa: E402
 
@@ -94,6 +95,27 @@ class _Case:
                 signature=key.sign(cp.message(approver)).hex()), cpayload, ledger=self.led,
                 session_id="s1")
         self.campaign_pending = cp
+        # the same brief, a second approval: one Google Search campaign, spec signed by hash
+        self.google_spec = build_spec(
+            item_id="gcmp_" + uuid_hex(rnd)[:12], customer_id=MOCK_CUSTOMER, currency="GBP",
+            display_name="Slow Ceramics", product="handmade mug", offer="", proposition="",
+            countries=["GB"], locations=["London"], link="https://example.com/",
+            variants=[{"headline": f"Slow mornings {rnd.randint(1, 99)}",
+                       "description": "Handmade stoneware mugs, thrown in small batches.",
+                       "primary_text": "Each mug is shaped by hand and fired twice."}],
+            daily_budget=rnd.randint(2, 9), facts=["Hand-thrown stoneware", "Fired twice"])
+        gpayload = {"action": "google.create", "brief_sha256": self.brief,
+                    "google": self.google_spec}
+        with db.transaction(c):
+            gp = ap.Pending.create("google.create", "gcmp_" + uuid_hex(rnd), gpayload,
+                                   ledger=self.led, run_id="run-3", brief_sha256=self.brief)
+            gp.save(c)
+        gsigned = {k: v for k, v in gp.fields(approver).items() if k != "brief_sha256"}
+        with db.transaction(c):
+            self.google = ap.verify_and_consume(c, ap.Approval(
+                pending_id=gp.id, **gsigned, brief_sha256=gp.brief_sha256,
+                signature=key.sign(gp.message(approver)).hex()), gpayload, ledger=self.led,
+                session_id="s1")
         self.key, self.approver = key, approver
         self.approvers: dict[str, Ed25519PublicKey] = dict(ap.Keys.registry(c))
         self.tmp = tmp
@@ -290,6 +312,33 @@ def _promoted_object_changed(c: _Case) -> bool:
     return _created_with(c, other)
 
 
+def _google_created_with(c: _Case, spec: dict[str, Any]) -> bool:
+    """The server logs the signed Google campaign as created with ``spec``."""
+    details = {"spec_sha256": spec_sha256(spec), "channel": "google_search"}
+    for tool in ("google_validate", "google_create"):
+        c.led.append("run-3", agent="google_buyer", kind="tool_call", provider="google-mock",
+                     details={"tool": tool, "status": "ok", "side_effects": "external",
+                              "approval_id": c.google.pending_id, **details})
+    c.led.append("run-3", agent="google_buyer", kind="external_write",
+                 output_sha256=c.google.content_sha256,
+                 details={**c.google.write_details(), **details})
+    return c.check(c.lines())
+
+
+def _google_spec_changed(c: _Case) -> bool:
+    other = copy.deepcopy(c.google_spec)
+    key = c.rnd.choice(["budget", "keyword", "headline", "geo"])
+    if key == "budget":
+        other["campaign"]["daily_budget_micros"] *= c.rnd.randint(2, 20)
+    elif key == "keyword":
+        other["keywords"].append({"text": f"cheap {c.rnd.randint(1, 99)}", "match_type": "PHRASE"})
+    elif key == "headline":
+        other["ad"]["headlines"][0] = f"Free money {c.rnd.randint(1, 99)}"
+    else:
+        other["geo"] = {"countries": ["US"], "criteria": ["2840"]}
+    return _google_created_with(c, other)
+
+
 def _recommendation_without_approval(c: _Case) -> bool:
     approval_id = uuid_hex(c.rnd) * 2
     c.led.append("run-3", agent="media_buyer", kind="tool_call", provider="meta-mock",
@@ -330,6 +379,7 @@ TAMPER: dict[str, tuple[str, Callable[[_Case], bool]]] = {
     "brief confirmed with an open [FACT]": ("the server itself", _brief_with_open_question),
     "objective changed after signing": ("the server itself", _objective_changed),
     "promoted_object changed after signing": ("the server itself", _promoted_object_changed),
+    "Google spec changed after signing": ("the server itself", _google_spec_changed),
     "recommendation executed without approval": ("the server itself",
                                                  _recommendation_without_approval),
 }
@@ -366,7 +416,8 @@ ATTACK_FILES = ["test_dispatcher.py", "test_paused_only.py", "test_injection.py"
                 "test_comment_pii.py", "test_parallel_cost.py", "test_placements_cost.py",
                 "test_review_every_format.py", "test_voice_transcript.py",
                 "test_brief_binding.py", "test_approval_renew.py", "test_objective_binding.py",
-                "test_lead_ads.py", "test_recommendations.py"]
+                "test_lead_ads.py", "test_recommendations.py", "test_google_binding.py",
+                "test_mcp.py"]
 
 
 def attack_suites() -> list[dict[str, Any]]:
@@ -656,7 +707,8 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
             "Each case is a fresh ledger (random number of receipts, a signed reply approval, "
             "its adapter step and its write, a second run, and a third run with a confirmed "
             "Brief v1 and a campaign approval that signs its `brief_sha256` and the "
-            "`spec_sha256` of its objective mapping), exported and "
+            "`spec_sha256` of its objective mapping, and a Google Search approval that signs the "
+            "`spec_sha256` of its campaign spec), exported and "
             "then tampered with. "
             "Verified with the ledger key, the approver registry and, for rollback, the "
             "latest known manifest seq. \"The server itself\" rows are logs signed with the "

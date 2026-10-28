@@ -21,12 +21,15 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
 
+from studio.notify import MailConfig
+
 MIN_SECRET_LEN = 32
 MIN_SECRET_DISTINCT = 12
 MIN_JUDGE_PASSWORD_LEN = 20
 MIN_JUDGE_PASSWORD_CLASSES = 3  # of: lower case, upper case, digits, other
 MIN_JUDGE_PASSWORD_DISTINCT = 10
 ADAPTERS = frozenset({"mock", "graph"})
+GOOGLE_ADAPTERS = frozenset({"mock", "rest"})
 # Synthetic, model-generated demo photo (see CHANGELOG); STUDIO_PRODUCT_PHOTO replaces it.
 DEFAULT_PRODUCT_PHOTO = (
     Path(__file__).resolve().parent.parent / "fixtures" / "assets" / "product-demo.png"
@@ -131,6 +134,19 @@ class Settings:
     # the mock adapter's ad account currency (the graph adapter reads the real account's)
     account_currency: str = "PLN"
     landing_url: str = "https://example.com/"
+    # e-mail notifications (studio.notify): off unless a transport is configured
+    mail: MailConfig = field(default_factory=MailConfig)
+    public_url: str = ""  # base of the links in notification mails
+    # Google Ads (a second, minimal channel): mock unless GOOGLE_ADS_ADAPTER=rest
+    google_adapter: str = "mock"
+    google_client_id: str = field(default="", repr=False)
+    google_client_secret: str = field(default="", repr=False)
+    google_refresh_token: str = field(default="", repr=False)
+    google_developer_token: str = field(default="", repr=False)  # optional
+    google_login_customer_id: str = ""  # the manager account
+    google_customer_id: str = ""
+    # replaces the currency read from the customer resource (the mock's default is GBP)
+    google_account_currency: str = ""
 
     @property
     def judge_login_enabled(self) -> bool:
@@ -182,6 +198,19 @@ class Settings:
                 if not e.get(name):
                     raise ConfigError(f"{name} is required when META_ADAPTER=graph")
 
+        google = e.get("GOOGLE_ADS_ADAPTER", "mock") or "mock"
+        if google not in GOOGLE_ADAPTERS:
+            raise ConfigError(
+                f"GOOGLE_ADS_ADAPTER must be one of {sorted(GOOGLE_ADAPTERS)}, got {google!r}")
+        for name in ("GOOGLE_ADS_CUSTOMER_ID", "GOOGLE_ADS_LOGIN_CUSTOMER_ID"):
+            if e.get(name) and not re.fullmatch(r"\d{3}-?\d{3}-?\d{4}", e[name]):
+                raise ConfigError(f"{name} must be a ten-digit Google Ads customer id")
+        if google == "rest":
+            for name in ("GOOGLE_ADS_CLIENT_ID", "GOOGLE_ADS_CLIENT_SECRET",
+                         "GOOGLE_ADS_REFRESH_TOKEN", "GOOGLE_ADS_CUSTOMER_ID"):
+                if not e.get(name):
+                    raise ConfigError(f"{name} is required when GOOGLE_ADS_ADAPTER=rest")
+
         try:
             budget = float(e.get("STUDIO_DAILY_BUDGET_USD", "8") or "8")
         except ValueError:
@@ -218,6 +247,11 @@ class Settings:
         require_login = _bool(e, "STUDIO_REQUIRE_LOGIN", _bool(e, "STUDIO_SANDBOX", False))
         if require_login and not judge_password:
             raise ConfigError("STUDIO_REQUIRE_LOGIN=1 needs JUDGE_PASSWORD (nobody could sign in)")
+        try:
+            mail = MailConfig.from_env(e)
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from None
+        public_url = _public_url(e.get("STUDIO_PUBLIC_URL", ""))
         return cls(
             model_api_key=e.get("MODEL_API_KEY", ""),
             model_api_base_url=base_url.rstrip("/"),
@@ -247,7 +281,34 @@ class Settings:
             max_daily_budget=ceiling,
             account_currency=_currency(e.get("STUDIO_ACCOUNT_CURRENCY", "") or "PLN"),
             landing_url=landing,
+            mail=mail,
+            public_url=public_url,
+            google_adapter=google,
+            google_client_id=e.get("GOOGLE_ADS_CLIENT_ID", ""),
+            google_client_secret=e.get("GOOGLE_ADS_CLIENT_SECRET", ""),
+            google_refresh_token=e.get("GOOGLE_ADS_REFRESH_TOKEN", ""),
+            google_developer_token=e.get("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
+            google_login_customer_id=e.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "").replace("-", ""),
+            google_customer_id=e.get("GOOGLE_ADS_CUSTOMER_ID", "").replace("-", ""),
+            google_account_currency=(_currency(e["GOOGLE_ADS_ACCOUNT_CURRENCY"])
+                                     if e.get("GOOGLE_ADS_ACCOUNT_CURRENCY") else ""),
         )
+
+
+def _public_url(url: str) -> str:
+    """``STUDIO_PUBLIC_URL``: the studio's own address, https (http only for localhost), no
+    credentials, path, query or whitespace; ``""`` when unset."""
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    local = parts.hostname in {"localhost", "127.0.0.1", "::1"}
+    if (parts.scheme != "https" and not (parts.scheme == "http" and local)) or \
+            not parts.hostname or parts.username or parts.password or \
+            parts.path not in ("", "/") or parts.query or parts.fragment or \
+            any(c.isspace() for c in url):
+        raise ConfigError("STUDIO_PUBLIC_URL must be the site's origin, e.g. "
+                          "https://muse.udun.eu (https; no path, query or credentials)")
+    return url.rstrip("/")
 
 
 def _landing_url(e: Mapping[str, str], adapter: str) -> str:

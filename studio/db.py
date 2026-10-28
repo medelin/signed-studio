@@ -26,8 +26,9 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from studio import accounts, approvals, executor, leadads, store
+from studio import accounts, approvals, executor, leadads, notify, store
 from studio.approvals import transaction
+from studio.google import store as google_store
 from studio.meta import measurement
 from studio.receipts import Ledger, key_id, public_key_raw
 from studio.settings import ConfigError
@@ -133,7 +134,7 @@ CREATE TABLE IF NOT EXISTS sandbox_meta (
 SEED_TABLES = ("briefs", "campaigns", "comments", "leads", "tasks")
 DEMO_TABLES = ("tasks", "leads", "comments", "campaigns", "creatives", "briefs", "reports",
                "pending_payloads", "run_state", "lead_forms", "recommendations",
-               "insights_snapshots")
+               "insights_snapshots", "google_insights", "google_campaigns")
 _COLUMNS: dict[str, tuple[str, ...]] = {
     "briefs": ("id", "text", "source", "created_ts"),
     "campaigns": ("id", "run_id", "name", "objective", "status", "daily_budget_minor",
@@ -150,6 +151,10 @@ _SAFE_PHONE = re.compile(r"\+48 000 000 \d{3}")
 
 # Columns added after day 2 (``ALTER TABLE … ADD COLUMN`` on databases created earlier).
 MIGRATIONS: dict[str, dict[str, str]] = {
+    "accounts": {  # notification categories the owner can switch off (security cannot be)
+        "notify_campaigns": "INTEGER NOT NULL DEFAULT 1",
+        "notify_leads": "INTEGER NOT NULL DEFAULT 1",
+    },
     "approvals": {"brief_sha256": "TEXT NOT NULL DEFAULT ''",
                   "superseded_by": "TEXT NOT NULL DEFAULT ''",
                   "spec_sha256": "TEXT NOT NULL DEFAULT ''"},
@@ -213,7 +218,9 @@ def init(conn: sqlite3.Connection) -> None:
     with transaction(conn):
         _migrate(conn)
     leadads.ensure_schema(conn)
+    notify.ensure_schema(conn)
     measurement.ensure_schema(conn)
+    google_store.ensure_schema(conn)
 
 
 def _strings(value: Any) -> list[str]:

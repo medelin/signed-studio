@@ -11,10 +11,11 @@ while a human still signs every send.
   through the same functions as the UI (``routes_studio.check_confirmation``,
   ``store_draft``, ``commit_confirmation``), and the run is the same producer.
 - **Replay and mock only**: model calls are served by the recorded replay set
-  (``--replay-set``, no key, no network, no spend) and the Meta side is the mock adapter
-  behind ``_ReadOnlyMeta`` (account currency, Page id and the targeting search; no write
-  method). Text from an MCP client is untrusted: drafts and runs are enveloped like a
-  voice transcript and never go to the Contributor tier.
+  (``--replay-set``, no key, no network, no spend); Meta and Google Ads are the mock
+  adapters behind ``_ReadOnlyMeta`` (account currency, Page id, the targeting search) and
+  ``_ReadOnlyGoogle`` (account currency, customer id), neither with a write method. Text
+  from an MCP client is untrusted: drafts and runs are enveloped like a voice transcript
+  and the copywriter never runs on the Contributor tier.
 - **No signature, no send**: no tool reaches ``approvals.verify_and_consume``, an
   executor, the media buyer or an account operation. A run that ends at an approval, and
   ``request_launch``, return ``awaiting_human_signature`` with the URL of the approval page
@@ -48,6 +49,7 @@ from studio import routes_report, routes_studio
 from studio.accounts import Account, Accounts
 from studio.agents import media_buyer, producer
 from studio.approvals import Keys
+from studio.google import adapter as google_adapter
 from studio.meta import adapter as meta_adapter
 from studio.meta import measurement
 from studio.muse.client import MuseClient, MuseError
@@ -101,6 +103,19 @@ class _ReadOnlyMeta:
         return self._account_info()
 
 
+class _ReadOnlyGoogle:
+    """The Google Ads side, the same way: the account's currency and the customer id the
+    producer needs to build a ``google.create`` approval; no create or activate method."""
+
+    def __init__(self, inner: Any) -> None:
+        self.name = inner.name
+        self.customer_id = getattr(inner, "customer_id", "")
+        self._account_info: Callable[[], dict[str, str]] = inner.account_info
+
+    def account_info(self) -> dict[str, str]:
+        return self._account_info()
+
+
 @dataclass(frozen=True)
 class Tool:
     name: str
@@ -127,9 +142,10 @@ class StudioMcp:
     def __init__(self, settings: Settings, conn: Any, ledger: Ledger, account: Account, *,
                  ui_url: str = DEFAULT_UI_URL, replay_set: str = DEFAULT_REPLAY_SET,
                  clients: tuple[MuseClient, OpenWeightsClient] | None = None,
-                 adapter: Any = None) -> None:
+                 adapter: Any = None, google: Any = None) -> None:
         self.settings = replace(settings, replay=True, replay_set=replay_set,
-                                meta_adapter="mock", model_api_key="", baseten_api_key="")
+                                meta_adapter="mock", google_adapter="mock",
+                                model_api_key="", baseten_api_key="")
         self.conn = conn
         self.ledger = ledger
         self.accounts = Accounts(conn)
@@ -142,6 +158,7 @@ class StudioMcp:
         self.run_id = producer.opaque_id("mcp_")  # this server's own receipt chain
         self._clients = clients
         self.meta = _ReadOnlyMeta(adapter or meta_adapter.make(self.settings, conn=conn))
+        self.google = _ReadOnlyGoogle(google or google_adapter.make(self.settings, conn=conn))
         self._run_lock = threading.Lock()
         self._lock = threading.Lock()
 
@@ -184,7 +201,7 @@ class StudioMcp:
             else "none"}
         if tool is None:
             details["tool_sha256"] = sha256_hex(str(name))
-        for key in ("brief_id", "run_id", "approval_id", "item_id"):
+        for key in ("brief_id", "run_id", "approval_id", "google_approval_id", "item_id"):
             value = result.get(key) or args.get(key)
             if isinstance(value, str) and is_opaque(value):
                 details[key] = value
@@ -207,6 +224,9 @@ class StudioMcp:
     def currency(self) -> str:
         return self.meta.account_info()["currency"]
 
+    def google_currency(self) -> str:
+        return self.google.account_info()["currency"]
+
     def page_url(self, run_id: str) -> str:
         query = {"run": run_id, **({"lang": self.lang} if self.lang != "en" else {})}
         return f"{self.ui_url}/studio?{urlencode(query)}"
@@ -219,8 +239,10 @@ class StudioMcp:
         status, state, _ = found
         url = self.page_url(run_id)
         if status == "awaiting_approval" and state.get("pending_id"):
+            google = {"google_approval_id": state["google_pending_id"]} \
+                if state.get("google_pending_id") else {}
             return {"status": AWAITING, "action": "campaign.create", "run_id": run_id,
-                    "approval_id": state["pending_id"], "approval_url": url,
+                    "approval_id": state["pending_id"], **google, "approval_url": url,
                     "message": i18n.text(self.lang, "mcp.awaiting_signature", url=url)}
         with self.conn.lock:
             row = self.conn.execute("SELECT id, status FROM campaigns WHERE run_id = ? "
@@ -333,7 +355,8 @@ def draft_brief(s: StudioMcp, agent: str, text: str, lang: str = "en") -> dict[s
             "problems": brief_v1.problems(draft, confirmed=False,
                                           ceiling_daily=s.settings.max_daily_budget,
                                           currency=s.currency()),
-            "ceiling": s.settings.max_daily_budget, "currency": s.currency()}
+            "ceiling": s.settings.max_daily_budget, "currency": s.currency(),
+            "google_currency": s.google_currency()}
 
 
 def run_pipeline(s: StudioMcp, agent: str, brief_id: str, resolutions: list[dict[str, Any]],
@@ -350,7 +373,8 @@ def run_pipeline(s: StudioMcp, agent: str, brief_id: str, resolutions: list[dict
         brief = {k: v for k, v in json.loads(row[0]).items() if k != "schema"}
     body = {"brief_id": brief_id, "brief_v1": brief, "resolutions": resolutions}
     c = routes_studio.check_confirmation(s.conn, body, ceiling=s.settings.max_daily_budget,
-                                         currency=s.currency, untrusted=True)
+                                         currency=s.currency,
+                                         google_currency=s.google_currency, untrusted=True)
     if not s._run_lock.acquire(blocking=False):
         raise McpRefused("run_in_progress")
     try:
@@ -358,7 +382,8 @@ def run_pipeline(s: StudioMcp, agent: str, brief_id: str, resolutions: list[dict
         muse, open_weights = s.clients()
         ctx = routes_studio.run_context(s.settings, s.conn, muse, open_weights, s.meta,
                                         currency=s.currency(), brief_source=c.source,
-                                        confirmed=c.brief, digest=c.digest)
+                                        confirmed=c.brief, digest=c.digest,
+                                        google=s.google)
         try:
             producer.run(ctx, brief_v1.render(c.brief), run_id=c.run_id)
         except Exception as exc:  # noqa: BLE001 - as the UI's worker: recorded, reported

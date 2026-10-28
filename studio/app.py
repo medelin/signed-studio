@@ -49,8 +49,10 @@ from fastapi.templating import Jinja2Templates
 from studio import (
     auth,
     db,
+    notify,
     prefs,
     routes_account,
+    routes_google,
     routes_help,
     routes_inbox,
     routes_meta,
@@ -408,6 +410,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.conn = conn
     app.state.ledger = ledger
     app.state.limiter = LoginLimiter()
+    app.state.notifier = notify.Notifier(conn, ledger, settings.mail, settings.public_url)
     app.state.sessions = Sessions(settings.session_secret)
     routes_account.install(app, settings, conn)  # accounts, judge demo account, 2FA state
     templates = Jinja2Templates(directory=str(UI / "templates"))
@@ -483,13 +486,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.insights = insights
     routes_meta.register(app, settings, ledger, conn, write_guard, templates, session_of)
+
+    def announce(event: str, result: Any) -> Any:
+        app.state.notifier.event(event)  # after the write; queued, never blocks or raises
+        return result
+
     app.state.executors["campaign.create"] = (
-        lambda verified, payload: media_buyer.create(conn, ledger, app.state.adapter, verified,
-                                                     payload, settings.data_dir))
+        lambda verified, payload: announce("campaign_created", media_buyer.create(
+            conn, ledger, app.state.adapter, verified, payload, settings.data_dir)))
     app.state.executors["campaign.activate"] = (
-        lambda verified, payload: media_buyer.activate(conn, ledger, app.state.adapter,
-                                                       verified, payload,
-                                                       settings.max_daily_budget))
+        lambda verified, payload: announce("campaign_launched", media_buyer.activate(
+            conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget)))
+
+    routes_google.register(app, settings, ledger, conn, write_guard, session_of)
 
     @app.get("/api/campaigns/{item_id}")
     def get_campaign(item_id: str, request: Request) -> Response:
@@ -523,6 +532,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 conn, ledger, item_id, settings.max_daily_budget)
         except media_buyer.BuyError as exc:
             return JSONResponse({"error": exc.code}, 404 if exc.code == "not_found" else 409)
+        app.state.notifier.event("approval_waiting")
         return JSONResponse({"approval_id": pending.id, "content": payload,
                              "content_sha256": pending.content_sha256}, 201)
     for action in community.SIGNED_ACTIONS:

@@ -11,7 +11,7 @@ spec.loader.exec_module(ev)
 
 def test_every_tamper_class_is_rejected_and_clean_exports_pass():
     t = ev.tamper_suite(2, seed=11)
-    assert len(t["rows"]) == 23
+    assert len(t["rows"]) == 24
     assert all(r["rejected"] == r["n"] == 2 for r in t["rows"]), t["rows"]
     assert t["clean"] == {"n": 2, "accepted": 2}
 
@@ -26,7 +26,7 @@ def test_reviewer_metrics_from_the_recorded_reviews():
 
 def test_eval_report_states_the_headline_numbers():
     text = (ROOT / "docs" / "eval.md").read_text()
-    assert "575/575 rejected" in text and "same OK-vs-flag decision" in text
+    assert "600/600 rejected" in text and "same OK-vs-flag decision" in text
 
 
 def test_agreement_from_the_recorded_open_weights_reviews():

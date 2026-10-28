@@ -283,3 +283,22 @@ def test_each_run_replays_the_recorded_set_from_its_start(tmp_path):
     runs = [draft_and_run(studio)[1] for _ in range(3)]
     assert [r["status"] for r in runs] == [mcp_server.AWAITING] * 3
     assert len({r["approval_id"] for r in runs}) == 3
+
+
+def test_a_google_search_brief_gets_its_own_pending_approval_from_the_mock(tmp_path):
+    app, studio, _ = make_studio(tmp_path)
+    meta = replay.load_set("brief")
+    d = studio.call(CLIENT, "draft_brief", {"text": meta["draft_text"], "lang": "pl"})
+    brief = {**d["brief"], "channels": {"google_search": True, "google_daily_budget": 20}}
+    res = demo.resolutions(d["brief"]["open_questions"], meta["answers"])
+    run = studio.call(CLIENT, "run_pipeline", {"brief_id": d["brief_id"], "resolutions": res,
+                                               "brief": brief})
+    assert run["status"] == mcp_server.AWAITING, run
+    assert studio.google.name == "mock" and not hasattr(studio.google, "create_search_campaign")
+    google = run.get("google_approval_id")
+    if google:  # the recorded copy can make a Responsive Search Ad
+        row = app.state.conn.execute("SELECT status, action FROM approvals WHERE id = ?",
+                                     (google,)).fetchone()
+        assert tuple(row) == ("pending", "google.create")
+    else:
+        assert run["state"]["google_error"]

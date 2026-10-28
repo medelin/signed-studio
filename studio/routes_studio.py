@@ -192,10 +192,13 @@ def store_draft(conn: Any, text: str, draft: brief_v1.BriefV1, run_id: str,
 
 
 def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
-                       currency: Callable[[], str], untrusted: bool = False) -> Confirmation:
+                       currency: Callable[[], str],
+                       google_currency: Callable[[], str | None] = lambda: None,
+                       untrusted: bool = False) -> Confirmation:
     """Every check the UI's confirmation makes, in its order: a known unconfirmed draft,
     a valid Brief v1, one resolution per open question, every field valid in the ad
-    account's currency. ``Refused`` (400/409/422/502) otherwise. ``untrusted`` runs the
+    account's currency (and the Google Ads account's when the brief chose Google Search).
+    ``Refused`` (400/409/422/502) otherwise. ``untrusted`` runs the
     brief as customer-grade text (as a voice transcript) whatever its row says."""
     brief_id = body.get("brief_id")
     if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
@@ -232,7 +235,12 @@ def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
         account = currency()
     except AdapterError as exc:
         raise Refused(502, {"error": "meta_error", "code": exc.code}) from None
-    problems = brief_v1.problems(confirmed, ceiling_daily=ceiling, currency=account)
+    try:
+        google = google_currency() if confirmed.channels.google_search else None
+    except AdapterError as exc:
+        raise Refused(502, {"error": "google_error", "code": exc.code}) from None
+    problems = brief_v1.problems(confirmed, ceiling_daily=ceiling, google_currency=google,
+                                 currency=account)
     if problems:
         raise _fields_error(problems)
     voice_used = row[0] == "voice" or body.get("dictated") is True
@@ -267,9 +275,9 @@ def commit_confirmation(conn: Any, ledger: Ledger, c: Confirmation, *,
 def run_context(settings: Settings, conn: Any, muse: MuseClient,
                 open_weights: OpenWeightsClient | None, adapter: Any, *, currency: str,
                 brief_source: str = "operator", confirmed: brief_v1.BriefV1 | None = None,
-                digest: str = "") -> producer.Context:
+                digest: str = "", google: Any = None) -> producer.Context:
     """The producer's context for one run (``adapter`` only for its Page id and its
-    read-only targeting search)."""
+    read-only targeting search; ``google`` the Google Ads adapter, when configured)."""
     return producer.Context(
         client=muse, open_client=open_weights, conn=conn,
         photo_png=settings.product_photo.read_bytes(),
@@ -278,7 +286,7 @@ def run_context(settings: Settings, conn: Any, muse: MuseClient,
         max_daily_budget=settings.max_daily_budget, currency=currency,
         brief_v1=confirmed, brief_sha256=digest,
         page_id=getattr(adapter, "page_id", "") or MOCK_PAGE,
-        search=getattr(adapter, "search_targeting", None))
+        search=getattr(adapter, "search_targeting", None), google=google)
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
@@ -313,14 +321,31 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return adapter.account_info()["currency"] if adapter is not None else \
             settings.account_currency
 
+    def google_account_currency() -> str | None:
+        """The Google Ads account's currency (read once by the adapter)."""
+        google = getattr(app.state, "google", None)
+        return google.account_info()["currency"] if google is not None else None
+
+    def draft_google_currency() -> str:
+        try:
+            return google_account_currency() or ""
+        except AdapterError:
+            return ""
+
     def worker(run_id: str, brief: str, brief_source: str = "operator",
                confirmed: brief_v1.BriefV1 | None = None, digest: str = "") -> None:
         try:
             muse, open_weights = clients()
             ctx = run_context(settings, conn, muse, open_weights,
                               getattr(app.state, "adapter", None), currency=account_currency(),
-                              brief_source=brief_source, confirmed=confirmed, digest=digest)
+                              brief_source=brief_source, confirmed=confirmed, digest=digest,
+                              google=getattr(app.state, "google", None))
             producer.run(ctx, brief, run_id=run_id)
+            with conn.lock:
+                waiting = conn.execute("SELECT 1 FROM run_state WHERE run_id = ? AND "
+                                       "status = 'awaiting_approval'", (run_id,)).fetchone()
+            if waiting:
+                app.state.notifier.event("approval_waiting")
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)
             producer.mark_failed(conn, run_id, type(exc).__name__)
@@ -334,7 +359,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         run state commit together."""
         try:
             c = check_confirmation(conn, body, ceiling=settings.max_daily_budget,
-                                   currency=account_currency)
+                                   currency=account_currency,
+                                   google_currency=google_account_currency)
         except Refused as exc:
             return JSONResponse(exc.body, exc.status)
         if app.state.muse is None and not settings.model_available:
@@ -407,6 +433,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                           ceiling_daily=settings.max_daily_budget,
                                           currency=account_currency()),
             "ceiling": settings.max_daily_budget, "currency": account_currency(),
+            "google_currency": draft_google_currency(),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 
     @app.post("/api/runs")

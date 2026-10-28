@@ -46,6 +46,7 @@ else changes in existing tables.
 | --- | --- |
 | Model calls | real Muse Model API (`MODEL_API_KEY`), daily cap `STUDIO_DAILY_BUDGET_USD=8` (UTC day, rebuilt from the receipts after a restart) |
 | Meta | `META_ADAPTER=mock`: campaign writes produce receipts with `adapter: mock`, status PAUSED, no Graph calls; the sandbox never holds a Meta token |
+| Google Ads | `GOOGLE_ADS_ADAPTER=mock` (default): Search campaign writes produce receipts with `adapter: mock`, status PAUSED, no Google calls; the sandbox never holds a Google credential |
 | Kill switch | `STUDIO_READ_ONLY=1`: every write and model call is a 503, pages stay up |
 | API down | `STUDIO_REPLAY=1`: recorded responses instead of live calls |
 | Health | `GET /healthz` → `{"ok": true, "read_only": false}` (public, minimal; `HEAD` works on every page for uptime monitors) |
@@ -164,3 +165,49 @@ writes one `insights.snapshot` receipt each, plus fresh recommendations. The hou
 never executes by itself: a budget change or a pause is a new approval signed on `/report`.
 `studio leads-poll` does the same for instant-form leads.
 
+
+## E-mail notifications
+
+`studio/notify.py` tells the owner by e-mail when something needs them: an approval waiting,
+a campaign created (paused), launched or paused, new leads, new recommendations, and the
+security events of `/account` (password changed, two-step sign-in on or off, a new sign-in,
+export, deletion). It is off unless a transport is configured. Put these in
+`/etc/muse-studio-lite/env` (the timers `studio insights-pull` and `studio leads-poll` read
+the same file, so they mail too):
+
+| Variable | Meaning |
+| --- | --- |
+| `STUDIO_MAIL_TRANSPORT` | `jmap` (primary: JMAP, RFC 8620/8621, over HTTPS 443, so it works behind an egress filter that allows only DNS/NTP/443), `smtp` (submission over implicit TLS) or `mock` (mails kept in memory, no connection; tests, demo). Unset: `jmap` if `STUDIO_JMAP_SESSION_URL` is set, else `smtp`/`mock` if `STUDIO_SMTP_HOST` is set, else notifications are off |
+| `STUDIO_JMAP_SESSION_URL` | e.g. `https://mail.nume.pl/jmap/session` (https only) |
+| `STUDIO_MAIL_USER`, `STUDIO_MAIL_PASSWORD` | HTTP Basic (JMAP) or AUTH login (SMTP) with an app password; both required; never logged, never in `repr`, never in a receipt (`STUDIO_SMTP_USER`/`_PASSWORD` still read as a fallback) |
+| `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT` | for `smtp` only; port default `465` |
+| `STUDIO_MAIL_FROM` | default `Muse Studio Lite <muse@udun.eu>`; for JMAP it must equal the address of one of the mailbox's identities |
+| `STUDIO_PUBLIC_URL` | the site's origin, e.g. `https://muse.udun.eu` (https; no path); without it mails carry no link |
+
+JMAP flow: `GET` the session (accountId from `primaryAccounts` for `urn:ietf:params:jmap:submission`), one setup call (`Identity/get` to pick the identity whose e-mail is the from address, `Mailbox/query` role `sent`; cached per process), then one `POST` per mail with `Email/set` (created in Sent, `$seen`) and `EmailSubmission/set` (`onSuccessUpdateEmail` drops `$draft`). No redirects are followed with the credentials; timeout 10 s.
+
+Sending happens on a background thread with a 10 s timeout, after the response; a failure is
+logged (exception class and a short transport code only) and receipted, never raised. Leads and
+recommendations are at most one mail per account per ten minutes (counts add up). Each
+account chooses campaigns and leads on `/account#notifications`; security mails cannot be
+turned off; the shared `judge` account never sends mail. A mail body holds a count and a
+link, never a lead's name or contact.
+
+## Google Ads (operator machine only)
+
+Real Google Ads writes need `GOOGLE_ADS_ADAPTER=rest` and never run in the sandbox
+(`STUDIO_SANDBOX=1` stays on the mock). The adapter uses the Google Ads REST API v23 and an
+OAuth refresh token; keep these in `.env` (mode 600), never in the repository.
+
+| Variable | Meaning |
+| --- | --- |
+| `GOOGLE_ADS_ADAPTER` | `mock` (default) or `rest` |
+| `GOOGLE_ADS_CLIENT_ID`, `GOOGLE_ADS_CLIENT_SECRET`, `GOOGLE_ADS_REFRESH_TOKEN` | OAuth client and refresh token; the access token is fetched from `https://oauth2.googleapis.com/token` and kept in memory |
+| `GOOGLE_ADS_CUSTOMER_ID` | the account the campaign is created in (ten digits, dashes allowed) |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | the manager account, sent as the `login-customer-id` header (optional) |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | optional: the `developer-token` header is sent only when this is set (access can be managed per Google Cloud project) |
+| `GOOGLE_ADS_ACCOUNT_CURRENCY` | optional ISO 4217 code replacing the currency read from the customer resource (the mock's currency follows `STUDIO_ACCOUNT_CURRENCY` unless this is set) |
+
+With `rest` the process refuses to start without the client id, secret, refresh token and
+customer id. The daily ceiling `STUDIO_MAX_DAILY_BUDGET` applies to the Google budget in
+the Google account's currency.
