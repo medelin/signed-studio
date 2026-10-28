@@ -60,7 +60,7 @@ def test_pages_render_in_polish_with_html_lang(client, path):
     assert i18n.PL["nav.receipts"] in html and i18n.EN["tagline"] not in html
     data = re.search(r'<script type="application/json" id="i18n">(.*?)</script>', html, re.S)
     assert json.loads(data.group(1))["copied"] == i18n.PL["js.copied"]
-    assert 'href="' + path.split("?")[0] + '?lang=en"' in html  # the switch back
+    assert 'href="?lang=en"' in html  # the switch back: query-only, never another site
 
 
 def test_lang_query_sets_a_cookie_that_later_pages_follow(client):

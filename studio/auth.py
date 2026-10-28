@@ -20,7 +20,7 @@ import hmac
 import secrets
 from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse, RedirectResponse
@@ -57,6 +57,22 @@ def safe_next(value: str | None) -> str:
     if parts.scheme or parts.netloc or parts.path.startswith("/login"):
         return "/"
     return value
+
+
+def page_path(path: str) -> str:
+    """The request path made safe to echo into a link: one leading ``/``, no ``//``, no
+    backslash or control characters (else ``/``). Never a protocol-relative URL."""
+    if (not path.startswith("/") or path.startswith("//") or "\\" in path
+            or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in path)):
+        return "/"
+    return path
+
+
+def query_with(query: str, **changes: str) -> str:
+    """``?...`` with ``changes`` applied to the current query string; a query-only href
+    resolves against the current page, so it can never point at another site."""
+    pairs = [(k, v) for k, v in parse_qsl(query, keep_blank_values=True) if k not in changes]
+    return "?" + urlencode(pairs + list(changes.items()))
 
 
 def is_public(path: str) -> bool:

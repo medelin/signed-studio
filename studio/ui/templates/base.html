@@ -16,7 +16,7 @@
 <body>
   <header class="top">
     <a class="brand" href="/">{{ t("brand") }}</a>
-    {% set here = request.url.path %}
+    {% set here = page_path(request.url.path) %}
     <nav class="nav" aria-label="{{ t('nav.label') }}">
     {% for href, key in (("/studio", "nav.studio"), ("/inbox", "nav.inbox"), ("/leads", "nav.leads"), ("/report", "nav.report"), ("/receipts", "nav.receipts"), ("/help", "nav.help")) %}
     <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ t(key) }}</a>
@@ -27,7 +27,7 @@
     {% if replay %}<span class="badge warn" title="{{ t('badge.replay_title') }}">{{ t("badge.replay") }}</span>{% endif %}
     <span class="prefs">
       <span class="lang-switch" role="group" aria-label="{{ t('lang.label') }}">
-      {% for code, name in lang_names.items() %}<a href="{{ here }}?lang={{ code }}" hreflang="{{ code }}" lang="{{ code }}"{% if code == lang %} aria-current="true"{% endif %}>{{ code | upper }}</a>{% endfor %}
+      {% for code, name in lang_names.items() %}<a href="{{ query_with(request.url.query, lang=code) }}" hreflang="{{ code }}" lang="{{ code }}"{% if code == lang %} aria-current="true"{% endif %}>{{ code | upper }}</a>{% endfor %}
       </span>
       {% if logged_in %}<form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">{{ t("auth.sign_out") }}</button></form>
       {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">{{ t("auth.sign_in") }}</a>{% endif %}

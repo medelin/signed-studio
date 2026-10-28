@@ -405,6 +405,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["t"] = i18n.t
     templates.env.globals["js_catalog"] = i18n.js_catalog
     templates.env.globals["lang_names"] = i18n.NAMES
+    templates.env.globals["page_path"] = auth.page_path
+    templates.env.globals["query_with"] = auth.query_with
     app.mount("/static", StaticFiles(directory=str(UI / "static")), name="static")
     app.add_middleware(BodyLimit, paths=UPLOAD_LIMITS)
     app.add_middleware(prefs.Prefs, secure=lambda request: _cookie_secure(request, settings))

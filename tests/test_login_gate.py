@@ -3,6 +3,7 @@
 import re
 import secrets
 from pathlib import Path
+from urllib.parse import unquote, urljoin, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -175,3 +176,28 @@ def test_logout_form_revokes_and_returns_to_login(client):
     assert r.status_code == 303 and r.headers["location"] == "/login"
     assert client.get("/studio", headers=HTML).status_code == 303
     assert client.post("/logout", data={"csrf": "forged"}).status_code == 403
+
+
+@pytest.mark.parametrize("path", ["//evil.example", "//evil.example/x", "/\\evil.example",
+                                  "/%2F%2Fevil.example", "/%5Cevil.example", "/\\/evil.example"])
+@pytest.mark.parametrize("logged_in", [False, True])
+def test_request_path_is_never_echoed_as_an_offsite_link(tmp_path, path, logged_in):
+    s = settings(tmp_path, STUDIO_REQUIRE_LOGIN="0")
+    with TestClient(create_app(s), base_url="https://testserver", follow_redirects=False) as c:
+        if logged_in:
+            form_login(c)
+        r = c.get("https://testserver" + path, headers=HTML)
+        hrefs = re.findall(r'(?:href|action)="([^"]*)"', r.text)
+        for href in hrefs:
+            assert not href.startswith(("//", "/\\", "\\")), href
+            assert urlsplit(urljoin("https://testserver/a/b", href)).netloc == "testserver"
+            if "?next=" in href:  # where a login would send the browser
+                target = auth.safe_next(unquote(href.split("?next=", 1)[1]))
+                assert urlsplit(urljoin("https://testserver/", target)).netloc == "testserver"
+        assert "evil.example" not in r.headers.get("location", "")
+
+
+def test_query_only_language_links_keep_other_parameters():
+    assert auth.query_with("run=a&lang=en", lang="pl") == "?run=a&lang=pl"
+    assert auth.query_with("x=%2F%2Fevil", lang="pl") == "?x=%2F%2Fevil&lang=pl"
+    assert auth.page_path("//evil") == "/" and auth.page_path("/a\\b") == "/"
