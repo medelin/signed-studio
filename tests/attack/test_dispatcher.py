@@ -136,7 +136,8 @@ def _ready_run(verdict="OK"):
                                 response_ids=[])
     run.review = {"verdict": verdict, "second_opinion": "unavailable", "disagreements": [],
                   "formats": [{"placement": "feed_1x1", "sha256": "0" * 64,
-                               "verdict": verdict}], "variant_index": 0, "binding": producer.review_binding(run, 0)}
+                               "verdict": verdict}],
+                  "variant_index": 0, "binding": producer.review_binding(run, 0)}
     return run
 
 
