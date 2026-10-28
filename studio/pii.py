@@ -6,7 +6,8 @@ numbers whose checksum is valid. Every digit run is split into groups and every 
 sub-sequence of groups is classified, so a number next to a price or a year is still found.
 
 ``choose_tier`` fails closed: it never selects the Contributor tier for text with PII, for
-text holding any run of 9+ digits ("long digit run", whatever it is), nor for
+text holding 9+ digits (any script) within any 20 letters-and-digits characters ("long
+digit run", whatever it is), nor for
 customer-originated text (comments, leads, transcripts), and explains why in a reason that
 names only the kind of PII, never its value.
 """
