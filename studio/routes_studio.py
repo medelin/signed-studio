@@ -138,7 +138,7 @@ def receipt_event(r: Receipt) -> dict[str, Any]:
     }
 
 
-def _state(conn: Any, run_id: str) -> tuple[str, dict[str, Any], float] | None:
+def run_state(conn: Any, run_id: str) -> tuple[str, dict[str, Any], float] | None:
     with conn.lock:
         row = conn.execute("SELECT status, state, updated_ts FROM run_state WHERE run_id = ?",
                            (run_id,)).fetchone()
@@ -517,7 +517,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "login_required"}, 401)
         if not RUN_ID.fullmatch(run_id):
             return JSONResponse({"error": "not_found"}, 404)
-        found = _state(conn, run_id)
+        found = run_state(conn, run_id)
         if found is None:
             return JSONResponse({"error": "not_found"}, 404)
         status, state, updated = found
@@ -529,7 +529,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     async def run_events(run_id: str, request: Request) -> Response:
         if not logged_in(request):
             return JSONResponse({"error": "login_required"}, 401)
-        if not RUN_ID.fullmatch(run_id) or _state(conn, run_id) is None:
+        if not RUN_ID.fullmatch(run_id) or run_state(conn, run_id) is None:
             return JSONResponse({"error": "not_found"}, 404)
         with stream_lock:
             if app.state.streams >= MAX_STREAMS:
@@ -556,7 +556,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                         for r in receipts[sent:]:
                             yield _sse("receipt", receipt_event(r))
                         sent = len(receipts)
-                    found = _state(conn, run_id)
+                    found = run_state(conn, run_id)
                     if found is None:
                         break
                     status, state, updated = found

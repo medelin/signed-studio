@@ -149,6 +149,15 @@ def run_verify(args: argparse.Namespace) -> int:
     return EXIT_INVALID
 
 
+def run_mcp(args: argparse.Namespace) -> int:
+    """The MCP server on stdin/stdout (stdout is the protocol: nothing else is printed)."""
+    from studio import mcp_server
+
+    studio = mcp_server.open_studio(args.env_file, args.account, ui_url=args.ui_url,
+                                    replay_set=args.replay_set)
+    return mcp_server.serve(studio)
+
+
 def run_demo(args: argparse.Namespace) -> int:
     """The whole loop headless; replay by default, ``--record`` against the real API."""
     import tempfile
@@ -202,6 +211,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_ins = sub.add_parser("insights-pull", help="objective-aware insights snapshot of every "
                            "campaign and fresh recommendations (read-only on Meta)")
     p_ins.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_mcp = sub.add_parser("mcp", help="serve the studio to an MCP client over stdio "
+                           "(read and draft only; every send still needs a human signature)")
+    p_mcp.add_argument("--account", required=True, help="the studio account the client acts "
+                       "for (an existing, active one)")
+    p_mcp.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_mcp.add_argument("--ui-url", default="http://localhost:8000",
+                       help="the web UI where the owner signs (approval links point here)")
+    p_mcp.add_argument("--replay-set", default="brief",
+                       help="recorded answers the drafts and runs use (fixtures/replay/<set>)")
     args = parser.parse_args(argv)
     try:
         if args.cmd == "smoke-live":
@@ -216,6 +234,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return leads_poll(args.env_file)
         if args.cmd == "insights-pull":
             return insights_pull(args.env_file)
+        if args.cmd == "mcp":
+            return run_mcp(args)
     except (ConfigError, MuseError, ReadOnlyMode, UsageError, cli_account.UsageError, OSError,
             httpx.HTTPError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)

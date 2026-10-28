@@ -20,6 +20,8 @@ dependencies = [
   "meta-sam-parser==0.1.0",
   "argon2-cffi==25.1.0",
   "segno==1.6.6",
+  "mcp==1.30.0",
+  "jsonschema>=4.20",
 ]
 
 [project.optional-dependencies]
