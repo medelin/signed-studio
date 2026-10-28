@@ -119,9 +119,10 @@ def run_demo(args: argparse.Namespace) -> int:
 
     from studio import demo
 
-    key = ""
+    key = open_key = ""
     if args.record:
-        key = Settings.load(env_file=args.env_file).model_api_key
+        loaded = Settings.load(env_file=args.env_file)
+        key, open_key = loaded.model_api_key, loaded.baseten_api_key
         if not key:
             raise UsageError("--record needs MODEL_API_KEY (in --env-file or the environment)")
         if args.set not in demo.BRIEFS:
@@ -129,7 +130,8 @@ def run_demo(args: argparse.Namespace) -> int:
     with tempfile.TemporaryDirectory(prefix="studio-demo-") as tmp:
         data_dir = Path(args.data_dir) if args.data_dir else Path(tmp)
         summary = demo.run(args.set, data_dir=data_dir, record=args.record,
-                           model_api_key=key, max_cost_usd=args.max_cost)
+                           model_api_key=key, baseten_api_key=open_key,
+                           max_cost_usd=args.max_cost)
     print(json.dumps({k: v for k, v in summary.items() if k != "steps"}, indent=1))
     ok = summary["verify_exit"] == 0 and summary["campaign_status"] == "PAUSED"
     return 0 if ok or args.record else EXIT_INVALID

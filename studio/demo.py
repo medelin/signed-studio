@@ -67,7 +67,8 @@ def _sign(c: Any, key: Ed25519PrivateKey, approver: str, approval_id: str) -> di
 
 
 def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
-        model_api_key: str = "", max_cost_usd: float = 0.40, log: Log = print,
+        model_api_key: str = "", baseten_api_key: str = "", max_cost_usd: float = 0.40,
+        log: Log = print,
         replay_root: Path | None = None) -> dict[str, Any]:
     """Run the loop; returns a summary (steps, timings, costs, verify result)."""
     from fastapi.testclient import TestClient
@@ -93,7 +94,9 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
         app.state.muse = MuseClient(model_api_key, settings.model_api_base_url,
                                     ledger=app.state.ledger, budget=Budget(max_cost_usd),
                                     transport=recorder)
-        app.state.open_weights = OpenWeightsClient("", ledger=app.state.ledger)
+        # the second opinion is recorded too when a Baseten key is given
+        app.state.open_weights = OpenWeightsClient(baseten_api_key, ledger=app.state.ledger,
+                                                   transport=recorder)
     else:
         from studio.routes_studio import replay_clients
         transport = replay.ReplayTransport.from_set(set_name, root)

@@ -63,7 +63,7 @@ make demo          # the UI at http://localhost:8000/studio (MODEL_API_KEY in .e
 | `muse-image-1.0` | Art director | first placement as a Responses turn with the cut-out, the others via `/images/edits` with the cut-out and the first image, so the series matches |
 | `sam-3.1` | Art director | product cut-out from the photo: streamed transport, batch parse (`meta_sam_parser`) |
 | `muse-voice-transcribe-1.0` | Voice brief | `POST /asr/transcribe`, `ENDPOINTING`, `languageBias: ["pl"]`, turns with timestamps |
-| `meta-models/muse-spark-open-1026` | Second-opinion reviewer (open weights, on Baseten) | same `Review` schema, different weights; BLOCK from either side wins; disagreements shown before signing |
+| `meta-models/muse-spark-open` | Second-opinion reviewer (open weights, on Baseten) | same `Review` schema, different weights; BLOCK from either side wins; disagreements shown before signing |
 | `muse-wonder-1.0` | not in the runtime path | priced in the client so a call would be budgeted; kept out of the sandbox |
 
 Development used **Muse Code** for the Muse-specific modules and prompt tuning; session

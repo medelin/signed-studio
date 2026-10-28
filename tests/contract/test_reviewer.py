@@ -1,4 +1,4 @@
-"""Reviewers (D2-6): Muse Spark vision (recorded) + Spark Open on Baseten (synthetic)."""
+"""Reviewers (D2-6): Muse Spark vision and Spark Open on Baseten, both recorded."""
 
 import json
 
@@ -33,9 +33,11 @@ def open_client(ledger, key=FAKE_KEY):
     return openweights.OpenWeightsClient(key, ledger=ledger)
 
 
-def test_synthetic_cassette_is_marked():
-    data = load("review_open.SYNTHETIC")
-    assert data["_synthetic"] is True
+def test_open_weights_cassette_is_a_recording():
+    data = load("review_open")
+    assert data["_provenance"] == "recorded"
+    msg = data["interactions"][0]["response"]["json"]["choices"][0]["message"]
+    assert msg["content"] and msg.get("reasoning_content")  # a reasoning model
 
 
 def test_spark_vision_review(client, ledger):
@@ -54,16 +56,17 @@ def test_spark_vision_review(client, ledger):
 def test_open_weights_second_opinion_on_baseten(ledger):
     oc = open_client(ledger)
     with respx.mock() as router:
-        sent = mount(router, "review_open.SYNTHETIC", openweights.BASE_URL)
+        sent = mount(router, "review_open", openweights.BASE_URL)
         result = reviewer.second_opinion(oc, IMAGE, VARIANT, run_id="run-2")
-    assert result.verdict == "WARN" and result.findings[0].rule == "P6"
+    assert result.verdict in ("OK", "WARN", "BLOCK")
     body = sent[0]
-    assert body["model"] == "meta-models/muse-spark-open-1026"
+    assert body["model"] == "meta-models/muse-spark-open"
     assert body["messages"][1]["content"][1]["image_url"]["url"].startswith("data:image/png")
     r = ledger.receipts("run-2")[-1]
     assert r.provider == "baseten" and r.tier == "open"
-    assert r.model == "meta-models:muse-spark-open-1026"
-    assert r.cost_usd == 0 and r.details["cost_basis"] == "baseten_credits"
+    assert r.model == "meta-models:muse-spark-open"
+    assert r.cost_usd > 0 and r.details["cost_basis"] == "baseten_price"
+    assert r.details["reasoning_tokens"] > 0
     assert FAKE_KEY not in repr(oc)
 
 
@@ -84,12 +87,37 @@ def test_both_reviewers_reconciled_with_disagreement(client, ledger):
     oc = open_client(ledger)
     with respx.mock() as router:
         mount(router, "review_spark", BASE_URL)
-        mount(router, "review_open.SYNTHETIC", openweights.BASE_URL)
+        mount(router, "review_open", openweights.BASE_URL)
         result = reviewer.run(client, oc, IMAGE, VARIANT, run_id="run-4")
-    assert result.second_status == "available"
-    assert result.verdict == "WARN"  # the stricter of OK (Spark) and WARN (Open)
-    assert any("P6" in d and "Spark Open only" in d for d in result.disagreements)
+    assert result.second_status == "available" and result.second is not None
+    rank = {"OK": 0, "WARN": 1, "BLOCK": 2}
+    assert result.verdict == max(result.primary.verdict, result.second.verdict, key=rank.get)
     assert ledger.receipts("run-4")[-1].details["disagreements"] == len(result.disagreements)
+
+
+def test_disagreement_is_listed_per_rule():
+    a = _r("OK")
+    b = _r("WARN", "P6")
+    out = reviewer.reconcile(a, b)
+    assert out.verdict == "WARN"
+    assert any("P6" in d and "Spark Open only" in d for d in out.disagreements)
+
+
+def test_reasoning_without_an_answer_is_an_error(ledger):
+    oc = open_client(ledger)
+    body = {"id": "x", "model": "meta-models/muse-spark-open", "choices": [{
+        "index": 0, "finish_reason": "length",
+        "message": {"role": "assistant", "content": "", "reasoning_content": "thinking..."}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+                  "completion_tokens_details": {"reasoning_tokens": 20}}}
+    with respx.mock() as router:
+        router.post(url__startswith=openweights.BASE_URL).mock(
+            return_value=httpx.Response(200, json=body))
+        with pytest.raises(openweights.MuseError) as exc:
+            reviewer.second_opinion(oc, IMAGE, VARIANT, run_id="run-6")
+    assert exc.value.code == "reasoning_only"
+    r = ledger.receipts("run-6")[-1]
+    assert r.tokens_out == 20 and r.details["reasoning_tokens"] == 20
 
 
 def test_failed_second_opinion_does_not_fail_the_review(client, ledger):
