@@ -65,3 +65,22 @@ def test_reduced_motion_is_honoured_in_every_stylesheet_with_motion():
         css = sheet.read_text()
         if "@keyframes" in css or "animation:" in css:
             assert "prefers-reduced-motion" in css, sheet.name
+
+
+def test_studio_has_the_run_hud_stamp_and_counters_without_js(client):
+    html = client.get("/studio").text
+    steps = re.findall(r'<li data-step="([a-z_]+)">', html)
+    assert steps == ["producer", "copywriter", "art_director", "reviewers", "approval"]
+    assert 'id="stamp" hidden' in html and 'id="total-cost"' in html  # text total stays
+    assert html.index("/static/app.js") < html.index("/static/motion.js")
+
+
+def test_motion_inventory_is_guarded_by_reduced_motion():
+    css = (UI / "static" / "components.css").read_text()
+    guarded = css.split("@media (prefers-reduced-motion: no-preference)")
+    assert "@view-transition" in "".join(guarded[1:]) and "@view-transition" not in guarded[0]
+    assert "@property --whole" in css and "@counter-style pad5" in css
+    js = (UI / "static" / "motion.js").read_text()
+    assert "prefers-reduced-motion: reduce" in js and "still.matches" in js
+    for target in ("ticker", "images", "signature", "run-hud"):
+        assert f'getElementById("{target}")' in js

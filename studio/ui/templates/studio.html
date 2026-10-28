@@ -44,6 +44,18 @@
   </form>
 </section>
 
+<section class="run-hud-wrap" aria-labelledby="hud-h">
+  <h2 id="hud-h" class="hud-label">run</h2>
+  <ol class="run-hud" id="run-hud">
+    <li data-step="producer"><span class="tick" aria-hidden="true"></span>Producer</li>
+    <li data-step="copywriter"><span class="tick" aria-hidden="true"></span>Copywriter</li>
+    <li data-step="art_director"><span class="tick" aria-hidden="true"></span>Art director</li>
+    <li data-step="reviewers"><span class="tick" aria-hidden="true"></span>Reviewers</li>
+    <li data-step="approval"><span class="tick" aria-hidden="true"></span>Your signature</li>
+  </ol>
+  <div class="ruler hud-ticks" aria-hidden="true"></div>
+</section>
+
 <div class="grid">
   <section class="panel" aria-labelledby="plan-h">
     <h2 id="plan-h">2 · Plan</h2>
@@ -78,8 +90,11 @@
     <dt>your key</dt><dd><code id="ap-key"></code></dd>
     <dt>expires</dt><dd id="ap-exp"></dd>
   </dl>
+  <div class="stamp-host">
   <details><summary>Content you are approving (campaign stays PAUSED)</summary>
     <pre id="ap-content"></pre></details>
+  <p class="stamp" id="stamp" hidden><span class="hud-label">signed</span> <span class="stamp-hash"></span></p>
+  </div>
   <details><summary>Exact signed bytes</summary><pre id="ap-message"></pre></details>
   <button type="button" id="approve-button">Approve and sign</button>
   <p class="status" id="approve-status" role="status" aria-live="polite"></p>
@@ -106,9 +121,11 @@
     <thead><tr><th scope="col">agent</th><th scope="col">kind</th><th scope="col">model / tool</th><th scope="col">tokens in/out</th><th scope="col">cost</th><th scope="col">hash</th></tr></thead>
     <tbody id="ticker" aria-live="polite" aria-relevant="additions"></tbody>
   </table>
-  <p class="hint">Total <span id="total-cost">$0.00000</span> · <a href="/api/receipts.jsonl">receipts.jsonl</a></p>
+  <p class="hint">Total <span id="total-cost" class="counter-text">$0.00000</span><span class="counter cost" id="cost-counter" aria-hidden="true"></span>
+    · <span class="counter tokens" id="tokens-counter" aria-hidden="true"></span> · <a href="/api/receipts.jsonl">receipts.jsonl</a></p>
 </section>
 </div>
 <script src="/static/signer.js" defer></script>
 <script src="/static/app.js" defer></script>
+<script src="/static/motion.js" defer></script>
 {% endblock %}
