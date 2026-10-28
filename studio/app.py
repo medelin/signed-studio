@@ -355,6 +355,8 @@ def _same_origin(request: Request) -> bool:
     origin = request.headers.get("origin")
     if origin is None:
         return True  # non-browser client; SameSite=Strict + Sec-Fetch-Site guard browsers
+    if origin == "null":  # privacy-mode browsers; Sec-Fetch-Site cannot be set by a page
+        return request.headers.get("sec-fetch-site") == "same-origin"
     host = request.headers.get("host", "")
     return origin in {f"https://{host}", f"http://{host}"}
 
@@ -426,7 +428,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["Content-Security-Policy"] = CSP
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Referrer-Policy"] = "same-origin"
         return response
 
     def session_of(request: Request) -> str | None:

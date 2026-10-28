@@ -146,6 +146,20 @@ def test_login_form_without_or_with_a_wrong_token_is_refused(client):
     assert form_login(client).status_code == 303
 
 
+def test_origin_null_from_a_same_origin_form_signs_in(client):
+    """Chrome sends ``Origin: null`` on a form POST under a strict referrer policy."""
+    data = {"username": "judge", "password": "nope", "next": "", "csrf": csrf(client)}
+    null = {**HTML, "origin": "null", "sec-fetch-site": "same-origin"}
+    assert client.post("/login", data=data, headers=null).status_code == 401  # retry allowed
+    assert client.post("/login", data={**data, "password": PASSWORD},
+                       headers=null).status_code == 303
+    assert client.post("/login", data=data, headers={**HTML, "origin": "null"}).status_code == 403
+
+
+def test_referrer_policy_keeps_origin_on_same_site_posts(client):
+    assert client.get("/login").headers["referrer-policy"] == "same-origin"
+
+
 def test_csrf_cookie_is_httponly_and_strict(client):
     r = client.get("/login")
     cookie = [v for k, v in r.headers.multi_items() if k == "set-cookie"
