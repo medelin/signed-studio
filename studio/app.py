@@ -51,6 +51,7 @@ from studio import (
     db,
     prefs,
     routes_account,
+    routes_google,
     routes_help,
     routes_inbox,
     routes_meta,
@@ -490,6 +491,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lambda verified, payload: media_buyer.activate(conn, ledger, app.state.adapter,
                                                        verified, payload,
                                                        settings.max_daily_budget))
+
+    routes_google.register(app, settings, ledger, conn, write_guard, session_of)
 
     @app.get("/api/campaigns/{item_id}")
     def get_campaign(item_id: str, request: Request) -> Response:

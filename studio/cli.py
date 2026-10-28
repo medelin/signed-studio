@@ -73,6 +73,12 @@ def insights_pull(env_file: Path) -> int:
 
     settings, conn, ledger, adapter = _studio(env_file)
     out = measurement.pull_all(conn, ledger, adapter, settings.max_daily_budget)
+    from studio.google import adapter as google_adapter
+    from studio.google import store as google_store
+
+    pulled = google_store.pull_all(conn, ledger, google_adapter.make(settings, conn=conn))
+    if pulled["google_campaigns"]:
+        out.update(pulled)
     print(" ".join(f"{k}={v}" for k, v in out.items()))
     return 0
 

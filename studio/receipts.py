@@ -38,7 +38,7 @@ BRIEF_KIND = "brief.confirmed"
 BRIEF_SCHEMA = "brief/v1"
 # Actions whose approval must sign the run's confirmed brief (``brief_sha256``) when the
 # run has one: the facts an ad stands on are part of what the human approves.
-BRIEF_BOUND_ACTIONS = frozenset({"campaign.create"})
+BRIEF_BOUND_ACTIONS = frozenset({"campaign.create", "google.create"})
 # The adapter steps each approved action may take (``tool_call``, ``side_effects:
 # external``). ``activate`` is the receipt of a refused activation (no adapter call).
 EXTERNAL_STEPS: dict[str, frozenset[str]] = {
@@ -50,6 +50,10 @@ EXTERNAL_STEPS: dict[str, frozenset[str]] = {
     "comment.hide": frozenset({"comment.hide"}),
     # a signed recommendation: a budget change or a pause; ``update`` is a refused one
     "campaign.update": frozenset({"update_budget", "update_status", "update"}),
+    # Google Search: a dry run (validateOnly) and the creation, both of the signed spec;
+    # ``google_activate`` is the one mutate that enables ad, ad group and campaign
+    "google.create": frozenset({"google_validate", "google_create"}),
+    "google.activate": frozenset({"google_activate"}),
 }
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
@@ -83,7 +87,7 @@ APPROVAL_BRIEF_FIELD = "brief_sha256"
 # Signed too when present: the hash of a campaign's delivery block (objective, optimisation
 # goal, destination, promoted object); every adapter step that sends it names the same hash.
 APPROVAL_SPEC_FIELD = "spec_sha256"
-SPEC_STEPS = frozenset({"campaign", "adset"})
+SPEC_STEPS = frozenset({"campaign", "adset", "google_validate", "google_create"})
 
 
 def approval_message(fields: Mapping[str, Any]) -> bytes:
