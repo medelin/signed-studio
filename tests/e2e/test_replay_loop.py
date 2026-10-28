@@ -49,7 +49,9 @@ def test_studio_verify_passes_on_the_replayed_export(loop):
     writes = [r["details"]["action"] for r in receipts if r["kind"] == "external_write"]
     assert sorted(writes) == ["campaign.create", "reply.post"]
     providers = {r["provider"] for r in receipts if r["kind"] == "model_call"}
-    assert providers == {"meta-model-api-replay"}  # labelled as a replay
+    assert providers == {"meta-model-api-replay", "baseten-replay"}  # labelled as a replay
+    reviews = [r for r in receipts if r["kind"] == "review"]
+    assert reviews and all(r["details"]["second_opinion"] == "available" for r in reviews)
 
 
 def test_the_demo_set_is_a_real_recording():
@@ -59,4 +61,4 @@ def test_the_demo_set_is_a_real_recording():
     assert "authorization" not in text and "bearer" not in text
     models = {i["route"].split()[3] for i in data["interactions"] if len(i["route"].split()) > 3}
     assert {"muse-spark-1.3", "muse-spark-1.3-contributor", "sam-3.1",
-            "muse-image-1.0"} <= models
+            "muse-image-1.0", "meta-models/muse-spark-open"} <= models

@@ -30,9 +30,10 @@ image — and one approval screen with the content hash. I sign; code creates th
 ad set, creative and ad, all **PAUSED**, and shows the ad preview. A comment gets a draft
 reply in seconds (prompt injections included, they fail); I edit one word and sign; the
 commenter becomes a scored lead. At the end of the day the analyst reads the whole ledger in
-one prompt and tells me what changed. When a human-written ad of mine was rejected by an ad
-platform for "Załóż spółkę … bez ZUS", the reviewer now catches that before publishing
-(policy rule P9).
+one prompt and tells me what changed. When Google Ads disapproved two human-written ads of
+mine ("Załóż spółkę LTD … przenieś firmę do UK", "Niskie podatki, brak obowiązku ZUS"), it was
+after publishing; the reviewer now catches the same issue before anything goes out (policy
+rule P9).
 
 ## The demo loop
 
@@ -89,8 +90,10 @@ third party:
   classes** (edited, re-hashed, deleted, reordered, truncated, rolled back, forged
   signatures — and writes the server logged without an approval) and accepts every clean one.
 - The reviewer stops **19 of 20 seeded bad ads** (all **5/5 P9** ads blocked by the model
-  alone), with **0 of 5** clean ads blocked; one campaign run (brief → pending approval)
-  costs about **$0.07** in Model API calls.
+  alone), with **0 of 5** clean ads blocked. The open-weights second opinion (Muse Spark
+  Open on Baseten) makes the **same OK-vs-flag decision on 25/25** ads (same verdict on
+  22/25; every disagreement is shown before signing). One campaign run (brief → pending
+  approval, both reviewers on every placement) costs **$0.08–0.13**.
 
 ### Verify a receipt log
 
@@ -124,8 +127,8 @@ release or copied from the operator), pass it with `--key-file ledger.pub` toget
   `"synthetic"` (hand-written, `*.SYNTHETIC.json`, with a `_note`). The demo brand, comments
   and leads are synthetic; the demo product photo is model-generated (set
   `STUDIO_PRODUCT_PHOTO` and `STUDIO_PRODUCT_CONCEPT` to use your own).
-- The second-opinion reviewer needs `BASETEN_API_KEY`; without it the screen says
-  "unavailable".
+- The second-opinion reviewer needs `BASETEN_API_KEY` (the recorded runs include it); without
+  it the screen says "unavailable".
 - Day-by-day changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Screens and the cast

@@ -26,4 +26,12 @@ def test_reviewer_metrics_from_the_recorded_reviews():
 
 def test_eval_report_states_the_headline_numbers():
     text = (ROOT / "docs" / "eval.md").read_text()
-    assert "400/400 rejected" in text and "pending — needs `BASETEN_API_KEY`" in text
+    assert "400/400 rejected" in text and "same OK-vs-flag decision" in text
+
+
+def test_agreement_from_the_recorded_open_weights_reviews():
+    a = ev.agreement()
+    assert a["n"] == 25 and a["errors"] == 0
+    assert 0 <= a["same_verdict"] <= a["same_decision"] <= 25
+    assert a["either_flagged"] >= a["open_flagged"]
+    assert a["cost_usd"] > 0

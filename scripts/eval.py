@@ -39,6 +39,7 @@ from studio.receipts import Receipt, public_key_raw, sha256_hex, verify  # noqa:
 
 EVAL = ROOT / "fixtures" / "eval"
 REVIEWS = EVAL / "reviews.json"
+OPEN_REVIEWS = EVAL / "reviews_open.json"
 P9_CASSETTE = ROOT / "fixtures" / "cassettes" / "review_p9.json"
 
 
@@ -329,7 +330,84 @@ def record_reviews(env_file: Path, max_cost: float = 0.25) -> None:
         ensure_ascii=False) + "\n")
 
 
+def record_open_reviews(env_file: Path) -> None:
+    """Real Muse Spark Open (Baseten) reviews of every seeded ad: the same prompt, image and
+    schema as the Spark vision reviews, for the agreement table."""
+    from studio.agents import reviewer
+    from studio.agents.schemas import CopyVariant
+    from studio.muse.client import MuseError
+    from studio.muse.openweights import MODEL, OpenWeightsClient
+    from studio.receipts import Ledger
+    from studio.settings import Settings
+
+    settings = Settings.load(env_file=env_file)
+    if not settings.baseten_api_key:
+        raise SystemExit("BASETEN_API_KEY is not set")
+    led = Ledger()
+    client = OpenWeightsClient(settings.baseten_api_key, ledger=led)
+    out = []
+    for ad in _ads():
+        image = (EVAL / f"{ad['image']}.SYNTHETIC.png").read_bytes()
+        copy = CopyVariant(**ad["copy"])
+        try:
+            review = reviewer.second_opinion(client, image, copy, run_id="eval")
+            verdict, findings = review.verdict, [f.model_dump() for f in review.findings]
+        except MuseError as exc:
+            verdict, findings = f"ERROR:{exc.code}", []
+        r = led.receipts("eval")[-1]
+        out.append({"id": ad["id"], "expect": ad["expect"], "verdict": verdict,
+                    "findings": findings, "tokens_in": r.tokens_in,
+                    "tokens_out": r.tokens_out,
+                    "reasoning_tokens": r.details.get("reasoning_tokens", 0),
+                    "cost_usd": r.cost_usd, "model": r.model})
+        print(f"{ad['id']:<18} {verdict:<5} {[f['rule'] for f in findings]}")
+    OPEN_REVIEWS.write_text(json.dumps({
+        "_provenance": "recorded", "recorded": time.strftime("%Y-%m-%d", time.gmtime()),
+        "model": MODEL, "cost_basis": "Baseten Model APIs price $1.25 in / $4.25 out per 1M",
+        "reviews": out, "cost_usd": round(sum(x["cost_usd"] for x in out), 6)}, indent=1,
+        ensure_ascii=False) + "\n")
+
+
+def agreement() -> dict[str, Any] | None:
+    """Spark vision vs Spark Open on the same seeded ads (model verdicts, before the code
+    check)."""
+    if not (REVIEWS.exists() and OPEN_REVIEWS.exists()):
+        return None
+    spark = {r["id"]: r for r in json.loads(REVIEWS.read_text())["reviews"]}
+    data = json.loads(OPEN_REVIEWS.read_text())
+    rows = []
+    for o in data["reviews"]:
+        s = spark[o["id"]]
+        s_rules = sorted({f["rule"] for f in s["findings"] if f["severity"] != "info"})
+        o_rules = sorted({f["rule"] for f in o["findings"] if f["severity"] != "info"})
+        rows.append({"id": o["id"], "expect": o["expect"], "spark": s["verdict"],
+                     "open": o["verdict"], "spark_rules": s_rules, "open_rules": o_rules,
+                     "same_verdict": s["verdict"] == o["verdict"],
+                     "same_decision": (s["verdict"] == "OK") == (o["verdict"] == "OK")})
+    bad = [r for r in rows if r["expect"] != "OK"]
+    return {"rows": rows, "n": len(rows), "cost_usd": data["cost_usd"],
+            "recorded": data["recorded"],
+            "tokens_in": sum(r["tokens_in"] for r in data["reviews"]),
+            "tokens_out": sum(r["tokens_out"] for r in data["reviews"]),
+            "same_verdict": sum(r["same_verdict"] for r in rows),
+            "same_decision": sum(r["same_decision"] for r in rows),
+            "open_flagged": sum(r["open"] not in ("OK",) and not r["open"].startswith("ERROR")
+                                for r in bad),
+            "either_flagged": sum(r["open"] not in ("OK",) or r["spark"] != "OK" for r in bad),
+            "n_bad": len(bad),
+            "open_p9_blocked": sum(r["open"] == "BLOCK" for r in bad if r["expect"] == "P9"),
+            "open_clean_blocked": sum(r["open"] == "BLOCK" for r in rows
+                                      if r["expect"] == "OK"),
+            "errors": sum(r["open"].startswith("ERROR") for r in rows)}
+
+
 def _save_p9_cassette(item: dict[str, Any]) -> None:
+    save_cassette(item, P9_CASSETTE, "Real Muse Spark 1.3 vision review of the synthetic P9 ad "
+                  "(fixtures/eval/ads.SYNTHETIC.json p9-zaloz-spolke), without the code check.")
+
+
+def save_cassette(item: dict[str, Any], path: Path, note: str,
+                  request_path: str = "/chat/completions") -> None:
     from studio.muse.client import input_hashes
 
     req = item["request"]
@@ -340,11 +418,9 @@ def _save_p9_cassette(item: dict[str, Any]) -> None:
                 if part.get("type") == "image_url":
                     part["image_url"]["url"] = "data:image/png;sha256," + next(hashes).split(
                         ":")[-1]
-    P9_CASSETTE.write_text(json.dumps({
-        "_provenance": "recorded",
-        "note": "Real Muse Spark 1.3 vision review of the synthetic P9 ad "
-                "(fixtures/eval/ads.SYNTHETIC.json p9-zaloz-spolke), without the code check.",
-        "interactions": [{"request": {"method": "POST", "path": "/chat/completions",
+    path.write_text(json.dumps({
+        "_provenance": "recorded", "note": note,
+        "interactions": [{"request": {"method": "POST", "path": request_path,
                                       "json": req},
                           "response": {"status": item["status"], "json": item["response"]}}],
     }, indent=1, ensure_ascii=False) + "\n")
@@ -414,7 +490,7 @@ def run_costs() -> list[dict[str, Any]]:
 
 
 def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] | None,
-           costs: list[dict[str, Any]]) -> str:
+           costs: list[dict[str, Any]], ag: dict[str, Any] | None = None) -> str:
     total = sum(r["n"] for r in t["rows"])
     rej = sum(r["rejected"] for r in t["rows"])
     a_tests = sum(a["tests"] for a in attacks)
@@ -440,7 +516,12 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
         demo_row = next((c for c in costs if c["set"] == "demo"), costs[0])
         out.append(f"| Cost of one campaign run (brief → approval) | **${demo_row['run_cost']:.4f}"
                    f"** (`{demo_row['set']}` brief; all briefs below) |")
-    out.append("| Spark vision vs Spark Open agreement | pending — needs `BASETEN_API_KEY` |")
+    if ag:
+        out.append(f"| Spark vision vs Spark Open (Baseten) agreement | **{ag['same_decision']}/"
+                   f"{ag['n']} same OK-vs-flag decision**, {ag['same_verdict']}/{ag['n']} same "
+                   "verdict |")
+    else:
+        out.append("| Spark vision vs Spark Open agreement | pending — needs `BASETEN_API_KEY` |")
     out += ["", "## 1. Tamper suite (`studio verify`)", "",
             "Each case is a fresh ledger (random number of receipts, a signed reply approval, "
             "its adapter step and its write, a second run), exported and then tampered with. "
@@ -485,10 +566,40 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
                 f"{rv['clean_blocked']}.", ""]
     else:
         out += ["Not recorded yet (`python scripts/eval.py --record-reviews`).", ""]
-    out += ["## 4. Spark vision vs Spark Open (Baseten) agreement", "",
-            "Pending — needs `BASETEN_API_KEY`. The code path exists (`reviewer.run`, "
-            "`reconcile`: BLOCK from either side wins, every disagreement is shown on the "
-            "approval screen); without a key the second opinion is labelled \"unavailable\".",
+    out += ["## 4. Spark vision vs Spark Open (Baseten) agreement", ""]
+    if ag:
+        pct = 100 * ag["same_decision"] / ag["n"]
+        out += [f"The same {ag['n']} ads, prompt, image and strict `Review` schema, reviewed by "
+                "Muse Spark Open (`meta-models/muse-spark-open`, open weights on Baseten, a "
+                f"reasoning model) on {ag['recorded']}: {ag['n']} real calls, "
+                f"{ag['tokens_in']:,} input / {ag['tokens_out']:,} output tokens (reasoning "
+                f"included), ${ag['cost_usd']:.4f} at Baseten's published Model APIs price "
+                "($1.25 / $4.25 per 1M input / output tokens). Model verdicts only, before the "
+                "P9 code check.", "",
+                f"- Same decision (OK vs WARN/BLOCK): **{ag['same_decision']}/{ag['n']} "
+                f"({pct:.0f} %)**; same verdict: {ag['same_verdict']}/{ag['n']}.",
+                f"- Bad ads flagged by Spark Open: {ag['open_flagged']}/{ag['n_bad']}; by either "
+                f"reviewer (what the product does: BLOCK from either side wins): "
+                f"{ag['either_flagged']}/{ag['n_bad']}.",
+                f"- P9 ads blocked by Spark Open: {ag['open_p9_blocked']}/5; clean ads blocked: "
+                f"{ag['open_clean_blocked']}/5; failed calls: {ag['errors']}.", "",
+                "Disagreements (shown to the human on the approval screen):", "",
+                "| Ad | Expected | Spark vision | Spark Open | Rules only one cites |",
+                "|---|---|---|---|---|"]
+        diff = [r for r in ag["rows"] if not r["same_verdict"]
+                or r["spark_rules"] != r["open_rules"]]
+        for r in diff:
+            only = sorted(set(r["spark_rules"]) ^ set(r["open_rules"]))
+            out.append(f"| `{r['id']}` | {r['expect']} | {r['spark']} | {r['open']} | "
+                       f"{', '.join(only) or '—'} |")
+        if not diff:
+            out.append("| — | | | | |")
+    else:
+        out += ["Pending — needs `BASETEN_API_KEY`. The code path exists (`reviewer.run`, "
+                "`reconcile`: BLOCK from either side wins, every disagreement is shown on the "
+                "approval screen); without a key the second opinion is labelled "
+                "\"unavailable\"."]
+    out += [
             "", "## 5. Cost per campaign run (from receipts)", "",
             "Each recorded brief replayed offline through the whole loop; costs are the "
             "receipts' `cost_usd` (the price of the recorded real call, from the published "
@@ -514,11 +625,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--write", type=Path, help="write the markdown report here")
     p.add_argument("--record-reviews", action="store_true",
                    help="real Model API calls: review the seeded ads once")
+    p.add_argument("--record-open-reviews", action="store_true",
+                   help="real Baseten calls: Spark Open reviews of the seeded ads once")
     p.add_argument("--env-file", type=Path, default=ROOT / ".env")
     args = p.parse_args(argv)
     if args.record_reviews:
         record_reviews(args.env_file)
-    report = render(tamper_suite(args.n), attack_suites(), reviewer_metrics(), run_costs())
+    if args.record_open_reviews:
+        record_open_reviews(args.env_file)
+    report = render(tamper_suite(args.n), attack_suites(), reviewer_metrics(), run_costs(),
+                    agreement())
     if args.write:
         args.write.write_text(report)
     else:
