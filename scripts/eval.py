@@ -461,6 +461,22 @@ def reviewer_metrics() -> dict[str, Any] | None:
     }
 
 
+# -- 6. format rule F1 ------------------------------------------------------------
+
+
+def format_cases() -> dict[str, Any]:
+    from studio.agents import formats
+
+    cases = json.loads((EVAL / "formats.SYNTHETIC.json").read_text())["cases"]
+    rows = []
+    for c in cases:
+        size = tuple(c["image"]) if c.get("image") else None
+        got = sorted({f.severity for f in formats.check(c["placement"], c["ad"], size)})
+        rows.append({"id": c["id"], "placement": c["placement"], "expect": sorted(c["expect"]),
+                     "got": got, "ok": got == sorted(c["expect"])})
+    return {"rows": rows, "n": len(rows), "passed": sum(r["ok"] for r in rows)}
+
+
 # -- 5. cost per run -----------------------------------------------------------------
 
 
@@ -490,7 +506,8 @@ def run_costs() -> list[dict[str, Any]]:
 
 
 def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] | None,
-           costs: list[dict[str, Any]], ag: dict[str, Any] | None = None) -> str:
+           costs: list[dict[str, Any]], ag: dict[str, Any] | None = None,
+           fm: dict[str, Any] | None = None) -> str:
     total = sum(r["n"] for r in t["rows"])
     rej = sum(r["rejected"] for r in t["rows"])
     a_tests = sum(a["tests"] for a in attacks)
@@ -516,6 +533,9 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
         demo_row = next((c for c in costs if c["set"] == "demo"), costs[0])
         out.append(f"| Cost of one campaign run (brief → approval) | **${demo_row['run_cost']:.4f}"
                    f"** (`{demo_row['set']}` brief; all briefs below) |")
+    if fm:
+        out.append(f"| Format rule F1 (platform limits, code) on seeded cases | **{fm['passed']}/"
+                   f"{fm['n']}** as expected |")
     if ag:
         out.append(f"| Spark vision vs Spark Open (Baseten) agreement | **{ag['same_decision']}/"
                    f"{ag['n']} same OK-vs-flag decision**, {ag['same_verdict']}/{ag['n']} same "
@@ -544,7 +564,13 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
             "ACTIVE status anywhere in a creation payload is refused before any adapter call; "
             "a 10-comment prompt-injection corpus with a fully obedient model yields drafts "
             "only — no tools are sent, nothing is approved or written.", ""]
-    out += ["## 3. Reviewer catch rate (seeded bad ads)", ""]
+    out += ["## 3. Reviewer catch rate (seeded bad ads)", "",
+            "Why P9 exists: a model-invented legal/tax claim once ran in a paid promotion of a "
+            "small firm's ad, and two human-written ads promising company formation and "
+            "\"no ZUS obligation\" were later disapproved by Google Ads. P9 (no official-"
+            "service or company-registration claims, no absolute tax/legal promises) and the "
+            "unfilled-`[FACT]` rule (the copywriter may not invent a fact; an unfilled "
+            "placeholder cannot be signed) come from those cases.", ""]
     if rv:
         out += [f"25 hand-written ads (`fixtures/eval/ads.SYNTHETIC.json`): {rv['n_bad']} break "
                 f"one checklist rule each (P1–P9, five of them P9), {rv['n_clean']} follow the "
@@ -616,6 +642,16 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
                 "|---|" + "---|" * len(agents)]
         out += [f"| `{c['set']}` | " + " | ".join(f"${c['by_agent'].get(a, 0):.4f}"
                                                   for a in agents) + " |" for c in costs]
+    if fm:
+        out += ["", "## 6. Format rule F1 (platform limits, deterministic)", "",
+                "Limits from each platform's own pages (retrieved 2026-10-28, see "
+                "[policy.md](policy.md)); hard limits block, recommended lengths warn with "
+                "the truncation point. Only Meta is wired to publishing; Google Ads and TikTok "
+                "rules check exported copy variants.", "",
+                "| Case | Placement | Expected | Got |", "|---|---|---|---|"]
+        out += [f"| `{r['id']}` | `{r['placement']}` | {', '.join(r['expect']) or 'none'} | "
+                f"{', '.join(r['got']) or 'none'}{'' if r['ok'] else ' ✗'} |"
+                for r in fm["rows"]]
     return "\n".join(out) + "\n"
 
 
@@ -634,7 +670,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.record_open_reviews:
         record_open_reviews(args.env_file)
     report = render(tamper_suite(args.n), attack_suites(), reviewer_metrics(), run_costs(),
-                    agreement())
+                    agreement(), format_cases())
     if args.write:
         args.write.write_text(report)
     else:
