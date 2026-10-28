@@ -104,7 +104,11 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         png = _hero(payload, data_dir)
         image_hash = step("image", adapter.upload_image, png, payload, v)
         campaign_id = step("campaign", adapter.create_campaign_paused, payload, v)
-        adset_id = step("adset", adapter.create_adset_paused, campaign_id, payload, v)
+        lookalike_id = ""
+        if payload.get("lookalike"):
+            lookalike_id = step("lookalike", adapter.create_lookalike, payload, v)
+        adset_id = step("adset", partial(adapter.create_adset_paused,
+                                         lookalike_id=lookalike_id), campaign_id, payload, v)
         form_id = ""
         if spec["creative"] == "lead_form":
             form_id = step("lead_form", adapter.create_lead_form, payload, v)

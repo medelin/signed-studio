@@ -131,8 +131,12 @@ class Adapter(Protocol):
     def create_campaign_paused(self, payload: Mapping[str, Any],
                                approval: Verified) -> str: ...
 
+    def create_lookalike(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        """``POST /act_{id}/customaudiences`` (``subtype=LOOKALIKE``) from the owner's
+        source audience in the signed payload."""
+
     def create_adset_paused(self, campaign_id: str, payload: Mapping[str, Any],
-                            approval: Verified) -> str: ...
+                            approval: Verified, *, lookalike_id: str = "") -> str: ...
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
                         approval: Verified, *, form_id: str = "") -> str: ...
@@ -197,14 +201,15 @@ def campaign_fields(payload: Mapping[str, Any], spec: Mapping[str, Any]) -> dict
     return out
 
 
-def adset_fields(payload: Mapping[str, Any], spec: Mapping[str, Any]) -> dict[str, Any]:
+def adset_fields(payload: Mapping[str, Any], spec: Mapping[str, Any],
+                 lookalike_id: str = "") -> dict[str, Any]:
     """Ad set body fields from the signed delivery: optimisation goal, billing event,
     destination type, promoted object and attribution (Marketing API ad set reference,
     https://developers.facebook.com/docs/marketing-api/reference/ad-campaign)."""
     out: dict[str, Any] = {
         "daily_budget": int(payload["campaign"]["daily_budget_minor"]),
         "billing_event": spec["billing_event"], "optimization_goal": spec["optimization_goal"],
-        "targeting": adset_targeting(payload)}
+        "targeting": adset_targeting(payload, lookalike_id)}
     if spec.get("destination_type"):
         out["destination_type"] = spec["destination_type"]
     if spec.get("promoted_object"):
@@ -285,10 +290,32 @@ def campaign_name(payload: Mapping[str, Any]) -> str:
     return f"Muse Studio · {payload['campaign'].get('angle', 'campaign')}"[:200]
 
 
-def adset_targeting(payload: Mapping[str, Any]) -> dict[str, Any]:
-    t = payload.get("targeting") or {}
-    return {"geo_locations": {"countries": list(t.get("countries") or ["PL"])},
-            "age_min": int(t.get("age_min", 25)), "age_max": int(t.get("age_max", 55))}
+def adset_targeting(payload: Mapping[str, Any], lookalike_id: str = "") -> dict[str, Any]:
+    """The signed targeting spec (``audience.targeting``, built by code from the brief);
+    a payload with only countries and ages gets Advantage+ audience with those as its
+    controls and suggestions. A lookalike made under this approval joins the custom
+    audiences."""
+    from studio.meta import audience
+
+    t = dict(payload.get("targeting") or {})
+    if "geo_locations" not in t:
+        t = audience.targeting(countries=list(t.get("countries") or ["PL"]),
+                               age_min=int(t.get("age_min", 25)),
+                               age_max=int(t.get("age_max", 55)))
+    if lookalike_id:
+        t["custom_audiences"] = [*t.get("custom_audiences", []), {"id": lookalike_id}]
+    return t
+
+
+def lookalike_of(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The signed lookalike block: built from the owner's own source audience id only."""
+    spec = payload.get("lookalike")
+    if not isinstance(spec, Mapping) or spec.get("subtype") != "LOOKALIKE":
+        raise NotApproved("the signed payload has no lookalike")
+    origin = str(spec.get("origin_audience_id", ""))
+    if not origin.isdigit() or len(origin) > 30:
+        raise NotApproved("a lookalike needs the owner's source audience id")
+    return {k: spec[k] for k in ("name", "subtype", "origin_audience_id", "lookalike_spec")}
 
 
 def make(settings: Any, **kwargs: Any) -> Adapter:

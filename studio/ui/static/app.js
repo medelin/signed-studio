@@ -198,6 +198,20 @@ async function showApproval(pendingId) {
         destination: d.destination_type ? " · " + d.destination_type : "", promoted: promoted || T("delivery_none") });
     }
     $("ap-delivery-dt").hidden = $("ap-delivery-dd").hidden = !d;
+    const res = data.content.audience_resolution;
+    const list = $("ap-audience");
+    list.replaceChildren();
+    if (res) {
+      for (const x of res.interests || []) list.append(el("li", T("aud_interest", { hint: x.hint, name: x.name, id: x.id })));
+      for (const x of res.excluded_interests || []) list.append(el("li", T("aud_excluded", { hint: x.hint, name: x.name, id: x.id })));
+      for (const x of res.locales || []) list.append(el("li", T("aud_locale", { hint: x.hint, name: x.name, id: x.key })));
+      for (const h of res.unresolved || []) list.append(el("li", T("aud_unresolved", { hint: h })));
+      const tg = data.content.targeting || {};
+      const auto = tg.targeting_automation && tg.targeting_automation.advantage_audience === 1;
+      list.append(el("li", T(auto ? "aud_advantage_on" : "aud_advantage_off")));
+      if (data.content.lookalike) list.append(el("li", T("aud_lookalike", { id: data.content.lookalike.origin_audience_id, pct: Math.round(data.content.lookalike.lookalike_spec.ratio * 100) })));
+    }
+    $("ap-audience-dt").hidden = $("ap-audience-dd").hidden = !res;
     $("ap-key").textContent = Signer.approver();
     $("ap-exp").textContent = new Date(data.expires_ts * 1000).toLocaleTimeString();
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);

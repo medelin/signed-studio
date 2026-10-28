@@ -57,6 +57,7 @@ from studio.meta.adapter import (
     creative_spec,
     delivery_of,
     lead_form_of,
+    lookalike_of,
     require,
 )
 from studio.meta.preview import from_graph_body
@@ -218,10 +219,24 @@ class GraphAdapter:
             **campaign_fields(payload, spec), "status": PAUSED, "buying_type": "AUCTION",
             "is_adset_budget_sharing_enabled": "0"}))
 
+    def create_lookalike(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        """A lookalike of the owner's source audience (lookalike audiences guide); nothing
+        about any person is uploaded."""
+        require(approval, CREATE, payload, self._conn)
+        return self._id(self._post(f"{self.account}/customaudiences", lookalike_of(payload)))
+
+    def search_targeting(self, kind: str, query: str) -> list[dict[str, Any]]:
+        """``GET /search?type=adinterest|adlocale&q=…`` (targeting search, read-only)."""
+        if kind not in ("adinterest", "adlocale"):
+            raise AdapterError("unknown targeting search", code="bad_request")
+        body = self._request("GET", "search", params={"type": kind, "q": query[:100],
+                                                      "limit": "5"})
+        return [r for r in body.get("data") or [] if isinstance(r, dict)]
+
     def create_adset_paused(self, campaign_id: str, payload: Mapping[str, Any],
-                            approval: Verified) -> str:
+                            approval: Verified, *, lookalike_id: str = "") -> str:
         spec = self._delivery(payload, approval)
-        fields = adset_fields(payload, spec)
+        fields = adset_fields(payload, spec, _oid(lookalike_id) if lookalike_id else "")
         fields["daily_budget"] = str(fields["daily_budget"])
         return self._id(self._post(f"{self.account}/adsets", {
             "name": campaign_name(payload) + " · ad set", "campaign_id": _oid(campaign_id),

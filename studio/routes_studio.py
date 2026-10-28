@@ -182,7 +182,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 max_daily_budget_pln=settings.max_daily_budget_pln,
                 brief_v1=confirmed, brief_sha256=digest,
                 page_id=getattr(getattr(app.state, "adapter", None), "page_id", "")
-                or MOCK_PAGE)
+                or MOCK_PAGE,
+                search=getattr(getattr(app.state, "adapter", None), "search_targeting", None))
             producer.run(ctx, brief, run_id=run_id)
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)

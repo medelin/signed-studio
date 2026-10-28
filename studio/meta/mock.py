@@ -34,6 +34,7 @@ from studio.meta.adapter import (
     creative_spec,
     delivery_of,
     lead_form_of,
+    lookalike_of,
     require,
 )
 
@@ -90,14 +91,31 @@ class MockAdapter:
         return self._create("create_campaign_paused", "cmp", payload, approval, {
             "type": "campaign", **campaign_fields(payload, spec), "status": PAUSED})
 
+    def create_lookalike(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        require(approval, CREATE, payload, self._conn)
+        spec = lookalike_of(payload)
+        oid = "mockaud" + secrets.token_hex(5)
+        self.objects[oid] = {"type": "custom_audience", **spec}
+        self.calls.append(("create_lookalike", oid))
+        return oid
+
+    def search_targeting(self, kind: str, query: str) -> list[dict[str, Any]]:
+        """Deterministic stand-in for the targeting search: a numeric id per query."""
+        self.calls.append(("search", kind))
+        digest = int(hashlib.sha256(f"{kind}:{query.casefold()}".encode()).hexdigest(), 16)
+        if kind == "adlocale":
+            return [{"key": 1000 + digest % 9000, "name": query.strip()[:40]}]
+        return [{"id": "6003" + str(digest % 10**9).zfill(9), "name": query.strip()[:80],
+                 "audience_size_lower_bound": 100000 + digest % 900000}]
+
     def create_adset_paused(self, campaign_id: str, payload: Mapping[str, Any],
-                            approval: Verified) -> str:
+                            approval: Verified, *, lookalike_id: str = "") -> str:
         spec = self._delivery(payload, approval)
         if self.objects.get(campaign_id, {}).get("type") != "campaign":
             raise AdapterError("unknown campaign", code="not_found")
         return self._create("create_adset_paused", "adset", payload, approval, {
             "type": "adset", "campaign_id": campaign_id, "status": PAUSED,
-            **adset_fields(payload, spec)})
+            **adset_fields(payload, spec, lookalike_id)})
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
                         approval: Verified, *, form_id: str = "") -> str:

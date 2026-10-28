@@ -195,6 +195,24 @@
       {{ field("audience.insight.belief", "belief", "area") }}
       {{ field("audience.insight.barrier", "barrier", "area") }}
       {{ field("audience.insight.trigger", "trigger", "area") }}
+      <div class="bf-field" data-field="audience.advantage_audience">
+        <p class="hint" id="hint-bf-audience-advantage_audience">{{ t("brief.h.advantage") }}</p>
+        <label><input type="checkbox" id="bf-audience-advantage_audience" data-path="audience.advantage_audience" aria-describedby="hint-bf-audience-advantage_audience"> {{ t("brief.f.advantage") }}</label>
+      </div>
+      <div class="bf-field" data-field="audience.genders">
+        <fieldset class="radios" aria-describedby="err-bf-audience-genders">
+          <legend>{{ t("brief.f.genders") }}</legend>
+          {% for g in ("female", "male") %}<label><input type="checkbox" name="bf-genders" value="{{ g }}" data-path="audience.genders" data-multi> {{ t("brief.gender." ~ g) }}</label>{% endfor %}
+        </fieldset>
+        {{ err("bf-audience-genders") }}
+      </div>
+      {{ field("audience.interests", "interests", "lines", "brief.h.interests") }}
+      {{ field("audience.excluded_interests", "excluded_interests", "lines") }}
+      {{ field("audience.excluded_countries", "excluded_countries", "lines", "brief.h.countries", dictate=False) }}
+      {{ field("audience.custom_audience_ids", "custom_audience_ids", "lines", "brief.h.audience_ids", dictate=False) }}
+      {{ field("audience.excluded_custom_audience_ids", "excluded_custom_audience_ids", "lines", dictate=False) }}
+      {{ field("audience.lookalike_source_id", "lookalike_source_id", hint="brief.h.lookalike", dictate=False, attrs='inputmode="numeric" autocomplete="off"') }}
+      {{ field("audience.lookalike_percent", "lookalike_percent", "number", dictate=False, attrs='min="1" max="10" inputmode="numeric"') }}
     </fieldset>
 
     <fieldset>
@@ -309,6 +327,7 @@
     <dt>{{ t("studio.ap.head") }}</dt><dd><code id="ap-head"></code></dd>
     <dt id="ap-brief-dt" hidden>{{ t("brief.ap_brief") }}</dt><dd id="ap-brief-dd" hidden><code id="ap-brief"></code></dd>
     <dt id="ap-delivery-dt" hidden>{{ t("studio.ap.delivery") }}</dt><dd id="ap-delivery-dd" hidden><span id="ap-delivery"></span></dd>
+    <dt id="ap-audience-dt" hidden>{{ t("studio.ap.audience") }}</dt><dd id="ap-audience-dd" hidden><ul id="ap-audience" class="plain"></ul></dd>
     <dt id="ap-spec-dt" hidden>{{ t("studio.ap.spec") }}</dt><dd id="ap-spec-dd" hidden><code id="ap-spec"></code></dd>
     <dt>{{ t("studio.ap.key") }}</dt><dd><code id="ap-key"></code></dd>
     <dt>{{ t("studio.ap.exp") }}</dt><dd id="ap-exp"></dd>

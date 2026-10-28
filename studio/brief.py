@@ -113,6 +113,17 @@ class Audience(_Strict):
     age_max: int
     languages: list[str]
     insight: Insight
+    # Advantage+ audience (default): age range, genders and interests are suggestions
+    advantage_audience: bool = True
+    genders: list[Literal["male", "female"]] = Field(default_factory=list)  # [] = all
+    interests: list[str] = Field(default_factory=list)  # hints, resolved to ids by code
+    excluded_interests: list[str] = Field(default_factory=list)
+    excluded_countries: list[str] = Field(default_factory=list)  # ISO 3166-1 alpha-2
+    # only ids the owner gives; the studio never uploads user data
+    custom_audience_ids: list[str] = Field(default_factory=list)
+    excluded_custom_audience_ids: list[str] = Field(default_factory=list)
+    lookalike_source_id: str = ""  # the owner's own audience to build a lookalike from
+    lookalike_percent: int = 1  # 1-10 % of the first country
 
 
 class ToneBrand(_Strict):
@@ -213,6 +224,7 @@ def resolve(brief: BriefV1, resolutions: list[Resolution]) -> tuple[BriefV1, int
 _ISO2 = re.compile(r"[A-Z]{2}")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _CURRENCY = re.compile(r"[A-Z]{3}")
+_ID = re.compile(r"\d{1,30}")
 _SENTENCE_END = re.compile(r"[.!?…](?=\s+\S)")
 
 
@@ -297,6 +309,23 @@ def problems(brief: BriefV1, *, confirmed: bool = True, currency: str = "PLN",
         out["audience.age"] = "age_range"
     for name in ("who", "belief", "barrier", "trigger"):
         text(f"audience.insight.{name}", getattr(au.insight, name), required=False)
+    if len(set(au.genders)) != len(au.genders):
+        out["audience.genders"] = "duplicate"
+    items("audience.interests", au.interests, limit=10, each=80)
+    items("audience.excluded_interests", au.excluded_interests, limit=10, each=80)
+    if len(au.excluded_countries) > MAX_ITEMS or not all(
+            _ISO2.fullmatch(c) for c in au.excluded_countries):
+        out["audience.excluded_countries"] = "bad_country"
+    elif set(au.excluded_countries) & set(a.countries):
+        out["audience.excluded_countries"] = "excluded_sold"
+    for name in ("custom_audience_ids", "excluded_custom_audience_ids"):
+        ids = getattr(au, name)
+        if len(ids) > MAX_ITEMS or not all(_ID.fullmatch(x) for x in ids):
+            out[f"audience.{name}"] = "bad_id"
+    if au.lookalike_source_id and not _ID.fullmatch(au.lookalike_source_id):
+        out["audience.lookalike_source_id"] = "bad_id"
+    if not 1 <= au.lookalike_percent <= 10:
+        out["audience.lookalike_percent"] = "lookalike_percent"
     text("proposition", brief.proposition)
     if "proposition" not in out and _SENTENCE_END.search(brief.proposition.strip()):
         out["proposition"] = "one_sentence"
@@ -406,6 +435,7 @@ def ground_draft(draft: BriefV1, source: str, lang: str = "en") -> BriefV1:
                for r in offer.reasons_to_believe]
     offer = offer.model_copy(update={**updates, "reasons_to_believe": reasons})
     promotion = ground_ids(draft.promotion, source)
+    audience = ground_audience(draft.audience, source)
     proposition = draft.proposition
     if ungrounded_numbers(proposition, source):
         questions.append(FactQuestion(question=ask.format(claim=proposition),
@@ -413,6 +443,7 @@ def ground_draft(draft: BriefV1, source: str, lang: str = "en") -> BriefV1:
         proposition = ""
     return draft.model_copy(update={"confirmed_facts": keep, "offer": offer,
                                     "proposition": proposition, "promotion": promotion,
+                                    "audience": audience,
                                     "open_questions": questions[:MAX_QUESTIONS]})
 
 
@@ -427,6 +458,17 @@ def ground_ids(promotion: Promotion, source: str) -> Promotion:
     cleared = {name: "" for name in ID_FIELDS
                if getattr(promotion, name) and getattr(promotion, name) not in folded}
     return promotion.model_copy(update=cleared) if cleared else promotion
+
+
+def ground_audience(audience: Audience, source: str) -> Audience:
+    """Audience ids the owner never wrote are dropped (custom audiences, the lookalike
+    source): they cannot be guessed."""
+    folded = _fold(source)
+    keep = {name: [x for x in getattr(audience, name) if x in folded]
+            for name in ("custom_audience_ids", "excluded_custom_audience_ids")}
+    if audience.lookalike_source_id and audience.lookalike_source_id not in folded:
+        return audience.model_copy(update={**keep, "lookalike_source_id": ""})
+    return audience.model_copy(update=keep)
 
 
 def grounding_corpus(brief: BriefV1) -> str:

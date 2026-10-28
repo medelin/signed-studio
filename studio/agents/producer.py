@@ -44,7 +44,7 @@ from studio.agents.dispatcher import (
 )
 from studio.agents.schemas import CopyPack, CreativeSet, Plan
 from studio.approvals import Pending, confirmed_brief, transaction
-from studio.meta import objectives
+from studio.meta import audience, objectives
 from studio.meta.adapter import MOCK_PAGE
 from studio.muse.client import MuseClient, MuseError, ToolCall
 from studio.muse.openweights import OpenWeightsClient
@@ -82,6 +82,9 @@ class Context:
     brief_v1: brief_v1.BriefV1 | None = None
     brief_sha256: str = ""
     page_id: str = MOCK_PAGE  # the Facebook Page the campaign promotes (META_PAGE_ID)
+    # the targeting search of the Meta adapter (read-only): interest and language hints →
+    # Meta ids, resolved by code before the approval is requested
+    search: audience.Search | None = None
 
 
 def _limit(ctx: Context) -> int:
@@ -148,14 +151,17 @@ def campaign_payload(run: RunResult, variant_index: int,
                      link: str = "https://example.com/", *,
                      ceiling_pln: int = 50,
                      brief: brief_v1.BriefV1 | None = None,
-                     page_id: str = MOCK_PAGE) -> dict[str, Any]:
+                     page_id: str = MOCK_PAGE,
+                     resolved: audience.Resolved | None = None) -> dict[str, Any]:
     """The exact content a ``campaign.create`` approval authorises (built by code). A
     daily budget above the activation ceiling is refused here, before anyone signs a
     campaign that could never be activated. ``delivery`` is the objective mapping
     (``objectives.delivery``: objective, optimisation goal, billing event, destination,
     promoted object) for the brief's goal and sub-choice, or traffic for a free-text brief.
     With a confirmed ``brief`` the payload also carries its ``brief_sha256``, objective,
-    budget and the brief's targeting."""
+    budget and the brief's targeting: Advantage+ audience unless the owner turned it off,
+    the hints ``resolved`` to Meta ids (``audience``, shown before signing), exclusions,
+    the owner's custom audiences and, from the owner's source audience, a lookalike."""
     assert run.plan and run.copy and run.creatives and run.review
     if run.plan.budget_pln_daily > ceiling_pln:
         raise ToolError(f"daily budget {run.plan.budget_pln_daily} PLN is above the "
@@ -203,11 +209,40 @@ def campaign_payload(run: RunResult, variant_index: int,
                       "kpi": brief.objective.kpi, "budget": brief.budget.model_dump(),
                       "automatic_placements": brief.placements.automatic,
                       "facts": len(brief.confirmed_facts)},
-            "targeting": {"countries": list(brief.advertiser.countries),
-                          "age_min": brief.audience.age_min,
-                          "age_max": brief.audience.age_max},
         })
+        au = brief.audience
+        res = resolved or audience.Resolved()
+        payload["targeting"] = audience.targeting(
+            countries=brief.advertiser.countries, age_min=au.age_min, age_max=au.age_max,
+            genders=au.genders, resolved=res, excluded_countries=au.excluded_countries,
+            custom_audiences=au.custom_audience_ids,
+            excluded_custom_audiences=au.excluded_custom_audience_ids,
+            advantage=au.advantage_audience)
+        payload["audience_resolution"] = res.as_payload()
+        if au.lookalike_source_id:
+            payload["lookalike"] = audience.lookalike_spec(
+                au.lookalike_source_id, au.lookalike_percent, brief.advertiser.countries[0],
+                f"Muse Studio · lookalike {au.lookalike_percent}%")
     return payload
+
+
+def resolve_audience(ctx: Context, run_id: str,
+                     brief: brief_v1.BriefV1) -> audience.Resolved:
+    """The brief's interest and language hints → Meta ids (targeting search, read-only),
+    with one receipt naming how many were looked up and resolved."""
+    au = brief.audience
+    try:
+        res = audience.resolve(ctx.search, au.interests, au.excluded_interests, au.languages)
+        status = "ok"
+    except Exception as exc:  # noqa: BLE001 - a failed lookup leaves the hints unresolved
+        res = audience.Resolved(unresolved=[*au.interests, *au.excluded_interests])
+        status = getattr(exc, "code", type(exc).__name__)
+    ctx.client.ledger.append(run_id, agent=AGENT, kind="tool_call", details={
+        "tool": "targeting.search", "status": status, "side_effects": "read",
+        "searches": res.searches, "interests": len(res.interests) + len(
+            res.excluded_interests), "locales": len(res.locales),
+        "unresolved": len(res.unresolved)})
+    return res
 
 
 def review_binding(run: RunResult, variant_index: int) -> str:
@@ -422,8 +457,12 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 raise ToolError(f"variant {index} states something the owner did not confirm "
                                 f"(rule P10): {ungrounded[0].evidence[:200]}")
             link = ctx.brief_v1.advertiser.landing_url
+        resolved = None
+        if ctx.brief_v1 is not None:
+            resolved = resolve_audience(ctx, run.run_id, ctx.brief_v1)
         payload = campaign_payload(run, index, link, ceiling_pln=ctx.max_daily_budget_pln,
-                                   brief=ctx.brief_v1, page_id=ctx.page_id)
+                                   brief=ctx.brief_v1, page_id=ctx.page_id,
+                                   resolved=resolved)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
                                  ledger=ctx.client.ledger, run_id=run.run_id,

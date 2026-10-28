@@ -333,10 +333,10 @@
       else if (node.type === "checkbox") setPath(b, path, node.checked);
       else if (node.dataset.kind === "lines") {
         const items = lines(node.value);
-        setPath(b, path, path === "advertiser.countries" ? items.map((c) => c.toUpperCase()) : items);
+        setPath(b, path, path === "advertiser.countries" || path === "audience.excluded_countries" ? items.map((c) => c.toUpperCase()) : items);
       } else if (node.type === "number") {
         const n = node.value.trim() === "" ? 0 : Number(node.value);
-        setPath(b, path, path.startsWith("audience.age") ? Math.trunc(n) : n);
+        setPath(b, path, path.startsWith("audience.age") || path === "audience.lookalike_percent" ? Math.trunc(n) : n);
       } else setPath(b, path, path === "budget.currency" ? node.value.trim().toUpperCase() : node.value.trim());
     }
     for (const [path, values] of Object.entries(multi)) setPath(b, path, values);

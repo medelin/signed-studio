@@ -42,7 +42,8 @@ BRIEF_BOUND_ACTIONS = frozenset({"campaign.create"})
 # The adapter steps each approved action may take (``tool_call``, ``side_effects:
 # external``). ``activate`` is the receipt of a refused activation (no adapter call).
 EXTERNAL_STEPS: dict[str, frozenset[str]] = {
-    "campaign.create": frozenset({"image", "campaign", "adset", "lead_form", "creative", "ad"}),
+    "campaign.create": frozenset({"image", "campaign", "lookalike", "adset", "lead_form",
+                                  "creative", "ad"}),
     "campaign.activate": frozenset({"activate_ad", "activate_adset", "activate_campaign",
                                     "activate"}),
     "reply.post": frozenset({"reply.post"}),

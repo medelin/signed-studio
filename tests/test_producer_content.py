@@ -149,3 +149,30 @@ def test_instant_form_payload_carries_the_owners_form(env):
     assert p["lead_form"]["privacy_policy"]["url"] == "https://clay.example/privacy"
     assert [q["type"] for q in p["lead_form"]["questions"]] == ["FULL_NAME", "PHONE"]
     assert "lead_form" not in producer.campaign_payload(run, 0)
+
+
+def test_audience_hints_are_resolved_by_code_and_signed_in_the_payload(env):
+    from studio.meta.mock import MockAdapter
+    from tests.test_brief import sample
+
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 0}
+    au = sample().audience.model_dump()
+    brief = sample(audience={**au, "interests": ["pottery"], "genders": ["female"],
+                             "lookalike_source_id": "2380000000000003"})
+    ctx.search = MockAdapter().search_targeting
+    resolved = producer.resolve_audience(ctx, run.run_id, brief)
+    p = producer.campaign_payload(run, 0, brief=brief, resolved=resolved)
+    (interest,) = p["audience_resolution"]["interests"]
+    assert interest["hint"] == "pottery" and interest["id"].isdigit()
+    assert p["targeting"]["flexible_spec"] == [{"interests": [
+        {"id": interest["id"], "name": "pottery"}]}]
+    assert p["targeting"]["genders"] == [2]
+    assert p["targeting"]["targeting_automation"] == {"advantage_audience": 1}
+    assert p["lookalike"]["origin_audience_id"] == "2380000000000003"
+    (r,) = [x for x in ctx.client.ledger.receipts(run.run_id)
+            if x.details.get("tool") == "targeting.search"]
+    assert r.details["side_effects"] == "read" and r.details["unresolved"] == 0

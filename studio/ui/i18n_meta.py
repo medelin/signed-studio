@@ -65,6 +65,39 @@ EN_META: dict[str, str] = {
     "js.polled": "{forms} forms read, {n} new leads.",
     "err.meta_error": "Meta did not answer the request; try again later.",
     "err.webhook_refused": "Webhook refused: unsigned, wrongly signed or not configured.",
+    # audiences
+    "brief.f.advantage": "Advantage+ audience (recommended by Meta)",
+    "brief.h.advantage": "Meta may reach people beyond your hints when that works better. "
+                         "Locations, the minimum age (18-25 here), languages and excluded "
+                         "audiences stay fixed; ages, genders and interests become "
+                         "suggestions.",
+    "brief.f.genders": "Genders (none checked: everyone)",
+    "brief.gender.female": "women", "brief.gender.male": "men",
+    "brief.f.interests": "Interests (hints)",
+    "brief.h.interests": "Plain words; the studio looks each one up in Meta's targeting "
+                         "search and shows you the match before you sign.",
+    "brief.f.excluded_interests": "Exclude people interested in",
+    "brief.f.excluded_countries": "Exclude countries",
+    "brief.f.custom_audience_ids": "Your custom audiences (ids)",
+    "brief.h.audience_ids": "Only audiences you already have in Ads Manager; the studio "
+                            "never uploads customer data.",
+    "brief.f.excluded_custom_audience_ids": "Exclude your custom audiences (ids)",
+    "brief.f.lookalike_source_id": "Build a lookalike from your audience (id)",
+    "brief.h.lookalike": "Optional: one of your own audiences; Meta finds similar people in "
+                         "your first country.",
+    "brief.f.lookalike_percent": "Lookalike size (% of the country, 1-10)",
+    "js.brief_err_excluded_sold": "You cannot exclude a country you sell in.",
+    "js.brief_err_lookalike_percent": "Use a whole number from 1 to 10.",
+    "studio.ap.audience": "Audience, as Meta will get it",
+    "js.aud_interest": "interest “{hint}” → {name} ({id})",
+    "js.aud_excluded": "excluded “{hint}” → {name} ({id})",
+    "js.aud_locale": "language “{hint}” → {name} ({id})",
+    "js.aud_unresolved": "“{hint}”: no match in Meta's targeting search, not used",
+    "js.aud_advantage_on": "Advantage+ audience on: ages, genders and interests are "
+                           "suggestions",
+    "js.aud_advantage_off": "Advantage+ audience off: the brief's ages, genders and "
+                            "interests are hard limits",
+    "js.aud_lookalike": "lookalike of your audience {id}, {pct}% of the country",
 }
 
 PL_META: dict[str, str] = {
@@ -127,4 +160,39 @@ PL_META: dict[str, str] = {
     "err.meta_error": "Meta nie odpowiedziała; spróbuj później.",
     "err.webhook_refused": "Webhook odrzucony: bez podpisu, ze złym podpisem albo "
                            "nieskonfigurowany.",
+    "brief.f.advantage": "Grupa odbiorców Advantage+ (zalecana przez Metę)",
+    "brief.h.advantage": "Meta może dotrzeć poza twoje podpowiedzi, gdy to działa lepiej. "
+                         "Lokalizacje, minimalny wiek (tu 18-25), języki i wykluczone grupy "
+                         "zostają sztywne; wiek, płeć i zainteresowania stają się "
+                         "podpowiedziami.",
+    "brief.f.genders": "Płeć (nic nie zaznaczone: wszyscy)",
+    "brief.gender.female": "kobiety", "brief.gender.male": "mężczyźni",
+    "brief.f.interests": "Zainteresowania (podpowiedzi)",
+    "brief.h.interests": "Zwykłe słowa; studio sprawdza każde w wyszukiwarce targetowania "
+                         "Mety i pokazuje dopasowanie przed podpisem.",
+    "brief.f.excluded_interests": "Wyklucz osoby zainteresowane",
+    "brief.f.excluded_countries": "Wyklucz kraje",
+    "brief.f.custom_audience_ids": "Twoje niestandardowe grupy odbiorców (identyfikatory)",
+    "brief.h.audience_ids": "Tylko grupy, które już masz w Menedżerze reklam; studio nigdy "
+                            "nie wysyła danych klientów.",
+    "brief.f.excluded_custom_audience_ids": "Wyklucz twoje grupy odbiorców "
+                                            "(identyfikatory)",
+    "brief.f.lookalike_source_id": "Zbuduj podobnych odbiorców z twojej grupy "
+                                   "(identyfikator)",
+    "brief.h.lookalike": "Opcjonalnie: jedna z twoich grup; Meta znajdzie podobne osoby w "
+                         "pierwszym z twoich krajów.",
+    "brief.f.lookalike_percent": "Wielkość grupy podobnych (% kraju, 1-10)",
+    "js.brief_err_excluded_sold": "Nie można wykluczyć kraju, w którym sprzedajesz.",
+    "js.brief_err_lookalike_percent": "Podaj liczbę całkowitą od 1 do 10.",
+    "studio.ap.audience": "Grupa odbiorców, tak jak dostanie ją Meta",
+    "js.aud_interest": "zainteresowanie „{hint}” → {name} ({id})",
+    "js.aud_excluded": "wykluczone „{hint}” → {name} ({id})",
+    "js.aud_locale": "język „{hint}” → {name} ({id})",
+    "js.aud_unresolved": "„{hint}”: brak dopasowania w wyszukiwarce targetowania Mety, "
+                         "nieużyte",
+    "js.aud_advantage_on": "Advantage+ włączone: wiek, płeć i zainteresowania to "
+                           "podpowiedzi",
+    "js.aud_advantage_off": "Advantage+ wyłączone: wiek, płeć i zainteresowania z briefu "
+                            "są sztywne",
+    "js.aud_lookalike": "podobni do twojej grupy {id}, {pct}% kraju",
 }
