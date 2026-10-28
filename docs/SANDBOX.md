@@ -8,6 +8,40 @@ only, no open redirect) and the API answers 401 JSON. Public and read-only witho
 `/api/ledger-manifest`, `/api/approver-keys`. The receipt export `/api/receipts.jsonl` needs
 the session (download it from the footer link once signed in).
 
+## Accounts
+
+`judge` is the **demo account**: seeded from `JUDGE_PASSWORD` at every start (its hash is
+replaced when the variable changes, and the account is disabled when it is empty). Judges
+share it, so on this account two-step sign-in stays off and cannot be turned on from the page,
+the password cannot be changed from the page, and the account cannot be deleted: no judge can
+lock the others out. The profile, the sessions list ("sign out all others" just sends the
+others back to `/login`) and the data export work as for any account.
+
+Other accounts exist only when the operator creates them (no public sign-up):
+
+```sh
+# on the VM; locally the same commands run as `studio account …`
+cd /opt/muse-studio-lite/current
+acct() { sudo -u muse env PYTHONDONTWRITEBYTECODE=1 STUDIO_DATA_DIR=/var/lib/muse-studio-lite \
+  .venv/bin/python -m studio.cli account "$@"; }
+acct create ola --display-name "Ola"
+acct list
+acct disable ola                        # its sessions stop working at once
+acct enable ola
+acct reset-password ola [--clear-2fa]   # every session ends; --clear-2fa: lost phone
+```
+
+Passwords are read from the terminal (or one line on stdin with `--password-stdin`), never
+from the command line. An own account can try everything: `/account` → two-step sign-in
+(QR code drawn on the server, ten one-time recovery codes), password change (signs out the
+other sessions and revokes their signing keys), sessions, data export (JSON), deletion
+(typed user name + password + code; receipts stay, the approver key fingerprint then leads
+to a random account id only). The hourly reset does not touch accounts.
+
+The deploy's `db.init` creates the `accounts`, `recovery_codes` and `account_sessions`
+tables (idempotent); the first start after it seeds `judge` from `JUDGE_PASSWORD`. Nothing
+else changes in existing tables.
+
 | What | Setting |
 | --- | --- |
 | Model calls | real Muse Model API (`MODEL_API_KEY`), daily cap `STUDIO_DAILY_BUDGET_USD=8` (UTC day, rebuilt from the receipts after a restart) |
@@ -18,8 +52,9 @@ the session (download it from the footer link once signed in).
 
 ## Guards (`studio/sandbox.py`, enabled by `STUDIO_SANDBOX=1`)
 
-- **Judge-only writes.** Every request other than `GET`/`HEAD`/`OPTIONS` (except `/login` and
-  `/logout`) needs a valid judge session, checked before the body is read: 401
+- **Signed-in writes.** Every request other than `GET`/`HEAD`/`OPTIONS` (except `/login`,
+  `/login/2fa` and `/logout`) needs a valid session (the judge's or an operator-created
+  account's), checked before the body is read: 401
   `login_required` otherwise. The routes' own guard (same-origin, session, kill switch) still
   runs behind it.
 - **Limits** per client prefix (IPv4 /32, IPv6 /64; the address is the rightmost
@@ -42,13 +77,16 @@ the session (download it from the footer link once signed in).
     keeps the old marker and is retried a minute later;
   - a due reset waits while a judge is writing (2 minutes of quiet), at most half an hour;
   - a marker in the future (clock jump) is replaced, not trusted.
-- **Login** (`studio/auth.py`, `studio/app.py`): one generic error message; the attempt is
-  counted per client prefix before the body is read (5 per 15 min, then 429 with
-  `Retry-After`) plus a short, capped global pause after 20 failures in 5 minutes; session
-  cookie `HttpOnly; Secure; SameSite=Strict`, revoked server side on sign-out.
+- **Login** (`studio/auth.py`, `studio/app.py`, `studio/accounts.py`): argon2id hashes; one
+  generic error message; the attempt is counted per client prefix before the body is read
+  (5 per 15 min, then 429 with `Retry-After`) plus a short, capped global pause after 20
+  failures in 5 minutes; the second step (`/login/2fa`) counts against the same limit, and a
+  correct password for a two-step account does not reset it; a new session on every login;
+  session cookie `HttpOnly; Secure; SameSite=Strict`, revoked server side on sign-out.
 - **CSRF**: state-changing requests with `Sec-Fetch-Site` other than `same-origin`/`none` are
   403; a double-submit token (HttpOnly, SameSite=Strict cookie) must come back as the `csrf`
-  field of the login and sign-out forms and as `X-CSRF-Token` on any other form-typed body
+  field of the login, second-step, sign-out and `/account/*` forms and as `X-CSRF-Token` on
+  any other form-typed body
   (urlencoded, multipart, text/plain); the routes' `Origin` check stays. JSON and raw uploads
   need a CORS preflight, which is never granted.
 - **Startup refuses** `STUDIO_REQUIRE_LOGIN=1` without `JUDGE_PASSWORD`, and a sandbox without `JUDGE_PASSWORD` + `SESSION_SECRET` (≥ 32 random

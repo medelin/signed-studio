@@ -19,6 +19,30 @@ rather than in a public issue.
 | Secrets | Model API key, Meta tokens leak | env only, `.env` mode 600 enforced, never in receipts, errors, URLs or `repr`; Meta token only in the graph adapter; the sandbox has none; gitleaks + kingfisher | `settings.py`, `muse/client.py`, `meta/graph.py` |
 | Budget | runaway agent loop or abuse burns credits | per-run step and cost caps, durable daily budget with reservation before each call, sandbox limits and kill switch | `settings.py`, `agents/producer.py`, `sandbox.py` |
 | Web app | CSRF, session theft, brute force, oversized bodies, XSS | same-origin check on writes, HttpOnly/SameSite/Secure session, login limiter, body limits, CSP without inline script, autoescaped templates | `app.py`, `sandbox.py` |
+| Accounts | see [Accounts](#accounts) below | argon2id, no enumeration, TOTP second factor, account-bound sessions, typed-confirmation deletion | `accounts.py`, `routes_account.py`, `cli_account.py` |
+
+## Accounts
+
+There is no self-registration: the operator creates accounts with `studio account create`
+(password from the terminal or stdin, never argv). The built-in `judge` account is the
+*demo* account, seeded from `JUDGE_PASSWORD` at every start (disabled when it is empty).
+
+| Threat | Control | Where |
+|---|---|---|
+| Password guessing online | argon2id (argon2-cffi defaults: t=3, 64 MiB, p=4); the login limiter (5 attempts per client prefix per 15 min, counted before the body is read, plus the short capped global pause); 12+ characters, a common-password list, not the user name | `accounts.py`, `app.py` |
+| User enumeration | an unknown name verifies against a dummy hash (the same work); unknown, disabled, deleted and wrong-password logins get the same status and one generic sentence; the second step has its own single generic sentence | `accounts.authenticate`, `routes_account` |
+| Stolen password | optional TOTP (RFC 6238, SHA-1, 6 digits, ±30 s); enrolment needs the password and a confirming code; disabling needs the password and a code | `accounts.py` |
+| Second-step guessing | the password step that succeeds for a two-step account does **not** clear the client's attempt bucket, so the password and code attempts share the same 5 per 15 min; the code step reserves before reading the body; a challenge dies after 3 wrong codes or 5 minutes. Per account, whatever the client or challenge, wrong codes are counted in the database: after 5, each further one locks code checks for 30 s × 2ⁿ (at most 1 h; even a right code waits), reset by a right code or an operator reset | `app.py` (`settle(clear=False)`), `accounts.Challenges`, `accounts._code_failed` |
+| Stale second step | a challenge remembers the account's credential generation, which every password change, operator reset, enable/disable, 2FA change and deletion bumps (in the database, so also from the CLI process); `/login/2fa` refuses a challenge whose generation changed | `accounts.credential_gen`, `verify_second_factor(gen=…)` |
+| Code replay | the last accepted TOTP step is stored and updated with a compare-and-set, so a code (or an older one in the window) is accepted once, also under concurrency; recovery codes (10 × 80 bits) are stored as SHA-256 hashes and consumed with `used_ts IS NULL` | `accounts._check_code` |
+| TOTP secret at rest | sealed with AES-GCM under a key derived (HKDF-SHA256) from the ledger key, with the account id as associated data; a copy of `studio.db` alone does not yield codes | `accounts.SecretBox` |
+| Session fixation | a new session is issued on every login and on the completion of the second step; the cookie the browser brought is revoked; no session exists between the two steps, only a 5-minute HttpOnly, SameSite=Strict challenge cookie scoped to `/login` | `routes_account.start_session` |
+| Session after a change | each session has a row (hash of its id, account, created, last seen, a short browser label, never the raw User-Agent); a cookie is valid only while its row is live and its account is `active`, so a password change (other sessions), "sign out all others", `studio account disable` (from another process) or a deletion take effect on the next request; revoking a session revokes its approver keys | `accounts.AccountSessions` |
+| CSRF on account forms | every `/account/*` and `/login/2fa` POST checks `Origin`, the Gate's `Sec-Fetch-Site`, and the `csrf` form field against the double-submit cookie; read-only mode refuses them | `routes_account.posted`, `auth.FORM_CHECKED_PREFIXES` |
+| A stolen session cookie as a password oracle | the forms that check a password or a code count against the same login limiter | `routes_account.limited` |
+| Locking judges out | on the demo account the password, the second factor and deletion cannot be changed from the UI; the operator CLI refuses it too | `accounts.DemoAccount` |
+| Deletion vs. the ledger | receipts are append-only and hash-chained, so they stay; they name an approver only by key fingerprint. Deletion erases every personal field, the password hash, the second factor and the recovery codes, revokes every session and key, and keeps a tombstone with the random account id, so a fingerprint resolves to that pseudonym only | `accounts.delete` |
+| Caching of secrets | account pages, the second step and the export are `Cache-Control: no-store`; recovery codes are shown once | `routes_account.NO_STORE` |
 
 ## Attack suite (`tests/attack/`, run in CI)
 
@@ -36,6 +60,12 @@ rather than in a public issue.
 | `test_review_binding.py`, `test_review_every_format.py` | content swapped after review; unreviewed placements |
 | `test_unfilled_fact.py` | `[FACT]` placeholders hidden with look-alike characters |
 | `test_parallel_cost.py`, `test_placements_cost.py` | cost cap bypass through parallel tool calls and placements |
+
+Accounts: `tests/test_account_pages.py` (wrong current password, a reused TOTP code, a
+recovery code used twice, CSRF missing or forged on every account form, cross-origin posts,
+a deleted account's old cookie, a disabled account, judge deletion and 2FA refused, the rate
+limit on the second step, session fixation, one generic failure), `tests/test_accounts.py`
+(RFC 6238 vectors, sealing, policy) and `tests/test_account_cli.py`.
 
 Plus `tests/test_verify_cli.py` (19 tamper classes → exit 2 naming the receipt) and the
 generated tamper suite in [`docs/eval.md`](eval.md).
@@ -61,4 +91,16 @@ generated tamper suite in [`docs/eval.md`](eval.md).
 - **Second-opinion reviewer** is unavailable without `BASETEN_API_KEY`; the approval screen
   says so.
 - **Sessions live in process memory**: a restart signs everyone out and revokes their keys
-  (past approvals stay verifiable).
+  (past approvals stay verifiable). Pending second steps are in memory too: a restart between
+  the two steps means signing in again.
+- **TOTP secrets depend on the ledger key.** Replacing `ledger.key` (possible only while the
+  ledger is empty) makes every sealed secret unreadable: those users cannot finish the second
+  step until the operator runs `studio account reset-password <user> --clear-2fa`.
+- **No account recovery by e-mail.** The studio sends no e-mail; a lost password (or a lost
+  phone without recovery codes) needs the operator's `reset-password`.
+- **Code lock as a nuisance.** Someone who knows a user's password can keep that user's
+  second step locked (at most an hour at a time) by sending wrong codes; the cure is a new
+  password (`/account` or the operator), which also clears the lock.
+- **Shared demo account.** Judges share `judge`; one judge can see the others' sessions (a
+  browser label and times) and sign them out, which costs them a fresh login, never a
+  lock-out.

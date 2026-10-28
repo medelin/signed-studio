@@ -135,6 +135,9 @@ release or copied from the operator), pass it with `--key-file ledger.pub` toget
   `STUDIO_PRODUCT_PHOTO` and `STUDIO_PRODUCT_CONCEPT` to use your own).
 - The second-opinion reviewer needs `BASETEN_API_KEY` (the recorded runs include it); without
   it the screen says "unavailable".
+- Accounts: judges share the `judge` demo account (two-step sign-in and deletion are off
+  on it); other accounts are created by the operator (`studio account create`), with optional
+  TOTP two-step sign-in, sessions, export and deletion at `/account`. No billing yet.
 - Day-by-day changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Screens and the cast

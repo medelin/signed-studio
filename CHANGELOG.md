@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-28 — user accounts
+
+- Accounts (`studio/accounts.py`): argon2id passwords (12+ characters, a common-password list, not the user name); no self-registration, the operator runs `studio account create|list|disable|enable|reset-password`. The `judge` login keeps working: it is the demo account, seeded from `JUDGE_PASSWORD` at every start.
+- `/account` (`studio/routes_account.py`), linked from the header: profile (display name, optional e-mail, language and display defaults applied at sign-in, person or company with legal name, country and a free-text tax id; billing comes later), password change (signs out the other sessions and revokes their signing keys), two-step sign-in (RFC 6238 TOTP, QR code drawn on the server with `segno`, ten hashed one-time recovery codes; the secret sealed under a key derived from the ledger key), sessions (browser label, created, last seen; sign out one or all others), JSON export (profile, sessions, signed approvals with receipt ids) and deletion (typed user name + password + code; receipts stay, the key fingerprint then resolves to a pseudonymous tombstone). On the shared demo account two-step sign-in, password change and deletion are off.
+- Login: two steps when 2FA is on (`/login/2fa`), both under the login limiter (a correct password does not reset the count before the code), a TOTP step accepted once, a new session on every completed login. Account forms: same-origin, CSRF field, `no-store`. EN and PL strings, four help entries, `docs/SECURITY.md` (accounts threat model) and `docs/SANDBOX.md`.
+
 ## 2026-10-28 — Brief v1: confirmed facts, [FACT] questions, signed brief hash
 
 - `brief/v1` (`studio/brief.py`, [docs/brief.md](docs/brief.md)): strict schema (advertiser, confirmed facts, offer, one Meta objective, audience and insight, proposition, tone, mandatories, budget, placements, assets, open questions). The producer drafts it from free text or an edited voice transcript; code turns any drafted fact with a number the owner never wrote into a `[FACT]` question; the owner answers or strikes every question and confirms. Free-text briefs still run as before.
