@@ -1,4 +1,5 @@
 {
+  "_note": "images are served from the image_series recording (same art director flow, downscaled); the recorded reviews refer to this run's original images, which are no longer kept",
   "brief": "Autumn campaign for Demo Ceramics Studio: hand-thrown stoneware mugs, 89 PLN, free delivery in Poland above 150 PLN. Audience: people working from home in Poland, 25-55. Budget 30 PLN per day. Facebook and Instagram feed plus stories.",
   "interactions": [
     {
@@ -848,7 +849,7 @@
               "type": "image_generation_call",
               "id": "ig_eyJwZXJtYW5lbnRfdXJsIjoiR0tLbTBqT1ZGV3Z2b1VrSEFOZFcxbDBfdUhOTmJnMWlBUUFEIiwicmVzdW1lX2lkIjoiczpiNGM1MDFiZS0yNDMxLTRhYzItYWNhMy04OWMzMWNhM2I4Njg6R0dJaW5UT3NlWkRzRGtzR0FJTGI1ZGNveC0xUmJnMWlBUUJqIiwiYmluZGluZyI6eyJhcHBfaWQiOjIyMjAyMzIzMzIyNTA3NTEsIm1vZGVsIjoibXVzZS1pbWFnZS0xLjAifSwidmVyc2lvbiI6MSwiY3JlYXRlZF9hdCI6MTc5MzE0MTE3N30.Q8WLFwHAS2GPU3Ym7Qqqw5dyvaIj",
               "status": "completed",
-              "result": "@file:fixtures/cassettes/files/producer_loop-1.png"
+              "result": "@file:fixtures/cassettes/files/image_series-1.png"
             }
           ],
           "instructions": null,
@@ -894,7 +895,7 @@
           "created": 1793141192,
           "data": [
             {
-              "b64_json": "@file:fixtures/cassettes/files/producer_loop-2.png"
+              "b64_json": "@file:fixtures/cassettes/files/image_series-2.png"
             }
           ],
           "output_format": "png",
@@ -934,7 +935,7 @@
           "created": 1793141210,
           "data": [
             {
-              "b64_json": "@file:fixtures/cassettes/files/producer_loop-3.png"
+              "b64_json": "@file:fixtures/cassettes/files/image_series-3.png"
             }
           ],
           "output_format": "png",

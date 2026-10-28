@@ -21,3 +21,24 @@ def test_build_log_directory_is_documented():
 @pytest.mark.parametrize("phrase", ["TOFU", "--min-seq", "ledger.pub"])
 def test_readme_explains_trust_on_first_use_for_verify(phrase):
     assert phrase in (ROOT / "README.md").read_text()
+
+
+def test_cassette_images_are_small_and_not_duplicated():
+    """Day 2 fix round: recorded PNGs are downscaled and the producer loop reuses the
+    image_series files instead of carrying its own copies."""
+    import hashlib
+    import json
+
+    from PIL import Image
+
+    root = Path(__file__).resolve().parents[1]
+    files = sorted((root / "fixtures" / "cassettes" / "files").glob("*.png"))
+    assert files and not [f for f in files if f.name.startswith("producer_loop-")]
+    for f in files:
+        assert f.stat().st_size <= 300_000, f.name
+        assert max(Image.open(f).size) <= 512, f.name
+    digests = [hashlib.sha256(f.read_bytes()).hexdigest() for f in files]
+    assert len(set(digests)) == len(digests)
+    loop = json.dumps(json.loads((root / "fixtures" / "cassettes" /
+                                  "producer_loop.json").read_text()))
+    assert "@file:fixtures/cassettes/files/image_series-1.png" in loop

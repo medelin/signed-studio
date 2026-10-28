@@ -53,6 +53,23 @@ def _scrub_request(value: Any) -> Any:
     return value
 
 
+FIXTURE_MAX_SIDE = 512
+
+
+def fixture_png(png: bytes) -> bytes:
+    """A recorded image as stored in the repo: at most 512 px, 256-colour palette (tests
+    check dimensions and aspect, not pixels)."""
+    import io
+
+    from PIL import Image
+
+    im = Image.open(io.BytesIO(png)).convert("RGB")
+    im.thumbnail((FIXTURE_MAX_SIDE, FIXTURE_MAX_SIDE), Image.Resampling.LANCZOS)
+    out = io.BytesIO()
+    im.quantize(256).save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
 class Recorder(httpx.BaseTransport):
     def __init__(self) -> None:
         self.inner = httpx.HTTPTransport()
@@ -69,6 +86,8 @@ class Recorder(httpx.BaseTransport):
             FILES.mkdir(parents=True, exist_ok=True)
             self._files += 1
             ext = "png" if raw.startswith(b"\x89PNG") else "bin"
+            if ext == "png":
+                raw = fixture_png(raw)
             path = FILES / f"{self.name}-{self._files}.{ext}"
             path.write_bytes(raw)
             return "@file:" + str(path.relative_to(ROOT))

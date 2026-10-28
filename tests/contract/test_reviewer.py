@@ -131,8 +131,11 @@ def test_reviewer_sees_a_downscaled_image():
 
     from PIL import Image
 
-    small = reviewer.downscale(IMAGE)
+    big = io.BytesIO()
+    Image.open(io.BytesIO(IMAGE)).resize((1600, 1600)).save(big, "PNG")  # as generated
+    small = reviewer.downscale(big.getvalue())
     assert max(Image.open(io.BytesIO(small)).size) == reviewer.MAX_SIDE
+    assert reviewer.downscale(IMAGE) == IMAGE  # already small: sent as is
 
 
 def test_as_dict_is_json_serialisable():
