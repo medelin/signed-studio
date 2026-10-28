@@ -1,10 +1,12 @@
 """PII detection and model-tier routing, decided in code before any model call.
 
 ``contains_pii`` finds e-mail addresses, Polish and UK phone numbers (spaced, dashed,
-bracketed or contiguous, with or without +48/+44), also when another number follows or
-precedes them in the same digit run (3-3-3 and 2-3-2-2 groupings on group boundaries), and
-NIP/PESEL numbers whose checksum is valid. ``choose_tier`` never selects the Contributor
-tier for text with PII, nor for
+bracketed, slashed or contiguous, with or without +48/+44 or 0048/0044), and NIP/PESEL
+numbers whose checksum is valid. Every digit run is split into groups and every contiguous
+sub-sequence of groups is classified, so a number next to a price or a year is still found.
+
+``choose_tier`` fails closed: it never selects the Contributor tier for text with PII, for
+text holding any run of 9+ digits ("long digit run", whatever it is), nor for
 customer-originated text (comments, leads, transcripts), and explains why in a reason that
 names only the kind of PII, never its value.
 """
@@ -20,7 +22,11 @@ CUSTOMER_SOURCES = frozenset({"comment", "lead", "transcript"})
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 # A run of digits with the separators people type; classified after normalisation.
-_RUN = re.compile(r"(?<![\w+])(?:\+|00)?\(?\d[\d \-().]{5,}\d(?!\w)")
+_RUN = re.compile(r"(?<![\w+])(?:\+|00)?\(?\d[\d \-()./]{5,}\d(?!\w)")
+# Fail-closed routing: digits joined only by the separators people type.
+_DIGIT_RUN = re.compile(r"\d(?:[\s.\-()/]*\d)+")
+LONG_RUN_DIGITS = 9
+_MAX_CANDIDATE_DIGITS = 14  # longest form classified: 00 + 44 + 10 digits
 _NIP_W = (6, 5, 7, 2, 3, 4, 5, 6, 7)
 _PESEL_W = (1, 3, 7, 9, 1, 3, 7, 9, 1, 3)
 
@@ -68,43 +74,48 @@ def _classify(raw: str) -> str | None:
     return None
 
 
-# Digit groupings of a PL number inside a longer run ("600 123 456 89 PLN").
-_PHONE_GROUPS = ((3, 3, 3), (2, 3, 2, 2), (9,))
 _GROUP = re.compile(r"\d+")
 
 
-def _phone_window(raw: str) -> tuple[int, int] | None:
-    """Span of a 3-3-3 / 2-3-2-2 / 9-digit grouping that starts and ends on group
-    boundaries of ``raw`` (with a directly preceding +48/0048 included), or ``None``."""
-    groups = list(_GROUP.finditer(raw))
-    lengths = [len(g.group()) for g in groups]
-    for i in range(len(groups)):
-        for pattern in _PHONE_GROUPS:
-            if tuple(lengths[i:i + len(pattern)]) != pattern:
-                continue
-            start, end = groups[i].start(), groups[i + len(pattern) - 1].end()
-            if i > 0 and groups[i - 1].group() in ("48", "0048"):
-                prefix = groups[i - 1].start()
-                if raw[prefix - 1:prefix] == "+" or groups[i - 1].group() == "0048":
-                    start = prefix - (raw[prefix - 1:prefix] == "+")
-            return start, end
-    return None
+def _classify_groups(raw: str, groups: list[re.Match[str]], i: int, j: int) -> str | None:
+    """Classify groups ``i..j`` of ``raw``: as written (with a directly preceding ``+``),
+    and, when the first group starts with 48/44 and is longer than the prefix, as
+    ``+`` prefix + number."""
+    plus = "+" if raw[groups[i].start() - 1:groups[i].start()] == "+" else ""
+    candidate = plus + " ".join(g.group() for g in groups[i:j + 1])
+    kind = _classify(candidate)
+    if kind is None and not plus and groups[i].group()[:2] in ("48", "44"):
+        kind = _classify("+" + candidate)
+    return kind
 
 
 def _phones(text: str) -> list[tuple[str, int, int]]:
-    """``(kind, start, end)`` for each digit run that classifies, whole or by window."""
+    """``(kind, start, end)`` for every contiguous sub-sequence of digit groups, in every
+    digit run, that classifies as a phone, NIP or PESEL (ordered by start)."""
     out = []
     for run in _RUN.finditer(text):
-        raw = run.group().strip(" -.(")
-        offset = run.start() + run.group().index(raw)
-        kind = _classify(raw)
-        if kind:
-            out.append((kind, offset, offset + len(raw)))
-            continue
-        window = _phone_window(raw)
-        if window:
-            out.append(("phone", offset + window[0], offset + window[1]))
-    return out
+        raw = run.group()
+        groups = list(_GROUP.finditer(raw))
+        for i in range(len(groups)):
+            digits = 0
+            for j in range(i, len(groups)):
+                digits += len(groups[j].group())
+                if digits > _MAX_CANDIDATE_DIGITS:
+                    break
+                kind = _classify_groups(raw, groups, i, j)
+                if kind:
+                    start = groups[i].start()
+                    if raw[start - 1:start] == "+":
+                        start -= 1
+                    out.append((kind, run.start() + start, run.start() + groups[j].end()))
+    return sorted(out, key=lambda m: (m[1], m[2]))
+
+
+def long_digit_run(text: str) -> bool:
+    """True if ``text`` holds a run of ``LONG_RUN_DIGITS`` or more digits (separated at most
+    by spaces, dots, dashes, parentheses or slashes), whatever it is."""
+    return any(len(re.sub(r"\D", "", m.group())) >= LONG_RUN_DIGITS
+               for m in _DIGIT_RUN.finditer(text))
 
 
 def contains_pii(text: str) -> Match | None:
@@ -131,6 +142,8 @@ def choose_tier(text: str, requested: str, *, source: str = "operator") -> tuple
     match = contains_pii(text)
     if match:
         return "standard", f"pii detected ({match.kind}): contributor refused", STANDARD_MODEL
+    if long_digit_run(text):
+        return "standard", "long digit run", STANDARD_MODEL
     return "contributor", "no pii detected: public copy on contributor", CONTRIBUTOR_MODEL
 
 

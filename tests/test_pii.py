@@ -8,6 +8,7 @@ from studio.pii import (
     choose_tier,
     contains_pii,
     find_phone,
+    long_digit_run,
 )
 
 # Checksums: NIP 5260250274 (weights 6,5,7,2,3,4,5,6,7), PESEL 44051401359 / 02270803624.
@@ -32,7 +33,8 @@ CASES = [
     ("PESEL 44051401359", "pesel"),
     ("pesel 02270803624", "pesel"),
     ("NIP 5260250275 has a bad checksum", None),
-    ("PESEL 44051401358 has a bad checksum", None),
+    # not a PESEL, but 44 + 9 digits reads as a UK number without "+": detected (fail closed)
+    ("PESEL 44051401358 has a bad checksum", "phone"),
     ("Price 89 PLN, free delivery above 150 PLN", None),
     ("Budget 30 PLN per day, 25-55 within 15 km", None),
     ("Campaign 2026-10-27 at 21:03", None),
@@ -62,6 +64,8 @@ def test_contributor_is_never_selected_for_pii():
             assert (tier, model) == ("standard", STANDARD_MODEL)
             assert kind in reason
             assert text not in reason  # the reason never quotes the PII
+        elif long_digit_run(text):  # e.g. a NIP with a bad checksum: still 10 digits
+            assert (tier, reason, model) == ("standard", "long digit run", STANDARD_MODEL)
         else:
             assert (tier, model) == ("contributor", CONTRIBUTOR_MODEL)
 
@@ -104,3 +108,41 @@ def test_phone_next_to_another_number_is_found(text, phone):
                                   "12 345 678", "350 ml 89 PLN 2026"])
 def test_numbers_that_are_not_phone_groupings_stay_clean(text):
     assert contains_pii(text) is None
+
+
+# Controller ruling (fail closed): every contiguous group sub-sequence is classified, and
+# any run of 9+ digits keeps the text off the Contributor tier whatever it is.
+SUBSEQUENCES = [
+    ("PESEL 44051401359 1500 PLN", "pesel"),
+    ("NIP 5260250274 2026", "nip"),
+    ("rok 2026 526 025 02 74", "nip"),
+    ("UK 07700 900123 45 GBP", "phone"),
+    ("cena 12 07700 900123", "phone"),
+    ("kontakt +48600123456", "phone"),
+    ("kontakt +48600123456 2026", "phone"),
+    ("kontakt 00 48 600 123 456", "phone"),
+    ("kontakt 0048 600 123 456 15", "phone"),
+    ("kontakt 48 600 123 456", "phone"),
+    ("tel 600/123/456", "phone"),
+]
+
+
+@pytest.mark.parametrize(("text", "kind"), SUBSEQUENCES)
+def test_every_group_subsequence_is_classified(text, kind):
+    m = contains_pii(text)
+    assert m is not None and m.kind == kind, (text, m)
+    assert choose_tier(text, "contributor")[0] == "standard"
+
+
+@pytest.mark.parametrize("text", ["Order 1234 5678 9012 3456", "ref 123.456.789.0",
+                                  "kod 9876-5432-1", "(123) 456 7890 11"])
+def test_any_long_digit_run_forces_standard(text):
+    tier, reason, model = choose_tier(text, "contributor")
+    assert tier == "standard" and model == STANDARD_MODEL
+    assert reason in ("long digit run",) or reason.startswith("pii detected")
+
+
+@pytest.mark.parametrize("text", ["89 PLN, 350 ml", "Promocja do 2026-10-31", "12 345 678 zł",
+                                  "1 500 PLN od 150 zł", "rok 2026, 24/7, 3x2"])
+def test_short_numbers_stay_on_contributor(text):
+    assert choose_tier(text, "contributor")[0] == "contributor", text
