@@ -19,6 +19,7 @@ from jinja2 import pass_context
 from markupsafe import Markup
 
 from studio.ui.i18n_accounts import EN_ACCOUNTS, PL_ACCOUNTS
+from studio.ui.i18n_google import EN_GOOGLE, PL_GOOGLE
 from studio.ui.i18n_meta import EN_META, PL_META
 
 LANGS = ("en", "pl")
@@ -1193,6 +1194,8 @@ EN.update(EN_ACCOUNTS)
 PL.update(PL_ACCOUNTS)
 EN.update(EN_META)
 PL.update(PL_META)
+EN.update(EN_GOOGLE)
+PL.update(PL_GOOGLE)
 
 CATALOGS = {"en": EN, "pl": PL}
 
