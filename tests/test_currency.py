@@ -74,3 +74,24 @@ def test_recorded_interest_search_shape():
     r = audience.resolve(lambda k, q: data, ["Ceramics Monthly"])
     assert r.interests[0]["name"] == "Ceramics Monthly" and r.interests[0]["id"].isdigit()
     assert json.dumps(RECORDED).count("act_100000000000001") >= 1
+
+
+def test_the_self_advertising_example_is_selectable_and_ceramics_stays_default(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from studio.app import create_app
+    from studio.ui import i18n
+    from tests.test_ui_studio import login, settings
+
+    with TestClient(create_app(settings(tmp_path)), base_url="https://testserver") as c:
+        login(c)
+        for lang in ("en", "pl"):
+            page = c.get(f"/studio?lang={lang}").text
+            assert 'value="ceramics"' in page and 'value="muse"' in page
+            assert page.index('value="ceramics"') < page.index('value="muse"')
+            text = i18n.CATALOGS[lang]["studio.brief_example_muse"]
+            assert "6 GBP" in text and "https://muse.udun.eu" in text
+    from studio.demo import BRIEFS
+    assert BRIEFS["muse"]["account_currency"] == "GBP"
+    for word in ("Ceramics", "Meta ", "Google"):
+        assert word not in i18n.EN["studio.brief_example_muse"]

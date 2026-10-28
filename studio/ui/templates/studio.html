@@ -50,6 +50,12 @@
       <p class="hint" id="brief-paths">{{ t("brief.paths_hint") }}</p>
       <div class="path">
         <h2 class="path-h">{{ t("brief.path_text") }}</h2>
+        <label for="brief-example">{{ t("studio.example_label") }}</label>
+        <select id="brief-example" aria-describedby="brief-example-hint">
+          <option value="ceramics" data-text="{{ t('studio.brief_default') }}" selected>{{ t("studio.example.ceramics") }}</option>
+          <option value="muse" data-text="{{ t('studio.brief_example_muse') }}">{{ t("studio.example.muse") }}</option>
+        </select>
+        <p class="hint" id="brief-example-hint">{{ t("studio.example_hint") }}</p>
         <label for="brief">{{ t("brief.text_label") }}</label>
         <textarea id="brief" name="brief" rows="6" maxlength="4000" required
           aria-describedby="brief-help err-brief">{{ t("studio.brief_default") }}</textarea>

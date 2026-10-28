@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from studio.ui.help_accounts import ACCOUNT_ENTRIES
+from studio.ui.help_meta import META_ENTRIES
 
 
 @dataclass(frozen=True)
@@ -362,6 +363,7 @@ ENTRIES: tuple[Entry, ...] = (
 )
 
 ENTRIES += tuple(Entry(*e) for e in ACCOUNT_ENTRIES)  # studio/ui/help_accounts.py
+ENTRIES += tuple(Entry(*e) for e in META_ENTRIES)  # studio/ui/help_meta.py
 
 
 def entries(lang: str) -> list[dict[str, str]]:

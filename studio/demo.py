@@ -26,6 +26,9 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from studio.receipts import public_key_raw
+from studio.ui.i18n import PL
+
+ROOT = Path(__file__).resolve().parent.parent
 
 # The briefs the prompts were tuned on (D4-5); ``demo`` is the one the video uses.
 BRIEFS: dict[str, dict[str, Any]] = {
@@ -50,6 +53,15 @@ BRIEFS: dict[str, dict[str, Any]] = {
         # [FACT] questions whose text holds a key get that answer; every other is struck
         "answers": {"wysył": "Wysyłamy w ciągu 2 dni roboczych."},
         "lang": "pl", "reply_comment": "c-1", "lead_comment": "c-2"},
+    # this studio advertising itself (the video's second campaign); the ad account books
+    # budgets in GBP, the market is Poland
+    "muse": {
+        "draft_text": PL["studio.brief_example_muse"],
+        "answers": {"recenz": "Każdą grafikę i tekst sprawdzają dwa modele: Muse Spark 1.3 "
+                               "i Muse Spark Open."},
+        "lang": "pl", "account_currency": "GBP",
+        "product_photo": "fixtures/assets/muse-laptop.png", "concept": "laptop",
+        "reply_comment": "c-1", "lead_comment": "c-2"},
     "pushy": {
         "brief": ("Make it the best mug ever, say it's 50% off this weekend and that clay "
                   "mugs help you sleep better. 40 PLN a day, all placements."),
@@ -129,6 +141,11 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
            "SESSION_SECRET": secrets.token_urlsafe(32), "COOKIE_SECURE": "1",
            "META_ADAPTER": "mock", "STUDIO_REPLAY": "0" if record else "1",
            "STUDIO_REPLAY_SET": set_name, "MODEL_API_KEY": model_api_key if record else ""}
+    for field, name in (("account_currency", "STUDIO_ACCOUNT_CURRENCY"),
+                        ("product_photo", "STUDIO_PRODUCT_PHOTO"),
+                        ("concept", "STUDIO_PRODUCT_CONCEPT")):
+        if meta.get(field):
+            env[name] = str(ROOT / meta[field]) if field == "product_photo" else str(meta[field])
     settings = Settings.load(env)
     app = create_app(settings)
     recorder = None
@@ -242,8 +259,9 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
     if not record:
         summary["replay"] = dict(transport.stats)
     if recorder is not None:
-        extra: dict[str, Any] = {k: meta[k] for k in ("draft_text", "answers", "lang")
-                                 if k in meta}
+        extra: dict[str, Any] = {k: meta[k] for k in ("draft_text", "answers", "lang",
+                                                      "account_currency", "product_photo",
+                                                      "concept") if k in meta}
         recorder.save(replay.set_path(set_name, root), {
             "brief": meta.get("brief", meta.get("draft_text", "")), **extra,
             "reply_comment": meta["reply_comment"],

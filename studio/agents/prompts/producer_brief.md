@@ -12,6 +12,7 @@ Turn the owner's words into a Brief v1. Fill every section only from what the ow
 - `budget`: as the owner stated it, with an ISO 4217 currency code; amount 0 and an open question when no budget was given.
 - `advertiser`: person or company, the name the owner uses, ISO 3166-1 alpha-2 countries; the landing page the owner gave, else the default landing page below.
 - `placements`: `automatic` true unless the owner names placements; `deliverables` from feed_1x1, feed_4x5, story_9x16 (feed_1x1 and story_9x16 when the owner does not say).
+- Audience extras (`genders`, `interests`, exclusions, custom audience ids, a lookalike source) only when the owner names them, else empty; `advantage_audience` true unless the owner wants hard targeting; `lookalike_percent` 1. Formats: `carousel_cards` 0, `video` false and `copy_variants` 1 unless the owner asks for a carousel, a video or several texts to test.
 - `mandatories`: disclaimers, claims the owner does not want made, dates that must appear. `tone_brand`: tone words, colours, things not to do.
 - Never write `[FACT]` inside a field: `open_questions` is the only place for gaps. Write questions and fields in the owner's language.
 

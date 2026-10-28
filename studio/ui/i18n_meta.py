@@ -5,6 +5,21 @@ rules apply (``tests/test_i18n.py``)."""
 from __future__ import annotations
 
 EN_META: dict[str, str] = {
+    "studio.brief_example_muse": (
+        "Muse Studio Lite is a free, open-source tool for one-person "
+        "businesses. From one brief it makes a campaign plan, 3 copy "
+        "variants, images and 2 independent compliance reviews, and "
+        "nothing reaches the ads without your signature. The code is open, "
+        "under the Apache 2.0 licence. We want traffic to the sandbox at "
+        "https://muse.udun.eu. For people running a one-person business in "
+        "Poland, aged 25-55. Budget 6 GBP a day for 7 days, from 4 to 10 "
+        "November 2026. The ad in Polish. Matter-of-fact and calm, no "
+        "promises of profit. Do not name any company."),
+    "studio.example_label": "Example brief",
+    "studio.example_hint": "Two examples to start from; both are made-up owners' words you can "
+                           "edit.",
+    "studio.example.ceramics": "a ceramics shop (PLN)",
+    "studio.example.muse": "this studio, advertised as an open-source tool (GBP)",
     # Brief v1: objective and sub-choice
     "brief.goal.app_promotion": "app promotion",
     "brief.f.sub": "What Meta optimises for",
@@ -155,6 +170,21 @@ EN_META: dict[str, str] = {
 }
 
 PL_META: dict[str, str] = {
+    "studio.brief_example_muse": (
+        "Muse Studio Lite to darmowe narzędzie open source dla "
+        "jednoosobowych firm. Z jednego briefu robi plan kampanii, 3 "
+        "warianty tekstu, grafiki i 2 niezależne recenzje zgodności, a "
+        "nic nie trafia do reklam bez twojego podpisu. Kod jest otwarty, na"
+        " licencji Apache 2.0. Chcemy ruchu do piaskownicy na "
+        "https://muse.udun.eu. Dla osób prowadzących jednoosobową "
+        "działalność w Polsce, 25-55 lat. Budżet 6 GBP dziennie przez 7 "
+        "dni, od 4 do 10 listopada 2026. Rzeczowo i spokojnie, bez obietnic"
+        " zysku. Reklama po polsku. Nie wymieniajcie nazwy żadnej firmy."),
+    "studio.example_label": "Przykładowy brief",
+    "studio.example_hint": "Dwa przykłady na start; oba to wymyślone słowa właściciela, które "
+                           "możesz zmienić.",
+    "studio.example.ceramics": "sklep z ceramiką (PLN)",
+    "studio.example.muse": "to studio jako narzędzie open source (GBP)",
     "brief.goal.app_promotion": "promocja aplikacji",
     "brief.f.sub": "Na co Meta optymalizuje",
     "brief.h.sub": "Każdy cel ma własne opcje; kod zamienia twój wybór na pola Mety. Jeśli "

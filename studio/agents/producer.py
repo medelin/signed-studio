@@ -420,7 +420,8 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 placements=art_director.clean_placements(run.plan.placements),
                 can_spend=lambda usd: _cost(ctx, run.run_id) + usd <= max_cost_usd,
                 carousel_cards=fmt.carousel_cards if fmt else 0,
-                with_video=bool(fmt and fmt.video))
+                with_video=bool(fmt and fmt.video),
+                advertiser=ctx.brief_v1.advertiser.display_name if ctx.brief_v1 else "")
         except art_director.CostCapReached:
             raise ToolError("cost cap reached while rendering; no creative set") from None
         with transaction(ctx.conn):

@@ -85,8 +85,14 @@ def _flatten(rgba_png: bytes) -> bytes:
     return out.getvalue()
 
 
-def write_scene(client: MuseClient, headline: str, *, run_id: str) -> str:
+def write_scene(client: MuseClient, headline: str, *, run_id: str,
+                advertiser: str = "") -> str:
     user = f"Headline: {headline}\nWrite the scene for the product ad image."
+    if advertiser:
+        # a confirmed Brief v1 for another advertiser replaces the demo brand sheet
+        user = (f"Advertiser: {advertiser}. The owner's confirmed brief replaces the demo "
+                "brand sheet: do not use the demo brand's name, product or palette, and put "
+                "no brand name in the scene.\n" + user)
     tier, reason, model = choose_tier(user, "contributor")
     obj, _ = structured(
         client, model,
@@ -106,7 +112,7 @@ def placement_prompt(scene: str, headline: str, placement: str, first: bool) -> 
                  "palette, light and typography, recomposed for this format.")
     return (f"{keep}\nScene: {scene}\nFormat: {placement} ({PLACEMENT_SIZES[placement]}). "
             f'Text in the image: only the headline "{headline}", small, with clear margins. '
-            "No people, no faces, no other logos.")
+            "No other words, brand names or logos. No people, no faces.")
 
 
 def run(
@@ -121,6 +127,7 @@ def run(
     can_spend: Callable[[float], bool] | None = None,
     carousel_cards: int = 0,
     with_video: bool = False,
+    advertiser: str = "",
 ) -> CreativeSet:
     """``can_spend(usd)`` is asked before every image; ``False`` raises ``CostCapReached``."""
     if not is_opaque(run_id):
@@ -137,7 +144,7 @@ def run(
     cutout_path.write_bytes(cut.crop_png)
     product = _flatten(cut.crop_png)
 
-    scene = write_scene(client, headline, run_id=run_id)
+    scene = write_scene(client, headline, run_id=run_id, advertiser=advertiser)
     images: list[CreativeImage] = []
     used_prompts: list[str] = []
     first_png: bytes | None = None

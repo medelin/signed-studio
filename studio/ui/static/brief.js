@@ -422,6 +422,13 @@
   }
 
   // -- the flow -----------------------------------------------------------------------
+  const example = $("brief-example");
+  if (example) {
+    example.addEventListener("change", () => {
+      $("brief").value = example.selectedOptions[0].dataset.text;
+      say(example.selectedOptions[0].textContent);
+    });
+  }
   $("bv-add-fact").addEventListener("click", () => addFact("", true));
   $("bv-add-reason").addEventListener("click", () => addReason("", [], true));
   $("redraft-button").addEventListener("click", () => {

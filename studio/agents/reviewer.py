@@ -178,7 +178,8 @@ def normalize(review: Review) -> Review:
 def _facts_block(brief: brief_v1.BriefV1) -> str:
     facts = "\n".join(f"{i + 1}. {f}" for i, f in enumerate(brief.confirmed_facts)) or "(none)"
     offer = brief.offer
-    lines = [f"Confirmed facts:\n{facts}",
+    lines = [f"Advertiser (the brand name the ad must use): {brief.advertiser.display_name}",
+             f"Confirmed facts:\n{facts}",
              f"Offer: {offer.product}; {offer.offer or '-'}"
              + (f" (valid until {offer.valid_until})" if offer.valid_until else ""),
              f"Proposition: {brief.proposition}",

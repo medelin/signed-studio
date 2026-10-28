@@ -493,4 +493,11 @@ def make(settings: Any, **kwargs: Any) -> Adapter:
             kwargs["transport"] = ReplayTransport.from_set(settings.replay_set)
         return GraphAdapter.from_settings(settings, **kwargs)
     from studio.meta.mock import MockAdapter
-    return MockAdapter(currency=getattr(settings, "account_currency", "PLN"), **kwargs)
+    currency = getattr(settings, "account_currency", "PLN")
+    if getattr(settings, "replay", False):  # a recorded set names the account it ran on
+        from studio.replay import load_set
+        try:
+            currency = str(load_set(settings.replay_set).get("account_currency") or currency)
+        except (OSError, ValueError):
+            pass
+    return MockAdapter(currency=currency, **kwargs)

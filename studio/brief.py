@@ -450,6 +450,7 @@ def ground_draft(draft: BriefV1, source: str, lang: str = "en") -> BriefV1:
     offer = offer.model_copy(update={**updates, "reasons_to_believe": reasons})
     promotion = ground_ids(draft.promotion, source)
     audience = ground_audience(draft.audience, source)
+    placements = ground_formats(draft.placements)
     proposition = draft.proposition
     if ungrounded_numbers(proposition, source):
         questions.append(FactQuestion(question=ask.format(claim=proposition),
@@ -457,7 +458,7 @@ def ground_draft(draft: BriefV1, source: str, lang: str = "en") -> BriefV1:
         proposition = ""
     return draft.model_copy(update={"confirmed_facts": keep, "offer": offer,
                                     "proposition": proposition, "promotion": promotion,
-                                    "audience": audience,
+                                    "audience": audience, "placements": placements,
                                     "open_questions": questions[:MAX_QUESTIONS]})
 
 
@@ -474,12 +475,25 @@ def ground_ids(promotion: Promotion, source: str) -> Promotion:
     return promotion.model_copy(update=cleared) if cleared else promotion
 
 
+def ground_formats(placements: Placements) -> Placements:
+    """Format options outside their ranges fall back to the defaults (no carousel, one
+    copy variant): a choice the owner did not make is not made for them."""
+    update: dict[str, Any] = {}
+    if placements.carousel_cards and not 2 <= placements.carousel_cards <= 10:
+        update["carousel_cards"] = 0
+    if not 1 <= placements.copy_variants <= 3:
+        update["copy_variants"] = 1
+    return placements.model_copy(update=update) if update else placements
+
+
 def ground_audience(audience: Audience, source: str) -> Audience:
     """Audience ids the owner never wrote are dropped (custom audiences, the lookalike
     source): they cannot be guessed."""
     folded = _fold(source)
     keep = {name: [x for x in getattr(audience, name) if x in folded]
             for name in ("custom_audience_ids", "excluded_custom_audience_ids")}
+    if not 1 <= audience.lookalike_percent <= 10:
+        keep["lookalike_percent"] = 1  # type: ignore[assignment]
     if audience.lookalike_source_id and audience.lookalike_source_id not in folded:
         return audience.model_copy(update={**keep, "lookalike_source_id": ""})
     return audience.model_copy(update=keep)
