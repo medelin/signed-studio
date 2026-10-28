@@ -343,6 +343,36 @@ ENTRIES: tuple[Entry, ...] = (
                "głosu jest nastawiona na polski. Teksty reklam powstają po angielsku, chyba "
                "że brief prosi o polski. Ekrany studia są po angielsku; ta strona pomocy "
                "jest po angielsku i po polsku."}),
+    # -- MCP server (studio/mcp_server.py, docs/mcp.md) --
+    Entry(
+        "mcp-agent", "diego", "unsigned",
+        {"en": "Can another AI agent drive the studio for me?",
+         "pl": "Czy inny agent AI może obsługiwać studio za mnie?"},
+        {"en": "Yes, through <code>studio mcp</code>: an MCP server on your own computer "
+               "(no network port) that an agent such as Claude Code starts and talks to. It "
+               "acts for one account and can read briefs, runs, campaigns, receipts and the "
+               "report, draft a Brief v1, run the plan, copy, images and reviews from "
+               "recorded answers, and check a receipt log with <code>studio verify</code>. "
+               "It cannot sign, send, create or turn on a campaign, change a budget or touch "
+               "your password or two-step sign-in: when something would go out, it answers "
+               "<em>awaiting human signature</em> with the link to the approval screen, "
+               "where you sign as always. Text from the agent is treated like a voice "
+               "transcript (enveloped, never on the cheaper tier), and every call it makes "
+               "is a receipt that names it <code>mcp:</code> plus its name. Setup: "
+               "<code>docs/mcp.md</code>.",
+         "pl": "Tak, przez <code>studio mcp</code>: serwer MCP na twoim komputerze (bez "
+               "portu sieciowego), który agent, na przykład Claude Code, uruchamia i z nim "
+               "rozmawia. Działa w imieniu jednego konta i umie czytać briefy, przebiegi, "
+               "kampanie, pokwitowania i raport, przygotować szkic Briefu v1, przeprowadzić "
+               "plan, teksty, obrazy i recenzje na nagranych odpowiedziach oraz sprawdzić "
+               "dziennik pokwitowań przez <code>studio verify</code>. Nie może podpisać, "
+               "wysłać, utworzyć ani włączyć kampanii, zmienić budżetu ani dotknąć hasła czy "
+               "logowania dwuetapowego: gdy coś miałoby wyjść na zewnątrz, odpowiada "
+               "<em>czeka na podpis człowieka</em> z linkiem do ekranu zatwierdzenia, gdzie "
+               "podpisujesz jak zawsze. Tekst od agenta jest traktowany jak transkrypcja "
+               "głosu (w kopercie, nigdy na tańszym poziomie), a każde jego wywołanie to "
+               "pokwitowanie, które nazywa go <code>mcp:</code> i jego nazwą. Konfiguracja: "
+               "<code>docs/mcp.md</code>."}),
     Entry(
         "sandbox-reset", "tomasz", "reset",
         {"en": "What does the judge sandbox reset?",
