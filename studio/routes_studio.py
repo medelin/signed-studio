@@ -31,6 +31,7 @@ import threading
 import time
 import weakref
 from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from functools import partial
 from typing import Any
 
@@ -146,6 +147,140 @@ def _state(conn: Any, run_id: str) -> tuple[str, dict[str, Any], float] | None:
     return str(row[0]), json.loads(row[1]), float(row[2])
 
 
+class Refused(Exception):
+    """A request the studio answers with an error: ``status`` and the JSON ``body`` (the
+    routes return them as they are; the MCP server passes ``body`` on)."""
+
+    def __init__(self, status: int, body: dict[str, Any]) -> None:
+        super().__init__(body.get("error", ""))
+        self.status = status
+        self.body = body
+
+
+def _fields_error(fields: dict[str, str], status: int = 422) -> Refused:
+    return Refused(status, {"error": "invalid_brief", "fields": fields})
+
+
+@dataclass(frozen=True)
+class Confirmation:
+    """A checked Brief v1 confirmation, ready to commit (``commit_confirmation``)."""
+
+    brief_id: str
+    run_id: str
+    brief: brief_v1.BriefV1
+    digest: str
+    counts: dict[str, int]
+    source: str  # "operator" or "transcript" (enveloped, never on Contributor)
+    voice: bool
+
+
+def store_draft(conn: Any, text: str, draft: brief_v1.BriefV1, run_id: str,
+                brief_id: str | None = None) -> str:
+    """Store a Brief v1 draft: on its voice brief row, or on a new text row; its id."""
+    stored = json.dumps(brief_v1.as_json(draft), ensure_ascii=False)
+    with db.transaction(conn):
+        if brief_id is not None:
+            conn.execute("UPDATE briefs SET text = ?, draft = ?, draft_run_id = ? "
+                         "WHERE id = ? AND source = 'voice' AND run_id = ''",
+                         (text, stored, run_id, brief_id))
+            return brief_id
+        brief_id = "b_" + secrets.token_hex(8)
+        conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts, "
+                     "draft, draft_run_id) VALUES (?, '', ?, 'text', ?, ?, ?)",
+                     (brief_id, text, time.time(), stored, run_id))
+    return brief_id
+
+
+def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
+                       currency: Callable[[], str], untrusted: bool = False) -> Confirmation:
+    """Every check the UI's confirmation makes, in its order: a known unconfirmed draft,
+    a valid Brief v1, one resolution per open question, every field valid in the ad
+    account's currency. ``Refused`` (400/409/422/502) otherwise. ``untrusted`` runs the
+    brief as customer-grade text (as a voice transcript) whatever its row says."""
+    brief_id = body.get("brief_id")
+    if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
+        raise Refused(400, {"error": "invalid_brief_id"})
+    with conn.lock:
+        row = conn.execute("SELECT source, run_id, draft_run_id FROM briefs WHERE id = ?",
+                           (brief_id,)).fetchone()
+    if row is None or not row[2] or row[1]:
+        raise Refused(409, {"error": "unknown_draft"})
+    try:
+        draft = brief_v1.BriefV1.model_validate(body["brief_v1"])
+    except ValidationError as exc:
+        raise _fields_error({".".join(str(p) for p in e["loc"]): "invalid"
+                             for e in exc.errors()}) from None
+    raw = body.get("resolutions", [])
+    try:
+        if not isinstance(raw, list):
+            raise TypeError
+        resolutions = [brief_v1.Resolution.model_validate(r) for r in raw]
+    except (ValidationError, TypeError):
+        raise _fields_error({"open_questions": "invalid"}) from None
+    missing = {f"open_questions.{i}": "answer_required"
+               for i, r in enumerate(resolutions)
+               if r.action == "answer" and not r.text.strip()}
+    missing |= {f"open_questions.{i}": "too_long" for i, r in enumerate(resolutions)
+                if r.action == "answer" and len(r.text) > brief_v1.MAX_FACT}
+    if len(resolutions) != len(draft.open_questions):
+        missing |= {f"open_questions.{i}": "unresolved"
+                    for i in range(len(resolutions), len(draft.open_questions))}
+    if missing:
+        raise _fields_error(missing)
+    confirmed, answered, struck = brief_v1.resolve(draft, resolutions)
+    try:
+        account = currency()
+    except AdapterError as exc:
+        raise Refused(502, {"error": "meta_error", "code": exc.code}) from None
+    problems = brief_v1.problems(confirmed, ceiling_daily=ceiling, currency=account)
+    if problems:
+        raise _fields_error(problems)
+    voice_used = row[0] == "voice" or body.get("dictated") is True
+    return Confirmation(brief_id, str(row[2]), confirmed, brief_v1.brief_sha256(confirmed),
+                        brief_v1.counts(confirmed, answered, struck),
+                        "transcript" if voice_used or untrusted else "operator", voice_used)
+
+
+def commit_confirmation(conn: Any, ledger: Ledger, c: Confirmation, *,
+                        agent: str = "owner") -> None:
+    """The brief row, the run state and the ``brief.confirmed`` receipt in one
+    transaction; ``Refused(409)`` when another request confirmed the draft first."""
+    try:
+        with db.transaction(conn):
+            cur = conn.execute(
+                "UPDATE briefs SET run_id = ?, brief_v1 = ?, brief_sha256 = ? "
+                "WHERE id = ? AND run_id = ''",
+                (c.run_id, json.dumps(brief_v1.as_json(c.brief), ensure_ascii=False),
+                 c.digest, c.brief_id))
+            if cur.rowcount != 1:
+                raise _Taken
+            conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
+                         "VALUES (?, 'running', '{}', ?)", (c.run_id, time.time()))
+            ledger.append(c.run_id, agent=agent, kind=BRIEF_KIND, conn=conn,
+                          output_sha256=c.digest, details={
+                              "schema": brief_v1.SCHEMA, "brief_sha256": c.digest,
+                              **c.counts, "voice": voice.MODEL if c.voice else ""})
+    except (_Taken, sqlite3.IntegrityError):
+        raise Refused(409, {"error": "unknown_draft"}) from None
+
+
+def run_context(settings: Settings, conn: Any, muse: MuseClient,
+                open_weights: OpenWeightsClient | None, adapter: Any, *, currency: str,
+                brief_source: str = "operator", confirmed: brief_v1.BriefV1 | None = None,
+                digest: str = "") -> producer.Context:
+    """The producer's context for one run (``adapter`` only for its Page id and its
+    read-only targeting search)."""
+    return producer.Context(
+        client=muse, open_client=open_weights, conn=conn,
+        photo_png=settings.product_photo.read_bytes(),
+        concept=settings.product_concept, data_dir=settings.data_dir,
+        landing_url=settings.landing_url, brief_source=brief_source,
+        max_daily_budget=settings.max_daily_budget, currency=currency,
+        brief_v1=confirmed, brief_sha256=digest,
+        page_id=getattr(adapter, "page_id", "") or MOCK_PAGE,
+        search=getattr(adapter, "search_targeting", None))
+
+
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
              write_guard: Guard) -> None:
     app.state.muse = None  # created on first run (tests may inject a client)
@@ -182,16 +317,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                confirmed: brief_v1.BriefV1 | None = None, digest: str = "") -> None:
         try:
             muse, open_weights = clients()
-            ctx = producer.Context(
-                client=muse, open_client=open_weights, conn=conn,
-                photo_png=settings.product_photo.read_bytes(),
-                concept=settings.product_concept, data_dir=settings.data_dir,
-                landing_url=settings.landing_url, brief_source=brief_source,
-                max_daily_budget=settings.max_daily_budget, currency=account_currency(),
-                brief_v1=confirmed, brief_sha256=digest,
-                page_id=getattr(getattr(app.state, "adapter", None), "page_id", "")
-                or MOCK_PAGE,
-                search=getattr(getattr(app.state, "adapter", None), "search_targeting", None))
+            ctx = run_context(settings, conn, muse, open_weights,
+                              getattr(app.state, "adapter", None), currency=account_currency(),
+                              brief_source=brief_source, confirmed=confirmed, digest=digest)
             producer.run(ctx, brief, run_id=run_id)
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)
@@ -200,90 +328,34 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             with app.state.run_lock:
                 app.state.active_run = None
 
-    def fields_error(fields: dict[str, str], status: int = 422) -> JSONResponse:
-        return JSONResponse({"error": "invalid_brief", "fields": fields}, status)
-
     def confirm_and_start(body: dict[str, Any]) -> Response:
         """Confirm a drafted Brief v1 (every open question answered or struck, every field
         valid) and start its run; the ``brief.confirmed`` receipt, the brief row and the
         run state commit together."""
-        brief_id = body.get("brief_id")
-        if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
-            return JSONResponse({"error": "invalid_brief_id"}, 400)
-        with conn.lock:
-            row = conn.execute("SELECT source, run_id, draft_run_id FROM briefs WHERE id = ?",
-                               (brief_id,)).fetchone()
-        if row is None or not row[2] or row[1]:
-            return JSONResponse({"error": "unknown_draft"}, 409)
         try:
-            draft = brief_v1.BriefV1.model_validate(body["brief_v1"])
-        except ValidationError as exc:
-            return fields_error({".".join(str(p) for p in e["loc"]): "invalid"
-                                 for e in exc.errors()})
-        raw = body.get("resolutions", [])
-        try:
-            if not isinstance(raw, list):
-                raise TypeError
-            resolutions = [brief_v1.Resolution.model_validate(r) for r in raw]
-        except (ValidationError, TypeError):
-            return fields_error({"open_questions": "invalid"})
-        missing = {f"open_questions.{i}": "answer_required"
-                   for i, r in enumerate(resolutions)
-                   if r.action == "answer" and not r.text.strip()}
-        missing |= {f"open_questions.{i}": "too_long" for i, r in enumerate(resolutions)
-                    if r.action == "answer" and len(r.text) > brief_v1.MAX_FACT}
-        if len(resolutions) != len(draft.open_questions):
-            missing |= {f"open_questions.{i}": "unresolved"
-                        for i in range(len(resolutions), len(draft.open_questions))}
-        if missing:
-            return fields_error(missing)
-        confirmed, answered, struck = brief_v1.resolve(draft, resolutions)
-        try:
-            currency = account_currency()
-        except AdapterError as exc:
-            return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
-        problems = brief_v1.problems(confirmed, ceiling_daily=settings.max_daily_budget,
-                                     currency=currency)
-        if problems:
-            return fields_error(problems)
+            c = check_confirmation(conn, body, ceiling=settings.max_daily_budget,
+                                   currency=account_currency)
+        except Refused as exc:
+            return JSONResponse(exc.body, exc.status)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
-        digest = brief_v1.brief_sha256(confirmed)
-        voice_used = row[0] == "voice" or body.get("dictated") is True
-        run_id = str(row[2])
         with app.state.run_lock:
             if app.state.active_run is not None:
                 return JSONResponse({"error": "run_in_progress",
                                      "run_id": app.state.active_run}, 409)
-            app.state.active_run = run_id
+            app.state.active_run = c.run_id
         try:
-            with db.transaction(conn):
-                cur = conn.execute(
-                    "UPDATE briefs SET run_id = ?, brief_v1 = ?, brief_sha256 = ? "
-                    "WHERE id = ? AND run_id = ''",
-                    (run_id, json.dumps(brief_v1.as_json(confirmed), ensure_ascii=False),
-                     digest, brief_id))
-                if cur.rowcount != 1:
-                    raise _Taken
-                conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
-                             "VALUES (?, 'running', '{}', ?)", (run_id, time.time()))
-                ledger.append(run_id, agent="owner", kind=BRIEF_KIND, conn=conn,
-                              output_sha256=digest, details={
-                                  "schema": brief_v1.SCHEMA, "brief_sha256": digest,
-                                  **brief_v1.counts(confirmed, answered, struck),
-                                  "voice": voice.MODEL if voice_used else ""})
-        except (_Taken, sqlite3.IntegrityError):
+            commit_confirmation(conn, ledger, c)
+        except Refused as exc:
             with app.state.run_lock:
                 app.state.active_run = None
-            return JSONResponse({"error": "unknown_draft"}, 409)
-        source = "transcript" if voice_used else "operator"
-        thread = threading.Thread(target=worker, daemon=True, name=f"producer-{run_id}",
-                                  args=(run_id, brief_v1.render(confirmed), source,
-                                        confirmed, digest))
+            return JSONResponse(exc.body, exc.status)
+        thread = threading.Thread(target=worker, daemon=True, name=f"producer-{c.run_id}",
+                                  args=(c.run_id, brief_v1.render(c.brief), c.source,
+                                        c.brief, c.digest))
         app.state.last_thread = thread
         thread.start()
-        return JSONResponse({"run_id": run_id, "brief_sha256": digest,
-                             **brief_v1.counts(confirmed, answered, struck)}, 202)
+        return JSONResponse({"run_id": c.run_id, "brief_sha256": c.digest, **c.counts}, 202)
 
     @app.post("/api/briefs/draft")
     async def draft_brief(request: Request) -> Response:
@@ -327,17 +399,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "model_error", "code": exc.code}, 502)
         except MuseError as exc:
             return JSONResponse({"error": "model_error", "code": exc.code}, 502)
-        stored = json.dumps(brief_v1.as_json(draft), ensure_ascii=False)
-        with db.transaction(conn):
-            if brief_id is not None:
-                conn.execute("UPDATE briefs SET text = ?, draft = ?, draft_run_id = ? "
-                             "WHERE id = ? AND source = 'voice' AND run_id = ''",
-                             (text, stored, run_id, brief_id))
-            else:
-                brief_id = "b_" + secrets.token_hex(8)
-                conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts, "
-                             "draft, draft_run_id) VALUES (?, '', ?, 'text', ?, ?, ?)",
-                             (brief_id, text, time.time(), stored, run_id))
+        brief_id = store_draft(conn, text, draft, run_id, brief_id)
         return JSONResponse({
             "brief_id": brief_id, "draft_run_id": run_id, "source": source,
             "brief": draft.model_dump(mode="json"),
