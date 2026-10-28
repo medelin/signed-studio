@@ -150,6 +150,14 @@ class Dispatcher:
         self._receipt(call, "ok", out)
         return Outcome(call.call_id, call.name, "ok", out)
 
+    def refuse(self, call: ToolCall, reason: str) -> Outcome:
+        """Not dispatched (a limit of the loop): a ``rejected`` receipt and an error output.
+
+        ``reason`` is a fixed string chosen by code, never model text."""
+        out = {"error": reason}
+        self._receipt(call, "rejected", out, reason=reason)
+        return Outcome(call.call_id, call.name, "rejected", out)
+
     def execute_or_refuse(self, call: ToolCall) -> Outcome:
         """Like ``execute``, but a missing tool becomes an error output for the model."""
         try:

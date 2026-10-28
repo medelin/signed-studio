@@ -6,6 +6,9 @@
    ``Dispatcher``. ``request_approval`` only creates a ``Pending`` approval for a payload
    that code builds from the run's state (the model supplies a one-line summary, never the
    payload), stored next to it in the same transaction. Nothing external happens here.
+   The cost cap is checked before every tool call (parallel calls included); a turn
+   dispatches at most ``MAX_CALLS_PER_TURN`` calls and the expensive tools have per-run
+   caps (``TOOL_LIMITS``).
 3. Every step is a receipt; ``run_state`` holds what the UI shows.
 """
 
@@ -15,6 +18,7 @@ import json
 import secrets
 import sqlite3
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,12 +30,13 @@ from studio.agents.dispatcher import (
     ArtDirectorArgs,
     CopywriterArgs,
     Dispatcher,
+    Outcome,
     ReviewersArgs,
     ToolError,
 )
 from studio.agents.schemas import CopyPack, CreativeSet, Plan
 from studio.approvals import Pending, transaction
-from studio.muse.client import MuseClient
+from studio.muse.client import MuseClient, ToolCall
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import structured
 from studio.receipts import canonical, is_opaque, sha256_hex
@@ -41,6 +46,10 @@ MODEL = "muse-spark-1.3"
 MAX_STEPS = 12
 MAX_COST_USD = 1.0
 MAX_BRIEF = 2000
+MAX_CALLS_PER_TURN = 4
+# Per-run caps on the expensive tools (each art director call is a SAM + 3 image series,
+# each review is one or two vision calls per format).
+TOOL_LIMITS = {"run_art_director": 2, "run_reviewers": 2}
 
 
 @dataclass
@@ -250,6 +259,28 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
             "run_reviewers": run_reviewers, "request_approval": request_approval}
 
 
+def _dispatch_turn(ctx: Context, dispatcher: Dispatcher, calls: list[ToolCall],
+                   used: Counter[str], max_cost_usd: float, run_id: str) -> list[Outcome]:
+    """One turn's calls in order. The cost cap is checked before every call; calls past
+    ``MAX_CALLS_PER_TURN`` or a tool's ``TOOL_LIMITS`` are refused (an output for the
+    model), never dispatched."""
+    outcomes = []
+    for i, call in enumerate(calls):
+        limit = TOOL_LIMITS.get(call.name)
+        if i >= MAX_CALLS_PER_TURN:
+            outcomes.append(dispatcher.refuse(
+                call, f"too many tool calls per turn (max {MAX_CALLS_PER_TURN})"))
+        elif limit is not None and used[call.name] >= limit:
+            outcomes.append(dispatcher.refuse(
+                call, f"per-run limit reached for this tool (max {limit})"))
+        elif _cost(ctx, run_id) >= max_cost_usd:
+            outcomes.append(dispatcher.refuse(call, "cost cap reached; call not run"))
+        else:
+            used[call.name] += 1
+            outcomes.append(dispatcher.execute_or_refuse(call))
+    return outcomes
+
+
 def run(
     ctx: Context,
     brief: str,
@@ -279,6 +310,7 @@ def run(
                 f"{result.plan.model_dump_json()}\n\nRun the plan with your tools now.")},
         ]
         previous: str | None = None
+        used: Counter[str] = Counter()
         result.status = "max_steps"
         for step in range(max_steps):
             if _cost(ctx, run_id) >= max_cost_usd:
@@ -298,7 +330,9 @@ def run(
                 result.summary = turn.text[:2000]
                 result.status = "awaiting_approval" if result.pending_id else "done"
                 break
-            next_input = [dispatcher.execute_or_refuse(c).as_input() for c in turn.tool_calls]
+            outcomes = _dispatch_turn(ctx, dispatcher, turn.tool_calls, used, max_cost_usd,
+                                      run_id)
+            next_input = [o.as_input() for o in outcomes]
     except Exception:
         result.cost_usd = _cost(ctx, run_id)
         _save_state(ctx.conn, result, "failed")
