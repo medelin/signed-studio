@@ -7,6 +7,7 @@ and its reason are made in code (``pii.choose_tier``) and recorded in the receip
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from studio.agents import prompts
 from studio.agents.schemas import Angle, CopyPack, CopyVariant
@@ -16,12 +17,34 @@ from studio.pii import choose_tier
 
 AGENT = "copywriter"
 FACT = "[FACT]"
-_FACT = re.compile(r"\[\s*fact\s*\]", re.IGNORECASE)
+# Look-alikes NFKC leaves alone (Cyrillic, Greek, Latin variants) folded to F, A, C, T.
+_CONFUSABLES = str.maketrans({
+    "\u0410": "A", "\u0430": "a", "\u0391": "A", "\u03b1": "a",  # Cyrillic/Greek A
+    "\u0421": "C", "\u0441": "c", "\u03f9": "C", "\u03f2": "c", "\u216d": "C",  # C
+    "\u0422": "T", "\u0442": "t", "\u03a4": "T", "\u03c4": "t",  # Cyrillic/Greek T
+    "\u03dc": "F", "\u03dd": "f", "\u0192": "f", "\u0191": "F", "\u1d6e": "f",  # F
+    "\u1d00": "a", "\u1d04": "c", "\u1d1b": "t", "\ua730": "f",  # small capitals
+})
+_FACT = re.compile(r"[\[({<\u27e6\u3010\u3014]\W*f\W*a\W*c\W*t\W*[\])}>\u27e7\u3011\u3015]",
+                   re.IGNORECASE)
+
+
+def normalise(text: str) -> str:
+    """NFKC, Unicode format characters (category Cf: zero-width, soft hyphen, bidi) removed,
+    confusable letters folded to Latin."""
+    folded = unicodedata.normalize("NFKC", text.translate(_CONFUSABLES))
+    folded = "".join(ch for ch in folded if unicodedata.category(ch) != "Cf")
+    return folded.translate(_CONFUSABLES)
+
+
+def count_unfilled_facts(v: CopyVariant) -> int:
+    return sum(len(_FACT.findall(normalise(t))) for t in (v.primary_text, v.headline,
+                                                           v.description))
 
 
 def has_unfilled_fact(v: CopyVariant) -> bool:
-    """True if any signed field still holds a ``[FACT]`` placeholder (any case/spacing)."""
-    return any(_FACT.search(t) for t in (v.primary_text, v.headline, v.description))
+    """True if any signed field still holds a ``[FACT]`` placeholder, look-alikes included."""
+    return count_unfilled_facts(v) > 0
 
 
 def _user_message(angle: Angle, persona: str, brief: str) -> str:
@@ -39,7 +62,9 @@ def flag_unfilled_facts(pack: CopyPack) -> CopyPack:
             line = f"variant {i}: unfilled {FACT} placeholder, needs a real fact before use"
             if line not in risks:
                 risks.append(line)
-    return pack.model_copy(update={"risks": risks})
+    found = sum(count_unfilled_facts(v) for v in pack.variants)
+    return pack.model_copy(update={"risks": risks,
+                                   "unfilled_facts": max(pack.unfilled_facts, found)})
 
 
 def write(

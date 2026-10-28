@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from studio.muse.structured import strict_schema
 
@@ -80,6 +80,10 @@ class CopyVariant(_Closed):
 class CopyPack(_Closed):
     variants: list[CopyVariant]
     risks: list[str]
+    # How many [FACT] placeholders the copy still holds. Required in the strict schema the
+    # model gets; the default only covers recordings made before the field existed. The
+    # copywriter raises it to its own count, so it is never lower than what code finds.
+    unfilled_facts: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _three(self) -> CopyPack:

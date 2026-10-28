@@ -260,6 +260,9 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
         if run.review.get("binding") != review_binding(run, index):
             raise ToolError("content changed since review; run_reviewers again")
         assert run.copy
+        if run.copy.unfilled_facts > 0:
+            raise ToolError(f"the copy reports {run.copy.unfilled_facts} unfilled "
+                            f"{copywriter.FACT} placeholder(s); rewrite it before approval")
         if copywriter.has_unfilled_fact(run.copy.variants[index]):
             raise ToolError(f"variant {index} has an unfilled {copywriter.FACT} placeholder; "
                             "it cannot be sent for approval")

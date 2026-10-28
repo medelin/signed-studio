@@ -70,3 +70,55 @@ def test_risks_are_part_of_the_signed_payload(ctx):
     assert out.status == "ok"
     (payload,) = ctx.conn.execute("SELECT payload FROM pending_payloads").fetchone()
     assert json.loads(payload)["risks"] == risks
+
+
+# Follow-up security review: look-alike placeholders must not slip past the gate.
+EVASIONS = [
+    "[\uff26\uff21\uff23\uff34]",  # fullwidth letters
+    "\uff3bFACT\uff3d",             # fullwidth brackets
+    "[F\u200bACT]",                 # zero-width space
+    "[FA\u00adCT]",                 # soft hyphen (Cf)
+    "[\u2060FACT\u2060]",           # word joiner
+    "[F\u0410\u0421\u0422]",        # Cyrillic A, C, T
+    "[\u0192act]",                  # Latin small f with hook
+    "[\u03dc\u0391\u03f9\u03a4]",   # Greek digamma, alpha, lunate sigma, tau
+]
+
+
+@pytest.mark.parametrize("token", EVASIONS)
+def test_look_alike_placeholders_are_caught(ctx, token):
+    variant = {**CLEAN, "headline": f"Glazed in {token}"}
+    out = _approve(ctx, _run(variant, []))
+    assert out.status == "error" and "[FACT]" in out.output["error"]
+    assert ctx.conn.execute("SELECT count(*) FROM approvals").fetchone() == (0,)
+
+
+def test_ordinary_copy_is_not_a_placeholder(ctx):
+    variant = {**CLEAN, "primary_text": "In fact, it holds 350 ml. Facts first."}
+    assert _approve(ctx, _run(variant, [])).status == "ok"
+
+
+def test_model_reported_unfilled_facts_refuse_approval(ctx):
+    run = _run(CLEAN, [])
+    run.copy = run.copy.model_copy(update={"unfilled_facts": 1})
+    out = _approve(ctx, run)
+    assert out.status == "error" and "unfilled" in out.output["error"]
+    assert ctx.conn.execute("SELECT count(*) FROM approvals").fetchone() == (0,)
+
+
+def test_unfilled_facts_is_a_required_field_of_the_copy_schema():
+    from studio.agents.schemas import CopyPack
+    from studio.muse.structured import strict_schema
+
+    schema = strict_schema(CopyPack)
+    assert "unfilled_facts" in schema["required"]
+    assert schema["properties"]["unfilled_facts"]["type"] == "integer"
+
+
+def test_code_count_overrides_a_model_that_reports_zero():
+    from studio.agents import copywriter
+
+    pack = CopyPack.model_validate({"variants": [{**CLEAN, "headline": EVASIONS[0]},
+                                                 CLEAN, CLEAN], "risks": [],
+                                    "unfilled_facts": 0})
+    assert copywriter.flag_unfilled_facts(pack).unfilled_facts == 1
