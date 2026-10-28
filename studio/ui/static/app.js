@@ -371,6 +371,8 @@ async function showCampaign(runId, itemId) {
                 el("span", p.fields.cta.replace(/_/g, " "), "cta"));
     card.append(el("p", "Mock preview rendered by the studio (no Meta call).", "hint"));
     box.append(card);
+  } else {
+    box.append(el("p", "Preview unavailable (" + (c.preview_error || "no preview") + "); the PAUSED ad is in Ads Manager.", "hint"));
   }
   $("activate-button").disabled = c.status !== "PAUSED" || !loggedIn || readOnly;
   $("campaign-h").focus();

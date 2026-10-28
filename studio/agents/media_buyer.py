@@ -4,9 +4,10 @@
   campaign → ad set → creative → ad, all PAUSED → preview. One ``tool_call`` receipt per
   adapter call and one ``external_write`` receipt (``approval_id``, ``action``,
   ``item_id``, content hash) for the approved write, so ``studio verify`` links it to the
-  signature. If a step fails after something was created, the ``external_write`` still
-  records what exists (``status: partial``) — the objects are PAUSED and visible in Ads
-  Manager.
+  signature. The receipt and the ``campaigns`` row are written before the preview; a
+  failed preview is reported (``preview: null``, ``preview_error``) but is not fatal. If a
+  step fails after something was created, the ``external_write`` still records what exists
+  (``status: partial``) — the objects are PAUSED and visible in Ads Manager.
 - ``request_activation`` / ``activate``: a second, separate approval (``campaign.activate``)
   with the daily budget and the ceiling in the signed payload; the ceiling
   (``STUDIO_MAX_DAILY_BUDGET_PLN``) is checked again at execution time.
@@ -78,20 +79,19 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         creative_id = step("creative", adapter.create_creative, image_hash, payload, v)
         ad_id = step("ad", adapter.create_ad_paused, adset_id, creative_id, payload, v)
     except Exception as exc:
-        result = {"status": "partial" if created else "failed", "created": created,
-                  "error": getattr(exc, "code", type(exc).__name__)}
+        failure = {"status": "partial" if created else "failed", "created": created,
+                   "error": getattr(exc, "code", type(exc).__name__)}
         if created:
             executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
                 "status": "partial", "objects": {k: executor.safe_id(x)
                                                  for k, x in created.items()}})
-        executor.finish(conn, v, "failed", result)
+        executor.finish(conn, v, "failed", failure)
         raise
-    preview = asdict(adapter.preview(ad_id))
+    # Everything exists now: the write receipt and the campaign row come before the
+    # preview, so a failed preview (a read) cannot leave PAUSED objects unaccounted for.
     executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
         "status": "ok", "object_status": PAUSED,
         "objects": {k: executor.safe_id(x) for k, x in created.items()}})
-    result = {"adapter": adapter.name, "status": PAUSED, "campaign_item_id": v.item_id,
-              **{f"{k}_id": x for k, x in created.items()}, "preview": preview}
     with transaction(conn):
         conn.execute(
             "INSERT INTO campaigns (id, run_id, name, objective, status, daily_budget_minor, "
@@ -99,6 +99,14 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
             (v.item_id, v.run_id, campaign_name(payload), payload["campaign"]["objective"],
              int(payload["campaign"]["daily_budget_minor"]), adapter.name, campaign_id,
              time.time()))
+    result: dict[str, Any] = {"adapter": adapter.name, "status": PAUSED,
+                              "campaign_item_id": v.item_id,
+                              **{f"{k}_id": x for k, x in created.items()}}
+    try:
+        result["preview"] = asdict(adapter.preview(ad_id))
+    except Exception as exc:  # not fatal: the ad exists and is PAUSED in Ads Manager
+        result["preview"] = None
+        result["preview_error"] = getattr(exc, "code", type(exc).__name__)
     executor.finish(conn, v, "done", result)
     return result
 

@@ -437,6 +437,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"error": "not_found"}, 404)
         created = c.pop("created")
         return JSONResponse({**c, "preview": created.get("preview"),
+                             "preview_error": created.get("preview_error", ""),
                              "ceiling_pln": settings.max_daily_budget_pln})
 
     @app.post("/api/campaigns/{item_id}/activate")
