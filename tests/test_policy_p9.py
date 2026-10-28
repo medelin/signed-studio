@@ -81,3 +81,23 @@ def test_net_does_not_duplicate_a_p9_finding_the_model_made():
         {"rule": "P9", "evidence": "No ZUS obligation", "severity": "block"}]})
     merged = reviewer.with_policy_net(model, _copy(ad))
     assert [f.rule for f in merged.findings] == ["P9"]
+
+
+def test_recorded_spark_review_blocks_the_p9_ad_on_its_own():
+    """Real Muse Spark 1.3 vision call (cassette ``review_p9``), before the code check."""
+    import respx
+
+    from studio.muse.client import BASE_URL, MuseClient
+    from studio.settings import Budget
+    from tests.cassettes import FAKE_KEY, load, mount
+
+    assert load("review_p9")["_provenance"] == "recorded"
+    ad = next(a for a in ADS if a["id"] == "p9-zaloz-spolke")
+    image = (ROOT / "fixtures" / "eval" / "product.SYNTHETIC.png").read_bytes()
+    client = MuseClient(FAKE_KEY, ledger=Ledger(), budget=Budget(1.0))
+    with respx.mock() as router:
+        sent = mount(router, "review_p9", BASE_URL)
+        result = reviewer.review(client, image, _copy(ad), run_id="run_p9")
+    assert result.verdict == "BLOCK"
+    assert any(f.rule == "P9" and f.severity == "block" for f in result.findings)
+    assert "P9" in sent[0]["messages"][0]["content"]  # the checklist the model was given

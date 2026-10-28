@@ -1,0 +1,457 @@
+{
+ "_provenance": "recorded",
+ "recorded": "2026-10-28",
+ "model": "muse-spark-1.3",
+ "reviews": [
+  {
+   "id": "p1-lonely",
+   "expect": "P1",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P1",
+     "evidence": "Primary text: 'Lonely at your desk again?' and Headline: 'Feeling alone?' - asserts/implies loneliness / emotional state",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1302,
+   "tokens_out": 992,
+   "cost_usd": 0.0058435,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p1-debt",
+   "expect": "P1",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P1",
+     "evidence": "Primary text: \"Drowning in debt?\" - implies/asserts financial status (debt).",
+     "severity": "block"
+    },
+    {
+     "rule": "P1",
+     "evidence": "Headline: \"Broke? Treat yourself\" - implies/asserts financial status (broke).",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1308,
+   "tokens_out": 751,
+   "cost_usd": 0.00482675,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p2-before-after",
+   "expect": "P2",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P2",
+     "evidence": "Primary text: \"Before: sad mornings. After: our mug. See the difference on the left and right.\" Headline: \"Before and after\"",
+     "severity": "block"
+    },
+    {
+     "rule": "P2",
+     "evidence": "Image split down the middle with text label \"BEFORE\" top-left and \"AFTER\" top-right showing left/right comparison of mug",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1303,
+   "tokens_out": 1155,
+   "cost_usd": 0.0065375,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p2-body",
+   "expect": "P2",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P1",
+     "evidence": "Primary text: \"get the flat stomach you always wanted.\" + Headline: \"Your summer body starts here\" - asserts/implies the viewer's body attributes and body dissatisfaction.",
+     "severity": "block"
+    },
+    {
+     "rule": "P2",
+     "evidence": "Primary text: \"get the flat stomach you always wanted.\" + Headline: \"Your summer body starts here\" - idealised body / summer body / flat stomach body-image language.",
+     "severity": "block"
+    },
+    {
+     "rule": "P3",
+     "evidence": "Primary text: \"Drink green tea from Demo Ceramics Studio mugs and get the flat stomach you always wanted.\" - guarantees a body result from using the mug/drinking tea.",
+     "severity": "block"
+    },
+    {
+     "rule": "P8",
+     "evidence": "Primary text: \"Drink green tea from Demo Ceramics Studio mugs and get the flat stomach you always wanted.\" - health/weight-loss efficacy claim for flat stomach.",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1304,
+   "tokens_out": 2076,
+   "cost_usd": 0.010453,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p3-guarantee",
+   "expect": "P3",
+   "verdict": "WARN",
+   "findings": [
+    {
+     "rule": "P3",
+     "evidence": "Primary text: \"Guaranteed: every coffee tastes twice as good from a Demo Ceramics Studio mug, or your money back.\" Headline: \"Twice the taste, guaranteed\"",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1307,
+   "tokens_out": 994,
+   "cost_usd": 0.00585825,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p3-unbreakable",
+   "expect": "P3",
+   "verdict": "WARN",
+   "findings": [
+    {
+     "rule": "P3",
+     "evidence": "Primary text: \"The best mug ever made. 100% unbreakable, it will last forever.\" Headline: \"Best mug ever. Forever.\"",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1304,
+   "tokens_out": 1062,
+   "cost_usd": 0.0051744,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p4-discount",
+   "expect": "P4",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P4",
+     "evidence": "Primary text: 'Today only: Demo Ceramics Studio mugs for 49 PLN, 50% off!' Headline: '50% off today' Description: '49 PLN' vs brand sheet: 89 PLN per mug, no other prices exist, no discounts",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1303,
+   "tokens_out": 1267,
+   "cost_usd": 0.0060444,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p4-delivery",
+   "expect": "P4",
+   "verdict": "WARN",
+   "findings": [
+    {
+     "rule": "P4",
+     "evidence": "Primary text: 'Free delivery on every order, no minimum.' Headline: 'Free delivery, always' Description: 'No minimum order' — contradicts brand sheet: free delivery in Poland above 150 PLN.",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1304,
+   "tokens_out": 905,
+   "cost_usd": 0.00547625,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p5-abbrev",
+   "expect": "P5",
+   "verdict": "WARN",
+   "findings": [
+    {
+     "rule": "P5",
+     "evidence": "Primary text 'DCS mugs: hand-thrown stoneware, 350 ml, 89 PLN.' and Headline 'DCS — mugs for mornings' use abbreviation 'DCS' instead of full name 'Demo Ceramics Studio'",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1305,
+   "tokens_out": 669,
+   "cost_usd": 0.0044745,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p5-meta",
+   "expect": "P5",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P5",
+     "evidence": "Primary text: 'The official mug of Meta, made by Demo Ceramics Studio.' Headline: 'Meta's official mug' Description: 'Endorsed by Meta' - claims official status and endorsement by Meta",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1303,
+   "tokens_out": 852,
+   "cost_usd": 0.00524975,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p6-play-button",
+   "expect": "P6",
+   "verdict": "OK",
+   "findings": [],
+   "tokens_in": 1302,
+   "tokens_out": 872,
+   "cost_usd": 0.0043644,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p6-fake-ui",
+   "expect": "P6",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P6",
+     "evidence": "Image top region: white notification-style bar reading 'Chat now / You have 1 new message' - fake messaging UI mimicking a system/chat notification. Image bottom region: blue pill button labeled 'OPEN' - fake button. Copy reinforces deception: 'You have 1 new message from Demo Ceramics Studio. Open it now.' / '1 new message' / 'Tap to open'. Exceeds 'at most the headline' and contains fake UI/buttons.",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1300,
+   "tokens_out": 1270,
+   "cost_usd": 0.0070225,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p7-drugs",
+   "expect": "P7",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P7",
+     "evidence": "Primary text: \"The perfect mug for your weed tea.\" Headline: \"Made for weed tea\" - promotes use with cannabis/weed",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1301,
+   "tokens_out": 714,
+   "cost_usd": 0.00466075,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p8-insomnia",
+   "expect": "P8",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P3",
+     "evidence": "Primary text: \"Clinically shown: tea from a Demo Ceramics Studio clay mug cures insomnia.\" Headline: \"Sleep better, cure insomnia\"",
+     "severity": "block"
+    },
+    {
+     "rule": "P8",
+     "evidence": "Primary text: \"Clinically shown: tea from a Demo Ceramics Studio clay mug cures insomnia.\" Headline: \"Sleep better, cure insomnia\" - medical cure claim for insomnia",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1302,
+   "tokens_out": 717,
+   "cost_usd": 0.00467475,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p8-investment",
+   "expect": "P8",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P8",
+     "evidence": "Primary text: 'Handmade mugs are a better investment than stocks: buy five Demo Ceramics Studio mugs now and watch their value grow.' Headline: 'Invest in mugs' - financial investment advice/comparison to stocks.",
+     "severity": "block"
+    },
+    {
+     "rule": "P3",
+     "evidence": "Primary text: 'watch their value grow' and 'better investment than stocks' - guaranteed / exaggerated unverifiable value growth.",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1311,
+   "tokens_out": 1132,
+   "cost_usd": 0.00548065,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p9-zaloz-spolke",
+   "expect": "P9",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P9",
+     "evidence": "Primary text: 'Załóż spółkę w Anglii w 24 h.'; Headline: 'Załóż spółkę w 24 h'; Primary text: 'Bez ZUS, bez podatku w Polsce.'; Description: 'Bez ZUS'",
+     "severity": "block"
+    },
+    {
+     "rule": "P8",
+     "evidence": "Primary text: 'Bez ZUS, bez podatku w Polsce.' - absolute tax claims / tax advice",
+     "severity": "block"
+    },
+    {
+     "rule": "P5",
+     "evidence": "Primary text, Headline, Description contain no mention of 'Demo Ceramics Studio'; copy promotes company formation service unrelated to brand",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1312,
+   "tokens_out": 1510,
+   "cost_usd": 0.0080575,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p9-register",
+   "expect": "P9",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P9",
+     "evidence": "Primary text: 'Register your company today: we file the official government registration for you.' / Headline: 'Register your company now' / Description: 'Official registration'",
+     "severity": "block"
+    }
+   ],
+   "tokens_in": 1294,
+   "tokens_out": 1485,
+   "cost_usd": 0.00792875,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p9-no-tax",
+   "expect": "P9",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P9",
+     "evidence": "Primary text: 'Pay no tax in Poland: open a UK limited company with us and keep everything you earn.' + Headline: 'Pay no tax, legally'",
+     "severity": "block"
+    },
+    {
+     "rule": "P8",
+     "evidence": "Primary text: 'Pay no tax in Poland... keep everything you earn.' + Headline: 'Pay no tax, legally' - tax advice/claim",
+     "severity": "block"
+    },
+    {
+     "rule": "P3",
+     "evidence": "Primary text: 'keep everything you earn.' + Headline: 'Pay no tax, legally' + Description: 'UK Ltd in a day' - guaranteed absolute outcome",
+     "severity": "warn"
+    },
+    {
+     "rule": "P5",
+     "evidence": "Primary text, Headline, Description contain no occurrence of full brand name 'Demo Ceramics Studio'",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1305,
+   "tokens_out": 1717,
+   "cost_usd": 0.0089285,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p9-krs",
+   "expect": "P9",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P9",
+     "evidence": "Primary text: 'Rejestracja spółki w KRS w 1 dzień. Wypełnimy i złożymy wszystkie urzędowe dokumenty za Ciebie.' Headline: 'Rejestracja spółki w 1 dzień'",
+     "severity": "block"
+    },
+    {
+     "rule": "P5",
+     "evidence": "Primary text, headline, description contain no brand name; full name 'Demo Ceramics Studio' is missing",
+     "severity": "warn"
+    },
+    {
+     "rule": "P3",
+     "evidence": "Headline/Primary text: 'Rejestracja spółki w KRS w 1 dzień' - guaranteed outcome within 1 day",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1313,
+   "tokens_out": 1726,
+   "cost_usd": 0.00897675,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "p9-no-zus",
+   "expect": "P9",
+   "verdict": "BLOCK",
+   "findings": [
+    {
+     "rule": "P9",
+     "evidence": "Primary text: \"No ZUS obligation, guaranteed. Run your business from a foreign company and stop paying contributions.\" Headline: \"No ZUS obligation\" Description: \"Guaranteed\"",
+     "severity": "block"
+    },
+    {
+     "rule": "P8",
+     "evidence": "Primary text: \"No ZUS obligation, guaranteed. Run your business from a foreign company and stop paying contributions.\"",
+     "severity": "block"
+    },
+    {
+     "rule": "P3",
+     "evidence": "Primary text: \"guaranteed\" + Description: \"Guaranteed\"",
+     "severity": "warn"
+    },
+    {
+     "rule": "P5",
+     "evidence": "Primary text, headline and description contain no brand name; full name \"Demo Ceramics Studio\" is absent",
+     "severity": "warn"
+    }
+   ],
+   "tokens_in": 1299,
+   "tokens_out": 1123,
+   "cost_usd": 0.0054274,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "ok-warm",
+   "expect": "OK",
+   "verdict": "OK",
+   "findings": [],
+   "tokens_in": 1305,
+   "tokens_out": 637,
+   "cost_usd": 0.0043385,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "ok-delivery",
+   "expect": "OK",
+   "verdict": "OK",
+   "findings": [],
+   "tokens_in": 1307,
+   "tokens_out": 704,
+   "cost_usd": 0.00462575,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "ok-dishwasher",
+   "expect": "OK",
+   "verdict": "OK",
+   "findings": [],
+   "tokens_in": 1304,
+   "tokens_out": 800,
+   "cost_usd": 0.00503,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "ok-polish",
+   "expect": "OK",
+   "verdict": "OK",
+   "findings": [],
+   "tokens_in": 1313,
+   "tokens_out": 808,
+   "cost_usd": 0.00507525,
+   "model": "muse-spark-1.3"
+  },
+  {
+   "id": "ok-gift",
+   "expect": "OK",
+   "verdict": "OK",
+   "findings": [],
+   "tokens_in": 1304,
+   "tokens_out": 486,
+   "cost_usd": 0.0027264,
+   "model": "muse-spark-1.3"
+  }
+ ],
+ "cost_usd": 0.147256
+}

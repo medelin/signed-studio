@@ -1,0 +1,29 @@
+"""scripts/eval.py: the numbers in docs/eval.md come from code that is itself tested."""
+
+import importlib.util
+
+from tests.cassettes import ROOT
+
+spec = importlib.util.spec_from_file_location("eval_script", ROOT / "scripts" / "eval.py")
+ev = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ev)
+
+
+def test_every_tamper_class_is_rejected_and_clean_exports_pass():
+    t = ev.tamper_suite(2, seed=11)
+    assert len(t["rows"]) == 16
+    assert all(r["rejected"] == r["n"] == 2 for r in t["rows"]), t["rows"]
+    assert t["clean"] == {"n": 2, "accepted": 2}
+
+
+def test_reviewer_metrics_from_the_recorded_reviews():
+    m = ev.reviewer_metrics()
+    assert m["n_bad"] == 20 and m["n_clean"] == 5
+    assert m["p9_n"] == 5 and m["p9_final_blocked"] == 5
+    assert m["clean_blocked"] == 0
+    assert m["final_flagged"] >= m["model_flagged"]
+
+
+def test_eval_report_states_the_headline_numbers():
+    text = (ROOT / "docs" / "eval.md").read_text()
+    assert "400/400 rejected" in text and "pending — needs `BASETEN_API_KEY`" in text
