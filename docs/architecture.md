@@ -26,7 +26,7 @@ byte-exact without carrying PII; readable content never enters a receipt, only i
 | `keys` | approver public keys | id = `ed25519:<fingerprint>`; session stored only as a SHA-256; `expires_ts` = session expiry, `revoked_ts` set on logout and on restart; inactive keys cannot sign new approvals but stay published so past approvals verify |
 | `briefs` | campaign briefs (text or voice transcript) | |
 | `creatives` | generated images per placement | file path + SHA-256 |
-| `campaigns` | campaigns created through the Meta adapter | `status` is `PAUSED` unless a second approval activates it |
+| `campaigns` | campaigns created through the Meta adapter | `status` is `PAUSED` unless a second approval activates it; `external_id`, `adset_external_id`, `ad_external_id` are the Meta objects that approval names (activated ad → ad set → campaign) |
 | `comments` | incoming comments (untrusted text) | `new / drafted / replied / hidden` |
 | `leads`, `tasks` | lead cards and follow-ups | |
 | `reports` | analyst reports | |
