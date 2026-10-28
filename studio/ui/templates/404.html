@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Not found · Muse Studio Lite{% endblock %}
+{% block content %}
+<section class="help-head">
+  <div>
+    <h1>Page not found</h1>
+    <p class="lead">There is nothing at this address. Try the <a href="/">latest receipts</a>,
+    the <a href="/studio">studio</a> or the <a href="/help">help page</a>.</p>
+  </div>
+  <div class="il-place">{{ scene("priya", "lost") }}</div>
+</section>
+{% endblock %}

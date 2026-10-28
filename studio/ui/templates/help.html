@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}{{ t.title }} · Muse Studio Lite{% endblock %}
+{% block content %}
+<section class="help-head">
+  <div>
+    <h1 id="top">{{ t.title }}</h1>
+    <p class="lead">{{ t.lead }}</p>
+    <p><a href="{{ other_href }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ t.other }}</a></p>
+  </div>
+  <div class="il-place">{{ scene("amara", "signed", cls="animate") }}</div>
+</section>
+<nav aria-labelledby="toc-h" class="help-toc">
+  <h2 id="toc-h" class="hud-label">{{ t.toc }}</h2>
+  <ol>
+  {% for e in entries %}<li><a href="#{{ e.anchor }}">{{ e.q }}</a></li>
+  {% endfor %}</ol>
+</nav>
+<div class="faq">
+{% for e in entries %}
+  <details class="faq-item" id="{{ e.anchor }}">
+    <summary><h2>{{ e.q }}</h2></summary>
+    <div class="faq-body">
+      <div class="faq-text">
+        <p>{{ e.a | safe }}</p>
+        <p class="hint"><a href="#{{ e.anchor }}">#{{ e.anchor }}</a> · <a href="#top">{{ t.back }}</a></p>
+      </div>
+      <figure class="il-place small faq-figure">
+        {{ scene(e.person, e.scene) }}
+        <figcaption class="hint">{{ people[e.person].describe(page_lang) }}</figcaption>
+      </figure>
+    </div>
+  </details>
+{% endfor %}
+</div>
+<script src="/static/help.js" defer></script>
+{% endblock %}

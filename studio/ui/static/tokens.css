@@ -1,0 +1,60 @@
+/*
+ * Muse Studio Lite tokens: "machine view / instrument HUD".
+ * Graphite paper, one signal colour (HUD red), state colours that differ in lightness as
+ * well as hue. OKLCH, light and dark through light-dark() + color-scheme.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* paper and ink */
+  --bg: light-dark(oklch(0.975 0.004 80), oklch(0.19 0.008 260));
+  --bg-raised: light-dark(oklch(0.995 0.002 80), oklch(0.23 0.01 260));
+  --ink: light-dark(oklch(0.22 0.01 260), oklch(0.93 0.006 80));
+  --ink-2: light-dark(oklch(0.42 0.012 260), oklch(0.78 0.01 80));
+  --muted: light-dark(oklch(0.48 0.012 260), oklch(0.72 0.01 260));
+  --rule: light-dark(oklch(0.58 0.012 260), oklch(0.6 0.012 260));
+  --rule-soft: light-dark(oklch(0.89 0.006 260), oklch(0.32 0.012 260));
+  --grid: light-dark(oklch(0.93 0.005 260), oklch(0.235 0.01 260));
+  --soft: light-dark(oklch(0.94 0.008 70), oklch(0.27 0.012 260));
+
+  /* signal: the only accent colour */
+  --signal: light-dark(oklch(0.53 0.22 28), oklch(0.68 0.23 28));
+  --signal-ink: light-dark(oklch(0.99 0 0), oklch(0.17 0.02 28));
+  --signal-soft: light-dark(oklch(0.95 0.03 28), oklch(0.3 0.08 28));
+  --link: light-dark(oklch(0.48 0.2 28), oklch(0.75 0.17 28));
+
+  /* states: ok / partial / down, distinct in lightness */
+  --ok: light-dark(oklch(0.48 0.13 150), oklch(0.82 0.19 150));
+  --ok-soft: light-dark(oklch(0.95 0.04 150), oklch(0.3 0.06 150));
+  --partial: light-dark(oklch(0.55 0.13 70), oklch(0.83 0.15 80));
+  --partial-soft: light-dark(oklch(0.96 0.05 85), oklch(0.32 0.06 80));
+  --down: light-dark(oklch(0.5 0.01 260), oklch(0.62 0.01 260));
+
+  /* warm accent for illustrations (the owner's prop) */
+  --warm: light-dark(oklch(0.58 0.14 55), oklch(0.8 0.13 70));
+  --cloth: light-dark(oklch(0.9 0.035 40), oklch(0.36 0.05 30));
+
+  /* skin, five tones; features are drawn with --face-ink on every tone (>= 3:1) */
+  --skin-1: light-dark(oklch(0.9 0.035 65), oklch(0.84 0.04 65));
+  --skin-2: light-dark(oklch(0.82 0.06 62), oklch(0.77 0.06 62));
+  --skin-3: light-dark(oklch(0.72 0.08 58), oklch(0.69 0.08 58));
+  --skin-4: light-dark(oklch(0.63 0.09 52), oklch(0.61 0.09 52));
+  --skin-5: light-dark(oklch(0.55 0.08 45), oklch(0.55 0.08 45));
+  --face-ink: oklch(0.17 0.02 40);
+  --hair-dark: light-dark(oklch(0.3 0.02 50), oklch(0.3 0.02 50));
+  --hair-mid: light-dark(oklch(0.45 0.06 55), oklch(0.45 0.06 55));
+  --hair-light: light-dark(oklch(0.78 0.08 80), oklch(0.72 0.08 80));
+  --hair-grey: light-dark(oklch(0.86 0.005 260), oklch(0.8 0.005 260));
+
+  /* type */
+  --font: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* shape and motion */
+  --chamfer: 10px;
+  --tick: 8px;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --dur: 200ms;
+}
+[data-theme="light"] { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }

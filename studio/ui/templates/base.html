@@ -1,10 +1,14 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ page_lang | default('en') }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Muse Studio Lite{% endblock %}</title>
+  {% if noindex %}<meta name="robots" content="noindex">{% endif %}
+  <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/components.css">
+  <link rel="stylesheet" href="/static/illustrations.css">
 </head>
 <body>
   <header class="top">
@@ -14,6 +18,7 @@
     <a href="/leads">Leads</a>
     <a href="/report">Report</a>
     <a href="/receipts">Receipts</a>
+    <a href="/help">Help</a>
     <span class="tag">every agent leaves a receipt · a human signs every send</span>
     {% if read_only %}<span class="badge warn">read-only</span>{% endif %}
     {% if replay %}<span class="badge warn" title="Model API answers are recorded responses served offline (STUDIO_REPLAY=1)">replay</span>{% endif %}

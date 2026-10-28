@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Cast · Muse Studio Lite{% endblock %}
+{% block content %}
+<h1>The cast</h1>
+<p class="lead">Owners of one-person businesses in the "two views" line: the person as a warm
+continuous line, their ad record as the same silhouette in a dashed polyline, the agents as
+diamonds on the trace between them, and the owner's signature as the last node.
+This page is not indexed.</p>
+{% for theme in ("light", "dark") %}
+<section class="cast-theme" data-theme="{{ theme }}" aria-labelledby="cast-{{ theme }}">
+  <h2 id="cast-{{ theme }}" class="hud-label">{{ theme }}</h2>
+  <ul class="cast-grid">
+  {% for p in cast %}
+    <li class="cast-card">
+      {{ scene(p.key, "solo", label=p.name ~ ", " ~ p.business) }}
+      <p><strong>{{ p.name }}</strong>, {{ p.age }} · {{ p.business }}</p>
+    </li>
+  {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+<section aria-labelledby="scenes-h">
+  <h2 id="scenes-h" class="hud-label">scenes</h2>
+  <ul class="scene-grid">
+  {% for kind in scenes if kind != "solo" %}
+    <li>{{ scene(cast[loop.index0 % cast|length].key, kind, cls="animate") }}<p class="hint">{{ kind }}</p></li>
+  {% endfor %}
+  </ul>
+</section>
+{% endblock %}

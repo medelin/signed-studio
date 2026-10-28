@@ -1,0 +1,108 @@
+/*
+ * "Two views" illustrations (studio/ui/cast.py): the owner as a warm continuous line, the
+ * ad record as the same silhouette in a dashed polyline, a dotted trace between them whose
+ * diamonds are the agents and whose last node is the owner's signature.
+ * Colours only from tokens.css; no style attributes in the SVG (CSP style-src 'self').
+ */
+.il { display: block; width: 100%; height: auto; overflow: visible; }
+.il path, .il rect, .il circle, .il ellipse { vector-effect: non-scaling-stroke; }
+.il-place { max-width: 36rem; margin: 0 0 1rem; }
+.il-place.small { max-width: 18rem; }
+
+/* the owner */
+.il .c, .il .c-line, .il .c-face, .il .c-texture, .il .c-accent, .il .c-shine, .il .glass,
+.il .device, .il .r-sig, .il .stop, .il .loc-edge, .il .loc {
+  fill: none; stroke-linecap: round; stroke-linejoin: round;
+}
+.il .c { stroke: var(--ink); stroke-width: 2.5; }
+.il .c-line { stroke: var(--ink); stroke-width: 1.75; }
+.il .c-face { stroke: var(--face-ink); stroke-width: 1.75; }
+.il .c-texture { stroke: var(--face-ink); stroke-width: 1.25; opacity: .55; }
+.il .c-shine { stroke-width: 1.5; opacity: .45; }
+.il .c-dots { fill: none; stroke: var(--face-ink); stroke-width: 2.2; stroke-linecap: round; opacity: .55; }
+.il .c-blob { fill: var(--soft); }
+.il .c-cloth { fill: var(--bg-raised); }
+.il .cloth { fill: var(--cloth); stroke: var(--ink); stroke-width: 1.75; stroke-linejoin: round; }
+.il .c-accent { stroke: var(--warm); stroke-width: 2.5; }
+.il .device { stroke: var(--ink); stroke-width: 2; }
+.il .brow-thick { fill: none; stroke: var(--face-ink); stroke-width: 2.6; stroke-linecap: round; }
+.il .brow-grey { fill: none; stroke: var(--face-ink); stroke-width: 2.4; stroke-linecap: round; stroke-dasharray: 1.5 1.5; opacity: .7; }
+.il .skin-1 { fill: var(--skin-1); }
+.il .skin-2 { fill: var(--skin-2); }
+.il .skin-3 { fill: var(--skin-3); }
+.il .skin-4 { fill: var(--skin-4); }
+.il .skin-5 { fill: var(--skin-5); }
+.il .skin-lip { fill: var(--soft); stroke: var(--face-ink); stroke-width: 1.5; stroke-linejoin: round; }
+.il .hair-dark { fill: var(--hair-dark); }
+.il .hair-mid { fill: var(--hair-mid); }
+.il .hair-light { fill: var(--hair-light); }
+.il .hair-grey { fill: var(--hair-grey); }
+.il .hair-line { stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; }
+.il .loc-edge { stroke: var(--ink); stroke-width: 7; }
+.il .loc { stroke-width: 4.2; fill: none; }
+.il .loc.hair-dark { stroke: var(--hair-dark); }
+.il .loc.hair-grey { stroke: var(--hair-grey); }
+
+/* the record */
+.il .r-card { fill: var(--bg-raised); stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.il .r-grid { fill: none; stroke: var(--grid); stroke-width: 1; }
+.il .r { fill: none; stroke: var(--rule); stroke-width: 1.75; stroke-dasharray: 4 3; }
+.il .r-label { fill: var(--rule-soft); }
+.il .r-field { fill: var(--soft); stroke: var(--rule); stroke-width: 1; }
+.il .r-value { fill: var(--ink-2); }
+.il .r-score { fill: var(--signal); }
+.il .r-text { fill: var(--ink-2); font: 600 12px var(--font-mono); }
+.il .r-signed { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 1.5; }
+.il .r-sig { stroke: var(--ok); stroke-width: 2; }
+.il .warn-field { fill: var(--partial-soft); stroke: var(--partial); stroke-width: 1.5; }
+.il .warn-mark { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linecap: round; }
+.il .warn-text { fill: var(--ink); font: 700 13px var(--font-mono); text-anchor: middle; }
+.il .warn-big { fill: var(--ink); font: 700 72px var(--font-mono); text-anchor: middle; }
+.il .edit-field { fill: none; stroke: var(--warm); stroke-width: 2; stroke-dasharray: 3 2; }
+.il .chain { fill: var(--bg-raised); stroke: var(--rule); stroke-width: 1.5; }
+.il .chain.bad { fill: var(--partial-soft); stroke: var(--partial); }
+.il .stop { stroke: var(--signal); stroke-width: 2.5; }
+.il .stop-line { stroke: var(--signal); stroke-width: 2.5; }
+
+/* the trace: dots, agent diamonds, signature diamond */
+.il .trace { fill: none; stroke: var(--signal); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 0 8; }
+.il .trace-solid { fill: none; stroke: var(--signal); stroke-width: 2; }
+.il .node { fill: var(--bg); stroke: var(--signal); stroke-width: 2; }
+.il .node.on { fill: var(--signal); }
+.il .node.sig { stroke: var(--ok); stroke-width: 2.5; }
+.il .node.sig.on { fill: var(--ok); }
+
+/* motion: the trace draws, nodes light in sequence, the signature stamps */
+@media (prefers-reduced-motion: no-preference) {
+  .il.animate .trace { animation: il-march 1.6s var(--ease) both; }
+  .il.animate .node.on { animation: il-light 400ms var(--ease) both; }
+  .il.animate .n1.on { animation-delay: 300ms; }
+  .il.animate .n2.on { animation-delay: 600ms; }
+  .il.animate .n3.on { animation-delay: 900ms; }
+  .il.animate .n4.on { animation-delay: 1200ms; }
+  .il.animate .node.sig.on { animation: il-stamp 500ms var(--ease) 1600ms both; transform-box: fill-box; transform-origin: center; }
+  .il.animate .r-signed, .il.animate .r-sig { animation: il-fade 400ms var(--ease) 1900ms both; }
+}
+@keyframes il-march { from { stroke-dashoffset: 120; opacity: 0; } 20% { opacity: 1; } to { stroke-dashoffset: 0; } }
+@keyframes il-light { from { fill: var(--bg); } to { fill: var(--signal); } }
+@keyframes il-stamp { 0% { transform: scale(2.2); opacity: 0; } 70% { transform: scale(.9); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes il-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* forced colours (Windows High Contrast): system colours instead of tokens */
+@media (forced-colors: active) {
+  .il { forced-color-adjust: none; }
+  .il .c, .il .c-line, .il .c-face, .il .c-texture, .il .c-accent, .il .c-shine, .il .glass,
+  .il .device, .il .hair-line, .il .cloth, .il .loc-edge, .il .skin-lip, .il .r, .il .r-card,
+  .il .r-field, .il .warn-field, .il .warn-mark, .il .chain, .il .r-signed, .il .r-sig,
+  .il .brow-thick, .il .brow-grey, .il .c-dots, .il .edit-field { stroke: CanvasText; }
+  .il .c-blob, .il .c-cloth, .il .cloth, .il .skin-1, .il .skin-2, .il .skin-3, .il .skin-4,
+  .il .skin-5, .il .hair-dark, .il .hair-mid, .il .hair-light, .il .hair-grey, .il .loc,
+  .il .r-card, .il .r-field, .il .warn-field, .il .chain, .il .r-signed, .il .node,
+  .il .skin-lip { fill: Canvas; }
+  .il .loc { stroke: Canvas; }
+  .il .r-grid { stroke: GrayText; }
+  .il .r-label { fill: GrayText; }
+  .il .r-value, .il .r-text, .il .warn-text, .il .warn-big { fill: CanvasText; }
+  .il .trace, .il .trace-solid, .il .node, .il .stop, .il .stop-line { stroke: LinkText; }
+  .il .node.on, .il .r-score { fill: LinkText; }
+}

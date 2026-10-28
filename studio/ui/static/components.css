@@ -1,0 +1,29 @@
+/* Components on top of tokens.css: help/FAQ, cast gallery. */
+.lead { font-size: 1.05rem; max-width: 60ch; color: var(--ink-2); }
+.hud-label { font: 600 .75rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+
+.help-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 2rem; align-items: center; }
+.help-toc ol { columns: 2 18rem; padding-left: 1.4rem; margin: .5rem 0 1.5rem; }
+.help-toc li { margin: 0 0 .3rem; break-inside: avoid; }
+.faq { display: grid; gap: .75rem; }
+.faq-item { border: 1px solid var(--rule-soft); background: var(--bg-raised); scroll-margin-top: 1rem; }
+.faq-item summary { cursor: pointer; padding: .75rem 1rem; list-style-position: inside; }
+.faq-item summary h2 { display: inline; font-size: 1.05rem; margin: 0; }
+.faq-item summary:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+.faq-item[open] summary { border-bottom: 1px solid var(--rule-soft); }
+.faq-item:target { border-color: var(--signal); }
+.faq-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(12rem, 18rem); gap: 1.5rem; padding: .75rem 1rem 1rem; align-items: start; }
+.faq-text p:first-child { margin-top: 0; max-width: 65ch; }
+.faq-figure { margin: 0; }
+.faq-figure figcaption { margin-top: .25rem; }
+@media (max-width: 760px) {
+  .help-head, .faq-body { grid-template-columns: 1fr; }
+}
+
+.cast-theme { background: var(--bg); color: var(--ink); padding: 1rem; margin: 0 0 1rem; border: 1px solid var(--rule-soft); }
+.cast-grid, .scene-grid { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; }
+.cast-grid { grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); }
+.scene-grid { grid-template-columns: repeat(auto-fill, minmax(22rem, 1fr)); }
+.cast-card { display: flex; flex-direction: column; justify-content: flex-end; }
+.cast-card .il { max-height: 15rem; }
+.cast-card p { margin: .25rem 0 0; font-size: .9rem; }
