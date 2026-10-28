@@ -211,13 +211,13 @@ def test_help_renders_without_js_with_unique_anchors(client):
 
 def test_help_in_polish_has_the_same_questions(client):
     en, pl = client.get("/help").text, client.get("/pl/help").text
-    assert '<html lang="pl">' in pl and '<html lang="en">' in en
+    assert '<html lang="pl" ' in pl and '<html lang="en" ' in en
     ids = re.compile(r'<details class="faq-item" id="([^"]+)"')
     assert ids.findall(en) == ids.findall(pl)
     for e in help_texts.ENTRIES:
         assert set(e.q) == set(e.a) == set(help_texts.LANGS)
         assert e.person in cast.BY_KEY and e.scene in cast.SCENES
-    assert '<html lang="pl">' in client.get("/help?lang=pl").text
+    assert '<html lang="pl" ' in client.get("/help?lang=pl").text
 
 
 def test_help_is_linked_from_every_page_and_the_404(client):

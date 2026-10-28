@@ -149,7 +149,9 @@ owners (`studio/ui/cast.py`, gallery at `/style/cast`) answer the questions on
 More: [index](docs/screenshots/index-light.png) · [inbox](docs/screenshots/inbox-dark.png) ·
 [leads](docs/screenshots/leads-light.png) · [report](docs/screenshots/report-dark.png) ·
 [receipts](docs/screenshots/receipts-light.png) · [cast](docs/screenshots/cast-light.png) · [404](docs/screenshots/404-dark.png)
-(each also as `-light`/`-dark` in [docs/screenshots/](docs/screenshots/)).
+(each also as `-light`/`-dark` in [docs/screenshots/](docs/screenshots/)). The header switches
+EN/PL, light/dark and four colour palettes (graphite, warm paper, green, high contrast):
+[docs/screenshots/palettes/](docs/screenshots/palettes/).
 
 ## License
 

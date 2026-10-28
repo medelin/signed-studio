@@ -75,6 +75,11 @@ def query_with(query: str, **changes: str) -> str:
     return "?" + urlencode(pairs + list(changes.items()))
 
 
+def query_pairs(query: str, *drop: str) -> list[tuple[str, str]]:
+    """The current query parameters without ``drop`` (hidden fields of a GET form)."""
+    return [(k, v) for k, v in parse_qsl(query, keep_blank_values=True) if k not in drop]
+
+
 def is_public(path: str) -> bool:
     return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 

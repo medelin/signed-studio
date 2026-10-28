@@ -1,9 +1,11 @@
 """Viewer preferences chosen in the header, server side and without JavaScript.
 
-``?lang=en|pl`` picks the language and remembers it in a ``lang`` cookie (one year,
-SameSite=Lax); without the parameter the cookie decides, else English. The choice is put in
-``request.state.lang`` before any route runs, so templates render ``<html lang>`` and every
-string in the right language on the first byte.
+``?lang=en|pl``, ``?theme=system|light|dark`` and ``?palette=graphite|warm|green|contrast``
+are remembered in cookies of the same names (one year, SameSite=Lax); without a parameter
+the cookie decides, else the default. The choices are put in ``request.state`` before any
+route runs, so templates render ``<html lang data-theme data-palette>`` on the first byte:
+no script decides the theme, so there is no flash of the wrong one (the CSP forbids inline
+scripts anyway).
 """
 
 from __future__ import annotations
@@ -24,7 +26,13 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 YEAR_S = 365 * 24 * 3600
 # preference -> (allowed values, default)
-CHOICES: dict[str, tuple[tuple[str, ...], str]] = {"lang": (i18n.LANGS, i18n.DEFAULT)}
+THEMES = ("system", "light", "dark")
+PALETTES = ("graphite", "warm", "green", "contrast")
+CHOICES: dict[str, tuple[tuple[str, ...], str]] = {
+    "lang": (i18n.LANGS, i18n.DEFAULT),
+    "theme": (THEMES, "system"),  # light/dark mode; system follows prefers-color-scheme
+    "palette": (PALETTES, "graphite"),
+}
 
 
 class Prefs:

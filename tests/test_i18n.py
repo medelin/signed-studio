@@ -56,7 +56,7 @@ def test_no_english_ui_sentences_left_in_scripts():
 @pytest.mark.parametrize("path", PAGES)
 def test_pages_render_in_polish_with_html_lang(client, path):
     html = client.get(path + "?lang=pl").text
-    assert '<html lang="pl">' in html
+    assert '<html lang="pl" ' in html
     assert i18n.PL["nav.receipts"] in html and i18n.EN["tagline"] not in html
     data = re.search(r'<script type="application/json" id="i18n">(.*?)</script>', html, re.S)
     assert json.loads(data.group(1))["copied"] == i18n.PL["js.copied"]
@@ -67,14 +67,14 @@ def test_lang_query_sets_a_cookie_that_later_pages_follow(client):
     r = client.get("/?lang=pl")
     cookie = r.headers["set-cookie"].lower()
     assert cookie.startswith("lang=pl") and "samesite=lax" in cookie
-    assert '<html lang="pl">' in client.get("/receipts").text
-    assert '<html lang="en">' in client.get("/receipts?lang=en").text
-    assert '<html lang="en">' in client.get("/receipts").text
+    assert '<html lang="pl" ' in client.get("/receipts").text
+    assert '<html lang="en" ' in client.get("/receipts?lang=en").text
+    assert '<html lang="en" ' in client.get("/receipts").text
 
 
 def test_unknown_language_falls_back_to_english(client):
     r = client.get("/?lang=xx")
-    assert '<html lang="en">' in r.text and "set-cookie" not in {
+    assert '<html lang="en" ' in r.text and "set-cookie" not in {
         k for k, v in r.headers.items() if v.startswith("lang=")}
 
 

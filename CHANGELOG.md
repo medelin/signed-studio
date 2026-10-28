@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-28 — display: mode and colour palettes
+
+- Header selector for mode (system / light / dark) and four OKLCH palettes, each tuned for both tones: graphite (default), warm paper, green (ok-state turns blue so it never reads as the signal), high contrast. Server side: `?theme=`/`?palette=` set cookies, `<html data-theme data-palette>` is rendered on the first byte (no theme script, no flash; CSP unchanged); a plain GET form keeps the page's query and works without JS, `theme.js` only submits on change. `tests/test_themes.py` measures every palette × mode: 15 text pairs ≥ 4.5:1, 9 meaning-stroke pairs ≥ 3:1, skin tones and face lines unchanged and ≥ 3:1. Screenshots of /help and /studio for every palette in light and dark: `docs/screenshots/palettes/`.
+
 ## 2026-10-28 — English and Polish everywhere
 
 - Language switch EN/PL in the header of every page (`?lang=` sets a `lang` cookie, SameSite=Lax; server-side, `<html lang>` right on the first byte, works without JS). Every UI string goes through `studio/ui/i18n.py` (EN and PL complete); scripts read the `js.*` strings from a JSON data block (`type="application/json"`, never executed, CSP unchanged) via `static/i18n.js`. `/help` follows the chosen language; `/pl/help` stays. `tests/test_i18n.py`: same keys and placeholders in both catalogues, every key used in templates and scripts exists, no untranslated sentences in scripts, every page renders in Polish.

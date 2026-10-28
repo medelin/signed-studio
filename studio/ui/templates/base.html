@@ -1,6 +1,6 @@
 {%- set lang = page_lang or request.state.lang or "en" -%}
 <!doctype html>
-<html lang="{{ lang }}">
+<html lang="{{ lang }}" data-palette="{{ request.state.palette }}"{% if request.state.theme != "system" %} data-theme="{{ request.state.theme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/static/illustrations.css">
   <script type="application/json" id="i18n">{{ js_catalog(lang) | tojson }}</script>
   <script src="/static/i18n.js" defer></script>
+  <script src="/static/theme.js" defer></script>
 </head>
 <body>
   <header class="top">
@@ -29,6 +30,14 @@
       <span class="lang-switch" role="group" aria-label="{{ t('lang.label') }}">
       {% for code, name in lang_names.items() %}<a href="{{ query_with(request.url.query, lang=code) }}" hreflang="{{ code }}" lang="{{ code }}"{% if code == lang %} aria-current="true"{% endif %}>{{ code | upper }}</a>{% endfor %}
       </span>
+      <form class="theme-form" method="get" action="{{ here }}" aria-label="{{ t('theme.label') }}">
+        {% for k, v in query_pairs(request.url.query, "theme", "palette") %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        <label for="pref-theme">{{ t("theme.mode") }}</label>
+        <select id="pref-theme" name="theme">{% for m in themes %}<option value="{{ m }}"{% if m == request.state.theme %} selected{% endif %}>{{ t("theme." ~ m) }}</option>{% endfor %}</select>
+        <label for="pref-palette">{{ t("theme.palette") }}</label>
+        <select id="pref-palette" name="palette">{% for p in palettes %}<option value="{{ p }}"{% if p == request.state.palette %} selected{% endif %}>{{ t("palette." ~ p) }}</option>{% endfor %}</select>
+        <button type="submit" class="secondary theme-apply">{{ t("theme.apply") }}</button>
+      </form>
       {% if logged_in %}<form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">{{ t("auth.sign_out") }}</button></form>
       {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">{{ t("auth.sign_in") }}</a>{% endif %}
     </span>
