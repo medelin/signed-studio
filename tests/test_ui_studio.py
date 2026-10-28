@@ -151,9 +151,11 @@ def test_full_run_ends_in_pending_approval(finished):
 
 def test_events_stream_receipts_state_and_end(finished):
     a, run_id, data = finished
-    with new_client(a) as c, c.stream("GET", f"/api/runs/{run_id}/events") as r:
-        assert r.headers["content-type"].startswith("text/event-stream")
-        body = "".join(r.iter_text())
+    with new_client(a) as c:
+        login(c)
+        with c.stream("GET", f"/api/runs/{run_id}/events") as r:
+            assert r.headers["content-type"].startswith("text/event-stream")
+            body = "".join(r.iter_text())
     events = re.findall(r"^event: (\w+)$", body, re.M)
     assert events.count("receipt") == len(data["receipts"])
     assert "state" in events and events[-1] == "end"
@@ -249,3 +251,40 @@ def test_malformed_approval_body_is_400(finished):
         r = c.post(f"/api/approvals/{data['state']['pending_id']}",
                    json={"approver": "x", "signature": "zz"})
     assert r.status_code == 400
+
+
+def test_run_state_and_events_need_a_session(finished):
+    a, run_id, _ = finished
+    with new_client(a) as c:
+        assert c.get(f"/api/runs/{run_id}").status_code == 401
+        assert c.get(f"/api/runs/{run_id}/events").status_code == 401
+
+
+def test_parallel_streams_are_capped(finished, monkeypatch):
+    from studio import routes_studio
+
+    a, run_id, _ = finished
+    monkeypatch.setattr(routes_studio, "MAX_STREAMS", 0)
+    with new_client(a) as c:
+        login(c)
+        r = c.get(f"/api/runs/{run_id}/events")
+    assert r.status_code == 429 and r.json()["error"] == "too_many_streams"
+
+
+def test_stream_reads_receipts_only_when_the_ledger_changed(tmp_path, monkeypatch):
+    from studio import db, routes_studio
+
+    monkeypatch.setattr(routes_studio, "SSE_POLL_S", 0.01)
+    monkeypatch.setattr(routes_studio, "SSE_MAX_S", 0.5)
+    a = create_app(settings(tmp_path))
+    with db.transaction(a.state.conn):
+        a.state.conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
+                             "VALUES ('run_idle', 'running', '{}', 1)")
+    reads = []
+    real = a.state.ledger.receipts
+    monkeypatch.setattr(a.state.ledger, "receipts", lambda *x: reads.append(x) or real(*x))
+    with new_client(a) as c:
+        login(c)
+        body = c.get("/api/runs/run_idle/events").text
+    assert '"timeout"' in body
+    assert len(reads) <= 1  # dozens of polls, one read of an unchanged ledger

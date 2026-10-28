@@ -2,8 +2,10 @@
 
 - ``POST /api/runs`` (session, same-origin, writable) starts the producer in a background
   thread; one run at a time per process (the model budget is shared).
-- ``GET /api/runs/{id}`` and ``GET /api/runs/{id}/events`` (SSE) are public and read-only:
-  the run state and its receipts as they are written.
+- ``GET /api/runs/{id}`` and ``GET /api/runs/{id}/events`` (SSE) need a session: the run
+  state and its receipts as they are written. At most ``MAX_STREAMS`` event streams are
+  open per process; a stream re-reads the run's receipts only when the ledger version
+  (``Ledger.seq``) changed.
 - ``GET /api/approvals/{id}/payload?approver=<key id>`` (session) returns the exact bytes
   the browser signs, plus the human-readable content those bytes commit to (by hash).
 - ``POST /api/approvals/{id}`` (session, same-origin, writable) verifies the signature and
@@ -52,6 +54,7 @@ VOICE_TYPES = frozenset({"audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", 
                          "audio/mp4", "audio/mpeg", "audio/aac"})
 SSE_POLL_S = 0.5
 SSE_MAX_S = 20 * 60
+MAX_STREAMS = 8
 
 Guard = Callable[[Request], "JSONResponse | str"]
 
@@ -85,6 +88,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     app.state.open_weights = None
     app.state.run_lock = threading.Lock()
     app.state.active_run = None
+    app.state.streams = 0
+    stream_lock = threading.Lock()
+
+    def logged_in(request: Request) -> bool:
+        return app.state.sessions.check(request.cookies.get("studio_session")) is not None
 
     def clients() -> tuple[MuseClient, OpenWeightsClient]:
         if app.state.muse is None:
@@ -185,7 +193,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                              "cost_usd": t.result.cost_usd if t.result else 0.0})
 
     @app.get("/api/runs/{run_id}")
-    def get_run(run_id: str) -> Response:
+    def get_run(run_id: str, request: Request) -> Response:
+        if not logged_in(request):
+            return JSONResponse({"error": "login_required"}, 401)
         if not RUN_ID.fullmatch(run_id):
             return JSONResponse({"error": "not_found"}, 404)
         found = _state(conn, run_id)
@@ -197,31 +207,45 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                              "receipts": [receipt_event(r) for r in ledger.receipts(run_id)]})
 
     @app.get("/api/runs/{run_id}/events")
-    async def run_events(run_id: str) -> Response:
+    async def run_events(run_id: str, request: Request) -> Response:
+        if not logged_in(request):
+            return JSONResponse({"error": "login_required"}, 401)
         if not RUN_ID.fullmatch(run_id) or _state(conn, run_id) is None:
             return JSONResponse({"error": "not_found"}, 404)
+        with stream_lock:
+            if app.state.streams >= MAX_STREAMS:
+                return JSONResponse({"error": "too_many_streams"}, 429)
+            app.state.streams += 1
 
         async def stream() -> AsyncIterator[bytes]:
             sent = 0
+            seen_seq = -1
             last_update = -1.0
             started = time.monotonic()
-            while time.monotonic() - started < SSE_MAX_S:
-                receipts = ledger.receipts(run_id)
-                for r in receipts[sent:]:
-                    yield _sse("receipt", receipt_event(r))
-                sent = len(receipts)
-                found = _state(conn, run_id)
-                if found is None:
-                    break
-                status, state, updated = found
-                if updated != last_update:
-                    last_update = updated
-                    yield _sse("state", {"status": status, "state": state})
-                if status != "running":
-                    yield _sse("end", {"status": status})
-                    return
-                await asyncio.sleep(SSE_POLL_S)
-            yield _sse("end", {"status": "timeout"})
+            try:
+                while time.monotonic() - started < SSE_MAX_S:
+                    seq = ledger.seq()
+                    if seq != seen_seq:  # read receipts only when the ledger changed
+                        seen_seq = seq
+                        receipts = ledger.receipts(run_id)
+                        for r in receipts[sent:]:
+                            yield _sse("receipt", receipt_event(r))
+                        sent = len(receipts)
+                    found = _state(conn, run_id)
+                    if found is None:
+                        break
+                    status, state, updated = found
+                    if updated != last_update:
+                        last_update = updated
+                        yield _sse("state", {"status": status, "state": state})
+                    if status != "running":
+                        yield _sse("end", {"status": status})
+                        return
+                    await asyncio.sleep(SSE_POLL_S)
+                yield _sse("end", {"status": "timeout"})
+            finally:
+                with stream_lock:
+                    app.state.streams -= 1
 
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-store",
