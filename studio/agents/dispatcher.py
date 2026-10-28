@@ -114,8 +114,9 @@ class Dispatcher:
         if name != call.name:
             details["tool_sha256"] = sha256_hex(call.name)
         skill = self.registry.get(call.name)
-        if skill is not None:
-            details["side_effects"] = skill.side_effects
+        if skill is not None:  # a refused call had no effect, whatever the skill does
+            details["side_effects"] = skill.side_effects if status != "rejected" else "none"
+            details["skill_side_effects"] = skill.side_effects
         if reason:
             details["reason"] = reason
         if error_type:

@@ -33,6 +33,15 @@ from studio.pii import redact_digit_runs
 GENESIS = "0" * 64
 APPROVAL_TTL_S = 900  # an approval authorises one write within this many seconds of issue
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review"})
+# The adapter steps each approved action may take (``tool_call``, ``side_effects:
+# external``). ``activate`` is the receipt of a refused activation (no adapter call).
+EXTERNAL_STEPS: dict[str, frozenset[str]] = {
+    "campaign.create": frozenset({"image", "campaign", "adset", "creative", "ad"}),
+    "campaign.activate": frozenset({"activate_ad", "activate_adset", "activate_campaign",
+                                    "activate"}),
+    "reply.post": frozenset({"reply.post"}),
+    "comment.hide": frozenset({"comment.hide"}),
+}
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _PHONE = re.compile(r"(?<!\w)\+?\d[\d \-()]{7,}\d(?!\w)")
@@ -471,6 +480,30 @@ def _check_write(
     return errors
 
 
+def _check_step(
+    receipt: Receipt, valid: Mapping[str, _Grant], used: set[str]
+) -> list[str]:
+    """An external adapter step must ride on a valid approval of this run that has not yet
+    been consumed by its write, for an action this step belongs to, within the TTL."""
+    if receipt.details.get("side_effects") != "external":
+        return []
+    approval_id = receipt.details.get("approval_id")
+    tool = receipt.details.get("tool")
+    prefix = f"{receipt.id}: unauthorised external step {str(tool)[:40]!r}"
+    if not isinstance(approval_id, str) or not approval_id:
+        return [f"{prefix}: it names no approval (details.approval_id)"]
+    grant = valid.get(approval_id)
+    if grant is None:
+        return [f"{prefix}: no valid approval {approval_id[:40]!r} in this run"]
+    if approval_id in used:
+        return [f"{prefix}: approval {approval_id} was already used by its write"]
+    if tool not in EXTERNAL_STEPS.get(grant.action, frozenset()):
+        return [f"{prefix}: not a step of the approved action {grant.action!r}"]
+    if receipt.ts - grant.ts > APPROVAL_TTL_S:
+        return [f"{prefix}: approval expired (older than {APPROVAL_TTL_S} s)"]
+    return []
+
+
 def verify(
     path: str | Path,
     public_key: Ed25519PublicKey,
@@ -489,7 +522,10 @@ def verify(
     same run that no earlier write used, for the same content, ``details.action`` and
     ``details.item_id``, and
     happen within ``APPROVAL_TTL_S`` of the approval's signed ``ts``. A nonce may appear
-    in only one approval of the whole log.
+    in only one approval of the whole log. Every ``tool_call`` with ``side_effects:
+    external`` (an adapter call) must name a valid approval of the same run, before that
+    approval's write, for an action the step belongs to (``EXTERNAL_STEPS``), within the
+    TTL — otherwise "unauthorised external step".
     """
     errors: list[str] = []
     signatures = 0
@@ -497,6 +533,7 @@ def verify(
     heads: dict[str, str] = {}
     last_ts: dict[str, float] = {}
     grants: dict[str, dict[str, _Grant]] = {}
+    valid: dict[str, dict[str, _Grant]] = {}  # every valid grant, consumed or not
     used: dict[str, set[str]] = {}
     nonces: set[str] = set()
     counts: dict[str, int] = {}
@@ -550,6 +587,9 @@ def verify(
                 signatures += approver_keys is not None
                 pending_id = receipt.details.get("pending_id")
                 grants.setdefault(run, {})[str(pending_id or receipt.id)] = grant
+                valid.setdefault(run, {})[str(pending_id or receipt.id)] = grant
+        if receipt.kind == "tool_call":
+            errors += _check_step(receipt, valid.get(run, {}), used.get(run, set()))
         if receipt.kind == "external_write":
             errors += _check_write(receipt, grants.setdefault(run, {}),
                                    used.setdefault(run, set()))

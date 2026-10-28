@@ -42,7 +42,8 @@ def test_external_skill_call_is_not_available_and_rejected(env, name):
     with pytest.raises(ToolNotAvailable):
         d.execute(ToolCall("call_1", name, json.dumps({"status": "ACTIVE"})))
     (r,) = _rejected(ledger, "atk-1")
-    assert r.details["tool"] == name and r.details["side_effects"] == "external"
+    assert r.details["tool"] == name and r.details["skill_side_effects"] == "external"
+    assert r.details["side_effects"] == "none"  # refused: nothing happened
     assert "approval" in r.details["reason"]
 
 
