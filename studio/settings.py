@@ -19,6 +19,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import urlsplit
 
 MIN_SECRET_LEN = 32
 MIN_SECRET_DISTINCT = 12
@@ -193,9 +194,7 @@ class Settings:
             raise ConfigError("STUDIO_MAX_DAILY_BUDGET_PLN must be an integer") from None
         if not 1 <= ceiling <= 500:
             raise ConfigError("STUDIO_MAX_DAILY_BUDGET_PLN must be 1-500")
-        landing = e.get("STUDIO_LANDING_URL", "") or "https://example.com/"
-        if not landing.startswith("https://") or any(c.isspace() for c in landing):
-            raise ConfigError("STUDIO_LANDING_URL must be an https URL")
+        landing = _landing_url(e, adapter)
         return cls(
             model_api_key=e.get("MODEL_API_KEY", ""),
             model_api_base_url=base_url.rstrip("/"),
@@ -220,6 +219,29 @@ class Settings:
             max_daily_budget_pln=ceiling,
             landing_url=landing,
         )
+
+
+def _landing_url(e: Mapping[str, str], adapter: str) -> str:
+    """``META_LANDING_URL`` (``STUDIO_LANDING_URL`` is an alias): the ad's link. Required
+    with the Graph adapter (a real ad must not point at a placeholder); https with a host,
+    no credentials, no whitespace."""
+    meta, alias = e.get("META_LANDING_URL", ""), e.get("STUDIO_LANDING_URL", "")
+    if meta and alias and meta != alias:
+        raise ConfigError("META_LANDING_URL and STUDIO_LANDING_URL differ; set one")
+    url = meta or alias
+    if not url:
+        if adapter == "graph":
+            raise ConfigError("META_LANDING_URL is required when META_ADAPTER=graph")
+        return "https://example.com/"  # mock adapter only: nothing is published
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname
+    except ValueError:
+        host = None
+    if (parts.scheme != "https" or not host or "@" in parts.netloc
+            or any(c.isspace() or ord(c) < 0x20 for c in url)):
+        raise ConfigError("META_LANDING_URL must be an https URL with a host")
+    return url
 
 
 def _utc_today() -> str:

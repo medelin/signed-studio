@@ -262,3 +262,32 @@ def test_product_photo_defaults_to_the_synthetic_mug_and_is_configurable(tmp_pat
 def test_product_concept_must_be_a_noun_phrase(concept):
     with pytest.raises(ConfigError):
         Settings.load({"STUDIO_PRODUCT_CONCEPT": concept})
+
+
+GRAPH = {"META_ADAPTER": "graph", "META_ACCESS_TOKEN": "t", "META_AD_ACCOUNT_ID": "act_1",
+         "META_PAGE_ID": "1"}
+
+
+def test_meta_landing_url_is_read_and_studio_landing_url_is_an_alias():
+    assert Settings.load({"META_LANDING_URL": "https://shop.test/mug"}).landing_url == (
+        "https://shop.test/mug")
+    assert Settings.load({"STUDIO_LANDING_URL": "https://shop.test/a"}).landing_url == (
+        "https://shop.test/a")
+    with pytest.raises(ConfigError, match="META_LANDING_URL"):  # two different answers
+        Settings.load({"META_LANDING_URL": "https://a.test/", "STUDIO_LANDING_URL":
+                       "https://b.test/"})
+
+
+def test_graph_adapter_requires_a_landing_url():
+    with pytest.raises(ConfigError, match="META_LANDING_URL is required"):
+        Settings.load(GRAPH)
+    assert Settings.load({**GRAPH, "META_LANDING_URL": "https://shop.test/"}).landing_url
+
+
+@pytest.mark.parametrize("url", ["http://shop.test/", "https://", "https:///path",
+                                 "javascript:alert(1)", "https://user:pw@shop.test/",
+                                 "https://shop .test/", "ftp://shop.test/",
+                                 "https://shop.test/\nx"])
+def test_landing_url_must_be_https_with_a_host(url):
+    with pytest.raises(ConfigError, match="https URL"):
+        Settings.load({"META_LANDING_URL": url})
