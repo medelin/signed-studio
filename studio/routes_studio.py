@@ -193,6 +193,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 or MOCK_PAGE,
                 search=getattr(getattr(app.state, "adapter", None), "search_targeting", None))
             producer.run(ctx, brief, run_id=run_id)
+            with conn.lock:
+                waiting = conn.execute("SELECT 1 FROM run_state WHERE run_id = ? AND "
+                                       "status = 'awaiting_approval'", (run_id,)).fetchone()
+            if waiting:
+                app.state.notifier.event("approval_waiting")
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)
             producer.mark_failed(conn, run_id, type(exc).__name__)

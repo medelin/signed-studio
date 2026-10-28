@@ -21,6 +21,8 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
 
+from studio.notify import MailConfig
+
 MIN_SECRET_LEN = 32
 MIN_SECRET_DISTINCT = 12
 MIN_JUDGE_PASSWORD_LEN = 20
@@ -131,6 +133,9 @@ class Settings:
     # the mock adapter's ad account currency (the graph adapter reads the real account's)
     account_currency: str = "PLN"
     landing_url: str = "https://example.com/"
+    # e-mail notifications (studio.notify): off unless STUDIO_SMTP_HOST is set
+    mail: MailConfig = field(default_factory=MailConfig)
+    public_url: str = ""  # base of the links in notification mails
 
     @property
     def judge_login_enabled(self) -> bool:
@@ -218,6 +223,11 @@ class Settings:
         require_login = _bool(e, "STUDIO_REQUIRE_LOGIN", _bool(e, "STUDIO_SANDBOX", False))
         if require_login and not judge_password:
             raise ConfigError("STUDIO_REQUIRE_LOGIN=1 needs JUDGE_PASSWORD (nobody could sign in)")
+        try:
+            mail = MailConfig.from_env(e)
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from None
+        public_url = _public_url(e.get("STUDIO_PUBLIC_URL", ""))
         return cls(
             model_api_key=e.get("MODEL_API_KEY", ""),
             model_api_base_url=base_url.rstrip("/"),
@@ -247,7 +257,25 @@ class Settings:
             max_daily_budget=ceiling,
             account_currency=_currency(e.get("STUDIO_ACCOUNT_CURRENCY", "") or "PLN"),
             landing_url=landing,
+            mail=mail,
+            public_url=public_url,
         )
+
+
+def _public_url(url: str) -> str:
+    """``STUDIO_PUBLIC_URL``: the studio's own address, https (http only for localhost), no
+    credentials, path, query or whitespace; ``""`` when unset."""
+    if not url:
+        return ""
+    parts = urlsplit(url)
+    local = parts.hostname in {"localhost", "127.0.0.1", "::1"}
+    if (parts.scheme != "https" and not (parts.scheme == "http" and local)) or \
+            not parts.hostname or parts.username or parts.password or \
+            parts.path not in ("", "/") or parts.query or parts.fragment or \
+            any(c.isspace() for c in url):
+        raise ConfigError("STUDIO_PUBLIC_URL must be the site's origin, e.g. "
+                          "https://muse.udun.eu (https; no path, query or credentials)")
+    return url.rstrip("/")
 
 
 def _landing_url(e: Mapping[str, str], adapter: str) -> str:

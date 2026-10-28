@@ -66,6 +66,12 @@ def _studio(env_file: Path) -> tuple[Any, Any, Any, Any]:
     return settings, conn, ledger, meta_adapter.make(settings, conn=conn)
 
 
+def _notifier(settings: Any, conn: Any, ledger: Any) -> Any:
+    from studio.notify import Notifier
+
+    return Notifier(conn, ledger, settings.mail, settings.public_url)
+
+
 def insights_pull(env_file: Path) -> int:
     """One ``insights.snapshot`` per campaign plus recommendations; prints counts only.
     Executing a recommendation still needs the owner's signature in the studio."""
@@ -73,6 +79,10 @@ def insights_pull(env_file: Path) -> int:
 
     settings, conn, ledger, adapter = _studio(env_file)
     out = measurement.pull_all(conn, ledger, adapter, settings.max_daily_budget)
+    if out["recommendations"]:
+        notifier = _notifier(settings, conn, ledger)
+        notifier.event("insights_ready", count=out["recommendations"])
+        notifier.flush()
     print(" ".join(f"{k}={v}" for k, v in out.items()))
     return 0
 
@@ -85,6 +95,10 @@ def leads_poll(env_file: Path) -> int:
     settings, conn, ledger, adapter = _studio(env_file)
     client = MuseClient.from_settings(settings, ledger) if settings.model_available else None
     out = leadads.poll(conn, ledger, adapter, client)
+    if out["new"]:
+        notifier = _notifier(settings, conn, ledger)
+        notifier.event("lead_new", count=out["new"])
+        notifier.flush()
     print(" ".join(f"{k}={v}" for k, v in out.items()))
     return 0
 
