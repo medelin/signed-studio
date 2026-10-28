@@ -128,6 +128,29 @@ release or copied from the operator), pass it with `--key-file ledger.pub` toget
   "unavailable".
 - Day-by-day changes: [CHANGELOG.md](CHANGELOG.md).
 
+## Screens and the cast
+
+Light and dark, from `make serve-replay` (recorded answers, no network). The studio after a
+signed run — run HUD, receipt tape, cost and token counters — and the approval moment, when
+the signature hash is stamped onto the payload:
+
+<img src="docs/screenshots/studio-light.png" alt="Studio page after a signed run, light theme" width="49%"> <img src="docs/screenshots/studio-dark.png" alt="Studio page after a signed run, dark theme" width="49%">
+
+<img src="docs/screenshots/approval-stamp-light.png" alt="Approval panel with the signature hash stamped onto the payload" width="70%">
+
+Every illustration is the same "two views" scene: the owner as a warm line, their ad record
+as the same silhouette in a dashed polyline, the agents as diamonds on the trace between
+them, and the owner's signature as the last node — the record is complete only after it.
+Ten owners of one-person businesses (`studio/ui/cast.py`, gallery at `/style/cast`) answer
+the questions on [`/help`](https://muse.udun.eu/help) (also in Polish at `/pl/help`):
+
+<img src="docs/screenshots/cast-light.png" alt="The cast of ten owners, light and dark" width="49%"> <img src="docs/screenshots/help-mobile-dark.png" alt="Help page on a phone, dark theme, the cost answer open" width="24%">
+
+More: [index](docs/screenshots/index-light.png) · [inbox](docs/screenshots/inbox-dark.png) ·
+[leads](docs/screenshots/leads-light.png) · [report](docs/screenshots/report-dark.png) ·
+[receipts](docs/screenshots/receipts-light.png) · [help](docs/screenshots/help-light.png)
+(each also as `-light`/`-dark` in [docs/screenshots/](docs/screenshots/)).
+
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE).

@@ -9,7 +9,7 @@
   document.documentElement.classList.add("motion-ready");
   const EASE = "cubic-bezier(.2, .8, .2, 1)";
   const animate = (node, frames, opts) =>
-    still.matches || !node.animate ? null : node.animate(frames, { duration: 200, easing: EASE, fill: "both", ...opts });
+    still.matches || !node.animate ? null : node.animate(frames, { duration: 200, easing: EASE, fill: "backwards", ...opts });
 
   // -- run HUD: producer → copywriter → art director → reviewers → approval ------------
   const hud = document.getElementById("run-hud");

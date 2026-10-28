@@ -157,8 +157,11 @@ a.chip:hover { border-color: var(--signal); }
 .counter { display: none; font-family: var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; color: var(--ink); }
 .motion-ready .counter { display: inline; }
 .motion-ready .counter-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.counter.cost::after { counter-reset: w var(--whole) f var(--frac); content: "$" counter(w) "." counter(f, pad5); }
-.counter.tokens::after { counter-reset: n var(--n); content: counter(n) " tokens"; }
+/* the counters live on the element (the properties do not inherit into ::after) */
+.counter.cost { counter-reset: w var(--whole) f var(--frac); }
+.counter.cost::after { content: "$" counter(w) "." counter(f, pad5); }
+.counter.tokens { counter-reset: n var(--n); }
+.counter.tokens::after { content: counter(n) " tokens"; }
 @media (prefers-reduced-motion: no-preference) {
   .counter { transition: --whole 700ms var(--ease), --frac 700ms var(--ease), --n 700ms var(--ease); }
 }
