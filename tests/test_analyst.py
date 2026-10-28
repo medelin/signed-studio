@@ -12,6 +12,7 @@ from studio.muse.client import BASE_URL, MuseClient
 from studio.receipts import Ledger
 from studio.settings import Budget
 from tests.cassettes import FAKE_KEY, ROOT, load, mount
+from tests.forms import csrf
 
 INSIGHTS = json.loads((ROOT / "fixtures/meta/insights.SYNTHETIC.json").read_text())
 SHOT = (ROOT / "fixtures/images/insights-chart.SYNTHETIC.png").read_bytes()
@@ -118,7 +119,7 @@ def test_report_route_runs_once_and_redacts_for_visitors(tmp_path):
         assert c.post("/api/reports", json={}).status_code == 401
         login(c)
         assert c.post("/api/reports", content=b"x", headers={
-            "content-type": "text/plain"}).status_code == 415
+            "content-type": "text/plain", "x-csrf-token": csrf(c)}).status_code == 415
         r = c.post("/api/reports", content=SHOT, headers={"content-type": "image/png"})
         assert r.status_code == 200, r.text
         assert r.json()["screenshot"] is True

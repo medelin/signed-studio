@@ -14,6 +14,7 @@ from studio.app import CSP, create_app
 from studio.receipts import public_key_raw
 from studio.sandbox import SandboxConfig, Window, maybe_reset, read_marker
 from studio.settings import ConfigError, Settings
+from tests.forms import csrf
 
 ROOT = Path(__file__).resolve().parent.parent
 SECRET = secrets.token_urlsafe(32)
@@ -157,7 +158,8 @@ def make_client(tmp_path, monkeypatch):
 
 
 def login(client):
-    r = client.post("/login", data={"username": "judge", "password": PASSWORD})
+    r = client.post("/login", data={"username": "judge", "password": PASSWORD,
+        "csrf": csrf(client)})
     assert r.status_code == 200
     return r
 

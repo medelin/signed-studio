@@ -115,6 +115,8 @@ class Settings:
     replay_set: str = "demo"
     trusted_proxies: frozenset[str] = frozenset()
     cookie_secure: bool = True
+    # every page and API needs a judge session (default on with STUDIO_SANDBOX=1)
+    require_login: bool = False
     store_prompts: bool = False
     data_dir: Path = Path("var")
     # The operator's product photo replaces the synthetic one by setting these two.
@@ -207,6 +209,9 @@ class Settings:
         transport = e.get("META_TOKEN_TRANSPORT", "") or "form"
         if transport not in ("form", "bearer"):
             raise ConfigError("META_TOKEN_TRANSPORT must be form or bearer")
+        require_login = _bool(e, "STUDIO_REQUIRE_LOGIN", _bool(e, "STUDIO_SANDBOX", False))
+        if require_login and not judge_password:
+            raise ConfigError("STUDIO_REQUIRE_LOGIN=1 needs JUDGE_PASSWORD (nobody could sign in)")
         return cls(
             model_api_key=e.get("MODEL_API_KEY", ""),
             model_api_base_url=base_url.rstrip("/"),
@@ -226,6 +231,7 @@ class Settings:
             replay_set=_replay_set(e.get("STUDIO_REPLAY_SET", "") or "demo"),
             trusted_proxies=frozenset(proxies),
             cookie_secure=_bool(e, "COOKIE_SECURE", True),
+            require_login=require_login,
             store_prompts=_bool(e, "STORE_PROMPTS", False),
             data_dir=Path(e.get("STUDIO_DATA_DIR", "") or "var"),
             product_photo=Path(e.get("STUDIO_PRODUCT_PHOTO", "") or DEFAULT_PRODUCT_PHOTO),

@@ -12,6 +12,7 @@ from studio.app import create_app
 from studio.receipts import Receipt
 from studio.routes_receipts import receipt_view
 from studio.settings import Settings
+from tests.forms import csrf
 
 SECRET = secrets.token_urlsafe(32)
 PASSWORD = "Jd7-" + secrets.token_urlsafe(24)
@@ -52,7 +53,8 @@ def test_page_lists_receipts_with_hash_tooltips_and_copyable_json(app):
 
 def test_copied_json_is_the_exported_receipt(app):
     with client(app) as c:
-        login = c.post("/login", data={"username": "judge", "password": PASSWORD})
+        login = c.post("/login", data={"username": "judge", "password": PASSWORD,
+        "csrf": csrf(c)})
         assert login.status_code == 200
         html = c.get("/receipts").text
     blocks = re.findall(r'<pre class="json" id="j-([0-9a-f]+)">(.*?)</pre>', html, re.S)

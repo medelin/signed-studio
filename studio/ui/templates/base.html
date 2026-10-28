@@ -20,6 +20,8 @@
     <span class="tag">every agent leaves a receipt · a human signs every send</span>
     {% if read_only %}<span class="badge warn">read-only</span>{% endif %}
     {% if replay %}<span class="badge warn" title="Model API answers are recorded responses served offline (STUDIO_REPLAY=1)">replay</span>{% endif %}
+    {% if logged_in %}<form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">Sign out</button></form>
+    {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">Sign in</a>{% endif %}
   </header>
   <main>{% block content %}{% endblock %}</main>
   <footer class="foot">

@@ -17,6 +17,7 @@ from studio.muse.openweights import OpenWeightsClient
 from studio.receipts import public_key_raw, verify
 from studio.settings import Budget, Settings
 from tests.cassettes import FAKE_KEY, load, transport
+from tests.forms import csrf
 
 SECRET = secrets.token_urlsafe(32)
 PASSWORD = "Jd7-" + secrets.token_urlsafe(24)
@@ -49,7 +50,8 @@ def new_client(app):
 
 
 def login(client):
-    r = client.post("/login", data={"username": "judge", "password": PASSWORD})
+    r = client.post("/login", data={"username": "judge", "password": PASSWORD,
+        "csrf": csrf(client)})
     assert r.status_code == 200
 
 

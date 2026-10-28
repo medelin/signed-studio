@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import secrets
 import time
 
@@ -11,6 +12,7 @@ from fastapi.testclient import TestClient
 from studio.app import LoginLimiter, client_ip, create_app
 from studio.receipts import public_key_raw, verify
 from studio.settings import ConfigError, Settings
+from tests.forms import csrf
 
 SECRET = secrets.token_urlsafe(32)  # fresh per test run
 PASSWORD = "Jd7-" + secrets.token_urlsafe(24)  # fresh per run, 4 classes
@@ -39,7 +41,8 @@ def client(app):
 
 
 def login(client, password=PASSWORD):
-    return client.post("/login", data={"username": "judge", "password": password})
+    return client.post("/login", data={"username": "judge", "password": password,
+        "csrf": csrf(client)})
 
 
 def b64url(data: bytes) -> str:
@@ -90,7 +93,7 @@ def test_login_sets_hardened_cookie(client):
     r = login(client)
     assert r.status_code == 200
     cookie = r.headers["set-cookie"].lower()
-    assert "httponly" in cookie and "samesite=lax" in cookie and "secure" in cookie
+    assert "httponly" in cookie and "samesite=strict" in cookie and "secure" in cookie
     assert "max-age=28800" in cookie
     assert SECRET.lower() not in cookie
 
@@ -100,7 +103,8 @@ def test_wrong_password_401(client):
 
 
 def test_non_ascii_password_401_not_500(client):
-    r = client.post("/login", data={"username": "judge", "password": "zażółć gęślą"})
+    r = client.post("/login", data={"username": "judge", "password": "zażółć gęślą",
+        "csrf": csrf(client)})
     assert r.status_code == 401
 
 
@@ -123,7 +127,7 @@ def test_weak_secret_refuses_to_start(tmp_path):
 async def _burst(app, n, password="nope", headers=None, peer=("203.0.113.9", 4000)):
     transport = httpx.ASGITransport(app=app, client=peer)
     async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as c:
-        reqs = [c.post("/login", data={"username": "judge", "password": password},
+        reqs = [c.post("/login", json={"username": "judge", "password": password},
                        headers=(headers(i) if callable(headers) else headers))
                 for i in range(n)]
         return [r.status_code for r in await asyncio.gather(*reqs)]
@@ -414,7 +418,8 @@ async def _slow_then_correct(app, slow, delay_s):
     slow_tasks = [asyncio.create_task(one((f"198.51.100.{i + 1}", 1), slow_body(), form))
                   for i in range(slow)]
     await asyncio.sleep(0.05)  # every slow request is in flight now
-    correct = await one(("192.0.2.200", 1), f"username=judge&password={PASSWORD}", form)
+    correct = await one(("192.0.2.200", 1), json.dumps({"username": "judge", "password": PASSWORD}),
+                        {"content-type": "application/json"})
     return correct, await asyncio.gather(*slow_tasks)
 
 

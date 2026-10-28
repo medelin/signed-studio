@@ -19,6 +19,7 @@ from studio.muse.client import BASE_URL, MuseClient
 from studio.receipts import Ledger
 from studio.settings import Budget
 from tests.cassettes import FAKE_KEY, ROOT, load
+from tests.forms import csrf
 from tests.test_ui_studio import login, settings
 
 CASSETTE = load("voice_transcribe")
@@ -133,7 +134,8 @@ def test_voice_route_converts_transcribes_and_keeps_no_audio(tmp_path):
                       headers={"content-type": "audio/wav"}).status_code == 401
         login(c)
         assert c.post("/api/briefs/voice", content=b"x",
-                      headers={"content-type": "text/plain"}).status_code == 415
+                      headers={"content-type": "text/plain",
+                               "x-csrf-token": csrf(c)}).status_code == 415
         _mock(router)
         r = c.post("/api/briefs/voice", content=WAV, headers={"content-type": "audio/wav"})
     assert r.status_code == 200, r.text

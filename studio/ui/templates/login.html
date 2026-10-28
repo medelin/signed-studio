@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Muse Studio Lite{% endblock %}
+{% block content %}
+<section class="login" aria-labelledby="login-page-h">
+  <div class="login-art il-place">{{ people(["grace", "kofi"]) }}</div>
+  <div class="panel login-panel">
+    <h1 id="login-page-h">Sign in</h1>
+    {% if login_enabled %}
+    <p class="hint">Judges: the password is in the submission form. Nothing is published
+    without your signature; campaigns are created paused.</p>
+    <form method="post" action="/login" class="stack">
+      <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label for="lp-user">User name</label>
+      <input id="lp-user" name="username" autocomplete="username" value="judge" required>
+      <label for="lp-pass">Password</label>
+      <input id="lp-pass" name="password" type="password" autocomplete="current-password" required{% if error %} aria-describedby="lp-error" aria-invalid="true"{% endif %} autofocus>
+      {% if error %}<p class="status error" id="lp-error" role="alert">{{ error }}</p>{% endif %}
+      <button type="submit">Sign in</button>
+    </form>
+    {% else %}
+    <p class="empty">Sign-in is disabled on this instance.</p>
+    {% endif %}
+    <p class="hint">Public and read-only without signing in: <a href="/api/ledger-key">ledger key</a>,
+    <a href="/api/ledger-manifest">manifest</a>, <a href="/api/approver-keys">approver keys</a>
+    (what <code>studio verify --server</code> needs).</p>
+  </div>
+</section>
+{% endblock %}

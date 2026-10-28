@@ -112,7 +112,7 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
             f" · {k}={v}" for k, v in info.items()))
 
     with TestClient(app, base_url="https://testserver") as c:
-        assert c.post("/login", data={"username": "judge", "password": password}
+        assert c.post("/login", json={"username": "judge", "password": password}
                       ).status_code == 200
         key = Ed25519PrivateKey.generate()
         raw = base64.urlsafe_b64encode(public_key_raw(key.public_key())).rstrip(b"=").decode()

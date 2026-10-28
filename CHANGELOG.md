@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-28 — login gate for the whole app
+
+- `/login` page in the company style (two owners side by side), one generic error message, `next` limited to same-site paths (`auth.safe_next`: no scheme, host, `//`, backslash or control characters). `STUDIO_REQUIRE_LOGIN` (default 1 with `STUDIO_SANDBOX=1`, refuses to start without `JUDGE_PASSWORD`): every page and API needs a session except `/login`, `/logout`, `/healthz`, static assets and what `studio verify --server` fetches (`/api/ledger-key`, `/api/ledger-manifest`, `/api/approver-keys`, checked against `cli.py` in a test); pages redirect 303, API and assets 401 JSON.
+- CSRF (`studio/auth.py`): `Sec-Fetch-Site` cross-site/same-site writes are 403; double-submit token in an HttpOnly SameSite=Strict cookie, echoed as the `csrf` field of the login/sign-out forms and as `X-CSRF-Token` on any other urlencoded/multipart/text/plain body; the `Origin` check stays. Session cookie now SameSite=Strict. Login lockout kept (5 per prefix per 15 min + capped global pause), 429 now carries `Retry-After`. Sign-out form in the header. `tests/test_login_gate.py` (open redirect, CSRF, lockout, public verify endpoints). Docs: SANDBOX.md, README.
 ## 2026-10-28 — day 4, round 2 (open weights live, replay repeat, P9 real texts)
 
 - Muse Spark Open on Baseten is live: the model id is `meta-models/muse-spark-open` (Baseten's Model APIs list it; `-1026` returns 404). It is a reasoning model: `reasoning_tokens` are recorded, a reply with reasoning but no answer raises `reasoning_only` (after its receipt), and its cost uses Baseten's published price ($1.25 / $0.15 cached / $4.25 per 1M tokens, `cost_basis: baseten_price`). The synthetic open-weights cassette is replaced by a real recording (`review_open`). `ui/help_texts.py` (owned by the /help work) still says `-1026`.

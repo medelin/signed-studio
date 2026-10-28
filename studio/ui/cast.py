@@ -611,3 +611,12 @@ def group(keys: Sequence[str], kind: str = "signed", label: str = "", cls: str =
                     f'-8 -16"/><path class="r-score" d="M{_n(rx + 180)} 72l6 12'
                     f'l-12 0z"/><text class="r-text" x="{_n(rx + 150)}" y="234">60</text>')
     return svg("".join(body), view, label, cls)
+
+
+def people(keys: Sequence[str], label: str = "", cls: str = "") -> Markup:
+    """Owners standing side by side, nothing else (login page, small headers)."""
+    lay = layout(keys, "solo")
+    body = "".join(figure(p, x, y, lay.scale)[0] for p, x, y in lay.figures)
+    top = max(0, int(min(b[1] for b in lay.boxes) - 4))
+    right = max(b[2] for b in lay.boxes) + 4
+    return svg(body, f"0 {top} {_n(right)} {lay.height - top}", label, cls)

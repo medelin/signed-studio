@@ -10,7 +10,7 @@ anyone can check offline with `studio verify`.
 Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for Your World).
 **Everything in this repository was built during the event (27 Oct – 4 Nov 2026).**
 
-- Live sandbox (read-only for visitors, judge login for writes): **https://muse.udun.eu**
+- Live sandbox (judge login; the password is in the submission): **https://muse.udun.eu**
 - Numbers: **[docs/eval.md](docs/eval.md)** · how it works: [docs/architecture.md](docs/architecture.md) ·
   threat model: [docs/SECURITY.md](docs/SECURITY.md) · video script: [docs/demo-script.md](docs/demo-script.md)
 
@@ -98,8 +98,8 @@ third party:
 ### Verify a receipt log
 
 ```bash
-curl -sO https://muse.udun.eu/api/receipts.jsonl
-studio verify receipts.jsonl --server https://muse.udun.eu
+# receipts.jsonl: the footer link after signing in at https://muse.udun.eu/login
+studio verify receipts.jsonl --server https://muse.udun.eu   # key, manifest, approver keys are public
 # offline: studio verify receipts.jsonl --key-file ledger.pub \
 #          --approver-keys approvers.json --min-seq <seq from /api/ledger-manifest>
 ```

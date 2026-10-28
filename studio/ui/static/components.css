@@ -159,3 +159,10 @@ a.chip:hover { border-color: var(--signal); }
 
 /* creatives waiting for their pixels */
 .carousel figure.arriving { opacity: 0; }
+
+/* login */
+.login { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 26rem); gap: 2rem; align-items: center; max-width: 60rem; margin: 2rem 0; }
+.login-art { max-width: 22rem; }
+.logout-form { display: inline; margin: 0; }
+.logout-form button { padding: .2rem .6rem; font-size: .7rem; }
+@media (max-width: 760px) { .login { grid-template-columns: 1fr; } .login-art { max-width: 14rem; } }

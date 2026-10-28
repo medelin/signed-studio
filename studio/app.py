@@ -7,7 +7,7 @@ Security notes:
   pause (see ``LoginLimiter``); success clears the client's bucket;
 - credentials are compared as bytes in constant time (non-ASCII input is a 401, not a 500);
 - sessions are HMAC-signed with the dedicated ``SESSION_SECRET`` and also tracked server
-  side, so ``POST /logout`` revokes them; cookies are HttpOnly, SameSite=Lax, Secure;
+  side, so ``POST /logout`` revokes them; cookies are HttpOnly, SameSite=Strict, Secure;
 - ``X-Forwarded-For`` is used only when the direct peer is a ``TRUSTED_PROXY``, and then
   only its rightmost element (the address that proxy saw);
 - request bodies are capped (413), state-changing requests must be same-origin, and the
@@ -24,6 +24,7 @@ import hmac
 import ipaddress
 import json
 import logging
+import math
 import secrets
 import threading
 import time
@@ -34,11 +35,18 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from studio import (
+    auth,
     db,
     routes_help,
     routes_inbox,
@@ -62,6 +70,7 @@ UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
+LOGIN_FAILED = "Sign-in failed. Check the user name and password, or try again in a minute."
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; "
@@ -189,6 +198,16 @@ class LoginLimiter:
             hits.append(t)
             self._hits[key] = hits
             return True
+
+    def retry_after(self, ip: str, now: float | None = None) -> int:
+        """Seconds until this client may try again (global pause or its own window)."""
+        t = time.time() if now is None else now
+        with self._lock:
+            waits = [self.locked_until - t]
+            hits = self._recent(self._hits.get(limiter_key(ip), []), t)
+            if len(hits) >= self.max_attempts:
+                waits.append(hits[0] + self.window_s - t)
+        return max(1, math.ceil(max(waits)))
 
     def settle(self, ip: str, ok: bool, now: float | None = None) -> bool:
         """Record a completed attempt. False (429, nothing recorded) while paused."""
@@ -334,24 +353,29 @@ def _cookie_secure(request: Request, settings: Settings) -> bool:
 def _same_origin(request: Request) -> bool:
     origin = request.headers.get("origin")
     if origin is None:
-        return True  # non-browser client; the SameSite=Lax cookie still guards browsers
+        return True  # non-browser client; SameSite=Strict + Sec-Fetch-Site guard browsers
     host = request.headers.get("host", "")
     return origin in {f"https://{host}", f"http://{host}"}
 
 
-async def _read_credentials(request: Request) -> tuple[str, str]:
+async def _read_credentials(request: Request) -> tuple[str, str, dict[str, str]]:
+    """User name, password and the other fields (``csrf``, ``next``; ``_form`` is set for
+    bodies a cross-site HTML form could send, which must carry the CSRF token)."""
     raw = await request.body()
     ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
     try:
         if ctype == "application/json":
             data = json.loads(raw or b"{}")
             if not isinstance(data, dict):
-                return "", ""
-            return str(data.get("username", "")), str(data.get("password", ""))
+                return "", "", {}
+            return str(data.get("username", "")), str(data.get("password", "")), {}
         form = parse_qs(raw.decode("utf-8"), max_num_fields=10)
     except (ValueError, UnicodeDecodeError):
-        return "", ""
-    return (form.get("username") or [""])[0], (form.get("password") or [""])[0]
+        return "", "", {"_form": "1"}
+    extra = {k: v[0] for k, v in form.items() if k in ("csrf", "next") and v}
+    if ctype in auth.FORM_TYPES:
+        extra["_form"] = "1"
+    return (form.get("username") or [""])[0], (form.get("password") or [""])[0], extra
 
 
 # -- application ------------------------------------------------------------------------
@@ -379,6 +403,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     templates.env.globals["replay"] = settings.replay
     app.mount("/static", StaticFiles(directory=str(UI / "static")), name="static")
     app.add_middleware(BodyLimit, paths=UPLOAD_LIMITS)
+    app.add_middleware(
+        auth.Gate, require_login=lambda: settings.require_login,
+        session_of=lambda request: app.state.sessions.check(request.cookies.get(COOKIE)),
+        secure=lambda request: _cookie_secure(request, settings))
 
     @app.middleware("http")
     async def security_headers(
@@ -514,47 +542,82 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthz() -> dict[str, Any]:
         return {"ok": True, "read_only": settings.read_only}  # minimal and public
 
+    def login_html(request: Request, nxt: str, error: str = "", status: int = 200,
+                   headers: dict[str, str] | None = None) -> Response:
+        return templates.TemplateResponse(request, "login.html", {
+            "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": False,
+            "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
+            "next": auth.safe_next(nxt), "error": error, "noindex": True,
+        }, status_code=status, headers=headers)
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login_page(request: Request, next: str = "") -> Response:  # noqa: A002 - query name
+        if session_of(request) is not None:
+            return RedirectResponse(auth.safe_next(next), 303)
+        return login_html(request, next)
+
     @app.post("/login")
     async def login(request: Request) -> Response:
+        html = "text/html" in request.headers.get("accept", "")
+        nxt = request.query_params.get("next", "")
+
+        def fail(code: str, status: int, retry: int | None = None) -> Response:
+            headers = {"Retry-After": str(retry)} if retry else None
+            if html:  # one generic sentence whatever went wrong
+                return login_html(request, nxt, LOGIN_FAILED, status, headers)
+            return JSONResponse({"error": code}, status, headers=headers)
+
         if not settings.judge_login_enabled:
-            return JSONResponse({"error": "login_disabled"}, 403)
+            return fail("login_disabled", 403)
         if not _same_origin(request):
-            return JSONResponse({"error": "cross_origin"}, 403)
+            return fail("cross_origin", 403)
         ip = client_ip(request, settings.trusted_proxies)
         if not app.state.limiter.reserve(ip):  # reserved before the body is awaited
-            return JSONResponse({"error": "too_many_attempts"}, 429)
+            return fail("too_many_attempts", 429, app.state.limiter.retry_after(ip))
         try:
-            username, password = await asyncio.wait_for(
+            username, password, fields = await asyncio.wait_for(
                 _read_credentials(request), LOGIN_BODY_TIMEOUT_S)
         except TimeoutError:  # the prefix attempt stays counted; the global budget does not
-            return JSONResponse({"error": "body_timeout"}, 408)
+            return fail("body_timeout", 408)
+        nxt = fields.get("next", nxt)
+        if fields.get("_form") and not auth.tokens_match(request.cookies.get(auth.CSRF_COOKIE),
+                                                         fields.get(auth.CSRF_FIELD)):
+            app.state.limiter.settle(ip, False)  # a forged form counts as a failure
+            return fail("csrf", 403)
         # No await from here to settle(): the global count is exact, never "in flight".
         user_ok = hmac.compare_digest(username.encode(), JUDGE_USER.encode())
         pass_ok = hmac.compare_digest(password.encode(), settings.judge_password.encode())
         ok = user_ok and pass_ok
         if not app.state.limiter.settle(ip, ok):
-            return JSONResponse({"error": "too_many_attempts"}, 429)
+            return fail("too_many_attempts", 429, app.state.limiter.retry_after(ip))
         if not ok:
-            return JSONResponse({"error": "invalid_credentials"}, 401)
-        response = JSONResponse({"ok": True})
+            return fail("invalid_credentials", 401)
+        response: Response = (RedirectResponse(auth.safe_next(nxt), 303) if html
+                              else JSONResponse({"ok": True}))
         response.set_cookie(
             COOKIE, app.state.sessions.issue(), max_age=SESSION_TTL_S, httponly=True,
-            samesite="lax", secure=_cookie_secure(request, settings), path="/",
+            samesite="strict", secure=_cookie_secure(request, settings), path="/",
         )
         return response
 
     @app.post("/logout")
-    def logout(request: Request) -> Response:
+    async def logout(request: Request) -> Response:
         if not _same_origin(request):
             return JSONResponse({"error": "cross_origin"}, 403)
+        _, _, fields = await _read_credentials(request)
+        if fields.get("_form") and not auth.tokens_match(request.cookies.get(auth.CSRF_COOKIE),
+                                                         fields.get(auth.CSRF_FIELD)):
+            return JSONResponse({"error": "csrf"}, 403)
         cookie = request.cookies.get(COOKIE)
         sid = app.state.sessions.check(cookie)
         app.state.sessions.revoke(cookie)
         if sid is not None:
             with db.transaction(conn):
                 Keys.revoke_session(conn, sid)
-        response = JSONResponse({"ok": True})
-        response.delete_cookie(COOKIE, path="/", httponly=True, samesite="lax",
+        response: Response = (RedirectResponse("/login", 303)
+                              if "text/html" in request.headers.get("accept", "")
+                              else JSONResponse({"ok": True}))
+        response.delete_cookie(COOKIE, path="/", httponly=True, samesite="strict",
                                secure=_cookie_secure(request, settings))
         return response
 

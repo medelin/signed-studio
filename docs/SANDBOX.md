@@ -1,9 +1,12 @@
 # Judge sandbox
 
-Live at **https://muse.udun.eu**. Anyone can watch: the receipts page, the studio and inbox
-views, `GET /api/receipts.jsonl`, the ledger manifest and keys. Writes (running the agents,
-signing approvals, simulating comments, uploads) need the judge login: user `judge`, password
-in the submission form.
+Live at **https://muse.udun.eu**. The whole app is behind the judge login at `/login`:
+user `judge`, password in the submission form (`STUDIO_REQUIRE_LOGIN=1`, the default with
+`STUDIO_SANDBOX=1`). Without a session, pages redirect to `/login?next=…` (a same-site path
+only, no open redirect) and the API answers 401 JSON. Public and read-only without a session:
+`/healthz`, static assets, and what `studio verify --server` fetches — `/api/ledger-key`,
+`/api/ledger-manifest`, `/api/approver-keys`. The receipt export `/api/receipts.jsonl` needs
+the session (download it from the footer link once signed in).
 
 | What | Setting |
 | --- | --- |
@@ -39,7 +42,16 @@ in the submission form.
     keeps the old marker and is retried a minute later;
   - a due reset waits while a judge is writing (2 minutes of quiet), at most half an hour;
   - a marker in the future (clock jump) is replaced, not trusted.
-- **Startup refuses** a sandbox without `JUDGE_PASSWORD` + `SESSION_SECRET` (≥ 32 random
+- **Login** (`studio/auth.py`, `studio/app.py`): one generic error message; the attempt is
+  counted per client prefix before the body is read (5 per 15 min, then 429 with
+  `Retry-After`) plus a short, capped global pause after 20 failures in 5 minutes; session
+  cookie `HttpOnly; Secure; SameSite=Strict`, revoked server side on sign-out.
+- **CSRF**: state-changing requests with `Sec-Fetch-Site` other than `same-origin`/`none` are
+  403; a double-submit token (HttpOnly, SameSite=Strict cookie) must come back as the `csrf`
+  field of the login and sign-out forms and as `X-CSRF-Token` on any other form-typed body
+  (urlencoded, multipart, text/plain); the routes' `Origin` check stays. JSON and raw uploads
+  need a CORS preflight, which is never granted.
+- **Startup refuses** `STUDIO_REQUIRE_LOGIN=1` without `JUDGE_PASSWORD`, and a sandbox without `JUDGE_PASSWORD` + `SESSION_SECRET` (≥ 32 random
   characters, unrelated to the password), with `META_ADAPTER=graph`, or with
   `COOKIE_SECURE=0`.
 
