@@ -139,13 +139,31 @@ def review_binding(run: RunResult, variant_index: int) -> str:
     }))
 
 
+# A signed run stays ``approved``: the producer's last writes never move it back (the
+# CASE in both upserts below).
+
+
 def _save_state(conn: sqlite3.Connection, run: RunResult, status: str) -> None:
     with transaction(conn):
         conn.execute(
             "INSERT INTO run_state (run_id, status, state, updated_ts) VALUES (?, ?, ?, ?) "
-            "ON CONFLICT (run_id) DO UPDATE SET status = excluded.status, "
+            "ON CONFLICT (run_id) DO UPDATE SET status = CASE WHEN run_state.status = "
+            "'approved' THEN 'approved' ELSE excluded.status END, "
             "state = excluded.state, updated_ts = excluded.updated_ts",
             (run.run_id, status, json.dumps(run.state(), ensure_ascii=False), time.time()),
+        )
+
+
+def mark_failed(conn: sqlite3.Connection, run_id: str, error_type: str) -> None:
+    """A crashed run is ``failed`` (an existing state is kept; ``approved`` stays)."""
+    with transaction(conn):
+        conn.execute(
+            "INSERT INTO run_state (run_id, status, state, updated_ts) "
+            "VALUES (?, 'failed', ?, ?) "
+            "ON CONFLICT (run_id) DO UPDATE SET status = CASE WHEN run_state.status = "
+            "'approved' THEN 'approved' ELSE excluded.status END, "
+            "updated_ts = excluded.updated_ts",
+            (run_id, json.dumps({"error": error_type}), time.time()),
         )
 
 

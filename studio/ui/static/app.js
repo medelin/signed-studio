@@ -161,7 +161,7 @@ function renderState(runId, st, state) {
   renderCopy(state.copy, state.review ? state.review.variant_index : -1);
   renderImages(runId, state.creatives);
   renderReview(state.review);
-  if (state.pending_id && state.pending_id !== shownPending && st !== "approved") {
+  if (state.pending_id && state.pending_id !== shownPending && st === "awaiting_approval") {
     shownPending = state.pending_id;
     showApproval(state.pending_id);
   }

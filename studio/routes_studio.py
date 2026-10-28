@@ -108,12 +108,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             producer.run(ctx, brief, run_id=run_id)
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)
-            with db.transaction(conn):
-                conn.execute(
-                    "INSERT INTO run_state (run_id, status, state, updated_ts) "
-                    "VALUES (?, 'failed', ?, ?) ON CONFLICT (run_id) DO UPDATE SET "
-                    "status = 'failed', updated_ts = excluded.updated_ts",
-                    (run_id, json.dumps({"error": type(exc).__name__}), time.time()))
+            producer.mark_failed(conn, run_id, type(exc).__name__)
         finally:
             with app.state.run_lock:
                 app.state.active_run = None
