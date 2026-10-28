@@ -20,6 +20,7 @@ from markupsafe import Markup
 
 from studio.ui.i18n_accounts import EN_ACCOUNTS, PL_ACCOUNTS
 from studio.ui.i18n_meta import EN_META, PL_META
+from studio.ui.i18n_notify import EN_NOTIFY, PL_NOTIFY
 
 LANGS = ("en", "pl")
 DEFAULT = "en"
@@ -1193,6 +1194,8 @@ EN.update(EN_ACCOUNTS)
 PL.update(PL_ACCOUNTS)
 EN.update(EN_META)
 PL.update(PL_META)
+EN.update(EN_NOTIFY)
+PL.update(PL_NOTIFY)
 
 CATALOGS = {"en": EN, "pl": PL}
 
