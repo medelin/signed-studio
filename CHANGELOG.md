@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-28 — day 4, round 3 (platform format limits F1, P9 origin)
+
+- Rule **F1**, format limits from each platform's own published specifications (retrieved 2026-10-28, URLs in `studio/agents/formats.py` and `docs/policy.md`): `reviewer.format_check(placement, ad)` runs before the model reviewers; hard limits BLOCK, recommended lengths WARN and name the truncation point; findings join both reviews and the `review` receipt (`details.format`). Meta (wired to publishing): Facebook Feed primary text 150 / headline 27, Instagram Feed 125 / 40, Stories 125, Reels 44 (recommended); image ratio, tolerance and minimum size per placement and the 1000-character link limit (hard). Google Ads (exported copy only): responsive search ads 30/90/15 with double-width characters counted twice, Performance Max and Demand Gen text and image limits (hard). TikTok (exported copy only): display name 20 (10 CJK) hard; links, @ and hashtags warn; the ad-text length is not on any official page that loaded, so it is not enforced. 20 seeded cases (`fixtures/eval/formats.SYNTHETIC.json`), all as expected; `tests/test_formats.py`.
+- Recorded images are stored at 512 px but served at the size the API returned (`@blob:…png#WxH` in replay sets, `@file:…png#WxH` in cassettes), so the F1 image checks see real sizes in replays and tests; test creatives use placement-sized PNGs (`tests/images.py`).
+- P9 origin, by description only, in `docs/eval.md`, `docs/policy.md` and the demo script: a model-invented legal/tax claim once ran in a paid promotion of a small firm's ad; with the Google Ads disapprovals it is why P9 and the unfilled-`[FACT]` rule exist.
+- No real API calls this round (day 4 total stays about $1.39 of $10).
+
+
 ## 2026-10-28 — login gate for the whole app
 
 - `/login` page in the company style (two owners side by side), one generic error message, `next` limited to same-site paths (`auth.safe_next`: no scheme, host, `//`, backslash or control characters). `STUDIO_REQUIRE_LOGIN` (default 1 with `STUDIO_SANDBOX=1`, refuses to start without `JUDGE_PASSWORD`): every page and API needs a session except `/login`, `/logout`, `/healthz`, static assets and what `studio verify --server` fetches (`/api/ledger-key`, `/api/ledger-manifest`, `/api/approver-keys`, checked against `cli.py` in a test); pages redirect 303, API and assets 401 JSON.
