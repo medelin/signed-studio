@@ -191,8 +191,8 @@ def test_redaction_uses_the_same_window():
 
 
 # Controller ruling: invisible characters and padding cannot stretch the window.
-@pytest.mark.parametrize("sep", ["​", "⁠", "­", "́", " " * 30,
-                                 " .,;-/ " * 5, "​́ ­"])
+@pytest.mark.parametrize("sep", ["\u200b", "\u2060", "\u00ad", "\u0301", " " * 30,
+                                 " .,;-/ " * 5, "\u200b\u0301 \u00ad"])
 def test_padding_between_digits_cannot_stretch_the_window(sep):
     text = "tel " + sep.join("600123456")
     assert long_digit_run(text), repr(sep)

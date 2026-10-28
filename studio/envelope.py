@@ -28,7 +28,7 @@ PHRASE = "UNTRUSTED EXTERNAL CONTENT"
 BEGIN = f"<<<BEGIN {PHRASE}>>>"
 END = f"<<<END {PHRASE}>>>"
 SOURCES = frozenset({"comment", "lead", "transcript", "insights", "screenshot", "ad_copy"})
-ZWSP = "​"
+ZWSP = "\u200b"
 MAX_CHARS = 4000
 
 SYSTEM_RULE = (
@@ -41,7 +41,7 @@ SYSTEM_RULE = (
 
 # Zero-width and bidi formatting characters, plus C0/C1 controls except \n and \t.
 _INVISIBLE = re.compile(
-    "[​-‏‪-‮⁠-⁤⁦-⁩﻿­"
+    "[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\u00ad"
     "\x00-\x08\x0b-\x1f\x7f-\x9f]"
 )
 _RUN_LT = re.compile(r"<(?=<)")
