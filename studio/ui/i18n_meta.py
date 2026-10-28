@@ -115,6 +115,43 @@ EN_META: dict[str, str] = {
                                              "and one copy variant.",
     "js.video_alt": "9:16 video ad, {s} seconds",
     "js.video_caption": "video_9x16 · {s} s · shots ordered by {model}",
+    # measurement (/report)
+    "ms.title": "Measurement by objective",
+    "ms.lead": "Insights for each campaign's own objective: its result, cost per result, "
+               "reach and frequency, by placement, age and gender, and region, with the "
+               "attribution setting. Every snapshot is a receipt. A recommendation changes "
+               "nothing until you sign it.",
+    "ms.pull": "Read insights now", "ms.empty": "No snapshot yet.",
+    "ms.result": "Result", "ms.cpr": "Cost per result", "ms.reach": "Reach",
+    "ms.frequency": "frequency", "ms.spend": "Spend", "ms.link_clicks": "link clicks",
+    "ms.attribution": "Attribution", "ms.segment": "Segment",
+    "ms.by.placement": "By placement (platform · position)",
+    "ms.by.age_gender": "By age and gender", "ms.by.region": "By region",
+    "ms.recs": "Recommendations (code rules)", "ms.no_recs": "Nothing to change.",
+    "ms.rec.placement_costly": "{placement} costs {ratio}× the campaign's cost per result "
+                               "and takes {share} % of the spend. Advantage+ placements "
+                               "shift budget away by themselves; to exclude it, choose "
+                               "manual placements in the next brief.",
+    "ms.rec.no_results": "{spend} spent with no result yet: pause the campaign and check "
+                         "the objective and the audience.",
+    "ms.rec.fatigue": "People saw the ad {frequency} times on average: lower the daily "
+                      "budget so it tires less.",
+    "ms.rec.scale": "{results} results at a frequency of {frequency}: there is room to "
+                    "raise the daily budget.",
+    "ms.change.budget": "daily budget {frm} → {to} {currency}",
+    "ms.change.pause": "pause the campaign",
+    "ms.execute": "Sign and execute",
+    "enum.rec_status.open": "open", "enum.rec_status.requested": "waiting for signature",
+    "enum.rec_status.executed": "executed", "enum.rec_status.failed": "failed",
+    "js.ms_pulling": "Reading insights for every campaign…",
+    "js.ms_pull_failed": "Could not read insights: {error}",
+    "js.ms_signing": "Preparing the approval and signing it in this browser…",
+    "js.ms_refused": "Not executable: {error}",
+    "js.ms_not_executed": "Signed, not executed: {error}",
+    "js.ms_executed": "Signed and executed (signature {sig}…).",
+    "err.not_executable": "This recommendation is information only or already handled.",
+    "err.campaign_changed": "The campaign changed since this was proposed; read insights "
+                            "again.",
 }
 
 PL_META: dict[str, str] = {
@@ -229,4 +266,40 @@ PL_META: dict[str, str] = {
                                              "i jeden wariant tekstu.",
     "js.video_alt": "Reklama wideo 9:16, {s} s",
     "js.video_caption": "video_9x16 · {s} s · kolejność ujęć: {model}",
+    "ms.title": "Pomiar według celu",
+    "ms.lead": "Statystyki dla celu każdej kampanii: jej wynik, koszt wyniku, zasięg i "
+               "częstotliwość, według umiejscowienia, wieku i płci oraz regionu, z modelem "
+               "atrybucji. Każdy odczyt to pokwitowanie. Rekomendacja niczego nie zmienia, "
+               "dopóki jej nie podpiszesz.",
+    "ms.pull": "Odczytaj statystyki teraz", "ms.empty": "Brak odczytu.",
+    "ms.result": "Wynik", "ms.cpr": "Koszt wyniku", "ms.reach": "Zasięg",
+    "ms.frequency": "częstotliwość", "ms.spend": "Wydatki", "ms.link_clicks": "kliknięcia w link",
+    "ms.attribution": "Atrybucja", "ms.segment": "Segment",
+    "ms.by.placement": "Według umiejscowienia (platforma · pozycja)",
+    "ms.by.age_gender": "Według wieku i płci", "ms.by.region": "Według regionu",
+    "ms.recs": "Rekomendacje (reguły w kodzie)", "ms.no_recs": "Nic do zmiany.",
+    "ms.rec.placement_costly": "{placement} kosztuje {ratio}× koszt wyniku kampanii i bierze "
+                               "{share} % wydatków. Umiejscowienia Advantage+ same "
+                               "przesuwają budżet; żeby je wykluczyć, wybierz ręczne "
+                               "umiejscowienia w następnym briefie.",
+    "ms.rec.no_results": "Wydano {spend} bez żadnego wyniku: wstrzymaj kampanię i sprawdź "
+                         "cel i grupę odbiorców.",
+    "ms.rec.fatigue": "Ludzie widzieli reklamę średnio {frequency} razy: obniż budżet "
+                      "dzienny, żeby mniej się opatrzyła.",
+    "ms.rec.scale": "{results} wyników przy częstotliwości {frequency}: można podnieść "
+                    "budżet dzienny.",
+    "ms.change.budget": "budżet dzienny {frm} → {to} {currency}",
+    "ms.change.pause": "wstrzymaj kampanię",
+    "ms.execute": "Podpisz i wykonaj",
+    "enum.rec_status.open": "otwarta", "enum.rec_status.requested": "czeka na podpis",
+    "enum.rec_status.executed": "wykonana", "enum.rec_status.failed": "nieudana",
+    "js.ms_pulling": "Odczytuję statystyki wszystkich kampanii…",
+    "js.ms_pull_failed": "Nie udało się odczytać statystyk: {error}",
+    "js.ms_signing": "Przygotowuję zatwierdzenie i podpisuję je w tej przeglądarce…",
+    "js.ms_refused": "Nie do wykonania: {error}",
+    "js.ms_not_executed": "Podpisano, nie wykonano: {error}",
+    "js.ms_executed": "Podpisano i wykonano (podpis {sig}…).",
+    "err.not_executable": "Ta rekomendacja jest tylko informacją albo już ją obsłużono.",
+    "err.campaign_changed": "Kampania zmieniła się od tej propozycji; odczytaj statystyki "
+                            "ponownie.",
 }

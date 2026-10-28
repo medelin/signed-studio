@@ -65,7 +65,8 @@ __all__ = [
     "verify_and_consume",
 ]
 
-ACTIONS = frozenset({"campaign.create", "campaign.activate", "reply.post", "comment.hide"})
+ACTIONS = frozenset({"campaign.create", "campaign.activate", "campaign.update", "reply.post",
+                     "comment.hide"})
 SIGNED_FIELDS = APPROVAL_SIGNED_FIELDS
 TTL_S = APPROVAL_TTL_S  # the verifier enforces the same window between approval and write
 SKEW_S = 60

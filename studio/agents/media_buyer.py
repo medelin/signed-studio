@@ -280,5 +280,105 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
     return result
 
 
+def request_update(conn: sqlite3.Connection, ledger: Ledger, rec_id: str,
+                   ceiling: int) -> tuple[Pending, dict[str, Any]]:
+    """A pending ``campaign.update`` for one executable recommendation (a budget change
+    under the ceiling, or a pause). Nothing changes until the owner signs it."""
+    from studio.meta import measurement
+
+    rec = measurement.recommendation(conn, rec_id)
+    if rec is None:
+        raise BuyError("no such recommendation", "not_found")
+    if rec["status"] != "open" or not rec.get("change"):
+        raise BuyError("this recommendation cannot be executed", "not_executable")
+    c = campaign(conn, rec["campaign_id"])
+    if c is None or not c["adset_external_id"]:
+        raise BuyError("no such campaign", "not_found")
+    ceiling_minor = to_minor(ceiling, c["currency"])
+    change = dict(rec["change"])
+    if change["kind"] == "budget":
+        if change.get("from_minor") != c["daily_budget_minor"]:
+            raise BuyError("the budget changed since the recommendation", "campaign_changed")
+        if not 0 < int(change["to_minor"]) <= ceiling_minor:
+            raise BuyError(f"above the {ceiling} {c['currency']} ceiling", "over_ceiling")
+    payload = {"action": "campaign.update", "campaign_id": c["id"], "run_id": c["run_id"],
+               "adapter": c["adapter"], "external_id": c["external_id"],
+               "adset_external_id": c["adset_external_id"], "change": change,
+               "currency": c["currency"], "ceiling_minor": ceiling_minor,
+               "recommendation_id": rec["id"], "reason": rec["code"],
+               "snapshot_id": rec["snapshot_id"]}
+    pending = Pending.create("campaign.update", c["id"], payload, ledger=ledger,
+                             run_id=c["run_id"])
+    with transaction(conn):
+        pending.save(conn)
+        conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
+                     "VALUES (?, ?, ?, ?)",
+                     (pending.id, c["run_id"], canonical(payload).decode(), time.time()))
+        conn.execute("UPDATE recommendations SET status = 'requested', approval_id = ? "
+                     "WHERE id = ?", (pending.id, rec["id"]))
+    return pending, payload
+
+
+def update(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
+           payload: dict[str, Any], ceiling: int) -> dict[str, Any]:
+    """Execute a signed recommendation: one adapter call, receipts, the campaign row."""
+    v: Verified = executor.authorize(conn, verified, "campaign.update", payload)
+    c = campaign(conn, v.item_id)
+    change = payload.get("change") or {}
+    problem = ""
+    if c is None or [c["external_id"], c["adset_external_id"], c["adapter"],
+                     c["currency"]] != [payload.get("external_id"),
+                                        payload.get("adset_external_id"), adapter.name,
+                                        payload.get("currency")]:
+        problem = "campaign_changed"
+    elif change.get("kind") == "budget" and (
+            c["daily_budget_minor"] != change.get("from_minor")
+            or int(change.get("to_minor", 0)) > min(int(payload["ceiling_minor"]),
+                                                    to_minor(ceiling, c["currency"]))):
+        problem = "over_ceiling" if c["daily_budget_minor"] == change.get("from_minor") \
+            else "campaign_changed"
+    step = "update_budget" if change.get("kind") == "budget" else "update_status"
+    rec_status = "failed"
+    if problem:
+        executor.finish(conn, v, "failed", {"error": problem})
+        executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="update",
+                             status="rejected", details={"reason": problem})
+        _rec(conn, payload, rec_status)
+        raise BuyError(f"update refused: {problem}", problem)
+    try:
+        if change["kind"] == "budget":
+            adapter.update_budget(payload, v)
+        else:
+            adapter.pause(payload, v)
+    except Exception as exc:
+        executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step=step,
+                             status="error", details={"error": getattr(exc, "code", "")})
+        executor.finish(conn, v, "failed", {"error": getattr(exc, "code", "")})
+        _rec(conn, payload, rec_status)
+        raise
+    executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step=step, status="ok",
+                         details={"change": change["kind"], "reason": payload.get("reason", "")})
+    executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
+        "status": "ok", "change": change["kind"],
+        **({"daily_budget_minor": change["to_minor"]} if change["kind"] == "budget"
+           else {"object_status": PAUSED})})
+    with transaction(conn):
+        if change["kind"] == "budget":
+            conn.execute("UPDATE campaigns SET daily_budget_minor = ? WHERE id = ?",
+                         (int(change["to_minor"]), v.item_id))
+        else:
+            conn.execute("UPDATE campaigns SET status = 'PAUSED' WHERE id = ?", (v.item_id,))
+    _rec(conn, payload, "executed")
+    result = {"adapter": adapter.name, "campaign_item_id": v.item_id, "change": change}
+    executor.finish(conn, v, "done", result)
+    return result
+
+
+def _rec(conn: sqlite3.Connection, payload: dict[str, Any], status: str) -> None:
+    with transaction(conn):
+        conn.execute("UPDATE recommendations SET status = ? WHERE id = ?",
+                     (status, str(payload.get("recommendation_id", ""))))
+
+
 __all__ = ["AGENT", "BuyError", "PausedOnly", "activate", "campaign", "create",
            "request_activation"]

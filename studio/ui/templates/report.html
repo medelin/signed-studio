@@ -15,6 +15,36 @@
   {% endif %}
   <p class="status" id="report-status" role="status" aria-live="polite"></p>
 </section>
+<section class="panel" aria-labelledby="ms-h" id="measurement">
+  <h2 id="ms-h">{{ t("ms.title") }}</h2>
+  <p class="hint">{{ t("ms.lead") }}</p>
+  {% if logged_in and not read_only %}<button type="button" id="pull-insights">{{ t("ms.pull") }}</button>{% endif %}
+  <p class="status" id="ms-status" role="status" aria-live="polite"></p>
+  {% for m in measurement %}
+  <article class="card" aria-labelledby="ms-{{ m.id }}">
+    <h3 id="ms-{{ m.id }}"><code>{{ m.campaign_id }}</code> · {{ m.objective }} · {{ m.optimization_goal }}{% if m.provenance == 'synthetic' %} <span class="hint">({{ t("report.synthetic") }})</span>{% endif %}</h3>
+    <dl class="kv">
+      <dt>{{ t("ms.result") }}</dt><dd><code>{{ m.result }}</code>: {{ m.totals.results }}</dd>
+      <dt>{{ t("ms.cpr") }}</dt><dd>{{ m.totals.cost_per_result if m.totals.cost_per_result is not none else "—" }}</dd>
+      <dt>{{ t("ms.reach") }}</dt><dd>{{ m.totals.reach }} · {{ t("ms.frequency") }} {{ m.totals.frequency }}</dd>
+      <dt>{{ t("ms.spend") }}</dt><dd>{{ m.totals.spend }} · CPM {{ m.totals.cpm }} · CTR {{ m.totals.ctr }} % · {{ t("ms.link_clicks") }} {{ m.totals.inline_link_clicks }}</dd>
+      <dt>{{ t("ms.attribution") }}</dt><dd>{{ m.attribution_setting or "—" }} · {{ m.date_preset }}</dd>
+    </dl>
+    {% for name in ("placement", "age_gender", "region") %}{% if m.breakdowns[name] %}
+    <table class="receipts">
+      <caption class="hint">{{ t("ms.by." ~ name) }}</caption>
+      <thead><tr><th scope="col">{{ t("ms.segment") }}</th><th scope="col">{{ t("ms.spend") }}</th><th scope="col">{{ t("ms.result") }}</th><th scope="col">{{ t("ms.cpr") }}</th><th scope="col">{{ t("ms.frequency") }}</th></tr></thead>
+      <tbody>{% for r in m.breakdowns[name] %}<tr><td>{{ r.key }}</td><td>{{ r.spend }}</td><td>{{ r.results }}</td><td>{{ r.cost_per_result if r.cost_per_result is not none else "—" }}</td><td>{{ r.frequency }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% endif %}{% endfor %}
+    <h4>{{ t("ms.recs") }}</h4>
+    <ul>{% for r in m.recommendations %}<li data-rec="{{ r.id }}">{{ t("ms.rec." ~ r.code, **r.params) }}
+      {% if r.change %} <span class="hint">({{ t("ms.change.budget", frm=r.change.from_units, to=r.change.to_units, currency=r.change.currency) if r.change.kind == "budget" else t("ms.change.pause") }}; {{ tv("rec_status", r.status) }})</span>
+        {% if logged_in and not read_only and r.status == "open" %}<button type="button" data-act="execute" data-id="{{ r.id }}">{{ t("ms.execute") }}</button>{% endif %}{% endif %}</li>
+    {% else %}<li class="empty">{{ t("ms.no_recs") }}</li>{% endfor %}</ul>
+  </article>
+  {% else %}<p class="empty">{{ t("ms.empty") }}</p>{% endfor %}
+</section>
 {% if rep %}
 <section class="panel" aria-labelledby="counter-h">
   <h2 id="counter-h">{{ t("report.read", tokens="{:,}".format(rep.input_tokens)) }}</h2>

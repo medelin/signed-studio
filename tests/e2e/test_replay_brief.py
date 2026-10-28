@@ -51,7 +51,8 @@ def test_the_campaign_approval_signs_the_confirmed_brief(loop):
     assert confirmed["details"]["schema"] == "brief/v1"
     assert confirmed["details"]["open_questions"] == 0
     assert confirmed["details"]["answered"] == 1
-    (approval,) = [r for r in run if r["kind"] == "approval"]
+    (approval,) = [r for r in run if r["kind"] == "approval"
+                   and r["details"]["action"] == "campaign.create"]
     assert approval["details"]["brief_sha256"] == confirmed["details"]["brief_sha256"]
     conn = sqlite3.connect(tmp / "studio.db")
     stored = json.loads(conn.execute("SELECT brief_v1 FROM briefs WHERE run_id = ?",

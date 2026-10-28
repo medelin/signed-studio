@@ -33,7 +33,7 @@ from studio.pii import redact_digit_runs
 GENESIS = "0" * 64
 APPROVAL_TTL_S = 900  # an approval authorises one write within this many seconds of issue
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review",
-                   "brief.confirmed"})
+                   "brief.confirmed", "insights.snapshot"})
 BRIEF_KIND = "brief.confirmed"
 BRIEF_SCHEMA = "brief/v1"
 # Actions whose approval must sign the run's confirmed brief (``brief_sha256``) when the
@@ -48,6 +48,8 @@ EXTERNAL_STEPS: dict[str, frozenset[str]] = {
                                     "activate"}),
     "reply.post": frozenset({"reply.post"}),
     "comment.hide": frozenset({"comment.hide"}),
+    # a signed recommendation: a budget change or a pause; ``update`` is a refused one
+    "campaign.update": frozenset({"update_budget", "update_status", "update"}),
 }
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")

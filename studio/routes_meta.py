@@ -11,6 +11,13 @@
   route it sits behind the login gate, so it is reachable only where
   ``STUDIO_REQUIRE_LOGIN`` is off (the operator's machine, never the sandbox).
 
+- ``POST /api/insights/pull`` (session, same-origin, writable): an objective-aware insights
+  snapshot of every campaign (``insights.snapshot`` receipts) and fresh recommendations;
+  ``studio insights-pull`` does the same from the hourly timer.
+- ``POST /api/recommendations/{id}/approve`` (session, same-origin, writable): a pending
+  ``campaign.update`` approval for one executable recommendation; the owner signs it like
+  any other approval and only then does the executor change the budget or pause.
+
 ``register`` is called once by ``app.create_app`` after the adapter exists.
 """
 
@@ -29,7 +36,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from studio import leadads
-from studio.meta import objectives
+from studio.agents import media_buyer
+from studio.meta import measurement, objectives
 from studio.meta.adapter import AdapterError
 from studio.receipts import Ledger
 from studio.settings import Settings
@@ -37,6 +45,7 @@ from studio.settings import Settings
 Guard = Callable[[Request], "JSONResponse | str"]
 LOG = logging.getLogger("studio.meta")
 CHALLENGE = re.compile(r"\d{1,64}")
+REC_ID = re.compile(r"rc_[0-9a-f]{12}")
 
 
 def form_globals() -> dict[str, Any]:
@@ -70,6 +79,43 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             except Exception:  # noqa: BLE001 - leads are scored by rules without a model
                 return None
         return None
+
+    app.state.executors["campaign.update"] = (
+        lambda verified, payload: media_buyer.update(conn, ledger, app.state.adapter, verified,
+                                                     payload, settings.max_daily_budget))
+
+    @app.post("/api/insights/pull")
+    async def pull_insights(request: Request) -> Response:
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        try:
+            out = await run_in_threadpool(measurement.pull_all, conn, ledger,
+                                          app.state.adapter, settings.max_daily_budget)
+        except AdapterError as exc:
+            return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
+        return JSONResponse(out)
+
+    @app.get("/api/measurement")
+    def measurement_latest(request: Request) -> Response:
+        """The newest snapshot of every campaign and its recommendations (numbers only)."""
+        return JSONResponse({"campaigns": measurement.latest(conn)},
+                            headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/recommendations/{rec_id}/approve")
+    def approve_recommendation(rec_id: str, request: Request) -> Response:
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        if not REC_ID.fullmatch(rec_id):
+            return JSONResponse({"error": "not_found"}, 404)
+        try:
+            pending, payload = media_buyer.request_update(conn, ledger, rec_id,
+                                                          settings.max_daily_budget)
+        except media_buyer.BuyError as exc:
+            return JSONResponse({"error": exc.code}, 404 if exc.code == "not_found" else 409)
+        return JSONResponse({"approval_id": pending.id, "content": payload,
+                             "content_sha256": pending.content_sha256}, 201)
 
     @app.post("/api/leadforms/poll")
     async def poll_leads(request: Request) -> Response:

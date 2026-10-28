@@ -66,6 +66,17 @@ def _studio(env_file: Path) -> tuple[Any, Any, Any, Any]:
     return settings, conn, ledger, meta_adapter.make(settings, conn=conn)
 
 
+def insights_pull(env_file: Path) -> int:
+    """One ``insights.snapshot`` per campaign plus recommendations; prints counts only.
+    Executing a recommendation still needs the owner's signature in the studio."""
+    from studio.meta import measurement
+
+    settings, conn, ledger, adapter = _studio(env_file)
+    out = measurement.pull_all(conn, ledger, adapter, settings.max_daily_budget)
+    print(" ".join(f"{k}={v}" for k, v in out.items()))
+    return 0
+
+
 def leads_poll(env_file: Path) -> int:
     """New instant-form leads (``GET /{form_id}/leads``) → lead store → lead scorer; prints
     counts only."""
@@ -188,6 +199,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_leads = sub.add_parser("leads-poll", help="fetch new instant-form leads into the lead "
                              "store and scorer (read-only on Meta)")
     p_leads.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_ins = sub.add_parser("insights-pull", help="objective-aware insights snapshot of every "
+                           "campaign and fresh recommendations (read-only on Meta)")
+    p_ins.add_argument("--env-file", type=Path, default=Path(".env"))
     args = parser.parse_args(argv)
     try:
         if args.cmd == "smoke-live":
@@ -200,6 +214,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return cli_account.run(args)
         if args.cmd == "leads-poll":
             return leads_poll(args.env_file)
+        if args.cmd == "insights-pull":
+            return insights_pull(args.env_file)
     except (ConfigError, MuseError, ReadOnlyMode, UsageError, cli_account.UsageError, OSError,
             httpx.HTTPError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)

@@ -23,6 +23,7 @@ from studio.meta.adapter import (
     MOCK_PAGE,
     PAUSED,
     REPLY,
+    UPDATE,
     AdapterError,
     AdJob,
     NotApproved,
@@ -38,11 +39,13 @@ from studio.meta.adapter import (
     lead_form_of,
     lookalike_of,
     require,
+    update_of,
 )
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "meta"
 INSIGHTS = FIXTURES / "insights.SYNTHETIC.json"
 LEADS = FIXTURES / "leads.SYNTHETIC.json"
+INSIGHTS_FULL = FIXTURES / "insights_full.SYNTHETIC.json"
 
 
 def _id(prefix: str) -> str:
@@ -225,6 +228,33 @@ class MockAdapter:
         target = str(payload.get("external_id") or payload["comment_id"])
         self.hidden.add(target)
         self.calls.append(("hide", target))
+
+    def insights_report(self, object_id: str, fields: list[str],
+                        breakdowns: str = "") -> dict[str, Any]:
+        self.calls.append(("insights_report", object_id))
+        data = json.loads(INSIGHTS_FULL.read_text())
+        rows = data["breakdowns"][breakdowns] if breakdowns else data["total"]
+        keep = set(fields) | {"date_start", "date_stop", *breakdowns.split(",")} - {""}
+        return {"data": [{k: v for k, v in r.items() if k in keep} for r in rows],
+                "_provenance": "synthetic"}
+
+    def update_budget(self, payload: Mapping[str, Any], approval: Verified) -> None:
+        require(approval, UPDATE, payload, self._conn)
+        target, value = update_of(payload, "budget")
+        obj = self.objects.get(target)
+        if not obj or obj.get("type") != "adset":
+            raise AdapterError("unknown adset", code="not_found")
+        obj["daily_budget"] = value
+        self.calls.append(("update_budget", target))
+
+    def pause(self, payload: Mapping[str, Any], approval: Verified) -> None:
+        require(approval, UPDATE, payload, self._conn)
+        target, _ = update_of(payload, "status")
+        obj = self.objects.get(target)
+        if not obj or obj.get("type") != "campaign":
+            raise AdapterError("unknown campaign", code="not_found")
+        obj["status"] = PAUSED
+        self.calls.append(("pause", target))
 
     def insights(self, campaign_id: str = "") -> dict[str, Any]:
         self.calls.append(("insights", campaign_id))

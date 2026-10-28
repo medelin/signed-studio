@@ -47,7 +47,7 @@ def test_studio_verify_passes_on_the_replayed_export(loop):
     kinds = {r["kind"] for r in receipts}
     assert {"model_call", "tool_call", "review", "approval", "external_write"} <= kinds
     writes = [r["details"]["action"] for r in receipts if r["kind"] == "external_write"]
-    assert sorted(writes) == ["campaign.create", "reply.post"]
+    assert sorted(writes) == ["campaign.create", "campaign.update", "reply.post"]
     providers = {r["provider"] for r in receipts if r["kind"] == "model_call"}
     assert providers == {"meta-model-api-replay", "baseten-replay"}  # labelled as a replay
     reviews = [r for r in receipts if r["kind"] == "review"]

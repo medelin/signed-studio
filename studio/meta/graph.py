@@ -45,6 +45,7 @@ from studio.meta.adapter import (
     HIDE,
     PAUSED,
     REPLY,
+    UPDATE,
     AdapterError,
     AdJob,
     NotApproved,
@@ -60,6 +61,7 @@ from studio.meta.adapter import (
     lead_form_of,
     lookalike_of,
     require,
+    update_of,
 )
 from studio.meta.preview import from_graph_body
 
@@ -348,6 +350,29 @@ class GraphAdapter:
         if body.get("success") is not True:
             raise AdapterError("Graph API did not confirm the activation",
                                code="bad_response")
+
+    def insights_report(self, object_id: str, fields: list[str],
+                        breakdowns: str = "") -> dict[str, Any]:
+        """Objective-aware insights (``measurement.FIELDS``), unified attribution."""
+        params = {"fields": ",".join(fields), "date_preset": "last_7d",
+                  "use_unified_attribution_setting": "true", "limit": "100"}
+        if breakdowns:
+            params["breakdowns"] = breakdowns
+        return self._request("GET", f"{_oid(object_id)}/insights", params=params)
+
+    def update_budget(self, payload: Mapping[str, Any], approval: Verified) -> None:
+        require(approval, UPDATE, payload, self._conn)
+        target, value = update_of(payload, "budget")
+        body = self._post(_oid(target), {"daily_budget": str(value)})
+        if body.get("success") is not True:
+            raise AdapterError("Graph API did not confirm the budget", code="bad_response")
+
+    def pause(self, payload: Mapping[str, Any], approval: Verified) -> None:
+        require(approval, UPDATE, payload, self._conn)
+        target, value = update_of(payload, "status")
+        body = self._post(_oid(target), {"status": value})
+        if body.get("success") is not True:
+            raise AdapterError("Graph API did not confirm the pause", code="bad_response")
 
     def insights(self, campaign_id: str) -> dict[str, Any]:
         return self._request("GET", f"{_oid(campaign_id)}/insights", params={

@@ -182,6 +182,18 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
             step("signed campaign.create", executed=out["executed"],
                  campaign=campaign.get("status", "-"), adapter=campaign.get("adapter", "-"))
 
+        if campaign:
+            pulled = c.post("/api/insights/pull", json={}).json()
+            snaps = c.get("/api/measurement").json().get("campaigns", [])
+            recs = [r for s in snaps for r in s["recommendations"] if r.get("change")]
+            step("insights snapshot", campaigns=pulled.get("campaigns", 0),
+                 recommendations=pulled.get("recommendations", 0))
+            if recs:
+                req = c.post(f"/api/recommendations/{recs[0]['id']}/approve", json={}).json()
+                done = _sign(c, key, approver, req["approval_id"])
+                step("signed campaign.update", reason=recs[0]["code"],
+                     executed=done["executed"])
+
         t = c.post(f"/api/comments/{meta['reply_comment']}/triage").json()
         triage = t.get("triage") or {}
         step("triaged comment", intent=triage.get("intent", "-"), risk=triage.get("risk", "-"),

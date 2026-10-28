@@ -27,6 +27,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from studio.agents import analyst
+from studio.meta import measurement
 from studio.muse.client import MuseError
 from studio.muse.vision import strip_metadata
 from studio.receipts import Ledger
@@ -69,7 +70,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "seq": ledger.seq(), "epoch": ledger.epoch,
             "logged_in": session_of(request) is not None,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
-            "rep": view(request),
+            "rep": view(request), "measurement": measurement.latest(conn),
         })
 
     @app.get("/api/reports/latest")
@@ -109,7 +110,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 cap = min(cap, muse.budget.remaining())
             out = await run_in_threadpool(partial(
                 analyst.report, muse, ledger.export_jsonl(), insights(), shot, run_id=run_id,
-                summary=analyst.inbox_summary(conn), max_cost_usd=cap))
+                summary={**analyst.inbox_summary(conn),
+                         "measurement": measurement.summary(conn)}, max_cost_usd=cap))
             report_id = analyst.save(conn, ledger, run_id, out)
         except analyst.ContextTooLarge:
             return JSONResponse({"error": "context_too_large"}, 413)

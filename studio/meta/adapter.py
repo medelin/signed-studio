@@ -34,6 +34,7 @@ from studio.meta import objectives
 from studio.receipts import canonical, sha256_hex
 
 PAUSED: Final = "PAUSED"
+UPDATE: Final = "campaign.update"
 MOCK_PAGE: Final = "mock-page"  # the mock adapter's Page (no Meta Page exists in the sandbox)
 CREATE, ACTIVATE, REPLY, HIDE = ("campaign.create", "campaign.activate", "reply.post",
                                  "comment.hide")
@@ -177,6 +178,17 @@ class Adapter(Protocol):
 
     def insights(self, campaign_id: str) -> dict[str, Any]: ...
 
+    def insights_report(self, object_id: str, fields: list[str],
+                        breakdowns: str = "") -> dict[str, Any]:
+        """``GET /{id}/insights`` (last 7 days, unified attribution), optionally by
+        ``breakdowns``."""
+
+    def update_budget(self, payload: Mapping[str, Any], approval: Verified) -> None:
+        """``POST /{adset_id} daily_budget=…`` from a signed ``campaign.update``."""
+
+    def pause(self, payload: Mapping[str, Any], approval: Verified) -> None:
+        """``POST /{campaign_id} status=PAUSED`` from a signed ``campaign.update``."""
+
 
 def activation_levels(payload: Mapping[str, Any]) -> list[str]:
     """``ad``, then every further ad the signed payload names (``ad_2`` …), then the ad
@@ -200,6 +212,26 @@ def activation_target(level: str, payload: Mapping[str, Any]) -> str:
     if not isinstance(value, str) or not value:
         raise NotApproved(f"the signed activation names no {level}")
     return value
+
+
+def update_of(payload: Mapping[str, Any], kind: str) -> tuple[str, Any]:
+    """``(external id, value)`` of a signed ``campaign.update``: a budget for the ad set,
+    or PAUSED for the campaign; anything else is refused."""
+    change = payload.get("change")
+    if not isinstance(change, Mapping) or change.get("kind") != kind:
+        raise NotApproved(f"the signed update is not a {kind} change")
+    if kind == "budget":
+        target, value = payload.get("adset_external_id"), change.get("to_minor")
+        if not isinstance(value, int) or isinstance(value, bool) or not 0 < value <= int(
+                payload.get("ceiling_minor", 0)):
+            raise NotApproved("the signed budget is not within the ceiling")
+    else:
+        target, value = payload.get("external_id"), change.get("status")
+        if value != PAUSED:
+            raise PausedOnly("a recommendation can only pause; activation is its own approval")
+    if not isinstance(target, str) or not target:
+        raise NotApproved("the signed update names no object")
+    return target, value
 
 
 def delivery_of(payload: Mapping[str, Any], page_id: str | None = None) -> dict[str, Any]:

@@ -1,0 +1,1102 @@
+{
+ "_provenance": "synthetic",
+ "_synthetic": true,
+ "_note": "Hand-made insights in the shape of the Marketing API v25.0 /{campaign_id}/insights response (fields results, cost_per_result, impressions, reach, frequency, spend, cpm, ctr, inline_link_clicks, actions, cost_per_action_type, attribution_setting; breakdowns age,gender / publisher_platform,platform_position / region). Every objective's result action carries the same count so one fixture serves all objectives. Not real ad data.",
+ "total": [
+  {
+   "impressions": "15400",
+   "reach": "9800",
+   "frequency": "1.57",
+   "spend": "98.40",
+   "cpm": "6.39",
+   "ctr": "1.50",
+   "inline_link_clicks": "231",
+   "estimated_ad_recallers": "1176",
+   "actions": [
+    {
+     "action_type": "link_click",
+     "value": "120"
+    },
+    {
+     "action_type": "landing_page_view",
+     "value": "120"
+    },
+    {
+     "action_type": "post_engagement",
+     "value": "120"
+    },
+    {
+     "action_type": "onsite_conversion.messaging_conversation_started_7d",
+     "value": "120"
+    },
+    {
+     "action_type": "rsvp",
+     "value": "120"
+    },
+    {
+     "action_type": "lead",
+     "value": "120"
+    },
+    {
+     "action_type": "offsite_conversion.fb_pixel_lead",
+     "value": "120"
+    },
+    {
+     "action_type": "mobile_app_install",
+     "value": "120"
+    },
+    {
+     "action_type": "offsite_conversion.fb_pixel_purchase",
+     "value": "120"
+    }
+   ],
+   "cost_per_action_type": [
+    {
+     "action_type": "link_click",
+     "value": "0.82"
+    },
+    {
+     "action_type": "landing_page_view",
+     "value": "0.82"
+    },
+    {
+     "action_type": "post_engagement",
+     "value": "0.82"
+    },
+    {
+     "action_type": "onsite_conversion.messaging_conversation_started_7d",
+     "value": "0.82"
+    },
+    {
+     "action_type": "rsvp",
+     "value": "0.82"
+    },
+    {
+     "action_type": "lead",
+     "value": "0.82"
+    },
+    {
+     "action_type": "offsite_conversion.fb_pixel_lead",
+     "value": "0.82"
+    },
+    {
+     "action_type": "mobile_app_install",
+     "value": "0.82"
+    },
+    {
+     "action_type": "offsite_conversion.fb_pixel_purchase",
+     "value": "0.82"
+    }
+   ],
+   "attribution_setting": "7d_click_1d_view",
+   "date_start": "2026-10-21",
+   "date_stop": "2026-10-27"
+  }
+ ],
+ "breakdowns": {
+  "age,gender": [
+   {
+    "impressions": "4100",
+    "reach": "2700",
+    "frequency": "1.52",
+    "spend": "27.10",
+    "cpm": "6.61",
+    "ctr": "1.71",
+    "inline_link_clicks": "70",
+    "estimated_ad_recallers": "324",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "38"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "38"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "38"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "38"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "38"
+     },
+     {
+      "action_type": "lead",
+      "value": "38"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "38"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "38"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "38"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.71"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.71"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.71"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.71"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.71"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.71"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.71"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.71"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.71"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "age": "25-34",
+    "gender": "female"
+   },
+   {
+    "impressions": "3900",
+    "reach": "2500",
+    "frequency": "1.56",
+    "spend": "25.30",
+    "cpm": "6.49",
+    "ctr": "1.56",
+    "inline_link_clicks": "61",
+    "estimated_ad_recallers": "300",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "33"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "33"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "33"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "33"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "33"
+     },
+     {
+      "action_type": "lead",
+      "value": "33"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "33"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "33"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "33"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.77"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.77"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.77"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.77"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.77"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.77"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.77"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.77"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.77"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "age": "25-34",
+    "gender": "male"
+   },
+   {
+    "impressions": "4300",
+    "reach": "2800",
+    "frequency": "1.54",
+    "spend": "26.00",
+    "cpm": "6.05",
+    "ctr": "1.35",
+    "inline_link_clicks": "58",
+    "estimated_ad_recallers": "336",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "30"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "30"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "30"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "30"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "30"
+     },
+     {
+      "action_type": "lead",
+      "value": "30"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "30"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "30"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "30"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.87"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.87"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.87"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.87"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.87"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.87"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.87"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.87"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.87"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "age": "35-44",
+    "gender": "female"
+   },
+   {
+    "impressions": "3100",
+    "reach": "1900",
+    "frequency": "1.63",
+    "spend": "20.00",
+    "cpm": "6.45",
+    "ctr": "1.35",
+    "inline_link_clicks": "42",
+    "estimated_ad_recallers": "228",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "19"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "19"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "19"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "19"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "19"
+     },
+     {
+      "action_type": "lead",
+      "value": "19"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "19"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "19"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "19"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "1.05"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "1.05"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "1.05"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "1.05"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "1.05"
+     },
+     {
+      "action_type": "lead",
+      "value": "1.05"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "1.05"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "1.05"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "1.05"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "age": "35-44",
+    "gender": "male"
+   }
+  ],
+  "publisher_platform,platform_position": [
+   {
+    "impressions": "7200",
+    "reach": "5200",
+    "frequency": "1.38",
+    "spend": "40.10",
+    "cpm": "5.57",
+    "ctr": "1.78",
+    "inline_link_clicks": "128",
+    "estimated_ad_recallers": "624",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "70"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "70"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "70"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "70"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "70"
+     },
+     {
+      "action_type": "lead",
+      "value": "70"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "70"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "70"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "70"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.57"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.57"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.57"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.57"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.57"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.57"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.57"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.57"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.57"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "publisher_platform": "facebook",
+    "platform_position": "feed"
+   },
+   {
+    "impressions": "4300",
+    "reach": "3100",
+    "frequency": "1.39",
+    "spend": "24.20",
+    "cpm": "5.63",
+    "ctr": "1.53",
+    "inline_link_clicks": "66",
+    "estimated_ad_recallers": "372",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "36"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "36"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "36"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "36"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "36"
+     },
+     {
+      "action_type": "lead",
+      "value": "36"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "36"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "36"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "36"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.67"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.67"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.67"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.67"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.67"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.67"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.67"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.67"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.67"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "publisher_platform": "instagram",
+    "platform_position": "stream"
+   },
+   {
+    "impressions": "2400",
+    "reach": "1900",
+    "frequency": "1.26",
+    "spend": "25.60",
+    "cpm": "10.67",
+    "ctr": "1.00",
+    "inline_link_clicks": "24",
+    "estimated_ad_recallers": "228",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "8"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "8"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "8"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "8"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "8"
+     },
+     {
+      "action_type": "lead",
+      "value": "8"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "8"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "8"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "8"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "3.20"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "3.20"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "3.20"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "3.20"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "3.20"
+     },
+     {
+      "action_type": "lead",
+      "value": "3.20"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "3.20"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "3.20"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "3.20"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "publisher_platform": "instagram",
+    "platform_position": "story"
+   },
+   {
+    "impressions": "1500",
+    "reach": "1200",
+    "frequency": "1.25",
+    "spend": "8.50",
+    "cpm": "5.67",
+    "ctr": "0.87",
+    "inline_link_clicks": "13",
+    "estimated_ad_recallers": "144",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "6"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "6"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "6"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "6"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "6"
+     },
+     {
+      "action_type": "lead",
+      "value": "6"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "6"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "6"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "6"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "1.42"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "1.42"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "1.42"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "1.42"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "1.42"
+     },
+     {
+      "action_type": "lead",
+      "value": "1.42"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "1.42"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "1.42"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "1.42"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "publisher_platform": "audience_network",
+    "platform_position": "classic"
+   }
+  ],
+  "region": [
+   {
+    "impressions": "6100",
+    "reach": "4000",
+    "frequency": "1.52",
+    "spend": "39.00",
+    "cpm": "6.39",
+    "ctr": "1.56",
+    "inline_link_clicks": "95",
+    "estimated_ad_recallers": "480",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "50"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "50"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "50"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "50"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "50"
+     },
+     {
+      "action_type": "lead",
+      "value": "50"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "50"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "50"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "50"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.78"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.78"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.78"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.78"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.78"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.78"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.78"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.78"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.78"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "region": "Mazowieckie"
+   },
+   {
+    "impressions": "5200",
+    "reach": "3300",
+    "frequency": "1.58",
+    "spend": "33.40",
+    "cpm": "6.42",
+    "ctr": "1.54",
+    "inline_link_clicks": "80",
+    "estimated_ad_recallers": "396",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "41"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "41"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "41"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "41"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "41"
+     },
+     {
+      "action_type": "lead",
+      "value": "41"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "41"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "41"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "41"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.81"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.81"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.81"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.81"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.81"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.81"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.81"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.81"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.81"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "region": "Małopolskie"
+   },
+   {
+    "impressions": "4100",
+    "reach": "2500",
+    "frequency": "1.64",
+    "spend": "26.00",
+    "cpm": "6.34",
+    "ctr": "1.37",
+    "inline_link_clicks": "56",
+    "estimated_ad_recallers": "300",
+    "actions": [
+     {
+      "action_type": "link_click",
+      "value": "29"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "29"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "29"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "29"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "29"
+     },
+     {
+      "action_type": "lead",
+      "value": "29"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "29"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "29"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "29"
+     }
+    ],
+    "cost_per_action_type": [
+     {
+      "action_type": "link_click",
+      "value": "0.90"
+     },
+     {
+      "action_type": "landing_page_view",
+      "value": "0.90"
+     },
+     {
+      "action_type": "post_engagement",
+      "value": "0.90"
+     },
+     {
+      "action_type": "onsite_conversion.messaging_conversation_started_7d",
+      "value": "0.90"
+     },
+     {
+      "action_type": "rsvp",
+      "value": "0.90"
+     },
+     {
+      "action_type": "lead",
+      "value": "0.90"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_lead",
+      "value": "0.90"
+     },
+     {
+      "action_type": "mobile_app_install",
+      "value": "0.90"
+     },
+     {
+      "action_type": "offsite_conversion.fb_pixel_purchase",
+      "value": "0.90"
+     }
+    ],
+    "attribution_setting": "7d_click_1d_view",
+    "date_start": "2026-10-21",
+    "date_stop": "2026-10-27",
+    "region": "Śląskie"
+   }
+  ]
+ }
+}
