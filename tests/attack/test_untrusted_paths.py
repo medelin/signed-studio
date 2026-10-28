@@ -77,7 +77,44 @@ def _reviewer(client):
     return "ad_copy", None
 
 
+def _copy_reply():
+    v = {"primary_text": "Hand-thrown mug", "headline": "h", "description": "d",
+         "cta": "SHOP_NOW"}
+    return {"variants": [v] * 3, "risks": []}
+
+
+def _copywriter(client):
+    from studio.agents import copywriter
+    from studio.agents.schemas import Angle
+    angle = Angle(name="Morning", hook="First coffee", persona="home office")
+    copywriter.write(client, angle, "home office", run_id="p5", brief=CANARY,
+                     brief_source="transcript")
+    return "transcript", None
+
+
+def _plan_reply():
+    return {"audience": "a", "angles": [{"name": f"a{i}", "hook": "h", "persona": "p"}
+                                        for i in range(3)],
+            "budget_pln_daily": 30, "placements": ["feed_4x5"], "tasks": ["t"]}
+
+
+def _producer(client):
+    import tempfile
+
+    from studio import db
+    from studio.agents import producer
+    with tempfile.TemporaryDirectory() as tmp:
+        conn = db.connect(Path(tmp) / "s.db")
+        db.init(conn)
+        ctx = producer.Context(client=client, open_client=None, conn=conn, photo_png=b"",
+                               concept="mug", data_dir=Path(tmp), brief_source="transcript")
+        producer.make_plan(ctx, CANARY, "p6")
+    return "transcript", None
+
+
 PATHS = {
+    "studio/agents/copywriter.py": (_copywriter, lambda: _chat(_copy_reply())),
+    "studio/agents/producer.py": (_producer, lambda: _chat(_plan_reply())),
     "studio/agents/community.py": (_community, lambda: _chat(_triage_reply())),
     "studio/agents/lead_scorer.py": (_lead, lambda: _chat(_score_reply())),
     "studio/agents/analyst.py": (_analyst, _report_reply),
