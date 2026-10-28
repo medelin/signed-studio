@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,6 +34,54 @@ MAX_SIDE = 1024  # reviewers see a downscaled copy: enough for policy, fewer ima
 _RANK = {"OK": 0, "WARN": 1, "BLOCK": 2}
 _SEVERITY_FLOOR = {"info": "OK", "warn": "WARN", "block": "BLOCK"}
 _RULE = re.compile(r"\bP\d+\b")
+
+# P9, checked by code as well as by both models: claims of registering companies or
+# providing official documents, and absolute tax/legal promises. Patterns run on
+# lower-case text with diacritics removed (``załóż spółkę`` → ``zaloz spolke``).
+P9_POLICIES = ('Google Ads policies "Government documents and official services" and '
+               '"Exaggerated or inaccurate claims"')
+_P9 = [re.compile(p) for p in (
+    r"\bregist(?:er|ering|ration)\b.{0,30}\b(?:compan|business|ltd|limited|spolk|firm)",
+    r"\b(?:compan(?:y|ies)|business|ltd)\s+(?:registration|formation)\b",
+    r"\brejestracj\w*\s+(?:spolk|firm|dzialalnos)",
+    r"\b(?:zaloz|zalozymy|zalozysz|zarejestruj)\w*\s+(?:\w+\s+)?(?:spolk|firm|dzialalnos)",
+    r"\b(?:official|government)\b.{0,25}\b(?:registration|documents?|filing|services?)\b",
+    r"\bfile\b.{0,30}\bgovernment\b",
+    r"\burzedow\w*\s+dokument|\bdokument\w*\s+urzedow",
+    r"\b(?:no|zero|bez)\s+zus\b|\bzus\s+obligation|\bnie\s+placisz\s+zus",
+    r"\bpay\s+no\s+tax|\bno\s+tax(?:es)?\b|\btax[- ]free\b|\bstop\s+paying\s+"
+    r"(?:tax|contributions|zus)",
+    r"\bzero\s+(?:tax|podatk)|\bbez\s+podatk|\bnie\s+placisz\s+podatk",
+    r"\b(?:100\s?%|fully|completely|guaranteed)\s+legal\b",
+)]
+
+
+def _fold(text: str) -> str:
+    text = unicodedata.normalize("NFKD", text.replace("ł", "l").replace("Ł", "L"))
+    return "".join(c for c in text if not unicodedata.combining(c)).lower()
+
+
+def policy_net(copy: CopyVariant) -> list[Finding]:
+    """P9 findings the code is sure of (one per matched phrase, at most three)."""
+    text = _fold(" | ".join((copy.headline, copy.primary_text, copy.description)))
+    hits: list[str] = []
+    for pattern in _P9:
+        for m in pattern.finditer(text):
+            if m.group() not in hits:
+                hits.append(m.group())
+    return [Finding(rule="P9", severity="block",
+                    evidence=f"code check: matched {h[:80]!r} ({P9_POLICIES})")
+            for h in hits[:3]]
+
+
+def with_policy_net(review: Review, copy: CopyVariant) -> Review:
+    """The model's review plus the code's P9 findings (unless the model already cited
+    P9 at block); the verdict is raised accordingly."""
+    net = policy_net(copy)
+    if not net or any(f.rule == "P9" and f.severity == "block" for f in review.findings):
+        return review
+    return normalize(Review(verdict=review.verdict, findings=[*review.findings, *net],
+                            summary=review.summary))
 
 
 @dataclass(frozen=True)
@@ -153,12 +202,13 @@ def run(
     run_id: str,
 ) -> Reconciled:
     """Both reviews, reconciled, plus one ``review`` receipt with the outcome."""
-    primary = review(client, image_png, copy, run_id=run_id)
+    primary = with_policy_net(review(client, image_png, copy, run_id=run_id), copy)
     second: Review | None = None
     status = "unavailable"
     if open_client is not None and open_client.available():
         try:
-            second = second_opinion(open_client, image_png, copy, run_id=run_id)
+            second = with_policy_net(
+                second_opinion(open_client, image_png, copy, run_id=run_id), copy)
             status = "available"
         except MuseError:
             status = "failed"  # the failed call has its own receipt; the primary stands
@@ -168,7 +218,8 @@ def run(
         output_sha256=sha256_hex(canonical(result.as_dict())),
         details={"verdict": result.verdict, "second_opinion": result.second_status,
                  "disagreements": len(result.disagreements),
-                 "rules": sorted({f.rule for f in primary.findings})},
+                 "rules": sorted({f.rule for f in primary.findings}),
+                 "policy_net": sorted({f.rule for f in policy_net(copy)})},
     )
     return result
 
