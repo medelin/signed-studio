@@ -54,6 +54,30 @@ class UsageError(Exception):
     pass
 
 
+def _studio(env_file: Path) -> tuple[Any, Any, Any, Any]:
+    """``(settings, conn, ledger, adapter)`` of the configured studio (its database and
+    ledger key under ``STUDIO_DATA_DIR``)."""
+    from studio import db
+    from studio.meta import adapter as meta_adapter
+
+    settings = Settings.load(env_file=env_file)
+    conn = db.connect(settings.data_dir / "studio.db")
+    ledger = db.open_ledger(conn, settings.data_dir / "ledger.key")
+    return settings, conn, ledger, meta_adapter.make(settings, conn=conn)
+
+
+def leads_poll(env_file: Path) -> int:
+    """New instant-form leads (``GET /{form_id}/leads``) → lead store → lead scorer; prints
+    counts only."""
+    from studio import leadads
+
+    settings, conn, ledger, adapter = _studio(env_file)
+    client = MuseClient.from_settings(settings, ledger) if settings.model_available else None
+    out = leadads.poll(conn, ledger, adapter, client)
+    print(" ".join(f"{k}={v}" for k, v in out.items()))
+    return 0
+
+
 def _pubkey(hex_value: str) -> Ed25519PublicKey:
     try:
         raw = bytes.fromhex(hex_value.strip())
@@ -161,6 +185,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_demo.add_argument("--env-file", type=Path, default=Path(".env"))
     p_demo.add_argument("--max-cost", type=float, default=0.40, help="USD cap for --record")
     cli_account.add_parser(sub)
+    p_leads = sub.add_parser("leads-poll", help="fetch new instant-form leads into the lead "
+                             "store and scorer (read-only on Meta)")
+    p_leads.add_argument("--env-file", type=Path, default=Path(".env"))
     args = parser.parse_args(argv)
     try:
         if args.cmd == "smoke-live":
@@ -171,6 +198,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_demo(args)
         if args.cmd == "account":
             return cli_account.run(args)
+        if args.cmd == "leads-poll":
+            return leads_poll(args.env_file)
     except (ConfigError, MuseError, ReadOnlyMode, UsageError, cli_account.UsageError, OSError,
             httpx.HTTPError, ValueError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)

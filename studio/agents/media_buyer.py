@@ -1,7 +1,9 @@
 """Media buyer (executor, not a model): turns a signed approval into PAUSED Meta objects.
 
 - ``create``: on a consumed ``campaign.create`` approval → upload the approved hero image →
-  campaign → ad set → creative → ad, all PAUSED → preview. One ``tool_call`` receipt per
+  campaign → ad set → (the instant form, for an instant-form lead objective) → creative →
+  ad, all PAUSED → preview. The objective mapping is the signed ``delivery`` block, and
+  its hash must be the approval's ``spec_sha256``. One ``tool_call`` receipt per
   adapter call and one ``external_write`` receipt (``approval_id``, ``action``,
   ``item_id``, content hash) for the approved write, so ``studio verify`` links it to the
   signature. The receipt and the ``campaigns`` row are written before the preview; a
@@ -25,10 +27,11 @@ import json
 import sqlite3
 import time
 from dataclasses import asdict
+from functools import partial
 from pathlib import Path
 from typing import Any
 
-from studio import executor
+from studio import executor, leadads
 from studio.approvals import Pending, Verified, confirmed_brief, transaction
 from studio.meta.adapter import (
     ACTIVATION_KEYS,
@@ -102,7 +105,12 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         image_hash = step("image", adapter.upload_image, png, payload, v)
         campaign_id = step("campaign", adapter.create_campaign_paused, payload, v)
         adset_id = step("adset", adapter.create_adset_paused, campaign_id, payload, v)
-        creative_id = step("creative", adapter.create_creative, image_hash, payload, v)
+        form_id = ""
+        if spec["creative"] == "lead_form":
+            form_id = step("lead_form", adapter.create_lead_form, payload, v)
+            leadads.record_form(conn, form_id, v.item_id, v.run_id, adapter.name)
+        creative_id = step("creative", partial(adapter.create_creative, form_id=form_id),
+                           image_hash, payload, v)
         ad_id = step("ad", adapter.create_ad_paused, adset_id, creative_id, payload, v)
     except Exception as exc:
         failure = {"status": "partial" if created else "failed", "created": created,

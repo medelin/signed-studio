@@ -1,22 +1,42 @@
-"""Meta features beyond the campaign itself: template data for the objective form.
+"""Meta features beyond the campaign itself.
+
+- Template data for the objective form (``form_globals``).
+- ``POST /api/leadforms/poll`` (session, same-origin, writable): fetch new leads of every
+  instant form this studio created (``leadads.poll``) into the lead store and scorer.
+- ``GET /api/meta/webhook``: Meta's subscription check (``hub.verify_token`` must equal
+  ``META_WEBHOOK_VERIFY_TOKEN``; the ``hub.challenge`` digits are echoed).
+- ``POST /api/meta/webhook``: a Page ``leadgen`` event. Refused (403) unless its
+  ``X-Hub-Signature-256`` verifies with ``META_APP_SECRET``; only forms this studio
+  created, on its own Page, are fetched (``GET /{lead_id}``) and ingested. Like every
+  route it sits behind the login gate, so it is reachable only where
+  ``STUDIO_REQUIRE_LOGIN`` is off (the operator's machine, never the sandbox).
 
 ``register`` is called once by ``app.create_app`` after the adapter exists.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import re
+import secrets
 from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from studio import leadads
 from studio.meta import objectives
+from studio.meta.adapter import AdapterError
 from studio.receipts import Ledger
 from studio.settings import Settings
 
 Guard = Callable[[Request], "JSONResponse | str"]
+LOG = logging.getLogger("studio.meta")
+CHALLENGE = re.compile(r"\d{1,64}")
 
 
 def form_globals() -> dict[str, Any]:
@@ -42,3 +62,61 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
              write_guard: Guard, templates: Jinja2Templates,
              session_of: Callable[[Request], str | None]) -> None:
     templates.env.globals.update(form_globals())
+
+    def client() -> Any:
+        if app.state.muse is not None or settings.model_available:
+            try:
+                return app.state.clients()[0]
+            except Exception:  # noqa: BLE001 - leads are scored by rules without a model
+                return None
+        return None
+
+    @app.post("/api/leadforms/poll")
+    async def poll_leads(request: Request) -> Response:
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        try:
+            out = await run_in_threadpool(leadads.poll, conn, ledger, app.state.adapter,
+                                          client())
+        except AdapterError as exc:
+            return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
+        return JSONResponse(out)
+
+    @app.get("/api/meta/webhook")
+    def webhook_check(request: Request) -> Response:
+        q = request.query_params
+        token = settings.meta_webhook_verify_token
+        challenge = q.get("hub.challenge", "")
+        if (q.get("hub.mode") != "subscribe" or not token or not CHALLENGE.fullmatch(challenge)
+                or not secrets.compare_digest(q.get("hub.verify_token", ""), token)):
+            return JSONResponse({"error": "webhook_refused"}, 403)
+        return PlainTextResponse(challenge)
+
+    @app.post("/api/meta/webhook")
+    async def webhook(request: Request) -> Response:
+        body = await request.body()
+        if not leadads.verify_signature(body, request.headers.get("x-hub-signature-256"),
+                                        settings.meta_app_secret):
+            return JSONResponse({"error": "webhook_refused"}, 403)
+        try:
+            event = json.loads(body)
+        except ValueError:
+            return JSONResponse({"error": "webhook_refused"}, 400)
+        adapter = app.state.adapter
+
+        def ingest() -> int:
+            n = 0
+            for change in leadads.leadgen_changes(event):
+                if (change["page_id"] and change["page_id"] != adapter.page_id) or \
+                        not leadads.known_form(conn, change["form_id"], adapter.name):
+                    continue  # not a form this studio made, on its own Page
+                try:
+                    lead = adapter.get_lead(change["leadgen_id"])
+                except AdapterError as exc:
+                    LOG.warning("leadgen fetch failed: %s", exc.code)
+                    continue
+                n += leadads.ingest(conn, ledger, client(), lead, via="webhook") is not None
+            return n
+
+        return JSONResponse({"received": await run_in_threadpool(ingest)})

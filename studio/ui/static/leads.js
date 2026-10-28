@@ -3,6 +3,18 @@
 
 (() => {
   const st = document.getElementById("leads-status");
+  const poll = document.getElementById("poll-leads");
+  if (poll) {
+    poll.addEventListener("click", async () => {
+      poll.disabled = true;
+      st.textContent = T("polling");
+      const r = await Signer.postJSON("/api/leadforms/poll", {});
+      poll.disabled = false;
+      if (!r.ok) { st.textContent = T("polling_failed", { error: E(r.data, r.status) }); return; }
+      st.textContent = T("polled", { forms: r.data.forms, n: r.data.new });
+      if (r.data.new) setTimeout(() => location.reload(), 800);
+    });
+  }
   for (const card of document.querySelectorAll(".lead")) {
     const btn = card.querySelector("button[data-act=score]");
     if (!btn) continue;

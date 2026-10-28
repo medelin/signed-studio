@@ -1,0 +1,23 @@
+{
+  "_provenance": "synthetic",
+  "_synthetic": true,
+  "_note": "Hand-written, NOT a recording: request paths, fields and response shapes follow the Graph API v25.0 reference pages for Page leadgen_forms (create), lead ads retrieval (GET /{form_id}/leads with field_data, filtering on time_created) and the Lead node (GET /{lead_id}), read on 2026-10-28. Ids are made up; people are fictional (e-mails @example.com, phones +48 000 000 xxx). Replace with a recording from the live smoke.",
+  "create_form": [
+    {"request": {"method": "POST", "path": "/v25.0/600000000000001/leadgen_forms"},
+     "response": {"status": 200, "json": {"id": "130000000000000505"}}}
+  ],
+  "leads": [
+    {"request": {"method": "GET", "path": "/v25.0/130000000000000505/leads"},
+     "response": {"status": 200, "json": {"data": [
+       {"id": "140000000000000601", "created_time": "2026-10-28T09:12:00+0000", "ad_id": "120200000000000404", "form_id": "130000000000000505",
+        "field_data": [{"name": "full_name", "values": ["Demo Lead One"]}, {"name": "email", "values": ["one@example.com"]}, {"name": "phone_number", "values": ["+48 000 000 101"]}]},
+       {"id": "140000000000000602", "created_time": "2026-10-28T11:40:00+0000", "ad_id": "120200000000000404", "form_id": "130000000000000505",
+        "field_data": [{"name": "full_name", "values": ["Demo Lead Two"]}, {"name": "company_name", "values": ["Demo Office"]}]}],
+       "paging": {"cursors": {"before": "QVFIUmRlbW8", "after": "QVFIUmRlbW8"}}}}}
+  ],
+  "lead": [
+    {"request": {"method": "GET", "path": "/v25.0/140000000000000602"},
+     "response": {"status": 200, "json": {"id": "140000000000000602", "created_time": "2026-10-28T11:40:00+0000", "form_id": "130000000000000505",
+       "field_data": [{"name": "full_name", "values": ["Demo Lead Two"]}, {"name": "email", "values": ["two@example.com"]}]}}}
+  ]
+}

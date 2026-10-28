@@ -11,6 +11,7 @@ import hashlib
 import json
 import secrets
 from collections.abc import Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,11 +33,13 @@ from studio.meta.adapter import (
     check_paused,
     creative_spec,
     delivery_of,
+    lead_form_of,
     require,
 )
 
-INSIGHTS = (Path(__file__).resolve().parents[2] / "fixtures" / "meta"
-            / "insights.SYNTHETIC.json")
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "meta"
+INSIGHTS = FIXTURES / "insights.SYNTHETIC.json"
+LEADS = FIXTURES / "leads.SYNTHETIC.json"
 
 
 def _id(prefix: str) -> str:
@@ -112,6 +115,39 @@ class MockAdapter:
                          approval: Verified) -> str:
         return self._create("create_ad_paused", "ad", payload, approval, {
             "type": "ad", "adset_id": adset_id, "creative_id": creative_id, "status": PAUSED})
+
+    def create_lead_form(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        form = lead_form_of(payload)
+        self._delivery(payload, approval)
+        oid = _id("form")
+        self.objects[oid] = {"type": "lead_form", **form}
+        self.calls.append(("create_lead_form", oid))
+        return oid
+
+    def _leads(self, form_id: str) -> list[Any]:
+        from studio.leadads import RemoteLead
+
+        out = []
+        for raw in json.loads(LEADS.read_text())["data"]:
+            fields = {f["name"]: str((f.get("values") or [""])[0]) for f in raw["field_data"]}
+            ts = datetime.strptime(raw["created_time"], "%Y-%m-%dT%H:%M:%S%z").timestamp()
+            out.append(RemoteLead(f"{raw['id']}-{form_id[-6:]}", form_id, ts, fields))
+        return out
+
+    def list_leads(self, form_id: str, since: float = 0.0) -> list[Any]:
+        self.calls.append(("list_leads", form_id))
+        if self.objects.get(form_id, {}).get("type") != "lead_form":
+            raise AdapterError("unknown form", code="not_found")
+        return [lead for lead in self._leads(form_id) if lead.created_ts > since]
+
+    def get_lead(self, lead_id: str) -> Any:
+        self.calls.append(("get_lead", lead_id))
+        for oid, obj in self.objects.items():
+            if obj.get("type") == "lead_form":
+                for lead in self._leads(oid):
+                    if lead.external_id == lead_id:
+                        return lead
+        raise AdapterError("unknown lead", code="not_found")
 
     def preview(self, ad_id: str) -> Preview:
         ad = self.objects.get(ad_id)

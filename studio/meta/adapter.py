@@ -140,6 +140,15 @@ class Adapter(Protocol):
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
                          approval: Verified) -> str: ...
 
+    def create_lead_form(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        """``POST /{page_id}/leadgen_forms`` with the signed ``lead_form`` block."""
+
+    def list_leads(self, form_id: str, since: float = 0.0) -> list[Any]:
+        """``GET /{form_id}/leads`` (``leadads.RemoteLead`` items)."""
+
+    def get_lead(self, lead_id: str) -> Any:
+        """``GET /{lead_id}`` (a ``leadads.RemoteLead``), for the leadgen webhook."""
+
     def preview(self, ad_id: str) -> Preview: ...
 
     def activate(self, level: str, payload: Mapping[str, Any], approval: Verified) -> None:
@@ -252,6 +261,24 @@ def creative_spec(payload: Mapping[str, Any], spec: Mapping[str, Any], page_id: 
     else:
         out["object_story_spec"] = {"page_id": page_id, "link_data": data}
     return out
+
+
+def lead_form_of(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The signed instant-form block; refused unless it names the owner's privacy page."""
+    form = payload.get("lead_form")
+    if not isinstance(form, Mapping):
+        raise NotApproved("the signed payload has no instant form")
+    privacy = form.get("privacy_policy")
+    if not isinstance(privacy, Mapping) or not str(privacy.get("url", "")).startswith(
+            "https://"):
+        raise NotApproved("an instant form needs the owner's privacy-policy URL")
+    questions = form.get("questions")
+    if not isinstance(questions, list) or not questions or not all(
+            isinstance(q, Mapping) and q.get("type") in objectives.LEAD_FIELDS
+            for q in questions):
+        raise NotApproved("instant-form questions must come from the brief's list")
+    return {k: form[k] for k in ("name", "questions", "privacy_policy",
+                                 "follow_up_action_url") if k in form}
 
 
 def campaign_name(payload: Mapping[str, Any]) -> str:

@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from studio import accounts, approvals, executor, store
+from studio import accounts, approvals, executor, leadads, store
 from studio.approvals import transaction
 from studio.receipts import Ledger, key_id, public_key_raw
 from studio.settings import ConfigError
@@ -131,7 +131,7 @@ CREATE TABLE IF NOT EXISTS sandbox_meta (
 # Seed order respects foreign keys; reset deletes in reverse.
 SEED_TABLES = ("briefs", "campaigns", "comments", "leads", "tasks")
 DEMO_TABLES = ("tasks", "leads", "comments", "campaigns", "creatives", "briefs", "reports",
-               "pending_payloads", "run_state")
+               "pending_payloads", "run_state", "lead_forms")
 _COLUMNS: dict[str, tuple[str, ...]] = {
     "briefs": ("id", "text", "source", "created_ts"),
     "campaigns": ("id", "run_id", "name", "objective", "status", "daily_budget_minor",
@@ -185,6 +185,8 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         "next_action": "TEXT NOT NULL DEFAULT ''",
         "comment_id": "TEXT NOT NULL DEFAULT ''",
         "run_id": "TEXT NOT NULL DEFAULT ''",
+        "external_id": "TEXT NOT NULL DEFAULT ''",  # Meta lead id (instant forms)
+        "form_id": "TEXT NOT NULL DEFAULT ''",
     },
 }
 
@@ -206,6 +208,7 @@ def init(conn: sqlite3.Connection) -> None:
     accounts.ensure_schema(conn)
     with transaction(conn):
         _migrate(conn)
+    leadads.ensure_schema(conn)
 
 
 def _strings(value: Any) -> list[str]:

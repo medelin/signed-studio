@@ -55,6 +55,16 @@ EN_META: dict[str, str] = {
     "js.delivery_none": "none",
     "err.spec_changed": "The campaign's objective mapping is not the one you signed; "
                         "nothing was created.",
+    # lead ads
+    "leads.poll": "Fetch instant-form leads",
+    "leads.poll_hint": "Reads new leads from the instant forms this studio created (no "
+                       "write on Meta); each one is scored by the same rules.",
+    "enum.lead_source.lead_form": "instant form",
+    "js.polling": "Fetching leads from the instant forms…",
+    "js.polling_failed": "Could not fetch leads: {error}",
+    "js.polled": "{forms} forms read, {n} new leads.",
+    "err.meta_error": "Meta did not answer the request; try again later.",
+    "err.webhook_refused": "Webhook refused: unsigned, wrongly signed or not configured.",
 }
 
 PL_META: dict[str, str] = {
@@ -107,4 +117,14 @@ PL_META: dict[str, str] = {
     "js.delivery_none": "nic",
     "err.spec_changed": "Mapowanie celu kampanii nie jest tym, które podpisano; nic nie "
                         "utworzono.",
+    "leads.poll": "Pobierz leady z formularzy błyskawicznych",
+    "leads.poll_hint": "Czyta nowe leady z formularzy utworzonych przez studio (bez zapisu "
+                       "w Mecie); każdy jest oceniany tymi samymi regułami.",
+    "enum.lead_source.lead_form": "formularz błyskawiczny",
+    "js.polling": "Pobieram leady z formularzy błyskawicznych…",
+    "js.polling_failed": "Nie udało się pobrać leadów: {error}",
+    "js.polled": "Odczytane formularze: {forms}, nowe leady: {n}.",
+    "err.meta_error": "Meta nie odpowiedziała; spróbuj później.",
+    "err.webhook_refused": "Webhook odrzucony: bez podpisu, ze złym podpisem albo "
+                           "nieskonfigurowany.",
 }

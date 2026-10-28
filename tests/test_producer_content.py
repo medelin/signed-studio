@@ -132,3 +132,20 @@ def test_payload_carries_the_objective_mapping_of_the_brief(env, goal, sub, obje
     with pytest.raises(producer.ToolError, match="cannot be mapped"):
         producer.campaign_payload(run, 0, brief=sample(
             objective={"goal": "sales", "kpi": "x"}, promotion={}))
+
+
+def test_instant_form_payload_carries_the_owners_form(env):
+    from tests.test_brief import sample
+
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 0}
+    brief = sample(promotion={"privacy_policy_url": "https://clay.example/privacy",
+                              "lead_fields": ["FULL_NAME", "PHONE"]})
+    p = producer.campaign_payload(run, 0, "https://clay.example/", brief=brief)
+    assert p["delivery"]["sub"] == "instant_form"
+    assert p["lead_form"]["privacy_policy"]["url"] == "https://clay.example/privacy"
+    assert [q["type"] for q in p["lead_form"]["questions"]] == ["FULL_NAME", "PHONE"]
+    assert "lead_form" not in producer.campaign_payload(run, 0)

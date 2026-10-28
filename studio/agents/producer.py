@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from studio import brief as brief_v1
-from studio import envelope
+from studio import envelope, leadads
 from studio.agents import art_director, copywriter, prompts, reviewer
 from studio.agents.dispatcher import (
     ApprovalArgs,
@@ -188,6 +188,12 @@ def campaign_payload(run: RunResult, variant_index: int,
                    "formats": [{"placement": f["placement"], "sha256": f["sha256"],
                                 "verdict": f["verdict"]} for f in run.review["formats"]]},
     }
+    if spec["creative"] == "lead_form":
+        assert brief is not None  # an instant form exists only for a confirmed brief
+        # the questions the owner chose and the owner's own privacy page (Meta requires it)
+        payload["lead_form"] = leadads.form_spec(
+            f"Muse Studio · {run.plan.angles[run.angle_index].name} · form",
+            spec["lead_fields"], brief.promotion.privacy_policy_url, link)
     if brief is not None:
         # what the owner confirmed, by hash, plus the parts the campaign is built from
         payload.update({

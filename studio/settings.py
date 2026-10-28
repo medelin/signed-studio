@@ -107,6 +107,8 @@ class Settings:
     # form (access_token in the POST body) | bearer
     meta_token_transport: str = "form"  # noqa: S105 - a mode name, not a token
     meta_app_secret: str = field(default="", repr=False)  # enables appsecret_proof
+    # the token Meta echoes when subscribing the leadgen webhook (GET /api/meta/webhook)
+    meta_webhook_verify_token: str = field(default="", repr=False)
     session_secret: bytes = field(default=b"", repr=False)
     judge_password: str = field(default="", repr=False)
     read_only: bool = False
@@ -223,6 +225,7 @@ class Settings:
             meta_page_token=e.get("META_PAGE_TOKEN", ""),
             meta_token_transport=transport,
             meta_app_secret=e.get("META_APP_SECRET", ""),
+            meta_webhook_verify_token=e.get("META_WEBHOOK_VERIFY_TOKEN", ""),
             session_secret=session_secret,
             judge_password=judge_password,
             read_only=_bool(e, "STUDIO_READ_ONLY", False),

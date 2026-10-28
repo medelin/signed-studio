@@ -7,6 +7,8 @@
   <h1 id="leads-h">{{ t("leads.title") }}</h1>
   <p class="hint">{{ t("leads.lead") }}</p>
   {% if not logged_in %}<p class="empty">{{ t("leads.read_only") }}</p>{% endif %}
+  {% if logged_in and not read_only %}<p class="hint" id="poll-hint">{{ t("leads.poll_hint") }}</p>
+  <button type="button" id="poll-leads" aria-describedby="poll-hint">{{ t("leads.poll") }}</button>{% endif %}
   <p class="status" id="leads-status" role="status" aria-live="polite"></p>
 </section>
 <section class="cards" aria-label="{{ t('leads.cards') }}">
@@ -16,7 +18,7 @@
       {% if l.temp %}<span class="verdict {{ 'BLOCK' if l.temp == 'HOT' else 'WARN' if l.temp == 'WARM' else 'OK' }}">{{ l.score }} · {{ l.temp }}</span>{% else %}<span class="hint">{{ t("leads.not_scored") }}</span>{% endif %}
     </h2>
     <dl class="kv">
-      <dt>{{ t("leads.source") }}</dt><dd>{{ l.source }}{% if l.comment_id %} ({{ t("leads.comment") }} <code>{{ l.comment_id }}</code>){% endif %}</dd>
+      <dt>{{ t("leads.source") }}</dt><dd>{{ tv("lead_source", l.source) }}{% if l.comment_id %} ({{ t("leads.comment") }} <code>{{ l.comment_id }}</code>){% endif %}</dd>
       {% if l.email %}<dt>{{ t("leads.email") }}</dt><dd>{{ l.email }}</dd>{% endif %}
       {% if l.phone %}<dt>{{ t("leads.phone") }}</dt><dd>{{ l.phone }}</dd>{% endif %}
       {% if l.city %}<dt>{{ t("leads.city") }}</dt><dd>{{ l.city }}{% if l.country %}, {{ l.country }}{% endif %}</dd>{% endif %}

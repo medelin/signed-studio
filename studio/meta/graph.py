@@ -56,6 +56,7 @@ from studio.meta.adapter import (
     check_paused,
     creative_spec,
     delivery_of,
+    lead_form_of,
     require,
 )
 from studio.meta.preview import from_graph_body
@@ -240,6 +241,52 @@ class GraphAdapter:
         return self._id(self._post(f"{self.account}/ads", {
             "name": campaign_name(payload) + " · ad", "adset_id": _oid(adset_id),
             "creative": {"creative_id": _oid(creative_id)}, "status": PAUSED}))
+
+    def create_lead_form(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        """``POST /{page_id}/leadgen_forms`` with the Page token (lead ads guide)."""
+        form = lead_form_of(payload)
+        self._delivery(payload, approval)
+        return self._id(self._post(f"{self.page_id}/leadgen_forms", form, page=True))
+
+    LEAD_FIELDS = "id,created_time,field_data,ad_id,form_id"
+
+    @staticmethod
+    def _lead(raw: Any, form_id: str) -> Any:
+        from studio.leadads import RemoteLead
+
+        if not isinstance(raw, dict) or not isinstance(raw.get("id"), str):
+            return None
+        fields: dict[str, str] = {}
+        for item in raw.get("field_data") or []:
+            if isinstance(item, dict) and isinstance(item.get("name"), str):
+                values = item.get("values") or [""]
+                fields[item["name"][:60]] = str(values[0] if isinstance(values, list)
+                                                else values)[:500]
+        try:
+            ts = datetime.strptime(str(raw.get("created_time", "")),
+                                   "%Y-%m-%dT%H:%M:%S%z").timestamp()
+        except ValueError:
+            ts = 0.0
+        return RemoteLead(_oid(raw["id"]), str(raw.get("form_id") or form_id), ts, fields,
+                          str(raw.get("ad_id") or ""))
+
+    def list_leads(self, form_id: str, since: float = 0.0) -> list[Any]:
+        """``GET /{form_id}/leads`` (lead retrieval guide), newer than ``since``."""
+        params: dict[str, Any] = {"fields": self.LEAD_FIELDS, "limit": "100"}
+        if since:
+            params["filtering"] = json.dumps([{"field": "time_created",
+                                               "operator": "GREATER_THAN",
+                                               "value": int(since)}])
+        body = self._request("GET", f"{_oid(form_id)}/leads", params=params, page=True)
+        return [x for x in (self._lead(r, form_id) for r in body.get("data") or []) if x]
+
+    def get_lead(self, lead_id: str) -> Any:
+        body = self._request("GET", _oid(lead_id), params={"fields": self.LEAD_FIELDS},
+                             page=True)
+        lead = self._lead(body, "")
+        if lead is None:
+            raise AdapterError("Graph API returned no lead", code="bad_response")
+        return lead
 
     def preview(self, ad_id: str) -> Preview:
         body = self._request("GET", f"{_oid(ad_id)}/previews",
