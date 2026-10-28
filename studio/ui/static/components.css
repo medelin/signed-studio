@@ -152,7 +152,7 @@ a.chip:hover { border-color: var(--signal); }
 .counter.cost { counter-reset: w var(--whole) f var(--frac); }
 .counter.cost::after { content: "$" counter(w) "." counter(f, pad5); }
 .counter.tokens { counter-reset: n var(--n); }
-.counter.tokens::after { content: counter(n) " tokens"; }
+.counter.tokens::after { content: counter(n) " " attr(data-unit); }
 @media (prefers-reduced-motion: no-preference) {
   .counter { transition: --whole 700ms var(--ease), --frac 700ms var(--ease), --n 700ms var(--ease); }
 }
@@ -166,3 +166,10 @@ a.chip:hover { border-color: var(--signal); }
 .logout-form { display: inline; margin: 0; }
 .logout-form button { padding: .2rem .6rem; font-size: .7rem; }
 @media (max-width: 760px) { .login { grid-template-columns: 1fr; } .login-art { max-width: 14rem; } }
+
+/* header groups: navigation, viewer preferences */
+.nav { display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; align-items: baseline; }
+.prefs { margin-left: auto; display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; }
+.lang-switch { display: inline-flex; gap: .15rem; }
+.lang-switch a { padding: .1rem .35rem; }
+.lang-switch a[aria-current="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--signal); }

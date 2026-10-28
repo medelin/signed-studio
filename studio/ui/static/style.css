@@ -1,5 +1,6 @@
 /* Page styles on tokens.css: graphite paper, 1px rules, one signal colour, chamfered panels. */
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }  /* layout classes (.inline, .stack) never override it */
 html { background: var(--bg); }
 body {
   margin: 0; font: 15px/1.55 var(--font); color: var(--ink); background-color: var(--bg);

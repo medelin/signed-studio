@@ -35,14 +35,14 @@ const loginForm = $("login-form");
 if (loginForm) {
   loginForm.addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    status("login-status", "Signing in…");
+    status("login-status", T("signing_in"));
     const r = await Signer.login($("login-user").value, $("login-pass").value);
-    if (!r.ok) { status("login-status", "Sign-in failed (" + (r.data.error || r.status) + ")", true); return; }
+    if (!r.ok) { status("login-status", T("sign_in_failed", { error: r.data.error || r.status }), true); return; }
     loggedIn = true;
     try { await Signer.registerKey(); } catch (e) { status("login-status", e.message, true); return; }
     $("login-panel").hidden = true;
     if (!readOnly) { $("run-button").disabled = false; $("rec-button").disabled = false; }
-    status("run-status", "Signed in. Your approver key is " + Signer.approver() + ".");
+    status("run-status", T("signed_in_key", { key: Signer.approver() }));
     $("brief").focus();
   });
 }
@@ -54,12 +54,12 @@ function renderPlan(plan, reasoning) {
   if (!plan) return;
   box.replaceChildren();
   box.classList.remove("empty");
-  box.append(el("p", "Audience: " + plan.audience));
-  box.append(el("p", "Budget: " + plan.budget_pln_daily + " PLN / day · placements: " + plan.placements.join(", ")));
+  box.append(el("p", T("audience", { value: plan.audience })));
+  box.append(el("p", T("budget", { pln: plan.budget_pln_daily, placements: plan.placements.join(", ") })));
   const ol = el("ol");
   for (const a of plan.angles) ol.append(el("li", a.name + " — " + a.hook + " (" + a.persona + ")"));
   box.append(ol);
-  if (reasoning && reasoning.length) $("thinking").textContent = "Reasoning summary: " + reasoning[reasoning.length - 1];
+  if (reasoning && reasoning.length) $("thinking").textContent = T("reasoning", { text: reasoning[reasoning.length - 1] });
 }
 
 function renderCopy(copy, reviewedIndex) {
@@ -69,13 +69,13 @@ function renderCopy(copy, reviewedIndex) {
   box.classList.remove("empty");
   copy.variants.forEach((v, i) => {
     const card = el("article", null, "card");
-    card.append(el("h3", (i + 1) + ". " + v.headline + (i === reviewedIndex ? " (sent for review)" : "")));
+    card.append(el("h3", (i + 1) + ". " + v.headline + (i === reviewedIndex ? T("sent_for_review") : "")));
     card.append(el("p", v.primary_text));
     card.append(el("p", v.description, "hint"));
     card.append(el("span", v.cta.replace(/_/g, " "), "cta"));
     box.append(card);
   });
-  if (copy.risks.length) box.append(el("p", "Risks: " + copy.risks.join("; "), "hint"));
+  if (copy.risks.length) box.append(el("p", T("risks", { list: copy.risks.join("; ") }), "hint"));
 }
 
 function renderImages(runId, creatives) {
@@ -86,14 +86,14 @@ function renderImages(runId, creatives) {
   const cut = el("figure");
   const ci = el("img");
   ci.src = "/assets/" + runId + "/cutout.png";
-  ci.alt = "SAM 3.1 cut-out of the product (" + creatives.foreground_pixels + " foreground pixels)";
-  cut.append(ci, el("figcaption", "SAM 3.1 cut-out · " + creatives.foreground_pixels + " px"));
+  ci.alt = T("cutout_alt", { px: creatives.foreground_pixels });
+  cut.append(ci, el("figcaption", T("cutout_caption", { px: creatives.foreground_pixels })));
   box.append(cut);
   for (const im of creatives.images) {
     const fig = el("figure");
     const img = el("img");
     img.src = "/assets/" + runId + "/" + im.placement + ".png";
-    img.alt = "Ad creative for " + im.placement + " (" + im.width + "×" + im.height + ")";
+    img.alt = T("creative_alt", { placement: im.placement, w: im.width, h: im.height });
     img.loading = "lazy";
     fig.append(img, el("figcaption", im.placement + " · " + im.width + "×" + im.height + " · sha256 " + im.sha256.slice(0, 12)));
     box.append(fig);
@@ -118,27 +118,27 @@ function renderReview(review) {
   box.replaceChildren();
   if (!review) {
     box.classList.add("empty");
-    box.textContent = "No review yet.";
+    box.textContent = T("no_review");
     return;
   }
   box.classList.remove("empty");
-  const head = el("p", "Combined verdict ");
+  const head = el("p", T("combined"));
   head.append(el("span", review.verdict, "verdict " + review.verdict));
   box.append(head);
   for (const f of review.formats || []) {
     const fh = el("h3", f.placement + " ");
     fh.append(el("span", f.verdict, "verdict " + f.verdict));
     box.append(fh);
-    box.append(renderReviewBlock("Muse Spark 1.3 (vision)", f.primary));
+    box.append(renderReviewBlock(T("spark"), f.primary));
     if (f.second) {
-      box.append(renderReviewBlock("Muse Spark Open on Baseten (open weights)", f.second));
+      box.append(renderReviewBlock(T("spark_open"), f.second));
     } else {
-      box.append(el("p", "Second opinion " + f.second_opinion + " (Muse Spark Open on Baseten).", "hint"));
+      box.append(el("p", T("second_opinion", { state: f.second_opinion }), "hint"));
     }
   }
   if (review.disagreements.length) {
     const ul = el("ul", null, "disagree");
-    for (const d of review.disagreements) ul.append(el("li", "Disagreement: " + d));
+    for (const d of review.disagreements) ul.append(el("li", T("disagreement", { text: d })));
     box.append(ul);
   }
 }
@@ -178,11 +178,11 @@ async function showApproval(pendingId) {
   const panel = $("approve-panel");
   panel.hidden = false;
   $("approve-h").focus();
-  if (!loggedIn) { status("approve-status", "Sign in to approve this run.", true); $("approve-button").disabled = true; return; }
+  if (!loggedIn) { status("approve-status", T("sign_to_approve"), true); $("approve-button").disabled = true; return; }
   try {
     const data = await Signer.loadPayload(pendingId);
     currentPayload = data;
-    $("ap-action").textContent = data.fields.action + " (item " + data.fields.item_id + ")";
+    $("ap-action").textContent = T("item", { action: data.fields.action, id: data.fields.item_id });
     $("ap-sha").textContent = data.content_sha256;
     $("ap-head").textContent = data.chain_head;
     $("ap-key").textContent = Signer.approver();
@@ -190,7 +190,7 @@ async function showApproval(pendingId) {
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);
     $("ap-message").textContent = atob(data.message_b64);
     $("approve-button").disabled = data.status !== "pending";
-    status("approve-status", data.status === "pending" ? "Ready to sign." : "Already " + data.status + ".");
+    status("approve-status", data.status === "pending" ? T("ready") : T("already", { status: data.status }));
   } catch (e) {
     status("approve-status", e.message, true);
   }
@@ -200,7 +200,7 @@ $("approve-button").addEventListener("click", async () => {
   if (!currentPayload) return;
   const btn = $("approve-button");
   btn.disabled = true;
-  status("approve-status", "Signing in the browser…");
+  status("approve-status", T("signing"));
   try {
     const data = await Signer.sign(currentPayload);
     const r = { data };
@@ -208,14 +208,14 @@ $("approve-button").addEventListener("click", async () => {
     $("sig-value").textContent = r.data.signature;
     $("sig-receipt").textContent = r.data.receipt_id + " · " + r.data.receipt_hash.slice(0, 16);
     if (r.data.executed && r.data.result) {
-      status("approve-status", "Signed and verified. The media buyer created the campaign, ad set, creative and ad — all PAUSED — via the " + r.data.result.adapter + " adapter; nothing went live.");
+      status("approve-status", T("signed_executed", { adapter: r.data.result.adapter }));
       showCampaign(currentPayload.content.run_id, r.data.result.campaign_item_id);
     } else if (r.data.execution_error) {
-      status("approve-status", "Signed, but the media buyer refused or failed: " + r.data.execution_error, true);
+      status("approve-status", T("signed_failed", { error: r.data.execution_error }), true);
     } else {
-      status("approve-status", "Signed and verified by the server. The campaign is approved (PAUSED); nothing went live.");
+      status("approve-status", T("signed_only"));
     }
-    status("run-status", currentPayload.content.run_id + ": approved");
+    status("run-status", T("approved", { run: currentPayload.content.run_id }));
   } catch (e) {
     status("approve-status", e.message, true);
     btn.disabled = false;
@@ -230,7 +230,7 @@ function follow(runId) {
   totalCost = 0;
   shownPending = null;
   history.replaceState(null, "", "/studio?run=" + encodeURIComponent(runId));
-  status("run-status", "Following " + runId + "…");
+  status("run-status", T("following", { run: runId }));
   source = new EventSource("/api/runs/" + encodeURIComponent(runId) + "/events");
   source.addEventListener("receipt", (ev) => addReceipt(JSON.parse(ev.data)));
   source.addEventListener("state", (ev) => {
@@ -244,19 +244,19 @@ function follow(runId) {
     source.close();
     if (!readOnly && loggedIn) $("run-button").disabled = false;
   });
-  source.onerror = () => status("run-status", "Connection lost; reload to resume.", true);
+  source.onerror = () => status("run-status", T("connection_lost"), true);
 }
 
 $("brief-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   $("run-button").disabled = true;
-  status("run-status", "Starting…");
+  status("run-status", T("starting"));
   const body = { brief: $("brief").value };
   if (voiceBriefId) body.brief_id = voiceBriefId;
   const r = await postJSON("/api/runs", body);
   if (r.ok) voiceBriefId = null;
   if (r.status === 409 && r.data.run_id) { follow(r.data.run_id); return; }
-  if (!r.ok) { status("run-status", "Cannot start: " + (r.data.error || r.status), true); $("run-button").disabled = false; return; }
+  if (!r.ok) { status("run-status", T("cannot_start", { error: r.data.error || r.status }), true); $("run-button").disabled = false; return; }
   follow(r.data.run_id);
 });
 
@@ -268,7 +268,7 @@ $("open-form").addEventListener("submit", (ev) => {
 
 (async () => {
   if (loggedIn) {
-    try { await Signer.registerKey(); status("run-status", "Your approver key is " + Signer.approver() + "."); }
+    try { await Signer.registerKey(); status("run-status", T("your_key", { key: Signer.approver() })); }
     catch (e) { status("run-status", e.message, true); }
   }
   const run = new URLSearchParams(location.search).get("run");
@@ -282,7 +282,7 @@ $("open-form").addEventListener("submit", (ev) => {
   const recBtn = $("rec-button");
   const stopBtn = $("stop-button");
   if (!recBtn || !window.MediaRecorder) {
-    if (recBtn) { recBtn.disabled = true; status("voice-status", "This browser cannot record audio."); }
+    if (recBtn) { recBtn.disabled = true; status("voice-status", T("no_recording")); }
     return;
   }
   const MAX_REC_S = 60;
@@ -298,22 +298,22 @@ $("open-form").addEventListener("submit", (ev) => {
   }
 
   async function upload(blob) {
-    if (blob.size > MAX_BYTES) { status("voice-status", "Recording is larger than 32 MB.", true); return; }
-    status("voice-status", "Transcribing with Muse Voice Transcribe…");
+    if (blob.size > MAX_BYTES) { status("voice-status", T("too_big"), true); return; }
+    status("voice-status", T("transcribing"));
     const r = await fetch("/api/briefs/voice", {
       method: "POST", credentials: "same-origin",
       headers: { "Content-Type": blob.type || "audio/webm" }, body: blob,
     });
     let data = {};
     try { data = await r.json(); } catch (_) { /* empty */ }
-    if (!r.ok) { status("voice-status", "Transcription failed: " + (data.error || r.status), true); return; }
+    if (!r.ok) { status("voice-status", T("transcription_failed", { error: data.error || r.status }), true); return; }
     $("brief").value = data.transcript;
     voiceBriefId = data.brief_id;
     const ol = $("turns");
     ol.replaceChildren();
     for (const t of data.turns) ol.append(el("li", fmt(t.start_ms) + "–" + fmt(t.end_ms) + "  " + t.text));
-    status("voice-status", "Transcribed " + data.seconds.toFixed(1) + " s for $" + data.cost_usd.toFixed(5)
-      + (data.audio_kept ? " (audio kept by configuration)." : "; the audio was deleted.") + " Edit the brief, then run the studio.");
+    status("voice-status", T("transcribed", { seconds: data.seconds.toFixed(1), cost: data.cost_usd.toFixed(5) })
+      + " " + T(data.audio_kept ? "audio_kept" : "audio_deleted") + " " + T("edit_then_run"));
     $("brief").focus();
   }
 
@@ -335,14 +335,14 @@ $("open-form").addEventListener("submit", (ev) => {
       recBtn.hidden = true;
       stopBtn.hidden = false;
       stopBtn.focus();
-      status("voice-status", "Recording…");
+      status("voice-status", T("recording"));
       timer = setInterval(() => {
         const ms = Date.now() - started;
         $("rec-timer").textContent = fmt(ms);
         if (ms >= MAX_REC_S * 1000 && recorder.state === "recording") recorder.stop();
       }, 200);
     } catch (e) {
-      status("voice-status", "Microphone not available: " + e.message, true);
+      status("voice-status", T("no_mic", { error: e.message }), true);
     }
   });
   stopBtn.addEventListener("click", () => { if (recorder && recorder.state === "recording") recorder.stop(); });
@@ -358,14 +358,14 @@ async function showCampaign(runId, itemId) {
   const c = await r.json();
   currentCampaign = c;
   $("campaign-panel").hidden = false;
-  $("campaign-summary").textContent = c.name + " · status " + c.status + " · " + (c.daily_budget_minor / 100).toFixed(2)
-    + " PLN/day · adapter " + c.adapter + " · ceiling " + c.ceiling_pln + " PLN/day";
+  $("campaign-summary").textContent = T("campaign", { name: c.name, status: c.status,
+    budget: (c.daily_budget_minor / 100).toFixed(2), adapter: c.adapter, ceiling: c.ceiling_pln });
   const box = $("preview");
   box.replaceChildren();
   const p = c.preview || {};
   if (p.kind === "iframe" && /^https:\/\/www\.facebook\.com\/ads\/api\/preview_iframe\.php\?/.test(p.src)) {
     const f = el("iframe");
-    f.src = p.src; f.width = "320"; f.height = "560"; f.title = "Meta ad preview";
+    f.src = p.src; f.width = "320"; f.height = "560"; f.title = T("preview_title");
     f.setAttribute("sandbox", "allow-scripts allow-same-origin");
     box.append(f);
   } else if (p.kind === "inline") {
@@ -373,13 +373,13 @@ async function showCampaign(runId, itemId) {
     card.append(el("p", p.fields.message));
     const img = el("img");
     img.src = "/assets/" + runId + "/feed_1x1.png";
-    img.alt = "Ad image (feed 1:1)";
+    img.alt = T("preview_alt");
     card.append(img, el("h3", p.fields.name), el("p", p.fields.description, "hint"),
                 el("span", p.fields.cta.replace(/_/g, " "), "cta"));
-    card.append(el("p", "Mock preview rendered by the studio (no Meta call).", "hint"));
+    card.append(el("p", T("mock_preview"), "hint"));
     box.append(card);
   } else {
-    box.append(el("p", "Preview unavailable (" + (c.preview_error || "no preview") + "); the PAUSED ad is in Ads Manager.", "hint"));
+    box.append(el("p", T("no_preview", { error: c.preview_error || "no preview" }), "hint"));
   }
   $("activate-button").disabled = c.status !== "PAUSED" || !loggedIn || readOnly;
   $("campaign-h").focus();
@@ -391,12 +391,12 @@ $("activate-button").addEventListener("click", async () => {
   btn.disabled = true;
   try {
     const r = await postJSON("/api/campaigns/" + encodeURIComponent(currentCampaign.id) + "/activate", {});
-    if (!r.ok) throw new Error("activation refused: " + (r.data.error || r.status));
+    if (!r.ok) throw new Error(T("activation_refused", { error: r.data.error || r.status }));
     const payload = await Signer.loadPayload(r.data.approval_id);
-    status("activate-status", "Signing activation of " + (payload.content.daily_budget_minor / 100).toFixed(2) + " PLN/day…");
+    status("activate-status", T("signing_activation", { budget: (payload.content.daily_budget_minor / 100).toFixed(2) }));
     const done = await Signer.sign(payload);
-    if (!done.executed) throw new Error("not activated: " + (done.execution_error || "no executor"));
-    status("activate-status", "Activated via the " + done.result.adapter + " adapter (signature " + done.signature.slice(0, 16) + "…).");
+    if (!done.executed) throw new Error(T("not_activated", { error: done.execution_error || "no executor" }));
+    status("activate-status", T("activated", { adapter: done.result.adapter, sig: done.signature.slice(0, 16) }));
     showCampaign(currentCampaign.run_id, currentCampaign.id);
   } catch (e) {
     status("activate-status", e.message, true);

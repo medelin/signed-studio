@@ -8,9 +8,9 @@
     if (!btn) continue;
     btn.addEventListener("click", async () => {
       btn.disabled = true;
-      st.textContent = "Scoring (rules + one Muse Spark rationale call)…";
+      st.textContent = T("scoring");
       const r = await Signer.postJSON("/api/leads/" + encodeURIComponent(card.dataset.id) + "/score", {});
-      if (!r.ok) { st.textContent = "Scoring failed: " + (r.data.error || r.status); btn.disabled = false; return; }
+      if (!r.ok) { st.textContent = T("scoring_failed", { error: r.data.error || r.status }); btn.disabled = false; return; }
       location.reload();
     });
   }

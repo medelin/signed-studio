@@ -37,19 +37,16 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2
                 "read_only": settings.read_only}
 
     def help_page(request: Request, lang: str) -> Response:
-        if request.query_params.get("lang") == "pl":
-            lang = "pl"
         return templates.TemplateResponse(request, "help.html", {
-            **base(request), "page_lang": lang, "t": help_texts.PAGE[lang],
-            "entries": help_texts.entries(lang),
-            "other_href": "/help" if lang == "pl" else "/pl/help",
+            **base(request), "page_lang": lang, "entries": help_texts.entries(lang),
+            "other_href": "/help?lang=en" if lang == "pl" else "/pl/help",
             "other_lang": "en" if lang == "pl" else "pl",
-            "people": cast.BY_KEY,
+            "owners": cast.BY_KEY,
         })
 
     @app.get("/help", response_class=HTMLResponse)
     def help_en(request: Request) -> Response:
-        return help_page(request, "en")
+        return help_page(request, request.state.lang)  # ?lang= or the cookie
 
     @app.get("/pl/help", response_class=HTMLResponse)
     def help_pl(request: Request) -> Response:

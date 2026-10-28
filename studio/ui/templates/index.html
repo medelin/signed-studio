@@ -2,20 +2,19 @@
 {% block content %}
 <section class="intro hero">
   <div>
-  <p class="hud-label">two views of every ad</p>
-  <p>Muse agents plan, write, draw and review. Nothing leaves the studio until a person signs
-  the exact content. This page is public and read-only;
-  {% if logged_in %}you are signed in as the judge.{% elif login_enabled %}judges sign in to run the studio.{% else %}sign-in is disabled on this instance.{% endif %}</p>
-  <p class="hint">Who checks what, and what it costs: <a href="/help">help</a>.</p>
+  <p class="hud-label">{{ t("index.kicker") }}</p>
+  <p>{{ t("index.lead") }}
+  {% if logged_in %}{{ t("index.signed_in") }}{% elif login_enabled %}{{ t("index.judges") }}{% else %}{{ t("index.login_off") }}{% endif %}</p>
+  <p class="hint">{{ t("index.help_html") }}</p>
   </div>
-  <div class="il-place wide">{{ group(["grace", "diego", "leila", "tomasz"], "signed", label="Four owners of small businesses side by side, the four agents as diamonds on a dotted trace, the owner's signature as the last node, and the ad that is complete only after the signature.", cls="animate") }}</div>
+  <div class="il-place wide">{{ group(["grace", "diego", "leila", "tomasz"], "signed", label=t("index.art"), cls="animate") }}</div>
 </section>
 <section>
-  <h1>Latest receipts</h1>
-  <p class="hint"><a href="/receipts">All receipts, filter by run, copy as JSON →</a></p>
+  <h1>{{ t("index.latest") }}</h1>
+  <p class="hint"><a href="/receipts">{{ t("index.all") }}</a></p>
   {% if receipts %}
   <table class="receipts">
-    <thead><tr><th>time (UTC)</th><th>run</th><th>agent</th><th>kind</th><th>provider · model</th><th>tier</th><th>tokens in/out</th><th>cost</th><th>hash</th></tr></thead>
+    <thead><tr>{% for c in ("time", "run", "agent", "kind", "model", "tier", "tokens", "cost", "hash") %}<th>{{ t("common.receipt_cols." ~ c) }}</th>{% endfor %}</tr></thead>
     <tbody>
     {% for r in receipts %}
       <tr>
@@ -34,7 +33,7 @@
   </table>
   {% else %}
   <div class="empty-state">{{ scene("kofi", "unsigned") }}
-    <p class="empty">No receipts yet. Start a run in the <a href="/studio">studio</a> or triage a comment in the <a href="/inbox">inbox</a>; every model call, tool call, review, signature and write appears here.</p>
+    <p class="empty">{{ t("index.empty_html") }}</p>
   </div>
   {% endif %}
 </section>

@@ -97,7 +97,8 @@ def test_studio_page_renders_accessible_form(app):
     html = r.text
     assert '<label for="brief"' in html and 'id="brief"' in html
     assert 'src="/static/app.js"' in html
-    assert not re.search(r"<script(?![^>]*src=)", html)  # CSP: no inline scripts
+    # CSP: no inline scripts (the JSON data block with UI strings is never executed)
+    assert not re.search(r"<script(?![^>]*(src=|type=\"application/json\"))", html)
     assert 'aria-live="polite"' in html and 'role="status"' in html
     assert "script-src 'self'" in r.headers["content-security-policy"]
 

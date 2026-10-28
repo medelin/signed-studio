@@ -62,7 +62,7 @@ const Signer = (() => {
   }
 
   async function registerKey() {
-    if (!window.crypto || !crypto.subtle) throw new Error("WebCrypto is not available");
+    if (!window.crypto || !crypto.subtle) throw new Error(T("no_webcrypto"));
     if (!keyPair) keyPair = (await idbKey("get")) || null;
     for (let attempt = 0; attempt < 2; attempt++) {
       if (!keyPair) { keyPair = await newKey(); await idbKey("put", keyPair); }

@@ -1,34 +1,44 @@
+{%- set lang = page_lang or request.state.lang or "en" -%}
 <!doctype html>
-<html lang="{{ page_lang | default('en') }}">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Muse Studio Lite{% endblock %}</title>
+  <title>{% block title %}{{ t("brand") }}{% endblock %}</title>
   {% if noindex %}<meta name="robots" content="noindex">{% endif %}
   <link rel="stylesheet" href="/static/tokens.css">
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/components.css">
   <link rel="stylesheet" href="/static/illustrations.css">
+  <script type="application/json" id="i18n">{{ js_catalog(lang) | tojson }}</script>
+  <script src="/static/i18n.js" defer></script>
 </head>
 <body>
   <header class="top">
-    <a class="brand" href="/">Muse Studio Lite</a>
+    <a class="brand" href="/">{{ t("brand") }}</a>
     {% set here = request.url.path %}
-    {% for href, name in (("/studio", "Studio"), ("/inbox", "Inbox"), ("/leads", "Leads"), ("/report", "Report"), ("/receipts", "Receipts"), ("/help", "Help")) %}
-    <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ name }}</a>
+    <nav class="nav" aria-label="{{ t('nav.label') }}">
+    {% for href, key in (("/studio", "nav.studio"), ("/inbox", "nav.inbox"), ("/leads", "nav.leads"), ("/report", "nav.report"), ("/receipts", "nav.receipts"), ("/help", "nav.help")) %}
+    <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ t(key) }}</a>
     {% endfor %}
-    <span class="tag">every agent leaves a receipt · a human signs every send</span>
-    {% if read_only %}<span class="badge warn">read-only</span>{% endif %}
-    {% if replay %}<span class="badge warn" title="Model API answers are recorded responses served offline (STUDIO_REPLAY=1)">replay</span>{% endif %}
-    {% if logged_in %}<form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">Sign out</button></form>
-    {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">Sign in</a>{% endif %}
+    </nav>
+    <span class="tag">{{ t("tagline") }}</span>
+    {% if read_only %}<span class="badge warn">{{ t("badge.read_only") }}</span>{% endif %}
+    {% if replay %}<span class="badge warn" title="{{ t('badge.replay_title') }}">{{ t("badge.replay") }}</span>{% endif %}
+    <span class="prefs">
+      <span class="lang-switch" role="group" aria-label="{{ t('lang.label') }}">
+      {% for code, name in lang_names.items() %}<a href="{{ here }}?lang={{ code }}" hreflang="{{ code }}" lang="{{ code }}"{% if code == lang %} aria-current="true"{% endif %}>{{ code | upper }}</a>{% endfor %}
+      </span>
+      {% if logged_in %}<form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">{{ t("auth.sign_out") }}</button></form>
+      {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">{{ t("auth.sign_in") }}</a>{% endif %}
+    </span>
   </header>
   <main>{% block content %}{% endblock %}</main>
   <footer class="foot">
-    Ledger <code>{{ epoch }}</code> · manifest seq <code>{{ seq }}</code> ·
+    {{ t("foot.ledger") }} <code>{{ epoch }}</code> · {{ t("foot.seq") }} <code>{{ seq }}</code> ·
     <a href="/api/receipts.jsonl">receipts.jsonl</a> ·
-    <a href="/api/ledger-manifest">manifest</a> ·
-    <a href="/api/ledger-key">ledger key</a>
+    <a href="/api/ledger-manifest">{{ t("foot.manifest") }}</a> ·
+    <a href="/api/ledger-key">{{ t("foot.key") }}</a>
   </footer>
 </body>
 </html>

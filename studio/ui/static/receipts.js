@@ -9,7 +9,7 @@
       if (!pre) return;
       try {
         await navigator.clipboard.writeText(pre.textContent);
-        st.textContent = "Receipt copied as JSON.";
+        st.textContent = T("copied");
       } catch (_) {
         pre.closest("details").open = true;
         const range = document.createRange();
@@ -17,7 +17,7 @@
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
-        st.textContent = "Clipboard unavailable: the JSON is selected, press Ctrl+C.";
+        st.textContent = T("clipboard");
       }
     });
   });

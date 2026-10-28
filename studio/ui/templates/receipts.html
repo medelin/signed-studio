@@ -1,48 +1,45 @@
 {% extends "base.html" %}
-{% block title %}Receipts · Muse Studio Lite{% endblock %}
+{% block title %}{{ t("receipts.title") }} · {{ t("brand") }}{% endblock %}
 {% block content %}
 <section class="panel" aria-labelledby="receipts-h">
-  <h1 id="receipts-h">Receipts</h1>
-  <p class="hint">Every model call, tool call, review, human approval and external write leaves
-  a receipt: hash-chained per run and signed with the ledger key. Hover a hash for the full
-  value; copy any receipt as JSON. Check the whole export offline with
-  <code>studio verify receipts.jsonl --server &lt;this site&gt;</code>.
-  {% if not logged_in %}<span class="badge">visitor view: e-mails and phone numbers redacted</span>{% endif %}</p>
-  <form class="inline" method="get" action="/receipts" aria-label="Filter receipts">
-    <label for="f-run">Run</label>
+  <h1 id="receipts-h">{{ t("receipts.title") }}</h1>
+  <p class="hint">{{ t("receipts.lead_html") }}
+  {% if not logged_in %}<span class="badge">{{ t("receipts.visitor") }}</span>{% endif %}</p>
+  <form class="inline" method="get" action="/receipts" aria-label="{{ t('receipts.filter') }}">
+    <label for="f-run">{{ t("receipts.run") }}</label>
     <select id="f-run" name="run">
-      <option value="">all runs</option>
+      <option value="">{{ t("receipts.all_runs") }}</option>
       {% for r in runs %}<option value="{{ r }}"{% if r == run %} selected{% endif %}>{{ r }}</option>{% endfor %}
     </select>
-    <label for="f-kind">Kind</label>
+    <label for="f-kind">{{ t("receipts.kind") }}</label>
     <select id="f-kind" name="kind">
-      <option value="">all kinds</option>
+      <option value="">{{ t("receipts.all_kinds") }}</option>
       {% for k in kinds %}<option value="{{ k }}"{% if k == kind %} selected{% endif %}>{{ k }}</option>{% endfor %}
     </select>
-    <button type="submit">Filter</button>
-    {% if run or kind %}<a href="/receipts">Clear filter</a>{% endif %}
+    <button type="submit">{{ t("receipts.filter_button") }}</button>
+    {% if run or kind %}<a href="/receipts">{{ t("receipts.clear") }}</a>{% endif %}
   </form>
-  <p class="hint" role="status">Showing {{ views | length }} of {{ matched }} matching receipts ({{ total }} in the ledger{% if matched > limit %}; newest {{ limit }} shown — the full log is <a href="/api/receipts.jsonl">receipts.jsonl</a>{% endif %}).</p>
+  <p class="hint" role="status">{{ t("receipts.showing", shown=views | length, matched=matched, total=total) }}{% if matched > limit %} {{ t("receipts.newest_html", limit=limit) }}{% endif %}</p>
 </section>
-<section aria-label="Receipt list">
+<section aria-label="{{ t('receipts.list') }}">
 {% if views %}
-  <div class="table-scroll" role="region" aria-label="Receipts table, scrolls sideways" tabindex="0">
+  <div class="table-scroll" role="region" aria-label="{{ t('receipts.table') }}" tabindex="0">
   <table class="receipts">
-    <caption class="sr-only">Receipts, newest first</caption>
-    <thead><tr><th scope="col">time (UTC)</th><th scope="col">run</th><th scope="col">agent</th><th scope="col">kind</th><th scope="col">provider · model</th><th scope="col">tier</th><th scope="col">tokens in/out</th><th scope="col">cost</th><th scope="col">hash</th><th scope="col">JSON</th></tr></thead>
+    <caption class="sr-only">{{ t("receipts.caption") }}</caption>
+    <thead><tr>{% for c in ("time", "run", "agent", "kind", "model", "tier", "tokens", "cost", "hash") %}<th scope="col">{{ t("common.receipt_cols." ~ c) }}</th>{% endfor %}<th scope="col">JSON</th></tr></thead>
     <tbody>
     {% for v in views %}{% set r = v.r %}
       <tr>
         <td>{{ r.ts | utc }}</td>
         <td><a href="/receipts?run={{ r.run_id | urlencode }}"><code>{{ r.run_id }}</code></a></td>
         <td>{{ r.agent }}</td>
-        <td><span class="kind {{ r.kind }}">{{ r.kind }}</span>{% if r.envelope %} <span class="badge" title="customer text was wrapped in the untrusted-content envelope">envelope</span>{% endif %}</td>
+        <td><span class="kind {{ r.kind }}">{{ r.kind }}</span>{% if r.envelope %} <span class="badge" title="{{ t('receipts.envelope_title') }}">{{ t("receipts.envelope") }}</span>{% endif %}</td>
         <td>{{ r.provider or "—" }} · {{ r.model or "—" }}</td>
         <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
         <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
         <td>${{ "%.5f" | format(r.cost_usd) }}</td>
         <td><span class="chip" title="hash {{ r.hash }} · prev {{ r.prev }} · id {{ r.id }}" tabindex="0"><span class="chip-hash">{{ r.hash[:12] }}</span></span></td>
-        <td><button type="button" class="copy-json secondary" data-target="j-{{ r.id }}" aria-label="Copy receipt {{ r.id }} as JSON">Copy</button></td>
+        <td><button type="button" class="copy-json secondary" data-target="j-{{ r.id }}" aria-label="{{ t('receipts.copy_label', id=r.id) }}">{{ t("receipts.copy") }}</button></td>
       </tr>
       <tr class="receipt-json"><td colspan="10"><details><summary>JSON · <code>{{ r.id }}</code></summary><pre class="json" id="j-{{ r.id }}">{{ v.json }}</pre></details></td></tr>
     {% endfor %}
@@ -51,10 +48,10 @@
   </div>
 {% elif total == 0 %}
   <div class="empty-state">{{ scene("harjit", "verify") }}
-    <p class="empty">No receipts yet. Start a run in the <a href="/studio">studio</a> or triage a comment in the <a href="/inbox">inbox</a>; every call appears here.</p>
+    <p class="empty">{{ t("receipts.empty_html") }}</p>
   </div>
 {% else %}
-  <p class="empty">No receipts match this filter. <a href="/receipts">Show all receipts</a>.</p>
+  <p class="empty">{{ t("receipts.no_match_html") }}</p>
 {% endif %}
 </section>
 <p class="status" id="copy-status" role="status" aria-live="polite"></p>

@@ -1,16 +1,16 @@
 {% extends "base.html" %}
-{% block title %}{{ t.title }} · Muse Studio Lite{% endblock %}
+{% block title %}{{ t("help.title") }} · {{ t("brand") }}{% endblock %}
 {% block content %}
 <section class="help-head">
   <div>
-    <h1 id="top">{{ t.title }}</h1>
-    <p class="lead">{{ t.lead }}</p>
-    <p><a href="{{ other_href }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ t.other }}</a></p>
+    <h1 id="top">{{ t("help.title") }}</h1>
+    <p class="lead">{{ t("help.lead") }}</p>
+    <p><a href="{{ other_href }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ lang_names[other_lang] }}</a></p>
   </div>
   <div class="il-place wide">{{ group(["amara", "harjit", "mei", "kofi"], "signed", cls="animate") }}</div>
 </section>
 <nav aria-labelledby="toc-h" class="help-toc">
-  <h2 id="toc-h" class="hud-label">{{ t.toc }}</h2>
+  <h2 id="toc-h" class="hud-label">{{ t("help.toc") }}</h2>
   <ol>
   {% for e in entries %}<li><a href="#{{ e.anchor }}">{{ e.q }}</a></li>
   {% endfor %}</ol>
@@ -22,11 +22,11 @@
     <div class="faq-body">
       <div class="faq-text">
         <p>{{ e.a | safe }}</p>
-        <p class="hint"><a href="#{{ e.anchor }}">#{{ e.anchor }}</a> · <a href="#top">{{ t.back }}</a></p>
+        <p class="hint"><a href="#{{ e.anchor }}">#{{ e.anchor }}</a> · <a href="#top">{{ t("help.back") }}</a></p>
       </div>
       <figure class="il-place small faq-figure">
         {{ scene(e.person, e.scene) }}
-        <figcaption class="hint">{{ people[e.person].describe(page_lang) }}</figcaption>
+        <figcaption class="hint">{{ owners[e.person].describe(page_lang) }}</figcaption>
       </figure>
     </div>
   </details>

@@ -1,49 +1,46 @@
 {% extends "base.html" %}
-{% block title %}Report · Muse Studio Lite{% endblock %}
+{% block title %}{{ t("report.title") }} · {{ t("brand") }}{% endblock %}
 {% block content %}
 <div id="report" data-logged-in="{{ 'yes' if logged_in else 'no' }}">
 <section class="panel" aria-labelledby="report-h">
-  <h1 id="report-h">Report</h1>
-  <p class="hint">The analyst (Muse Spark 1.3, reasoning effort high) reads the whole studio
-  ledger — every receipt — plus the ad insights and, if you add one, an Ads Manager
-  screenshot, in <strong>one prompt</strong>. Evidence links are receipt ids that were in
-  that prompt; anything else the model cites is listed as unverified.</p>
+  <h1 id="report-h">{{ t("report.title") }}</h1>
+  <p class="hint">{{ t("report.lead_html") }}</p>
   {% if logged_in and not read_only %}
   <form id="report-form" class="inline">
-    <label for="shot">Ads Manager screenshot (PNG/JPEG, optional, ≤ 5 MB)</label>
+    <label for="shot">{{ t("report.shot") }}</label>
     <input id="shot" type="file" accept="image/png,image/jpeg">
-    <button type="submit" id="report-button">Write the report</button>
+    <button type="submit" id="report-button">{{ t("report.write") }}</button>
   </form>
   {% endif %}
   <p class="status" id="report-status" role="status" aria-live="polite"></p>
 </section>
 {% if rep %}
 <section class="panel" aria-labelledby="counter-h">
-  <h2 id="counter-h">Read {{ "{:,}".format(rep.input_tokens) }} tokens in one prompt</h2>
-  <p class="hint">{{ "{:,}".format(rep.cached_tokens) }} cached · context {{ "{:,}".format(rep.context_tokens) }} ·
-  {{ rep.receipts }} receipts{% if rep.dropped %} ({{ rep.dropped }} oldest left out){% endif %} ·
-  screenshot {{ 'yes' if rep.screenshot else 'no' }} ·
-  insights <strong>{{ rep.insights or 'live' }}</strong>{% if rep.insights == 'synthetic' %} (demo fixture, not Meta data){% endif %} · {{ "{:,}".format(rep.output_tokens) }} output tokens
-  ({{ "{:,}".format(rep.reasoning_tokens) }} reasoning) · ${{ "%.4f" | format(rep.cost_usd) }} ·
-  model receipt <code>{{ rep.model_receipt }}</code></p>
+  <h2 id="counter-h">{{ t("report.read", tokens="{:,}".format(rep.input_tokens)) }}</h2>
+  <p class="hint">{{ "{:,}".format(rep.cached_tokens) }} {{ t("report.cached") }} · {{ t("report.context") }} {{ "{:,}".format(rep.context_tokens) }} ·
+  {{ rep.receipts }} {{ t("report.receipts") }}{% if rep.dropped %} ({{ rep.dropped }} {{ t("report.dropped") }}){% endif %} ·
+  {{ t("report.screenshot") }} {{ t("report.yes") if rep.screenshot else t("report.no") }} ·
+  {{ t("report.insights") }} <strong>{{ rep.insights or 'live' }}</strong>{% if rep.insights == 'synthetic' %} ({{ t("report.synthetic") }}){% endif %} · {{ "{:,}".format(rep.output_tokens) }} {{ t("report.output") }}
+  ({{ "{:,}".format(rep.reasoning_tokens) }} {{ t("report.reasoning") }}) · ${{ "%.4f" | format(rep.cost_usd) }} ·
+  {{ t("report.model_receipt") }} <code>{{ rep.model_receipt }}</code></p>
   <p>{{ rep.report.summary }}</p>
   {% if rep.report.kpis %}<dl class="kv">{% for k in rep.report.kpis %}<dt>{{ k.name }}</dt><dd>{{ k.value }}</dd>{% endfor %}</dl>{% endif %}
 </section>
 <div class="grid">
-  <section class="panel"><h2>Wins</h2><ul>{% for w in rep.report.wins %}<li>{{ w }}</li>{% endfor %}</ul></section>
-  <section class="panel"><h2>Losses</h2><ul>{% for w in rep.report.losses %}<li>{{ w }}</li>{% endfor %}</ul></section>
+  <section class="panel"><h2>{{ t("report.wins") }}</h2><ul>{% for w in rep.report.wins %}<li>{{ w }}</li>{% endfor %}</ul></section>
+  <section class="panel"><h2>{{ t("report.losses") }}</h2><ul>{% for w in rep.report.losses %}<li>{{ w }}</li>{% endfor %}</ul></section>
 </div>
 <section class="panel" aria-labelledby="recs-h">
-  <h2 id="recs-h">Recommendations</h2>
+  <h2 id="recs-h">{{ t("report.recs") }}</h2>
   <ol>{% for r in rep.report.recommendations %}<li>{{ r }}</li>{% endfor %}</ol>
-  <h3>Evidence (receipt ids)</h3>
-  <p>{% for e in rep.report.evidence_refs %}<code>{{ e }}</code> {% else %}<span class="empty">none</span>{% endfor %}</p>
-  {% if rep.unverified_refs %}<p class="hint">Unverified refs (not in the prompt): {% for e in rep.unverified_refs %}<code>{{ e }}</code> {% endfor %}</p>{% endif %}
-  {% if rep.reasoning_summary %}<details><summary>Reasoning summary</summary><pre>{{ rep.reasoning_summary }}</pre></details>{% endif %}
+  <h3>{{ t("report.evidence") }}</h3>
+  <p>{% for e in rep.report.evidence_refs %}<code>{{ e }}</code> {% else %}<span class="empty">{{ t("report.none") }}</span>{% endfor %}</p>
+  {% if rep.unverified_refs %}<p class="hint">{{ t("report.unverified") }} {% for e in rep.unverified_refs %}<code>{{ e }}</code> {% endfor %}</p>{% endif %}
+  {% if rep.reasoning_summary %}<details><summary>{{ t("report.summary") }}</summary><pre>{{ rep.reasoning_summary }}</pre></details>{% endif %}
 </section>
 {% else %}
 <div class="empty-state">{{ scene("grace", "budget") }}
-  <p class="empty">No report yet. {% if logged_in and not read_only %}Write one above: the analyst reads every receipt in one long-context prompt.{% else %}Once a judge writes one, the analyst’s summary, KPIs and evidence links appear here.{% endif %}</p>
+  <p class="empty">{{ t("report.empty") }} {% if logged_in and not read_only %}{{ t("report.empty_judge") }}{% else %}{{ t("report.empty_visitor") }}{% endif %}</p>
 </div>
 {% endif %}
 </div>

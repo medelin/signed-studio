@@ -1,5 +1,6 @@
 """Design tokens and components: every page loads them; templates stay CSP-clean."""
 
+import json
 import re
 import secrets
 from pathlib import Path
@@ -33,8 +34,11 @@ def test_every_page_loads_the_tokens_and_is_csp_clean(client, path):
     assert html.index('href="/static/tokens.css"') < html.index('href="/static/style.css"')
     assert ' style="' not in html and "<style" not in html
     assert not re.search(r"\son[a-z]+=", html)  # no inline event handlers
-    for body in re.findall(r"<script([^>]*)>(.*?)</script>", html, re.S):
-        assert "src=" in body[0] and not body[1].strip()  # no inline scripts
+    for attrs, body in re.findall(r"<script([^>]*)>(.*?)</script>", html, re.S):
+        if 'type="application/json"' in attrs:  # a data block, never executed
+            json.loads(body)
+            continue
+        assert "src=" in attrs and not body.strip()  # no inline scripts
     assert "fonts.googleapis" not in html  # CSP: fonts are self-hosted
 
 

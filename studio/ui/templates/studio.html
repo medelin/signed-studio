@@ -1,127 +1,125 @@
 {% extends "base.html" %}
-{% block title %}Studio · Muse Studio Lite{% endblock %}
+{% block title %}{{ t("studio.title") }} · {{ t("brand") }}{% endblock %}
 {% block content %}
 <div id="studio" data-logged-in="{{ 'yes' if logged_in else 'no' }}" data-read-only="{{ 'yes' if read_only else 'no' }}">
 
 <section class="panel" aria-labelledby="login-h" id="login-panel" {% if logged_in %}hidden{% endif %}>
-  <h1 id="login-h">Judge sign-in</h1>
+  <h1 id="login-h">{{ t("studio.judge") }}</h1>
   {% if login_enabled %}
   <form id="login-form" class="stack">
-    <label for="login-user">User name</label>
+    <label for="login-user">{{ t("login.user") }}</label>
     <input id="login-user" name="username" autocomplete="username" value="judge" required>
-    <label for="login-pass">Password</label>
+    <label for="login-pass">{{ t("login.password") }}</label>
     <input id="login-pass" name="password" type="password" autocomplete="current-password" required>
-    <button type="submit">Sign in</button>
+    <button type="submit">{{ t("auth.sign_in") }}</button>
     <p class="status" id="login-status" role="status" aria-live="polite"></p>
   </form>
   {% else %}
-  <p class="empty">Sign-in is disabled on this instance; runs below are read-only.</p>
+  <p class="empty">{{ t("studio.login_off") }}</p>
   {% endif %}
 </section>
 
 <section class="panel" aria-labelledby="brief-h">
-  <h1 id="brief-h">1 · Brief</h1>
+  <h1 id="brief-h">{{ t("studio.brief") }}</h1>
   <form id="brief-form" class="stack">
     <div class="inline" id="voice-box">
-      <button type="button" id="rec-button" {% if not logged_in or read_only %}disabled{% endif %}>Record a voice brief</button>
-      <button type="button" id="stop-button" hidden>Stop and transcribe</button>
+      <button type="button" id="rec-button" {% if not logged_in or read_only %}disabled{% endif %}>{{ t("studio.record") }}</button>
+      <button type="button" id="stop-button" hidden>{{ t("studio.stop") }}</button>
       <span id="rec-timer" class="hint" aria-live="off"></span>
     </div>
-    <p class="hint">Speak in Polish or English (up to 60 s here; the server accepts 10 min / 32 MB). Muse Voice Transcribe writes the brief; the audio is deleted after transcription.</p>
+    <p class="hint">{{ t("studio.voice_hint") }}</p>
     <p class="status" id="voice-status" role="status" aria-live="polite"></p>
-    <ol id="turns" class="hint" aria-label="Transcript turns"></ol>
-    <label for="brief">Campaign brief (type it, or record it above)</label>
+    <ol id="turns" class="hint" aria-label="{{ t('studio.turns') }}"></ol>
+    <label for="brief">{{ t("studio.brief_label") }}</label>
     <textarea id="brief" name="brief" rows="4" maxlength="2000" required
-      aria-describedby="brief-help">Autumn campaign for Demo Ceramics Studio: hand-thrown stoneware mugs, 89 PLN, free delivery in Poland above 150 PLN. Audience: people working from home in Poland, 25-55. Budget 30 PLN per day. Facebook and Instagram feed plus stories.</textarea>
-    <p id="brief-help" class="hint">The producer plans, the copywriter writes, the art director cuts the {{ product_concept }} out of the product photo with SAM 3.1 and renders three placements with Muse Image, two reviewers check it. Nothing is published: the run ends in an approval only you can sign.</p>
-    <button type="submit" id="run-button" {% if not logged_in or read_only %}disabled{% endif %}>Run the studio</button>
+      aria-describedby="brief-help">{{ t("studio.brief_default") }}</textarea>
+    <p id="brief-help" class="hint">{{ t("studio.brief_help", concept=product_concept) }}</p>
+    <button type="submit" id="run-button" {% if not logged_in or read_only %}disabled{% endif %}>{{ t("studio.run") }}</button>
     <p class="status" id="run-status" role="status" aria-live="polite"></p>
   </form>
   <form id="open-form" class="inline">
-    <label for="open-run">or follow an existing run id</label>
+    <label for="open-run">{{ t("studio.open_label") }}</label>
     <input id="open-run" name="run" pattern="[A-Za-z0-9_-]{1,40}" placeholder="run_…">
-    <button type="submit">Open</button>
+    <button type="submit">{{ t("studio.open") }}</button>
   </form>
 </section>
 
 <section class="run-hud-wrap" aria-labelledby="hud-h">
-  <h2 id="hud-h" class="hud-label">run</h2>
+  <h2 id="hud-h" class="hud-label">{{ t("studio.hud") }}</h2>
   <ol class="run-hud" id="run-hud">
-    <li data-step="producer"><span class="tick" aria-hidden="true"></span>Producer</li>
-    <li data-step="copywriter"><span class="tick" aria-hidden="true"></span>Copywriter</li>
-    <li data-step="art_director"><span class="tick" aria-hidden="true"></span>Art director</li>
-    <li data-step="reviewers"><span class="tick" aria-hidden="true"></span>Reviewers</li>
-    <li data-step="approval"><span class="tick" aria-hidden="true"></span>Your signature</li>
+    <li data-step="producer"><span class="tick" aria-hidden="true"></span>{{ t("studio.step.producer") }}</li>
+    <li data-step="copywriter"><span class="tick" aria-hidden="true"></span>{{ t("studio.step.copywriter") }}</li>
+    <li data-step="art_director"><span class="tick" aria-hidden="true"></span>{{ t("studio.step.art_director") }}</li>
+    <li data-step="reviewers"><span class="tick" aria-hidden="true"></span>{{ t("studio.step.reviewers") }}</li>
+    <li data-step="approval"><span class="tick" aria-hidden="true"></span>{{ t("studio.step.approval") }}</li>
   </ol>
 </section>
 
 <div class="grid">
   <section class="panel" aria-labelledby="plan-h">
-    <h2 id="plan-h">2 · Plan</h2>
-    <div id="plan" class="empty">No plan yet.</div>
+    <h2 id="plan-h">{{ t("studio.plan") }}</h2>
+    <div id="plan" class="empty">{{ t("studio.no_plan") }}</div>
     <p id="thinking" class="hint"></p>
   </section>
   <section class="panel" aria-labelledby="copy-h">
-    <h2 id="copy-h">3 · Copy variants</h2>
-    <div id="copy" class="cards empty">No copy yet.</div>
+    <h2 id="copy-h">{{ t("studio.copy") }}</h2>
+    <div id="copy" class="cards empty">{{ t("studio.no_copy") }}</div>
   </section>
 </div>
 
 <section class="panel" aria-labelledby="images-h">
-  <h2 id="images-h">4 · Creatives (SAM 3.1 cut-out → Muse Image)</h2>
-  <div id="images" class="carousel empty">No images yet.</div>
+  <h2 id="images-h">{{ t("studio.images") }}</h2>
+  <div id="images" class="carousel empty">{{ t("studio.no_images") }}</div>
 </section>
 
 <section class="panel" aria-labelledby="review-h">
-  <h2 id="review-h">5 · Reviews</h2>
-  <div id="review" class="empty">No review yet.</div>
+  <h2 id="review-h">{{ t("studio.reviews") }}</h2>
+  <div id="review" class="empty">{{ t("studio.no_review") }}</div>
 </section>
 
 <section class="panel" aria-labelledby="approve-h" id="approve-panel" hidden>
-  <h2 id="approve-h" tabindex="-1">6 · Approve and sign</h2>
-  <p>You sign the exact bytes below with a key that never leaves this browser
-  (WebCrypto Ed25519, non-extractable). The bytes bind the content hash, the chain head of
-  the receipts that produced it, your key id and a one-time nonce.</p>
+  <h2 id="approve-h" tabindex="-1">{{ t("studio.approve") }}</h2>
+  <p>{{ t("studio.approve_lead") }}</p>
   <dl class="kv">
-    <dt>action</dt><dd id="ap-action"></dd>
-    <dt>content sha256</dt><dd><code id="ap-sha"></code></dd>
-    <dt>chain head</dt><dd><code id="ap-head"></code></dd>
-    <dt>your key</dt><dd><code id="ap-key"></code></dd>
-    <dt>expires</dt><dd id="ap-exp"></dd>
+    <dt>{{ t("studio.ap.action") }}</dt><dd id="ap-action"></dd>
+    <dt>{{ t("studio.ap.sha") }}</dt><dd><code id="ap-sha"></code></dd>
+    <dt>{{ t("studio.ap.head") }}</dt><dd><code id="ap-head"></code></dd>
+    <dt>{{ t("studio.ap.key") }}</dt><dd><code id="ap-key"></code></dd>
+    <dt>{{ t("studio.ap.exp") }}</dt><dd id="ap-exp"></dd>
   </dl>
   <div class="stamp-host">
-  <details><summary>Content you are approving (campaign stays PAUSED)</summary>
+  <details><summary>{{ t("studio.ap.content") }}</summary>
     <pre id="ap-content"></pre></details>
-  <p class="stamp" id="stamp" hidden><span class="hud-label">signed</span> <span class="stamp-hash"></span></p>
+  <p class="stamp" id="stamp" hidden><span class="hud-label">{{ t("studio.ap.signed") }}</span> <span class="stamp-hash"></span></p>
   </div>
-  <details><summary>Exact signed bytes</summary><pre id="ap-message"></pre></details>
-  <button type="button" id="approve-button">Approve and sign</button>
+  <details><summary>{{ t("studio.ap.bytes") }}</summary><pre id="ap-message"></pre></details>
+  <button type="button" id="approve-button">{{ t("studio.ap.button") }}</button>
   <p class="status" id="approve-status" role="status" aria-live="polite"></p>
   <div id="signature" hidden>
-    <h3>Signature</h3>
+    <h3>{{ t("studio.ap.signature") }}</h3>
     <p><code id="sig-value" class="wrap"></code></p>
-    <p>Approval receipt <code id="sig-receipt"></code></p>
+    <p>{{ t("studio.ap.receipt") }} <code id="sig-receipt"></code></p>
   </div>
 </section>
 
 <section class="panel" aria-labelledby="campaign-h" id="campaign-panel" hidden>
-  <h2 id="campaign-h" tabindex="-1">7 · Campaign (PAUSED) and preview</h2>
+  <h2 id="campaign-h" tabindex="-1">{{ t("studio.campaign") }}</h2>
   <p id="campaign-summary"></p>
   <div id="preview" class="preview"></div>
-  <p class="hint">Activation is a second signature, refused above the daily-budget ceiling.</p>
-  <button type="button" id="activate-button">Request activation and sign</button>
+  <p class="hint">{{ t("studio.activation_hint") }}</p>
+  <button type="button" id="activate-button">{{ t("studio.activate") }}</button>
   <p class="status" id="activate-status" role="status" aria-live="polite"></p>
 </section>
 
 <section class="panel" aria-labelledby="ticker-h">
-  <h2 id="ticker-h">Receipts (live)</h2>
+  <h2 id="ticker-h">{{ t("studio.ticker") }}</h2>
   <table class="receipts">
-    <caption class="hint">Every model call, tool call, review and approval of this run.</caption>
-    <thead><tr><th scope="col">agent</th><th scope="col">kind</th><th scope="col">model / tool</th><th scope="col">tokens in/out</th><th scope="col">cost</th><th scope="col">hash</th></tr></thead>
+    <caption class="hint">{{ t("studio.ticker_caption") }}</caption>
+    <thead><tr><th scope="col">{{ t("common.receipt_cols.agent") }}</th><th scope="col">{{ t("common.receipt_cols.kind") }}</th><th scope="col">{{ t("studio.col.model_tool") }}</th><th scope="col">{{ t("common.receipt_cols.tokens") }}</th><th scope="col">{{ t("common.receipt_cols.cost") }}</th><th scope="col">{{ t("common.receipt_cols.hash") }}</th></tr></thead>
     <tbody id="ticker" aria-live="polite" aria-relevant="additions"></tbody>
   </table>
-  <p class="hint">Total <span id="total-cost" class="counter-text">$0.00000</span><span class="counter cost" id="cost-counter" aria-hidden="true"></span>
-    · <span class="counter tokens" id="tokens-counter" aria-hidden="true"></span> · <a href="/api/receipts.jsonl">receipts.jsonl</a></p>
+  <p class="hint">{{ t("studio.total") }} <span id="total-cost" class="counter-text">$0.00000</span><span class="counter cost" id="cost-counter" aria-hidden="true"></span>
+    · <span class="counter tokens" id="tokens-counter" data-unit="{{ t('js.tokens_unit') }}" aria-hidden="true"></span> · <a href="/api/receipts.jsonl">receipts.jsonl</a></p>
 </section>
 </div>
 <script src="/static/signer.js" defer></script>

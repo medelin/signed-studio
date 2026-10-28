@@ -20,28 +20,7 @@ class Entry:
     a: dict[str, str]
 
 
-LANGS = ("en", "pl")
-
-PAGE = {
-    "en": {
-        "title": "Help",
-        "lead": "Plain answers for the owner of a one-person business. Each answer says what "
-                "the studio does today; anything not built yet says so.",
-        "other": "Polski",
-        "toc": "Questions",
-        "back": "Back to the questions",
-        "cast": "The people in these drawings",
-    },
-    "pl": {
-        "title": "Pomoc",
-        "lead": "Proste odpowiedzi dla właściciela jednoosobowej firmy. Każda odpowiedź mówi, "
-                "co studio robi dziś; to, czego jeszcze nie ma, jest tak oznaczone.",
-        "other": "English",
-        "toc": "Pytania",
-        "back": "Wróć do pytań",
-        "cast": "Osoby z rysunków",
-    },
-}
+LANGS = ("en", "pl")  # page chrome strings are in studio/ui/i18n.py
 
 ENTRIES: tuple[Entry, ...] = (
     Entry(
@@ -162,15 +141,21 @@ ENTRIES: tuple[Entry, ...] = (
                "writes ad copy, only when there is no personal data. "
                "<code>muse-image-1.0</code> draws the placements, <code>sam-3.1</code> cuts "
                "the product out of its photo, <code>muse-voice-transcribe-1.0</code> turns "
-               "your spoken brief into text, and <code>muse-spark-open-1026</code> (open "
-               "weights) is the second reviewer. Each receipt names the model it used.",
+               "your spoken brief into text, and <code>meta-models/muse-spark-open</code> (open "
+               "weights, on Baseten) is the second reviewer. Before either reviewer, code "
+               "checks each placement's format limits (rule F1: lengths and sizes from the "
+               "platform's own specifications; a hard limit blocks, a recommended one warns) "
+               "and the P9 phrases. Each receipt names the model it used.",
          "pl": "<code>muse-spark-1.3</code> planuje, recenzuje obrazy, segreguje komentarze, "
                "uzasadnia ocenę leadów i pisze raport. <code>muse-spark-1.3-contributor</code> "
                "pisze teksty reklam, tylko gdy nie ma danych osobowych. "
                "<code>muse-image-1.0</code> rysuje formaty, <code>sam-3.1</code> wycina "
                "produkt ze zdjęcia, <code>muse-voice-transcribe-1.0</code> zamienia nagrany "
-               "brief na tekst, a <code>muse-spark-open-1026</code> (otwarte wagi) jest "
-               "drugim recenzentem. Każde pokwitowanie podaje użyty model."}),
+               "brief na tekst, a <code>meta-models/muse-spark-open</code> (otwarte wagi, na "
+               "Basetenie) jest drugim recenzentem. Przed recenzentami kod sprawdza limity "
+               "formatu każdego miejsca reklamy (zasada F1: długości i rozmiary ze "
+               "specyfikacji platformy; twardy limit blokuje, zalecany ostrzega) oraz frazy "
+               "P9. Każde pokwitowanie podaje użyty model."}),
     Entry(
         "personal-data", "mei", "private",
         {"en": "What happens to my customers' personal data?",

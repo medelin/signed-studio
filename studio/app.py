@@ -48,6 +48,7 @@ from fastapi.templating import Jinja2Templates
 from studio import (
     auth,
     db,
+    prefs,
     routes_help,
     routes_inbox,
     routes_receipts,
@@ -60,6 +61,7 @@ from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
 from studio.receipts import public_key_raw, sha256_hex
 from studio.settings import ReadOnlyMode, Settings
+from studio.ui import i18n
 
 UI = Path(__file__).resolve().parent / "ui"
 LOG = logging.getLogger("studio.login")
@@ -70,7 +72,6 @@ UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
-LOGIN_FAILED = "Sign-in failed. Check the user name and password, or try again in a minute."
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; "
@@ -401,8 +402,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.sessions = Sessions(settings.session_secret)
     templates = Jinja2Templates(directory=str(UI / "templates"))
     templates.env.globals["replay"] = settings.replay
+    templates.env.globals["t"] = i18n.t
+    templates.env.globals["js_catalog"] = i18n.js_catalog
+    templates.env.globals["lang_names"] = i18n.NAMES
     app.mount("/static", StaticFiles(directory=str(UI / "static")), name="static")
     app.add_middleware(BodyLimit, paths=UPLOAD_LIMITS)
+    app.add_middleware(prefs.Prefs, secure=lambda request: _cookie_secure(request, settings))
     app.add_middleware(
         auth.Gate, require_login=lambda: settings.require_login,
         session_of=lambda request: app.state.sessions.check(request.cookies.get(COOKIE)),
@@ -564,7 +569,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         def fail(code: str, status: int, retry: int | None = None) -> Response:
             headers = {"Retry-After": str(retry)} if retry else None
             if html:  # one generic sentence whatever went wrong
-                return login_html(request, nxt, LOGIN_FAILED, status, headers)
+                return login_html(request, nxt, i18n.text(request.state.lang, "login.failed"),
+                                  status, headers)
             return JSONResponse({"error": code}, status, headers=headers)
 
         if not settings.judge_login_enabled:

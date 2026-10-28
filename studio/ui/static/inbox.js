@@ -18,12 +18,12 @@
     details.hidden = false;
     details.querySelector("pre").textContent = JSON.stringify(payload.content, null, 2)
       + "\n\ncontent sha256 " + payload.content_sha256 + "\nsigned bytes " + atob(payload.message_b64);
-    say(st, "Signing " + label + " in the browser…");
+    say(st, T("signing_label", { label }));
     const done = await Signer.sign(payload);
-    let text = label + " signed (" + done.signature.slice(0, 16) + "…).";
-    if (done.executed) text += " Sent via the " + (done.result && done.result.adapter || "") + " adapter.";
-    else if (done.execution_error) text += " Not sent: " + done.execution_error + ".";
-    else text += " Approved; no sender configured.";
+    let text = T("label_signed", { label, sig: done.signature.slice(0, 16) });
+    if (done.executed) text += " " + T("sent_via", { adapter: done.result && done.result.adapter || "" });
+    else if (done.execution_error) text += " " + T("not_sent", { error: done.execution_error });
+    else text += " " + T("no_sender");
     say(st, text, Boolean(done.execution_error));
   }
 
@@ -32,16 +32,16 @@
     const st = card.querySelector(".status");
     try {
       if (what === "triage") {
-        say(st, "Triaging (one Muse Spark call, no tools)…");
+        say(st, T("triaging"));
         const r = await Signer.postJSON("/api/comments/" + encodeURIComponent(id) + "/triage", {});
-        if (!r.ok) throw new Error("triage failed: " + (r.data.error || r.status));
+        if (!r.ok) throw new Error(T("triage_failed", { error: r.data.error || r.status }));
         location.reload();
         return;
       }
       const body = what === "reply" ? { message: card.querySelector("textarea").value } : {};
       const r = await Signer.postJSON("/api/comments/" + encodeURIComponent(id) + "/" + what, body);
-      if (!r.ok) throw new Error("cannot prepare: " + (r.data.detail || r.data.error || r.status));
-      await signPending(card, r.data.approval_id, what === "reply" ? "Reply" : "Hide");
+      if (!r.ok) throw new Error(T("cannot_prepare", { error: r.data.detail || r.data.error || r.status }));
+      await signPending(card, r.data.approval_id, what === "reply" ? T("reply") : T("hide"));
     } catch (e) {
       say(st, e.message, true);
     }
@@ -58,14 +58,14 @@
     sim.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       const r = await Signer.postJSON("/api/comments/simulate", { text: document.getElementById("sim-text").value });
-      if (!r.ok) { say(top, "Cannot add: " + (r.data.detail || r.data.error || r.status), true); return; }
+      if (!r.ok) { say(top, T("cannot_add", { error: r.data.detail || r.data.error || r.status }), true); return; }
       location.reload();
     });
   }
 
   if (loggedIn) {
     Signer.registerKey().then(
-      (id) => say(top, "Your approver key is " + id + "."),
+      (id) => say(top, T("your_key", { key: id })),
       (e) => say(top, e.message, true));
   }
 })();

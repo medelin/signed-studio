@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-28 — English and Polish everywhere
+
+- Language switch EN/PL in the header of every page (`?lang=` sets a `lang` cookie, SameSite=Lax; server-side, `<html lang>` right on the first byte, works without JS). Every UI string goes through `studio/ui/i18n.py` (EN and PL complete); scripts read the `js.*` strings from a JSON data block (`type="application/json"`, never executed, CSP unchanged) via `static/i18n.js`. `/help` follows the chosen language; `/pl/help` stays. `tests/test_i18n.py`: same keys and placeholders in both catalogues, every key used in templates and scripts exists, no untranslated sentences in scripts, every page renders in Polish.
+- Help: the second reviewer's id is `meta-models/muse-spark-open`; the models answer mentions the deterministic F1 format check and the P9 phrase check that run before the model reviewers.
+- Fix: `[hidden]` now always hides (the visitor saw the "simulate a comment" form because `.inline` set `display: flex`).
 ## 2026-10-28 — day 4, round 3 (platform format limits F1, P9 origin)
 
 - Rule **F1**, format limits from each platform's own published specifications (retrieved 2026-10-28, URLs in `studio/agents/formats.py` and `docs/policy.md`): `reviewer.format_check(placement, ad)` runs before the model reviewers; hard limits BLOCK, recommended lengths WARN and name the truncation point; findings join both reviews and the `review` receipt (`details.format`). Meta (wired to publishing): Facebook Feed primary text 150 / headline 27, Instagram Feed 125 / 40, Stories 125, Reels 44 (recommended); image ratio, tolerance and minimum size per placement and the 1000-character link limit (hard). Google Ads (exported copy only): responsive search ads 30/90/15 with double-width characters counted twice, Performance Max and Demand Gen text and image limits (hard). TikTok (exported copy only): display name 20 (10 CJK) hard; links, @ and hashtags warn; the ad-text length is not on any official page that loaded, so it is not enforced. 20 seeded cases (`fixtures/eval/formats.SYNTHETIC.json`), all as expected; `tests/test_formats.py`.
