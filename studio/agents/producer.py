@@ -112,7 +112,9 @@ def campaign_payload(run: RunResult, variant_index: int,
                    for i in run.creatives.images],
         "review": {"verdict": run.review["verdict"],
                    "second_opinion": run.review["second_opinion"],
-                   "disagreements": run.review["disagreements"]},
+                   "disagreements": run.review["disagreements"],
+                   "formats": [{"placement": f["placement"], "sha256": f["sha256"],
+                                "verdict": f["verdict"]} for f in run.review["formats"]]},
     }
 
 
@@ -201,15 +203,23 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
             raise ToolError("run_copywriter and run_art_director must finish first")
         if not 0 <= args.variant_index < len(run.copy.variants):
             raise ToolError("variant_index must be 0, 1 or 2")
-        hero = ctx.data_dir / run.creatives.images[0].path
-        result = reviewer.run(ctx.client, ctx.open_client, hero.read_bytes(),
-                              run.copy.variants[args.variant_index], run_id=run.run_id)
-        run.review = {**result.as_dict(), "variant_index": args.variant_index,
+        images = []
+        for im in run.creatives.images:
+            png = (ctx.data_dir / im.path).read_bytes()
+            if sha256_hex(png) != im.sha256:
+                run.review = None
+                raise ToolError(f"{im.placement} changed on disk since it was rendered")
+            images.append((im.placement, im.sha256, png))
+        result = reviewer.run_formats(ctx.client, ctx.open_client, images,
+                                      run.copy.variants[args.variant_index], run_id=run.run_id)
+        run.review = {**result, "variant_index": args.variant_index,
                       "binding": review_binding(run, args.variant_index)}
         emit("review")
-        return {"verdict": result.verdict, "second_opinion": result.second_status,
-                "disagreements": result.disagreements,
-                "findings": [f.model_dump() for f in result.primary.findings]}
+        return {"verdict": result["verdict"], "second_opinion": result["second_opinion"],
+                "disagreements": result["disagreements"],
+                "formats": [{"placement": f["placement"], "verdict": f["verdict"],
+                             "findings": f["primary"]["findings"]}
+                            for f in result["formats"]]}
 
     def request_approval(args: ApprovalArgs) -> dict[str, Any]:
         if run.pending_id:

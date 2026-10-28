@@ -4,7 +4,8 @@ Both read the same image + copy against the policy checklist and return the same
 ``Review`` schema. ``reconcile`` merges them: BLOCK from either side is BLOCK, and every
 difference (verdict, or a rule only one of them cites) is listed as a disagreement for the
 approval screen. Without a Baseten key the second opinion is "unavailable" and the
-primary review stands alone, labelled as such.
+primary review stands alone, labelled as such. ``run_formats`` reviews every placement
+that will be signed, one by one; the worst verdict wins.
 """
 
 from __future__ import annotations
@@ -165,3 +166,33 @@ def run(
                  "rules": sorted({f.rule for f in primary.findings})},
     )
     return result
+
+
+def run_formats(
+    client: MuseClient,
+    open_client: openweights.OpenWeightsClient | None,
+    images: list[tuple[str, str, bytes]],
+    copy: CopyVariant,
+    *,
+    run_id: str,
+) -> dict[str, Any]:
+    """Review each ``(placement, sha256, png)``; the combined verdict is the worst one.
+
+    ``disagreements`` are prefixed with the placement; ``second_opinion`` is "available"
+    only when every format had one ("failed" if any failed)."""
+    if not images:
+        raise ValueError("nothing to review")
+    formats = []
+    for placement, digest, png in images:
+        result = run(client, open_client, png, copy, run_id=run_id)
+        formats.append({"placement": placement, "sha256": digest, **result.as_dict()})
+    statuses = {f["second_opinion"] for f in formats}
+    second = ("available" if statuses == {"available"}
+              else "failed" if "failed" in statuses else "unavailable")
+    return {
+        "verdict": max((f["verdict"] for f in formats), key=lambda v: _RANK[v]),
+        "second_opinion": second,
+        "disagreements": [f"{f['placement']}: {d}" for f in formats
+                          for d in f["disagreements"]],
+        "formats": formats,
+    }

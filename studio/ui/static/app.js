@@ -122,11 +122,16 @@ function renderReview(review) {
   const head = el("p", "Combined verdict ");
   head.append(el("span", review.verdict, "verdict " + review.verdict));
   box.append(head);
-  box.append(renderReviewBlock("Muse Spark 1.3 (vision)", review.primary));
-  if (review.second) {
-    box.append(renderReviewBlock("Muse Spark Open on Baseten (open weights)", review.second));
-  } else {
-    box.append(el("p", "Second opinion " + review.second_opinion + " (Muse Spark Open on Baseten).", "hint"));
+  for (const f of review.formats || []) {
+    const fh = el("h3", f.placement + " ");
+    fh.append(el("span", f.verdict, "verdict " + f.verdict));
+    box.append(fh);
+    box.append(renderReviewBlock("Muse Spark 1.3 (vision)", f.primary));
+    if (f.second) {
+      box.append(renderReviewBlock("Muse Spark Open on Baseten (open weights)", f.second));
+    } else {
+      box.append(el("p", "Second opinion " + f.second_opinion + " (Muse Spark Open on Baseten).", "hint"));
+    }
   }
   if (review.disagreements.length) {
     const ul = el("ul", null, "disagree");

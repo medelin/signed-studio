@@ -41,6 +41,8 @@ def test_one_brief_to_pending_approval(replay):
     assert len(result.creatives.images) == 3
     assert result.review["verdict"] in ("OK", "WARN")
     assert result.review["second_opinion"] == "unavailable"  # no Baseten key in the replay
+    reviewed = [(f["placement"], f["sha256"]) for f in result.review["formats"]]
+    assert reviewed == [(i.placement, i.sha256) for i in result.creatives.images]
     assert events == ["plan", "copy", "creatives", "review", "approval", "finished"]
     status, state = conn.execute("SELECT status, state FROM run_state WHERE run_id = ?",
                                  ("run-prod",)).fetchone()
