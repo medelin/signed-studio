@@ -805,9 +805,9 @@ PL: dict[str, str] = {
     "err.invalid_item": "Identyfikator pozycji jest nieprawidłowy.",
     "err.field_mismatch": "Pola zatwierdzenia się nie zgadzają.",
     "err.content_mismatch": "Treść zmieniła się po przygotowaniu; zacznij od nowa.",
-    "err.chain_head_mismatch": "Rejestr poszedł naprzód od przygotowania tego zatwierdzenia; "
-                               "poproś o nie ponownie.",
-    "err.nonce_mismatch": "Jednorazowy nonce się nie zgadza.",
+    "err.chain_head_mismatch": "Od przygotowania tego zatwierdzenia w rejestrze pojawiły się "
+                               "nowe wpisy; przygotuj je ponownie.",
+    "err.nonce_mismatch": "Jednorazowy kod (nonce) się nie zgadza.",
     "err.expired": "Zatwierdzenie wygasło; poproś o nie ponownie.",
     "err.from_future": "Zatwierdzenie ma czas z przyszłości.",
     "err.unknown_key": "Ten klucz zatwierdzającego nie jest zarejestrowany.",
