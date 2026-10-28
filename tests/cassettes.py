@@ -5,6 +5,10 @@ json} | {status, sse: [event, ...]}}``. Large base64 payloads are stored as PNG 
 the cassettes and referenced as ``"@file:<path relative to the repo>"``; they are inflated
 back to base64 here. Inline images in recorded requests are replaced by
 ``data:<mime>;sha256,<hex>`` (tests compare paths, not image bytes).
+
+Replay checks each sent request against the recorded one: the path, and in the body the
+``model``, ``stream``, ``previous_response_id`` and the tool names (prompts and images may
+differ from the recording).
 """
 
 from __future__ import annotations
@@ -39,6 +43,38 @@ def interactions(name: str) -> list[dict[str, Any]]:
     return inflate(load(name)["interactions"])
 
 
+BODY_KEYS = ("model", "stream", "previous_response_id")
+
+
+def _tool_names(body: dict[str, Any]) -> list[str]:
+    return sorted(t.get("name") or t.get("type", "") for t in body.get("tools") or [])
+
+
+def check_body(sent: dict[str, Any], recorded: dict[str, Any]) -> None:
+    """``AssertionError`` if ``sent`` differs from ``recorded`` where replay relies on it."""
+    for key in BODY_KEYS:
+        assert sent.get(key) == recorded.get(key), (key, sent.get(key), recorded.get(key))
+    assert _tool_names(sent) == _tool_names(recorded), (_tool_names(sent),
+                                                         _tool_names(recorded))
+
+
+def _serve(items: list[dict[str, Any]], sent: list[dict[str, Any]], key: str,
+           request: httpx.Request) -> httpx.Response:
+    i = len(sent)
+    body = json.loads(request.content)
+    sent.append(body)
+    assert request.headers["authorization"] == f"Bearer {key}"
+    assert request.url.path.endswith(items[i]["request"]["path"]), (
+        request.url.path, items[i]["request"]["path"])
+    if "json" in items[i]["request"]:
+        check_body(body, items[i]["request"]["json"])
+    r = items[i]["response"]
+    if "sse" in r:
+        return httpx.Response(r["status"], content=sse_body(r["sse"]),
+                              headers={"content-type": "text/event-stream"})
+    return httpx.Response(r["status"], json=r["json"])
+
+
 def sse_body(events: list[dict[str, Any]]) -> bytes:
     out = []
     for ev in events:
@@ -53,16 +89,7 @@ def mount(router: Any, name: str, base_url: str, key: str = FAKE_KEY) -> list[di
     items = interactions(name)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        i = len(sent)
-        sent.append(json.loads(request.content))
-        assert request.headers["authorization"] == f"Bearer {key}"
-        assert request.url.path.endswith(items[i]["request"]["path"]), (
-            request.url.path, items[i]["request"]["path"])
-        r = items[i]["response"]
-        if "sse" in r:
-            return httpx.Response(r["status"], content=sse_body(r["sse"]),
-                                  headers={"content-type": "text/event-stream"})
-        return httpx.Response(r["status"], json=r["json"])
+        return _serve(items, sent, key, request)
 
     router.post(url__startswith=base_url).mock(side_effect=handler)
     return sent
@@ -74,14 +101,6 @@ def transport(name: str, key: str = FAKE_KEY) -> tuple[httpx.MockTransport, list
     items = interactions(name)
 
     def handler(request: httpx.Request) -> httpx.Response:
-        i = len(sent)
-        sent.append(json.loads(request.content))
-        assert request.headers["authorization"] == f"Bearer {key}"
-        assert request.url.path.endswith(items[i]["request"]["path"])
-        r = items[i]["response"]
-        if "sse" in r:
-            return httpx.Response(r["status"], content=sse_body(r["sse"]),
-                                  headers={"content-type": "text/event-stream"})
-        return httpx.Response(r["status"], json=r["json"])
+        return _serve(items, sent, key, request)
 
     return httpx.MockTransport(handler), sent
