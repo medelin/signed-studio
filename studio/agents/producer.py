@@ -117,6 +117,7 @@ def campaign_payload(run: RunResult, variant_index: int,
         "link": link,
         "ad": {"primary_text": v.primary_text, "headline": v.headline,
                "description": v.description, "cta": v.cta},
+        "risks": list(run.copy.risks),
         "images": [{"placement": i.placement, "sha256": i.sha256}
                    for i in run.creatives.images],
         "review": {"verdict": run.review["verdict"],
@@ -240,6 +241,10 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
         index = run.review["variant_index"]
         if run.review.get("binding") != review_binding(run, index):
             raise ToolError("content changed since review; run_reviewers again")
+        assert run.copy
+        if copywriter.has_unfilled_fact(run.copy.variants[index]):
+            raise ToolError(f"variant {index} has an unfilled {copywriter.FACT} placeholder; "
+                            "it cannot be sent for approval")
         payload = campaign_payload(run, index, ctx.landing_url)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,

@@ -6,14 +6,22 @@ and its reason are made in code (``pii.choose_tier``) and recorded in the receip
 
 from __future__ import annotations
 
+import re
+
 from studio.agents import prompts
-from studio.agents.schemas import Angle, CopyPack
+from studio.agents.schemas import Angle, CopyPack, CopyVariant
 from studio.muse.client import MuseClient, MuseResult
 from studio.muse.structured import structured
 from studio.pii import choose_tier
 
 AGENT = "copywriter"
 FACT = "[FACT]"
+_FACT = re.compile(r"\[\s*fact\s*\]", re.IGNORECASE)
+
+
+def has_unfilled_fact(v: CopyVariant) -> bool:
+    """True if any signed field still holds a ``[FACT]`` placeholder (any case/spacing)."""
+    return any(_FACT.search(t) for t in (v.primary_text, v.headline, v.description))
 
 
 def _user_message(angle: Angle, persona: str, brief: str) -> str:
@@ -27,7 +35,7 @@ def flag_unfilled_facts(pack: CopyPack) -> CopyPack:
     """Every variant still holding ``[FACT]`` gets a risk line (if the model did not add one)."""
     risks = list(pack.risks)
     for i, v in enumerate(pack.variants, start=1):
-        if FACT in f"{v.primary_text} {v.headline} {v.description}":
+        if has_unfilled_fact(v):
             line = f"variant {i}: unfilled {FACT} placeholder, needs a real fact before use"
             if line not in risks:
                 risks.append(line)
