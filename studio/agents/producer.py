@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from studio import envelope
 from studio.agents import art_director, copywriter, prompts, reviewer
 from studio.agents.dispatcher import (
     ApprovalArgs,
@@ -62,6 +63,26 @@ class Context:
     data_dir: Path
     on_event: Callable[[str, dict[str, Any]], None] | None = None
     landing_url: str = "https://example.com/"
+    # "operator" (typed brief) or "transcript" (a voice brief, possibly edited): a
+    # transcript is customer-grade text — enveloped, declared, never on Contributor.
+    brief_source: str = "operator"
+
+
+def brief_block(ctx: Context, brief: str) -> str:
+    """The brief as it enters a prompt: plain for the operator, enveloped for a voice
+    transcript."""
+    if ctx.brief_source == "transcript":
+        return envelope.wrap(brief, "transcript", max_chars=MAX_BRIEF)
+    return brief
+
+
+def _system(ctx: Context) -> str:
+    base = prompts.system(AGENT)
+    return base + "\n\n" + envelope.SYSTEM_RULE if ctx.brief_source == "transcript" else base
+
+
+def _sources(ctx: Context) -> list[str]:
+    return ["transcript"] if ctx.brief_source == "transcript" else []
 
 
 @dataclass
@@ -176,10 +197,14 @@ def _cost(ctx: Context, run_id: str) -> float:
 def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
     plan, _ = structured(
         ctx.client, MODEL,
-        [{"role": "system", "content": prompts.system(AGENT)},
-         {"role": "user", "content": f"Brief:\n{brief}\n\nWrite the campaign plan only."}],
-        Plan, tier="standard", tier_reason="producer plan from the operator's brief",
+        [{"role": "system", "content": _system(ctx)},
+         {"role": "user", "content": f"Brief:\n{brief_block(ctx, brief)}\n\n"
+                                     "Write the campaign plan only."}],
+        Plan, tier="standard", tier_reason=(
+            "producer plan from a voice transcript" if ctx.brief_source == "transcript"
+            else "producer plan from the operator's brief"),
         run_id=run_id, agent=AGENT, max_tokens=4000, reasoning_effort="low",
+        envelope_sources=_sources(ctx),
     )
     return plan
 
@@ -208,7 +233,7 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
             raise ToolError("angle_index must be 0, 1 or 2")
         angle = run.plan.angles[args.angle_index]
         run.copy, _ = copywriter.write(ctx.client, angle, angle.persona, run_id=run.run_id,
-                                       brief=brief)
+                                       brief=brief, brief_source=ctx.brief_source)
         run.angle_index = args.angle_index
         emit("copy")
         return {"variants": [v.model_dump() for v in run.copy.variants],
@@ -355,9 +380,9 @@ def run(
                                 ledger=ctx.client.ledger, run_id=run_id)
         tools = dispatcher.tools()
         next_input: list[dict[str, Any]] = [
-            {"role": "system", "content": prompts.system(AGENT)},
+            {"role": "system", "content": _system(ctx)},
             {"role": "user", "content": (
-                f"Brief:\n{brief}\n\nPlan (already written):\n"
+                f"Brief:\n{brief_block(ctx, brief)}\n\nPlan (already written):\n"
                 f"{result.plan.model_dump_json()}\n\nRun the plan with your tools now.")},
         ]
         previous: str | None = None
@@ -372,6 +397,8 @@ def run(
                 reasoning={"effort": "medium", "summary": "auto"},
                 previous_response_id=previous, max_output_tokens=4000,
                 tier="standard", tier_reason="producer loop", parallel_tool_calls=True,
+                # the brief is only in the first turn; later turns chain to it
+                envelope_sources=_sources(ctx) if previous is None else (),
             )
             result.steps = step + 1
             if turn.reasoning_summary:

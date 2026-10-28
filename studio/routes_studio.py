@@ -49,6 +49,7 @@ LOG = logging.getLogger("studio.runs")
 RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 APPROVER = re.compile(r"ed25519:[0-9a-f]{32}")
 SIGNATURE = re.compile(r"[0-9a-f]{128}")
+BRIEF_ID = re.compile(r"b_[0-9a-f]{16}")
 ASSET_NAMES = frozenset({"feed_1x1", "feed_4x5", "story_9x16", "cutout"})
 VOICE_TYPES = frozenset({"audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/wave",
                          "audio/mp4", "audio/mpeg", "audio/aac"})
@@ -105,14 +106,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     # action -> executor(verified, payload) -> result dict; runs after the approval commits
     app.state.executors = {}
 
-    def worker(run_id: str, brief: str) -> None:
+    def worker(run_id: str, brief: str, brief_source: str = "operator") -> None:
         try:
             muse, open_weights = clients()
             ctx = producer.Context(
                 client=muse, open_client=open_weights, conn=conn,
                 photo_png=settings.product_photo.read_bytes(),
                 concept=settings.product_concept, data_dir=settings.data_dir,
-                landing_url=settings.landing_url)
+                landing_url=settings.landing_url, brief_source=brief_source)
             producer.run(ctx, brief, run_id=run_id)
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)
@@ -136,6 +137,17 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         brief = brief.strip()
         if len(brief) > producer.MAX_BRIEF:
             return JSONResponse({"error": "brief_too_long"}, 413)
+        # A brief that started as a voice transcript stays a transcript after edits: it
+        # names its unused voice brief row and runs enveloped, on Standard.
+        brief_id = body.get("brief_id") if isinstance(body, dict) else None
+        if brief_id is not None:
+            if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
+                return JSONResponse({"error": "invalid_brief_id"}, 400)
+            with conn.lock:
+                row = conn.execute("SELECT source, run_id FROM briefs WHERE id = ?",
+                                   (brief_id,)).fetchone()
+            if row is None or row[0] != "voice" or row[1]:
+                return JSONResponse({"error": "unknown_voice_brief"}, 409)
         if app.state.muse is None and not settings.model_api_key:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         with app.state.run_lock:
@@ -145,12 +157,17 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             run_id = producer.new_run_id()
             app.state.active_run = run_id
         with db.transaction(conn):
-            conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "
-                         "VALUES (?, ?, ?, 'text', ?)",
-                         ("b_" + run_id[4:], run_id, brief, time.time()))
+            if brief_id is not None:
+                conn.execute("UPDATE briefs SET run_id = ?, text = ? WHERE id = ? AND "
+                             "source = 'voice' AND run_id = ''", (run_id, brief, brief_id))
+            else:
+                conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "
+                             "VALUES (?, ?, ?, 'text', ?)",
+                             ("b_" + run_id[4:], run_id, brief, time.time()))
             conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
                          "VALUES (?, 'running', '{}', ?)", (run_id, time.time()))
-        thread = threading.Thread(target=worker, args=(run_id, brief), daemon=True,
+        source = "transcript" if brief_id is not None else "operator"
+        thread = threading.Thread(target=worker, args=(run_id, brief, source), daemon=True,
                                   name=f"producer-{run_id}")
         app.state.last_thread = thread
         thread.start()

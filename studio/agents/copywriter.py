@@ -9,6 +9,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from studio import envelope
 from studio.agents import prompts
 from studio.agents.schemas import Angle, CopyPack, CopyVariant
 from studio.muse.client import MuseClient, MuseResult
@@ -112,9 +113,12 @@ def has_unfilled_fact(v: CopyVariant) -> bool:
     return count_unfilled_facts(v) > 0
 
 
-def _user_message(angle: Angle, persona: str, brief: str) -> str:
+def _user_message(angle: Angle, persona: str, brief: str,
+                  brief_source: str = "operator") -> str:
     lines = [f"Angle: {angle.name}", f"Hook: {angle.hook}", f"Persona: {persona}"]
-    if brief:
+    if brief and brief_source == "transcript":
+        lines.append("Brief (voice transcript):\n" + envelope.wrap(brief, "transcript"))
+    elif brief:
         lines.append(f"Brief: {brief}")
     return "\n".join(lines)
 
@@ -139,15 +143,22 @@ def write(
     *,
     run_id: str,
     brief: str = "",
+    brief_source: str = "operator",
     max_tokens: int = 4000,
 ) -> tuple[CopyPack, MuseResult]:
-    user = _user_message(angle, persona, brief)
-    tier, reason, model = choose_tier(user, "contributor")
+    """``brief_source="transcript"``: the brief is a voice transcript — enveloped, declared,
+    and on Standard (``choose_tier(..., source="transcript")``)."""
+    transcript = bool(brief) and brief_source == "transcript"
+    user = _user_message(angle, persona, brief, brief_source)
+    tier, reason, model = choose_tier(user, "contributor",
+                                      source="transcript" if transcript else "operator")
+    system = prompts.system(AGENT) + ("\n\n" + envelope.SYSTEM_RULE if transcript else "")
     pack, result = structured(
         client, model,
-        [{"role": "system", "content": prompts.system(AGENT)},
+        [{"role": "system", "content": system},
          {"role": "user", "content": user}],
         CopyPack, tier=tier, tier_reason=reason, run_id=run_id, agent=AGENT,
         max_tokens=max_tokens, reasoning_effort="minimal",
+        envelope_sources=["transcript"] if transcript else (),
     )
     return flag_unfilled_facts(pack), result

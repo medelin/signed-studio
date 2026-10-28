@@ -10,6 +10,9 @@ const readOnly = root.dataset.readOnly === "yes";
 let source = null;
 let totalCost = 0;
 let shownPending = null;
+// Set when the brief came from a voice recording: the run is then a transcript run
+// (enveloped, Standard tier) even after the operator edits the text.
+let voiceBriefId = null;
 
 function el(tag, text, cls) {
   const node = document.createElement(tag);
@@ -248,7 +251,10 @@ $("brief-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   $("run-button").disabled = true;
   status("run-status", "Starting…");
-  const r = await postJSON("/api/runs", { brief: $("brief").value });
+  const body = { brief: $("brief").value };
+  if (voiceBriefId) body.brief_id = voiceBriefId;
+  const r = await postJSON("/api/runs", body);
+  if (r.ok) voiceBriefId = null;
   if (r.status === 409 && r.data.run_id) { follow(r.data.run_id); return; }
   if (!r.ok) { status("run-status", "Cannot start: " + (r.data.error || r.status), true); $("run-button").disabled = false; return; }
   follow(r.data.run_id);
@@ -302,6 +308,7 @@ $("open-form").addEventListener("submit", (ev) => {
     try { data = await r.json(); } catch (_) { /* empty */ }
     if (!r.ok) { status("voice-status", "Transcription failed: " + (data.error || r.status), true); return; }
     $("brief").value = data.transcript;
+    voiceBriefId = data.brief_id;
     const ol = $("turns");
     ol.replaceChildren();
     for (const t of data.turns) ol.append(el("li", fmt(t.start_ms) + "–" + fmt(t.end_ms) + "  " + t.text));
