@@ -6,6 +6,7 @@ import pytest
 from studio import db
 from studio.agents import media_buyer
 from studio.approvals import Keys
+from studio.executor import ExecutionRefused
 from studio.meta.adapter import AdapterError
 from studio.meta.mock import MockAdapter
 from studio.receipts import verify
@@ -70,3 +71,89 @@ def test_write_receipt_and_campaign_row_exist_before_the_preview(env):
     v = approve(conn, ledger, "campaign.create", "cmp_np2", p, RUN)
     media_buyer.create(conn, ledger, Watch(), v, p, data)
     assert len(seen["writes"]) == 1 and seen["row"]["status"] == "PAUSED"
+
+
+def _created(conn, ledger, data, mock, item):
+    p = payload()
+    v = approve(conn, ledger, "campaign.create", item, p, RUN)
+    return media_buyer.create(conn, ledger, mock, v, p, data)
+
+
+def test_activation_names_all_three_objects_and_goes_ad_adset_campaign(env):
+    conn, ledger, data = env
+    mock = MockAdapter()
+    out = _created(conn, ledger, data, mock, "cmp_ch1")
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_ch1", ceiling_pln=50)
+    assert (act["ad_external_id"], act["adset_external_id"], act["external_id"]) == (
+        out["ad_id"], out["adset_id"], out["campaign_id"])
+    va = approve(conn, ledger, "campaign.activate", "cmp_ch1", act, RUN)
+    media_buyer.activate(conn, ledger, mock, va, act, 50)
+    assert [c for c in mock.calls if c[0].startswith("activate")] == [
+        ("activate_ad", out["ad_id"]), ("activate_adset", out["adset_id"]),
+        ("activate_campaign", out["campaign_id"])]
+    for key in ("ad_id", "adset_id", "campaign_id"):
+        assert mock.objects[out[key]]["status"] == "ACTIVE"
+    steps = [r for r in ledger.receipts(RUN) if r.kind == "tool_call"
+             and r.details["tool"].startswith("activate_")]
+    assert [s.details["tool"] for s in steps] == [
+        "activate_ad", "activate_adset", "activate_campaign"]
+    assert {s.details["approval_id"] for s in steps} == {va.pending_id}
+    assert all(s.details["status"] == "ok" for s in steps)
+    report = _verify(conn, ledger, data)
+    assert report.ok, report.errors
+
+
+def test_activation_ids_are_bound_to_the_signature(env):
+    conn, ledger, data = env
+    mock = MockAdapter()
+    _created(conn, ledger, data, mock, "cmp_ch2")
+    other = _created(conn, ledger, data, mock, "cmp_ch3")
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_ch2", ceiling_pln=50)
+    va = approve(conn, ledger, "campaign.activate", "cmp_ch2", act, RUN)
+    swapped = {**act, "ad_external_id": other["ad_id"]}  # someone else's ad
+    with pytest.raises(ExecutionRefused):  # content mismatch at the gate
+        media_buyer.activate(conn, ledger, mock, va, swapped, 50)
+    # a signed payload whose ids differ from the campaign row is refused too
+    _, act2 = media_buyer.request_activation(conn, ledger, "cmp_ch2", ceiling_pln=50)
+    forged = {**act2, "adset_external_id": other["adset_id"]}
+    vf = approve(conn, ledger, "campaign.activate", "cmp_ch2", forged, RUN)
+    with pytest.raises(media_buyer.BuyError) as exc:
+        media_buyer.activate(conn, ledger, mock, vf, forged, 50)
+    assert exc.value.code == "campaign_changed"
+    assert not [c for c in mock.calls if c[0].startswith("activate")]
+
+
+def test_failure_mid_chain_leaves_the_campaign_paused_and_says_so(env):
+    conn, ledger, data = env
+
+    class AdsetDown(MockAdapter):
+        def activate(self, level, payload, approval):
+            if level == "adset":
+                raise AdapterError("Graph API error 2", code="graph_error")
+            super().activate(level, payload, approval)
+
+    mock = AdsetDown()
+    out = _created(conn, ledger, data, mock, "cmp_ch4")
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_ch4", ceiling_pln=50)
+    va = approve(conn, ledger, "campaign.activate", "cmp_ch4", act, RUN)
+    with pytest.raises(AdapterError):
+        media_buyer.activate(conn, ledger, mock, va, act, 50)
+    assert mock.objects[out["campaign_id"]]["status"] == "PAUSED"
+    assert media_buyer.campaign(conn, "cmp_ch4")["status"] == "PAUSED"
+    assert _execution(conn, va.pending_id) == "failed"
+    writes = [r for r in ledger.receipts(RUN) if r.kind == "external_write"
+              and r.details["action"] == "campaign.activate"]
+    assert [(w.details["status"], w.details["activated"]) for w in writes] == [
+        ("partial", ["ad"])]
+    assert _verify(conn, ledger, data).ok
+
+
+def test_a_campaign_row_without_adset_or_ad_cannot_request_activation(env):
+    conn, ledger, data = env
+    conn.execute("INSERT INTO campaigns (id, run_id, name, objective, status, "
+                 "daily_budget_minor, adapter, external_id, created_ts) VALUES "
+                 "('cmp_old', ?, 'x', 'OUTCOME_TRAFFIC', 'PAUSED', 3000, 'mock', 'mock-cmp-1', 0)",
+                 (RUN,))
+    with pytest.raises(media_buyer.BuyError) as exc:
+        media_buyer.request_activation(conn, ledger, "cmp_old", ceiling_pln=50)
+    assert exc.value.code == "incomplete"

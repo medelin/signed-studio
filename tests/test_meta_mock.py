@@ -71,7 +71,7 @@ def test_writes_without_a_matching_approval_are_refused(env):
     with pytest.raises(NotApproved):
         m.upload_image(b"\x89PNGother", p, v)
     with pytest.raises(NotApproved):  # a campaign approval cannot activate
-        m.activate({**p, "external_id": "x"}, v)
+        m.activate("campaign", {**p, "external_id": "x"}, v)
     assert m.calls == []
 
 

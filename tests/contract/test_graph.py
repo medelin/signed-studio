@@ -108,17 +108,23 @@ def test_activation_needs_the_activate_approval(env):
     create = payload()
     v_create = approve(conn, ledger, "campaign.create", "cmp_g2", create, "run_m1")
     act = {"action": "campaign.activate", "campaign_id": "cmp_g2",
-           "external_id": "120200000000000101", "daily_budget_minor": 3000,
+           "external_id": "120200000000000101", "adset_external_id": "120200000000000202",
+           "ad_external_id": "120200000000000404", "daily_budget_minor": 3000,
            "ceiling_minor": 5000, "run_id": "run_m1"}
-    replay = Replay(CASSETTE["interactions"][-1:])
+    replay = Replay(CASSETTE["activation"])
     g = adapter(replay)
     with pytest.raises(NotApproved):
-        g.activate(act, v_create)
+        g.activate("ad", act, v_create)
     assert replay.sent == []
     v_act = approve(conn, ledger, "campaign.activate", "cmp_g2", act, "run_m1")
-    g.activate(act, v_act)
-    (request, form), = replay.sent
-    assert request.url.path == "/v25.0/120200000000000101" and form == {"status": "ACTIVE"}
+    for level in ("ad", "adset", "campaign"):
+        g.activate(level, act, v_act)
+    assert [(r.url.path, f) for r, f in replay.sent] == [
+        ("/v25.0/120200000000000404", {"status": "ACTIVE"}),
+        ("/v25.0/120200000000000202", {"status": "ACTIVE"}),
+        ("/v25.0/120200000000000101", {"status": "ACTIVE"})]
+    with pytest.raises(NotApproved):  # a level the signed payload does not name
+        g.activate("creative", act, v_act)
 
 
 def test_no_request_without_approval_or_with_active_payload(env):

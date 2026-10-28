@@ -25,6 +25,7 @@ from studio.meta.adapter import (
     NotApproved,
     Preview,
     RemoteComment,
+    activation_target,
     adset_targeting,
     campaign_name,
     check_paused,
@@ -109,14 +110,14 @@ class MockAdapter:
         return Preview("inline", fields={k: creative[k] for k in
                                          ("message", "name", "description", "cta", "link")})
 
-    def activate(self, payload: Mapping[str, Any], approval: Verified) -> None:
+    def activate(self, level: str, payload: Mapping[str, Any], approval: Verified) -> None:
         require(approval, ACTIVATE, payload)
-        campaign_id = str(payload.get("external_id", ""))
-        obj = self.objects.get(campaign_id)
-        if not obj or obj.get("type") != "campaign":
-            raise AdapterError("unknown campaign", code="not_found")
+        oid = activation_target(level, payload)
+        obj = self.objects.get(oid)
+        if not obj or obj.get("type") != level:
+            raise AdapterError(f"unknown {level}", code="not_found")
         obj["status"] = "ACTIVE"
-        self.calls.append(("activate", campaign_id))
+        self.calls.append(("activate_" + level, oid))
 
     def list_comments(self, object_id: str, since: float = 0.0) -> list[RemoteComment]:
         self.calls.append(("list_comments", object_id))

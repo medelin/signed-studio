@@ -148,6 +148,10 @@ _SAFE_PHONE = re.compile(r"\+48 000 000 \d{3}")
 
 # Columns added after day 2 (``ALTER TABLE … ADD COLUMN`` on databases created earlier).
 MIGRATIONS: dict[str, dict[str, str]] = {
+    "campaigns": {
+        "adset_external_id": "TEXT NOT NULL DEFAULT ''",
+        "ad_external_id": "TEXT NOT NULL DEFAULT ''",
+    },
     "comments": {
         "source": "TEXT NOT NULL DEFAULT 'seed'",
         "external_id": "TEXT NOT NULL DEFAULT ''",

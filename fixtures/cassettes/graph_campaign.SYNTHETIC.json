@@ -1,6 +1,6 @@
 {
   "_synthetic": true,
-  "_note": "Hand-written, NOT a recording: there is no Meta token yet. Request paths, form fields and response shapes follow the Graph API v25.0 reference pages (Marketing API: ad-account campaigns, adsets, adimages, adcreatives, ads; adgroup previews; ad-campaign-group update; Graph API object comments, comment update; error handling), read on 2026-10-28. Ids are made up. Replace with a real recording in the D5-2 live smoke.",
+  "_note": "Hand-written, NOT a recording: there is no Meta token yet. Request paths, form fields and response shapes follow the Graph API v25.0 reference pages (Marketing API: ad-account campaigns, adsets, adimages, adcreatives, ads; adgroup previews; ad, ad set and campaign update (status=ACTIVE, in the order ad, ad set, campaign); Graph API object comments, comment update; error handling), read on 2026-10-28. Ids are made up. Replace with a real recording in the D5-2 live smoke.",
   "interactions": [
     {"request": {"method": "POST", "path": "/v25.0/act_100000000000001/adimages"},
      "response": {"status": 200, "json": {"images": {"bytes": {"hash": "0f1e2d3c4b5a69788796a5b4c3d2e1f0", "url": "https://scontent.example.invalid/demo.png"}}}}},
@@ -13,7 +13,13 @@
     {"request": {"method": "POST", "path": "/v25.0/act_100000000000001/ads"},
      "response": {"status": 200, "json": {"id": "120200000000000404", "success": true}}},
     {"request": {"method": "GET", "path": "/v25.0/120200000000000404/previews"},
-     "response": {"status": 200, "json": {"data": [{"body": "<iframe src=\"https://www.facebook.com/ads/api/preview_iframe.php?d=AQKdemo&amp;t=AQLdemo\" width=\"320\" height=\"560\" scrolling=\"yes\" style=\"border: none;\"></iframe>"}], "paging": {}}}},
+     "response": {"status": 200, "json": {"data": [{"body": "<iframe src=\"https://www.facebook.com/ads/api/preview_iframe.php?d=AQKdemo&amp;t=AQLdemo\" width=\"320\" height=\"560\" scrolling=\"yes\" style=\"border: none;\"></iframe>"}], "paging": {}}}}
+  ],
+  "activation": [
+    {"request": {"method": "POST", "path": "/v25.0/120200000000000404"},
+     "response": {"status": 200, "json": {"success": true}}},
+    {"request": {"method": "POST", "path": "/v25.0/120200000000000202"},
+     "response": {"status": 200, "json": {"success": true}}},
     {"request": {"method": "POST", "path": "/v25.0/120200000000000101"},
      "response": {"status": 200, "json": {"success": true}}}
   ],

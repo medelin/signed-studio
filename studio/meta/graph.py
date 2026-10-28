@@ -12,7 +12,8 @@ strings, as in the reference's cURL examples.
   network error on a POST is not retried (the write may have happened; a duplicate PAUSED
   object is better found by a human than created twice silently).
 - Campaign, ad set and ad bodies carry ``status=PAUSED`` from a literal; activation is
-  ``POST /{campaign_id} status=ACTIVE`` behind a ``campaign.activate`` approval.
+  ``POST /{id} status=ACTIVE`` for the ad, the ad set and the campaign (in that order,
+  one call per level), each behind the same ``campaign.activate`` approval.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from studio.meta.adapter import (
     NotApproved,
     Preview,
     RemoteComment,
+    activation_target,
     adset_targeting,
     campaign_name,
     check_paused,
@@ -202,9 +204,9 @@ class GraphAdapter:
             raise AdapterError("Graph API returned no preview", code="bad_response")
         return from_graph_body(str(data[0].get("body", "")))
 
-    def activate(self, payload: Mapping[str, Any], approval: Verified) -> None:
+    def activate(self, level: str, payload: Mapping[str, Any], approval: Verified) -> None:
         require(approval, ACTIVATE, payload)
-        body = self._post(_oid(str(payload.get("external_id", ""))), {"status": "ACTIVE"})
+        body = self._post(_oid(activation_target(level, payload)), {"status": "ACTIVE"})
         if body.get("success") is not True:
             raise AdapterError("Graph API did not confirm the activation",
                                code="bad_response")

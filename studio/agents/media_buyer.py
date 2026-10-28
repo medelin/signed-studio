@@ -9,7 +9,9 @@
   step fails after something was created, the ``external_write`` still records what exists
   (``status: partial``) — the objects are PAUSED and visible in Ads Manager.
 - ``request_activation`` / ``activate``: a second, separate approval (``campaign.activate``)
-  with the daily budget and the ceiling in the signed payload; the ceiling
+  with the campaign, ad set and ad ids, the daily budget and the ceiling in the signed
+  payload. Activation sets ``ACTIVE`` on the ad, the ad set, then the campaign, one
+  ``tool_call`` receipt per level, all under that one approval; the ceiling
   (``STUDIO_MAX_DAILY_BUDGET_PLN``) is checked again at execution time.
 
 Nothing here is reachable from a model: there is no tool for it (``skills.yaml`` marks
@@ -28,7 +30,15 @@ from typing import Any
 
 from studio import executor
 from studio.approvals import Pending, Verified, transaction
-from studio.meta.adapter import PAUSED, Adapter, PausedOnly, campaign_name, check_paused
+from studio.meta.adapter import (
+    ACTIVATION_KEYS,
+    ACTIVATION_ORDER,
+    PAUSED,
+    Adapter,
+    PausedOnly,
+    campaign_name,
+    check_paused,
+)
 from studio.receipts import Ledger, canonical
 
 AGENT = "media_buyer"
@@ -95,10 +105,11 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
     with transaction(conn):
         conn.execute(
             "INSERT INTO campaigns (id, run_id, name, objective, status, daily_budget_minor, "
-            "adapter, external_id, created_ts) VALUES (?, ?, ?, ?, 'PAUSED', ?, ?, ?, ?)",
+            "adapter, external_id, adset_external_id, ad_external_id, created_ts) "
+            "VALUES (?, ?, ?, ?, 'PAUSED', ?, ?, ?, ?, ?, ?)",
             (v.item_id, v.run_id, campaign_name(payload), payload["campaign"]["objective"],
              int(payload["campaign"]["daily_budget_minor"]), adapter.name, campaign_id,
-             time.time()))
+             adset_id, ad_id, time.time()))
     result: dict[str, Any] = {"adapter": adapter.name, "status": PAUSED,
                               "campaign_item_id": v.item_id,
                               **{f"{k}_id": x for k, x in created.items()}}
@@ -115,14 +126,15 @@ def campaign(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
     with conn.lock:  # type: ignore[attr-defined]
         row = conn.execute(
             "SELECT c.id, c.run_id, c.name, c.status, c.daily_budget_minor, c.adapter, "
-            "c.external_id, e.result FROM campaigns c LEFT JOIN executions e ON "
-            "e.item_id = c.id AND e.action = 'campaign.create' WHERE c.id = ?",
-            (item_id,)).fetchone()
+            "c.external_id, c.adset_external_id, c.ad_external_id, e.result FROM campaigns c "
+            "LEFT JOIN executions e ON e.item_id = c.id AND e.action = 'campaign.create' "
+            "WHERE c.id = ?", (item_id,)).fetchone()
     if row is None:
         return None
-    keys = ("id", "run_id", "name", "status", "daily_budget_minor", "adapter", "external_id")
-    out = dict(zip(keys, row[:7], strict=True))
-    out["created"] = json.loads(row[7]) if row[7] else {}
+    keys = ("id", "run_id", "name", "status", "daily_budget_minor", "adapter", "external_id",
+            "adset_external_id", "ad_external_id")
+    out = dict(zip(keys, row[:9], strict=True))
+    out["created"] = json.loads(row[9]) if row[9] else {}
     return out
 
 
@@ -134,11 +146,14 @@ def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
         raise BuyError("no such campaign", "not_found")
     if c["status"] != PAUSED:
         raise BuyError("campaign is not PAUSED", "not_paused")
+    if not all(c[ACTIVATION_KEYS[level]] for level in ACTIVATION_ORDER):
+        raise BuyError("campaign, ad set or ad id missing", "incomplete")
     ceiling = ceiling_pln * 100
     if c["daily_budget_minor"] > ceiling:
         raise BuyError(f"daily budget above the {ceiling_pln} PLN ceiling", "over_ceiling")
     payload = {"action": "campaign.activate", "campaign_id": c["id"],
-               "external_id": c["external_id"], "adapter": c["adapter"],
+               **{ACTIVATION_KEYS[level]: c[ACTIVATION_KEYS[level]]
+                  for level in ACTIVATION_ORDER}, "adapter": c["adapter"],
                "daily_budget_minor": c["daily_budget_minor"], "ceiling_minor": ceiling,
                "currency": "PLN", "run_id": c["run_id"]}
     pending = Pending.create("campaign.activate", c["id"], payload, ledger=ledger,
@@ -158,8 +173,10 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
     problem = ""
     if c is None or c["status"] != PAUSED:
         problem = "not_paused"
-    elif (c["external_id"], c["daily_budget_minor"], c["adapter"]) != (
-            payload.get("external_id"), payload.get("daily_budget_minor"), adapter.name):
+    elif ([c[ACTIVATION_KEYS[x]] for x in ACTIVATION_ORDER] + [c["daily_budget_minor"],
+                                                               c["adapter"]]) != (
+            [payload.get(ACTIVATION_KEYS[x]) for x in ACTIVATION_ORDER]
+            + [payload.get("daily_budget_minor"), adapter.name]):
         problem = "campaign_changed"
     elif int(payload["daily_budget_minor"]) > min(int(payload["ceiling_minor"]),
                                                   ceiling_pln * 100):
@@ -169,16 +186,27 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
         executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="activate",
                              status="rejected", details={"reason": problem})
         raise BuyError(f"activation refused: {problem}", problem)
-    try:
-        adapter.activate(payload, v)
-    except Exception as exc:
-        executor.finish(conn, v, "failed", {"error": type(exc).__name__})
-        executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="activate",
-                             status="error",
-                             details={"error": getattr(exc, "code", type(exc).__name__)})
-        raise
+    activated: list[str] = []
+    for level in ACTIVATION_ORDER:  # ad → ad set → campaign: the parent goes live last
+        step = "activate_" + level
+        try:
+            adapter.activate(level, payload, v)
+        except Exception as exc:
+            error = getattr(exc, "code", type(exc).__name__)
+            executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step=step,
+                                 status="error", details={"error": error})
+            if activated:  # what is ACTIVE now; the campaign itself is still PAUSED
+                executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
+                    "status": "partial", "activated": list(activated)})
+            executor.finish(conn, v, "failed", {"error": error, "activated": activated})
+            raise
+        activated.append(level)
+        executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step=step,
+                             status="ok", details={
+                                 "object": executor.safe_id(str(payload[ACTIVATION_KEYS[level]])),
+                                 "object_status": "ACTIVE"})
     executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
-        "status": "ok", "object_status": "ACTIVE",
+        "status": "ok", "object_status": "ACTIVE", "activated": activated,
         "daily_budget_minor": payload["daily_budget_minor"]})
     with transaction(conn):
         conn.execute("UPDATE campaigns SET status = 'ACTIVE' WHERE id = ?", (v.item_id,))

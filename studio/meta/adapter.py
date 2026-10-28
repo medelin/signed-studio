@@ -13,7 +13,8 @@ Rules every implementation follows, enforced by ``require`` and ``check_paused``
 - Campaign, ad set and ad are created with ``status="PAUSED"``, a literal in the code;
   there is no status parameter, and a payload asking for anything else is refused
   (``PausedOnly``). Activation is a separate write needing a ``campaign.activate``
-  approval.
+  approval whose payload names all three objects; it sets ``ACTIVE`` on the ad, then the
+  ad set, then the campaign (``ACTIVATION_ORDER``), one call each.
 - The access token goes only in the ``Authorization`` header, never in a URL.
 """
 
@@ -28,6 +29,12 @@ from studio.approvals import Verified, payload_sha256
 PAUSED: Final = "PAUSED"
 CREATE, ACTIVATE, REPLY, HIDE = ("campaign.create", "campaign.activate", "reply.post",
                                  "comment.hide")
+
+
+# Activation order: the parent last, so nothing can deliver before its children are ready.
+ACTIVATION_ORDER: Final = ("ad", "adset", "campaign")
+ACTIVATION_KEYS: Final = {"ad": "ad_external_id", "adset": "adset_external_id",
+                          "campaign": "external_id"}
 
 
 class AdapterError(Exception):
@@ -117,7 +124,9 @@ class Adapter(Protocol):
 
     def preview(self, ad_id: str) -> Preview: ...
 
-    def activate(self, payload: Mapping[str, Any], approval: Verified) -> None: ...
+    def activate(self, level: str, payload: Mapping[str, Any], approval: Verified) -> None:
+        """Set ``ACTIVE`` on one object (``ad``, ``adset`` or ``campaign``) the signed
+        ``campaign.activate`` payload names."""
 
     def list_comments(self, object_id: str, since: float = 0.0) -> list[RemoteComment]: ...
 
@@ -126,6 +135,16 @@ class Adapter(Protocol):
     def hide(self, payload: Mapping[str, Any], approval: Verified) -> None: ...
 
     def insights(self, campaign_id: str) -> dict[str, Any]: ...
+
+
+def activation_target(level: str, payload: Mapping[str, Any]) -> str:
+    """The external id of ``level`` in a signed activation payload; refused when absent."""
+    if level not in ACTIVATION_KEYS:
+        raise NotApproved(f"unknown activation level {level!r}")
+    value = payload.get(ACTIVATION_KEYS[level])
+    if not isinstance(value, str) or not value:
+        raise NotApproved(f"the signed activation names no {level}")
+    return value
 
 
 def campaign_name(payload: Mapping[str, Any]) -> str:
