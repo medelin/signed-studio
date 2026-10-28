@@ -1,0 +1,16 @@
+# Never ship local state or secrets into the image.
+.env
+*.env
+!deploy/sandbox.env.example
+.venv/
+var/
+.git/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+*.db
+*.db-*
+*.key
+receipts.jsonl

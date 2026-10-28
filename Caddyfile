@@ -1,0 +1,45 @@
+# Caddy for `docker compose up` on a clean VPS (see docs/SANDBOX.md); STUDIO_DOMAIN is the
+# public name whose A/AAAA records point at the VPS. TLS is automatic (Let's Encrypt).
+# Security headers and body limits must match deploy/Caddyfile and studio.app (tests check).
+{
+	ocsp_stapling off
+}
+
+{$STUDIO_DOMAIN} {
+	encode zstd gzip
+
+	# Body limits (the app enforces the same per-path limits again, 413 either way).
+	@voice path /api/briefs/voice
+	@report path /api/reports
+	@small not path /api/briefs/voice /api/reports
+	request_body @voice {
+		max_size 33MB
+	}
+	request_body @report {
+		max_size 7MB
+	}
+	request_body @small {
+		max_size 128KB
+	}
+
+	header {
+		defer
+		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
+	log {
+		output stderr
+		format json
+	}
+
+	# Caddy replaces any client X-Forwarded-For with the real peer address; the app trusts
+	# it only from TRUSTED_PROXY (this container's fixed address in docker-compose.yml).
+	reverse_proxy app:8000
+}

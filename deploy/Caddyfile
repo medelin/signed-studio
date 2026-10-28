@@ -1,0 +1,45 @@
+# Caddy for the judge sandbox VM (installed to /etc/caddy/Caddyfile by deploy/remote-install.sh).
+# TLS: automatic (Let's Encrypt, HTTP-01 on :80 or TLS-ALPN-01 on :443).
+# Security headers and body limits must match the root Caddyfile and studio.app (tests check).
+{
+	ocsp_stapling off
+}
+
+muse.udun.eu {
+	encode zstd gzip
+
+	# Body limits (the app enforces the same per-path limits again, 413 either way).
+	@voice path /api/briefs/voice
+	@report path /api/reports
+	@small not path /api/briefs/voice /api/reports
+	request_body @voice {
+		max_size 33MB
+	}
+	request_body @report {
+		max_size 7MB
+	}
+	request_body @small {
+		max_size 128KB
+	}
+
+	header {
+		defer
+		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
+	log {
+		output stderr
+		format json
+	}
+
+	# Caddy replaces any client X-Forwarded-For with the real peer address; the app trusts
+	# it only from TRUSTED_PROXY=127.0.0.1 and reads the rightmost entry.
+	reverse_proxy 127.0.0.1:8000
+}

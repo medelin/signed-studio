@@ -38,7 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from studio import db, routes_inbox, routes_report, routes_studio
+from studio import db, routes_inbox, routes_report, routes_studio, sandbox
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
@@ -599,6 +599,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             registry = Keys.registry(conn)
         return {a: public_key_raw(k).hex() for a, k in registry.items()}
 
+    sandbox.install(app, settings, conn)  # STUDIO_SANDBOX=1: reset, judge-only writes, limits
     return app
 
 
