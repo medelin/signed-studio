@@ -17,6 +17,10 @@ Rules every implementation follows, enforced by ``require`` and ``check_paused``
   ad set, then the campaign (``ACTIVATION_ORDER``), one call each.
 - The access token goes in the POST form body or the ``Authorization`` header, never in
   a URL (``graph.py``).
+- The campaign objective, the ad set's optimisation goal, billing event, destination and
+  promoted object come only from the payload's signed ``delivery`` block, and only after
+  ``objectives.check`` accepted it as a row of the objective table (``delivery_of``);
+  ``adset_fields`` and ``creative_spec`` build the same bodies for both adapters.
 """
 
 from __future__ import annotations
@@ -26,8 +30,11 @@ from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
 
 from studio.approvals import Verified, payload_sha256
+from studio.meta import objectives
+from studio.receipts import canonical, sha256_hex
 
 PAUSED: Final = "PAUSED"
+MOCK_PAGE: Final = "mock-page"  # the mock adapter's Page (no Meta Page exists in the sandbox)
 CREATE, ACTIVATE, REPLY, HIDE = ("campaign.create", "campaign.activate", "reply.post",
                                  "comment.hide")
 
@@ -128,7 +135,7 @@ class Adapter(Protocol):
                             approval: Verified) -> str: ...
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
-                        approval: Verified) -> str: ...
+                        approval: Verified, *, form_id: str = "") -> str: ...
 
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
                          approval: Verified) -> str: ...
@@ -156,6 +163,95 @@ def activation_target(level: str, payload: Mapping[str, Any]) -> str:
     if not isinstance(value, str) or not value:
         raise NotApproved(f"the signed activation names no {level}")
     return value
+
+
+def delivery_of(payload: Mapping[str, Any], page_id: str | None = None) -> dict[str, Any]:
+    """The signed ``delivery`` block, accepted only as a valid objective mapping for this
+    Page (``objectives.check``); ``NotApproved`` otherwise, before any call."""
+    try:
+        return objectives.check(payload.get("delivery"), page_id)
+    except objectives.DeliveryError as exc:
+        raise NotApproved(f"delivery refused: {exc}") from None
+
+
+def spec_sha256(spec: Mapping[str, Any]) -> str:
+    """Hash of a delivery block (what the approval signs as ``spec_sha256``)."""
+    return sha256_hex(canonical(dict(spec)))
+
+
+def campaign_fields(payload: Mapping[str, Any], spec: Mapping[str, Any]) -> dict[str, Any]:
+    """Campaign body fields from the signed delivery (``status`` is added by the adapter)."""
+    out: dict[str, Any] = {"name": campaign_name(payload), "objective": spec["objective"],
+                           "special_ad_categories": []}
+    if spec.get("campaign_promoted_object"):
+        out["promoted_object"] = dict(spec["campaign_promoted_object"])
+    return out
+
+
+def adset_fields(payload: Mapping[str, Any], spec: Mapping[str, Any]) -> dict[str, Any]:
+    """Ad set body fields from the signed delivery: optimisation goal, billing event,
+    destination type, promoted object and attribution (Marketing API ad set reference,
+    https://developers.facebook.com/docs/marketing-api/reference/ad-campaign)."""
+    out: dict[str, Any] = {
+        "daily_budget": int(payload["campaign"]["daily_budget_minor"]),
+        "billing_event": spec["billing_event"], "optimization_goal": spec["optimization_goal"],
+        "targeting": adset_targeting(payload)}
+    if spec.get("destination_type"):
+        out["destination_type"] = spec["destination_type"]
+    if spec.get("promoted_object"):
+        out["promoted_object"] = dict(spec["promoted_object"])
+    if spec.get("attribution_spec"):
+        out["attribution_spec"] = [dict(a) for a in spec["attribution_spec"]]
+    return out
+
+
+# Call-to-action values per creative kind (link data call_to_action value:
+# https://developers.facebook.com/docs/marketing-api/reference/ad-creative-link-data-call-to-action-value/
+# — ``app_destination`` for messaging ads, ``application`` + ``link`` for app installs,
+# ``lead_gen_form_id`` for instant forms).
+APP_DESTINATIONS: Final = {"MESSAGE_PAGE": "MESSENGER", "INSTAGRAM_MESSAGE": "INSTAGRAM_DIRECT",
+                           "WHATSAPP_MESSAGE": "WHATSAPP"}
+LEAD_FORM_LINK: Final = "https://fb.me/"  # what Meta requires as the link of a lead ad
+
+
+def creative_spec(payload: Mapping[str, Any], spec: Mapping[str, Any], page_id: str,
+                  image_hash: str, *, form_id: str = "") -> dict[str, Any]:
+    """The creative body (``object_story_spec`` and, for a catalog, ``product_set_id``)
+    for the signed delivery's creative kind."""
+    ad, link = payload["ad"], str(payload.get("link", ""))
+    kind = spec["creative"]
+    data: dict[str, Any] = {"image_hash": image_hash, "link": link,
+                            "message": ad["primary_text"], "name": ad["headline"],
+                            "description": ad["description"]}
+    cta: dict[str, Any] | None = {"type": ad["cta"], "value": {"link": link}}
+    if kind == "message":
+        cta = {"type": spec["cta"], "value": {"app_destination": APP_DESTINATIONS[spec["cta"]]}}
+    elif kind == "app":
+        store = spec["promoted_object"]["object_store_url"]
+        data["link"] = store
+        cta = {"type": spec["cta"], "value": {
+            "application": spec["promoted_object"]["application_id"], "link": store}}
+    elif kind == "lead_form":
+        if not form_id:
+            raise NotApproved("an instant-form ad needs the form created first")
+        data["link"] = LEAD_FORM_LINK
+        cta = {"type": spec["cta"], "value": {"lead_gen_form_id": form_id}}
+    elif kind == "event":
+        # an event ad links to the Facebook event; Meta shows its own response button
+        data["link"] = f"https://www.facebook.com/events/{spec['event_id']}/"
+        cta = None
+    if cta is not None:
+        data["call_to_action"] = cta
+    out: dict[str, Any] = {"name": campaign_name(payload) + " · creative"}
+    if kind == "catalog":
+        # Advantage+ catalog ads: a template creative over the promoted product set
+        # (https://developers.facebook.com/docs/marketing-api/advantage-catalog-ads/)
+        data.pop("image_hash")
+        out["object_story_spec"] = {"page_id": page_id, "template_data": data}
+        out["product_set_id"] = spec["promoted_object"]["product_set_id"]
+    else:
+        out["object_story_spec"] = {"page_id": page_id, "link_data": data}
+    return out
 
 
 def campaign_name(payload: Mapping[str, Any]) -> str:

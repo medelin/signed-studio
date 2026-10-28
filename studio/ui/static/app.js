@@ -188,6 +188,16 @@ async function showApproval(pendingId) {
     const briefSha = data.fields.brief_sha256 || "";
     $("ap-brief").textContent = briefSha;
     $("ap-brief-dt").hidden = $("ap-brief-dd").hidden = !briefSha;
+    const spec = data.fields.spec_sha256 || "";
+    $("ap-spec").textContent = spec;
+    $("ap-spec-dt").hidden = $("ap-spec-dd").hidden = !spec;
+    const d = data.content.delivery;
+    if (d) {
+      const promoted = Object.entries(d.promoted_object || {}).map(([k, v]) => k + "=" + v).join(", ");
+      $("ap-delivery").textContent = T("delivery", { objective: d.objective, goal: d.optimization_goal,
+        destination: d.destination_type ? " · " + d.destination_type : "", promoted: promoted || T("delivery_none") });
+    }
+    $("ap-delivery-dt").hidden = $("ap-delivery-dd").hidden = !d;
     $("ap-key").textContent = Signer.approver();
     $("ap-exp").textContent = new Date(data.expires_ts * 1000).toLocaleTimeString();
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);

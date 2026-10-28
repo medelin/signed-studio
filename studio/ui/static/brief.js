@@ -49,7 +49,7 @@
   function setPath(obj, path, value) {
     const keys = path.split(".");
     let o = obj;
-    for (const k of keys.slice(0, -1)) o = o[k];
+    for (const k of keys.slice(0, -1)) { if (o[k] == null) o[k] = {}; o = o[k]; }
     o[keys[keys.length - 1]] = value;
   }
   const lines = (text) => text.split("\n").map((s) => s.trim()).filter(Boolean);
@@ -279,6 +279,24 @@
     });
   }
 
+  // -- objective: sub-choices of the chosen goal, and only the ids that row needs -----
+  function syncObjective() {
+    const goal = $("bf-objective-goal").value;
+    const sub = $("bf-objective-sub");
+    for (const opt of sub.querySelectorAll("option[data-goal]")) opt.disabled = opt.dataset.goal !== goal;
+    for (const grp of sub.querySelectorAll("optgroup")) grp.hidden = grp.dataset.goal !== goal;
+    if (sub.selectedOptions.length && sub.selectedOptions[0].disabled) sub.value = "";
+    const first = sub.querySelector('option[data-goal="' + goal + '"]');
+    const row = goal + ":" + (sub.value || (first ? first.value : ""));
+    for (const box of v1.querySelectorAll("[data-needs]")) {
+      const used = box.dataset.needs.split(" ").includes(row);
+      const input = box.querySelector("input:not([type=checkbox]), select");
+      box.hidden = !used && !(input && input.value);
+    }
+  }
+  $("bf-objective-goal").addEventListener("change", syncObjective);
+  $("bf-objective-sub").addEventListener("change", syncObjective);
+
   // -- fill and collect ---------------------------------------------------------------
   function fill(b) {
     for (const node of v1.querySelectorAll("[data-path]")) {
@@ -286,12 +304,13 @@
       const value = getPath(b, path);
       if (path === "assets") { node.value = (b.assets || []).map((a) => a.note).join("\n"); continue; }
       if (node.type === "radio") node.checked = value === node.value;
-      else if (node.type === "checkbox" && path === "placements.deliverables") node.checked = (value || []).includes(node.value);
+      else if (node.type === "checkbox" && "multi" in node.dataset) node.checked = (value || []).includes(node.value);
       else if (node.type === "checkbox") node.checked = Boolean(value);
       else if (node.dataset.kind === "lines") node.value = (value || []).join("\n");
       else if (node.type === "number") node.value = value ? String(value) : "";
       else node.value = value == null ? "" : String(value);
     }
+    syncObjective();
     facts = []; reasons = [];
     $("bv-fact-list").replaceChildren();
     $("bv-reason-list").replaceChildren();
@@ -303,14 +322,14 @@
 
   function collect() {
     const b = JSON.parse(JSON.stringify(draft.brief));
-    const deliverables = [];
+    const multi = {};  // path -> checked values (checkbox groups marked data-multi)
     for (const node of v1.querySelectorAll("[data-path]")) {
       const path = node.dataset.path;
       if (path === "assets") {
         const kinds = new Map((draft.brief.assets || []).map((a) => [a.note, a.kind]));
         b.assets = lines(node.value).map((note) => ({ kind: kinds.get(note) || "other", note }));
       } else if (node.type === "radio") { if (node.checked) setPath(b, path, node.value); }
-      else if (node.type === "checkbox" && path === "placements.deliverables") { if (node.checked) deliverables.push(node.value); }
+      else if (node.type === "checkbox" && "multi" in node.dataset) { multi[path] = multi[path] || []; if (node.checked) multi[path].push(node.value); }
       else if (node.type === "checkbox") setPath(b, path, node.checked);
       else if (node.dataset.kind === "lines") {
         const items = lines(node.value);
@@ -320,7 +339,7 @@
         setPath(b, path, path.startsWith("audience.age") ? Math.trunc(n) : n);
       } else setPath(b, path, path === "budget.currency" ? node.value.trim().toUpperCase() : node.value.trim());
     }
-    b.placements.deliverables = deliverables;
+    for (const [path, values] of Object.entries(multi)) setPath(b, path, values);
     const keep = facts.filter((f) => f.input.value.trim());
     b.confirmed_facts = keep.map((f) => f.input.value.trim());
     const index = new Map(keep.map((f, i) => [f.id, i]));

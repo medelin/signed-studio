@@ -35,6 +35,7 @@ def sample(**over) -> bv.BriefV1:
         "placements": {"automatic": True, "deliverables": ["feed_1x1", "story_9x16"]},
         "assets": [{"kind": "product_photo", "note": "bowls on a shelf"}],
         "open_questions": [],
+        "promotion": {"privacy_policy_url": "https://clay.example/privacy"},
     }
     for key, value in over.items():
         data[key] = value

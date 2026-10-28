@@ -105,3 +105,30 @@ def test_payload_refuses_a_budget_above_the_activation_ceiling(env):
     assert producer.campaign_payload(run, 0, ceiling_pln=80)["campaign"][
         "daily_budget_minor"] == 8000
     assert ctx.max_daily_budget_pln == 50  # the default ceiling reaches the producer
+
+
+@pytest.mark.parametrize(("goal", "sub", "objective"), [
+    ("awareness", "", "OUTCOME_AWARENESS"), ("engagement", "messenger", "OUTCOME_ENGAGEMENT"),
+    ("app_promotion", "", "OUTCOME_APP_PROMOTION"), ("sales", "catalog", "OUTCOME_SALES")])
+def test_payload_carries_the_objective_mapping_of_the_brief(env, goal, sub, objective):
+    from studio.meta import objectives
+    from tests.test_brief import sample
+    from tests.test_objectives import IDS
+
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 0}
+    brief = sample(objective={"goal": goal, "kpi": "x", "sub": sub},
+                   promotion={k: v for k, v in IDS.items()})
+    p = producer.campaign_payload(run, 0, brief=brief, page_id="600000000000001")
+    assert p["campaign"]["objective"] == p["delivery"]["objective"] == objective
+    assert p["delivery"] == objectives.delivery(goal, sub, page_id="600000000000001",
+                                                promotion=IDS)
+    assert p["brief"]["sub"] == objectives.row(goal, sub).sub
+    free = producer.campaign_payload(run, 0)
+    assert free["delivery"]["optimization_goal"] == "LINK_CLICKS"
+    with pytest.raises(producer.ToolError, match="cannot be mapped"):
+        producer.campaign_payload(run, 0, brief=sample(
+            objective={"goal": "sales", "kpi": "x"}, promotion={}))

@@ -5,7 +5,8 @@ Turn the owner's words into a Brief v1. Fill every section only from what the ow
 - `confirmed_facts`: short statements the owner stated as true (prices, times, durations, guarantees, quantities, what is included), in their words. Never add a fact the owner did not write: not from general knowledge, not as an estimate, not to make the ad better.
 - A claim the owner only implies or states vaguely ("everything included", "the best in town"), and any fact a section needs that the owner did not give, becomes an open question: `question` is one short question to the owner, `claim` quotes their words ("" when the fact is simply missing). Put that claim nowhere else in the brief.
 - `offer.reasons_to_believe`: each reason names, in `facts`, the 0-based indices of the confirmed facts it rests on. No fact, no reason.
-- `objective.goal`: exactly one of awareness, traffic, engagement, leads, sales; `kpi` in the owner's terms.
+- `objective.goal`: exactly one of awareness, traffic, engagement, leads, app_promotion, sales; `kpi` in the owner's terms. `objective.sub` only when the owner names it (for example messages on WhatsApp, an instant form, landing page views, a catalog), else "".
+- `promotion`: a pixel id, app id, store link, event id, catalog or product set id, or privacy-policy page only when the owner wrote it, character for character; otherwise "". Never invent an id or a URL: the owner fills in what is missing.
 - `audience`: locations, ages (13-65), languages and the insight (who they are, what they believe, what holds them back, what would move them). Meta uses this as suggestions, not hard targeting.
 - `proposition`: one sentence.
 - `budget`: as the owner stated it, with an ISO 4217 currency code; amount 0 and an open question when no budget was given.

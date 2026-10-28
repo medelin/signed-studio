@@ -136,11 +136,45 @@
         <label for="bf-objective-goal">{{ t("brief.f.goal") }}</label>
         <p class="hint" id="hint-bf-objective-goal">{{ t("brief.h.goal") }}</p>
         <select id="bf-objective-goal" data-path="objective.goal" aria-describedby="hint-bf-objective-goal err-bf-objective-goal">
-          {% for g in ("awareness", "traffic", "engagement", "leads", "sales") %}<option value="{{ g }}">{{ t("brief.goal." ~ g) }}</option>{% endfor %}
+          {% for g in goals %}<option value="{{ g }}">{{ t("brief.goal." ~ g) }}</option>{% endfor %}
         </select>
         {{ err("bf-objective-goal") }}
       </div>
+      <div class="bf-field" data-field="objective.sub">
+        <label for="bf-objective-sub">{{ t("brief.f.sub") }}</label>
+        <p class="hint" id="hint-bf-objective-sub">{{ t("brief.h.sub") }}</p>
+        <select id="bf-objective-sub" data-path="objective.sub" aria-describedby="hint-bf-objective-sub err-bf-objective-sub">
+          <option value="">{{ t("brief.sub.default") }}</option>
+          {% for g in goals %}<optgroup label="{{ t('brief.goal.' ~ g) }}" data-goal="{{ g }}">{% for sub in subs[g] %}<option value="{{ sub }}" data-goal="{{ g }}">{{ t("brief.sub." ~ sub) }}</option>{% endfor %}</optgroup>{% endfor %}
+        </select>
+        {{ err("bf-objective-sub") }}
+      </div>
       {{ field("objective.kpi", "kpi", hint="brief.h.kpi") }}
+    </fieldset>
+
+    <fieldset id="bv-promotion">
+      <legend>{{ t("brief.s.promotion") }}</legend>
+      <p class="hint">{{ t("brief.promotion_hint") }}</p>
+      {% for name in ("pixel_id", "application_id", "event_id", "product_catalog_id", "product_set_id") %}
+      <div data-needs="{{ needs[name] }}">{{ field("promotion." ~ name, name, dictate=False, attrs='inputmode="numeric" autocomplete="off"') }}</div>
+      {% endfor %}
+      <div class="bf-field" data-field="promotion.custom_event_type" data-needs="{{ needs['custom_event_type'] }}">
+        <label for="bf-promotion-custom_event_type">{{ t("brief.f.custom_event_type") }}</label>
+        <select id="bf-promotion-custom_event_type" data-path="promotion.custom_event_type" aria-describedby="err-bf-promotion-custom_event_type">
+          <option value="">{{ t("brief.event.default") }}</option>
+          {% for e in events %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+        </select>
+        {{ err("bf-promotion-custom_event_type") }}
+      </div>
+      <div data-needs="{{ needs['object_store_url'] }}">{{ field("promotion.object_store_url", "object_store_url", "url", dictate=False, attrs='inputmode="url"') }}</div>
+      <div data-needs="{{ needs['privacy_policy_url'] }}">{{ field("promotion.privacy_policy_url", "privacy_policy_url", "url", "brief.h.privacy_policy_url", dictate=False, attrs='inputmode="url"') }}</div>
+      <div class="bf-field" data-field="promotion.lead_fields" data-needs="{{ needs['privacy_policy_url'] }}">
+        <fieldset class="radios" aria-describedby="err-bf-promotion-lead_fields">
+          <legend>{{ t("brief.f.lead_fields") }}</legend>
+          {% for lf in lead_fields %}<label><input type="checkbox" name="bf-lead-fields" value="{{ lf }}" data-path="promotion.lead_fields" data-multi> {{ t("brief.lf." ~ lf) }}</label>{% endfor %}
+        </fieldset>
+        {{ err("bf-promotion-lead_fields") }}
+      </div>
     </fieldset>
 
     <fieldset>
@@ -206,7 +240,7 @@
       <div class="bf-field" data-field="placements.deliverables">
         <fieldset class="radios" aria-describedby="err-bf-placements-deliverables">
           <legend>{{ t("brief.f.deliverables") }}</legend>
-          {% for pl in ("feed_1x1", "feed_4x5", "story_9x16") %}<label><input type="checkbox" name="bf-deliverables" value="{{ pl }}" data-path="placements.deliverables"> {{ t("brief.pl." ~ pl) }}</label>{% endfor %}
+          {% for pl in ("feed_1x1", "feed_4x5", "story_9x16") %}<label><input type="checkbox" name="bf-deliverables" value="{{ pl }}" data-path="placements.deliverables" data-multi> {{ t("brief.pl." ~ pl) }}</label>{% endfor %}
         </fieldset>
         {{ err("bf-placements-deliverables") }}
       </div>
@@ -274,6 +308,8 @@
     <dt>{{ t("studio.ap.sha") }}</dt><dd><code id="ap-sha"></code></dd>
     <dt>{{ t("studio.ap.head") }}</dt><dd><code id="ap-head"></code></dd>
     <dt id="ap-brief-dt" hidden>{{ t("brief.ap_brief") }}</dt><dd id="ap-brief-dd" hidden><code id="ap-brief"></code></dd>
+    <dt id="ap-delivery-dt" hidden>{{ t("studio.ap.delivery") }}</dt><dd id="ap-delivery-dd" hidden><span id="ap-delivery"></span></dd>
+    <dt id="ap-spec-dt" hidden>{{ t("studio.ap.spec") }}</dt><dd id="ap-spec-dd" hidden><code id="ap-spec"></code></dd>
     <dt>{{ t("studio.ap.key") }}</dt><dd><code id="ap-key"></code></dd>
     <dt>{{ t("studio.ap.exp") }}</dt><dd id="ap-exp"></dd>
   </dl>

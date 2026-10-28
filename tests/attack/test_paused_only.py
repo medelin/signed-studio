@@ -9,7 +9,8 @@ from studio import db
 from studio.agents import community, media_buyer
 from studio.approvals import Keys, Verified
 from studio.executor import ExecutionRefused
-from studio.meta.adapter import PausedOnly
+from studio.meta import objectives
+from studio.meta.adapter import MOCK_PAGE, PausedOnly
 from studio.meta.mock import MockAdapter
 from studio.receipts import verify
 from tests.approve import approve
@@ -17,9 +18,12 @@ from tests.approve import approve
 PNG = b"\x89PNG\r\n\x1a\n" + b"hero-image" * 20
 RUN = "run_buy1"
 
+TRAFFIC = objectives.delivery("traffic", page_id=MOCK_PAGE)
+
 
 def payload(**over):
     p = {"action": "campaign.create", "run_id": RUN,
+         "delivery": TRAFFIC,
          "campaign": {"objective": "OUTCOME_TRAFFIC", "status": "PAUSED",
                       "daily_budget_minor": 3000, "currency": "PLN", "angle": "Slow mornings"},
          "audience": "home office", "link": "https://example.com/",

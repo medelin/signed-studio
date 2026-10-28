@@ -53,6 +53,7 @@ from studio import (
     routes_account,
     routes_help,
     routes_inbox,
+    routes_meta,
     routes_receipts,
     routes_report,
     routes_studio,
@@ -481,6 +482,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return adapter.insights(row[0])  # type: ignore[no-any-return]
 
     app.state.insights = insights
+    routes_meta.register(app, settings, ledger, conn, write_guard, templates, session_of)
     app.state.executors["campaign.create"] = (
         lambda verified, payload: media_buyer.create(conn, ledger, app.state.adapter, verified,
                                                      payload, settings.data_dir))

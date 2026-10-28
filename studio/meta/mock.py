@@ -19,6 +19,7 @@ from studio.meta.adapter import (
     ACTIVATE,
     CREATE,
     HIDE,
+    MOCK_PAGE,
     PAUSED,
     REPLY,
     AdapterError,
@@ -26,9 +27,11 @@ from studio.meta.adapter import (
     Preview,
     RemoteComment,
     activation_target,
-    adset_targeting,
-    campaign_name,
+    adset_fields,
+    campaign_fields,
     check_paused,
+    creative_spec,
+    delivery_of,
     require,
 )
 
@@ -44,8 +47,9 @@ class MockAdapter:
     name = "mock"
 
     def __init__(self, comments: list[RemoteComment] | None = None, *,
-                 conn: Any = None) -> None:
+                 conn: Any = None, page_id: str = MOCK_PAGE) -> None:
         self._conn = conn
+        self.page_id = page_id
         self.objects: dict[str, dict[str, Any]] = {}
         self.calls: list[tuple[str, str]] = []  # (method, object id)
         self.replies: dict[str, list[str]] = {}
@@ -74,29 +78,35 @@ class MockAdapter:
         self.calls.append(("upload_image", image_hash))
         return image_hash
 
+    def _delivery(self, payload: Mapping[str, Any], approval: Verified) -> dict[str, Any]:
+        require(approval, CREATE, payload, self._conn)
+        return delivery_of(payload, self.page_id)
+
     def create_campaign_paused(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        spec = self._delivery(payload, approval)
         return self._create("create_campaign_paused", "cmp", payload, approval, {
-            "type": "campaign", "name": campaign_name(payload),
-            "objective": payload["campaign"]["objective"], "status": PAUSED,
-            "special_ad_categories": []})
+            "type": "campaign", **campaign_fields(payload, spec), "status": PAUSED})
 
     def create_adset_paused(self, campaign_id: str, payload: Mapping[str, Any],
                             approval: Verified) -> str:
+        spec = self._delivery(payload, approval)
         if self.objects.get(campaign_id, {}).get("type") != "campaign":
             raise AdapterError("unknown campaign", code="not_found")
         return self._create("create_adset_paused", "adset", payload, approval, {
             "type": "adset", "campaign_id": campaign_id, "status": PAUSED,
-            "daily_budget": payload["campaign"]["daily_budget_minor"],
-            "targeting": adset_targeting(payload), "billing_event": "IMPRESSIONS",
-            "optimization_goal": "LINK_CLICKS"})
+            **adset_fields(payload, spec)})
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
-                        approval: Verified) -> str:
-        ad = payload["ad"]
+                        approval: Verified, *, form_id: str = "") -> str:
+        spec = self._delivery(payload, approval)
+        body = creative_spec(payload, spec, self.page_id, image_hash, form_id=form_id)
+        story = body["object_story_spec"]
+        data = story.get("link_data") or story.get("template_data") or {}
+        cta = data.get("call_to_action") or {}
         return self._create("create_creative", "creative", payload, approval, {
-            "type": "creative", "image_hash": image_hash, "message": ad["primary_text"],
-            "name": ad["headline"], "description": ad["description"], "cta": ad["cta"],
-            "link": payload.get("link", "")})
+            "type": "creative", "image_hash": image_hash, "message": data["message"],
+            "name": data["name"], "description": data["description"],
+            "cta": cta.get("type", ""), "link": data["link"], "body": body})
 
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
                          approval: Verified) -> str:

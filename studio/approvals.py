@@ -27,6 +27,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from studio.receipts import (
     APPROVAL_BRIEF_FIELD,
     APPROVAL_SIGNED_FIELDS,
+    APPROVAL_SPEC_FIELD,
     APPROVAL_TTL_S,
     BRIEF_BOUND_ACTIONS,
     BRIEF_KIND,
@@ -93,7 +94,8 @@ CREATE TABLE IF NOT EXISTS approvals (
     signature TEXT,
     decided_ts INTEGER,
     brief_sha256 TEXT NOT NULL DEFAULT '',
-    superseded_by TEXT NOT NULL DEFAULT ''  -- set when a renewal replaced this approval
+    superseded_by TEXT NOT NULL DEFAULT '',  -- set when a renewal replaced this approval
+    spec_sha256 TEXT NOT NULL DEFAULT ''  -- a campaign's delivery block, signed by hash
 );
 CREATE TABLE IF NOT EXISTS nonces (
     nonce TEXT PRIMARY KEY,
@@ -195,6 +197,15 @@ def confirmed_brief(ledger: Ledger, run_id: str) -> str:
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+
+
+def spec_of(action: str, payload: bytes | Mapping[str, Any]) -> str:
+    """``spec_sha256`` a ``campaign.create`` approval signs: the hash of the payload's
+    ``delivery`` block (objective mapping), or ``""`` when it has none."""
+    if action != "campaign.create" or not isinstance(payload, Mapping):
+        return ""
+    spec = payload.get("delivery")
+    return sha256_hex(canonical(dict(spec))) if isinstance(spec, Mapping) else ""
 
 
 @contextmanager
@@ -314,6 +325,7 @@ class Pending:
     nonce: str
     ts: int
     brief_sha256: str = ""
+    spec_sha256: str = ""
 
     @classmethod
     def create(
@@ -347,21 +359,22 @@ class Pending:
             nonce="n_" + secrets.token_hex(16),
             ts=int(time.time() if now is None else now),
             brief_sha256=brief_sha256,
+            spec_sha256=spec_of(action, payload),
         )
 
     def save(self, conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT INTO approvals (id, run_id, action, item_id, content_sha256, chain_head, "
-            "nonce, ts, brief_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "nonce, ts, brief_sha256, spec_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (self.id, self.run_id, self.action, self.item_id, self.content_sha256,
-             self.chain_head, self.nonce, self.ts, self.brief_sha256),
+             self.chain_head, self.nonce, self.ts, self.brief_sha256, self.spec_sha256),
         )
 
     @classmethod
     def load(cls, conn: sqlite3.Connection, pending_id: str) -> Pending:
         row = conn.execute(
             "SELECT id, run_id, action, item_id, content_sha256, chain_head, nonce, ts, "
-            "brief_sha256 FROM approvals WHERE id = ?",
+            "brief_sha256, spec_sha256 FROM approvals WHERE id = ?",
             (pending_id,),
         ).fetchone()
         if row is None:
@@ -380,6 +393,8 @@ class Pending:
         }
         if self.brief_sha256:
             out[APPROVAL_BRIEF_FIELD] = self.brief_sha256
+        if self.spec_sha256:
+            out[APPROVAL_SPEC_FIELD] = self.spec_sha256
         return out
 
     def message(self, approver: str) -> bytes:
@@ -401,6 +416,7 @@ class Approval:
     ts: int
     signature: str
     brief_sha256: str = ""
+    spec_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -415,6 +431,7 @@ class Verified:
     approver: str
     signature: str
     brief_sha256: str = ""
+    spec_sha256: str = ""
 
     def write_details(self) -> dict[str, str]:
         """``details`` for the ``external_write`` receipt this approval authorises."""
@@ -468,6 +485,8 @@ def verify_and_consume(
         raise FieldMismatch("timestamp does not match the pending approval")
     if approval.brief_sha256 != pending.brief_sha256:
         raise FieldMismatch("brief hash does not match the pending approval")
+    if approval.spec_sha256 != pending.spec_sha256:
+        raise FieldMismatch("delivery hash does not match the pending approval")
     if pending.brief_sha256 and confirmed_brief(ledger, pending.run_id) != pending.brief_sha256:
         raise BriefChanged("the run's confirmed brief changed after the approval was requested")
     clock = time.time() if now is None else now
@@ -522,6 +541,7 @@ def verify_and_consume(
         approver=approval.approver,
         signature=approval.signature,
         brief_sha256=pending.brief_sha256,
+        spec_sha256=pending.spec_sha256,
     )
 
 

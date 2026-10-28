@@ -50,9 +50,12 @@ from studio.meta.adapter import (
     Preview,
     RemoteComment,
     activation_target,
-    adset_targeting,
+    adset_fields,
+    campaign_fields,
     campaign_name,
     check_paused,
+    creative_spec,
+    delivery_of,
     require,
 )
 from studio.meta.preview import from_graph_body
@@ -203,36 +206,32 @@ class GraphAdapter:
                     return str(item["hash"])
         raise AdapterError("Graph API returned no image hash", code="bad_response")
 
-    def create_campaign_paused(self, payload: Mapping[str, Any], approval: Verified) -> str:
+    def _delivery(self, payload: Mapping[str, Any], approval: Verified) -> dict[str, Any]:
         require(approval, CREATE, payload, self._conn)
         check_paused(payload)
+        return delivery_of(payload, self.page_id)
+
+    def create_campaign_paused(self, payload: Mapping[str, Any], approval: Verified) -> str:
+        spec = self._delivery(payload, approval)
         return self._id(self._post(f"{self.account}/campaigns", {
-            "name": campaign_name(payload), "objective": payload["campaign"]["objective"],
-            "status": PAUSED, "special_ad_categories": [], "buying_type": "AUCTION",
+            **campaign_fields(payload, spec), "status": PAUSED, "buying_type": "AUCTION",
             "is_adset_budget_sharing_enabled": "0"}))
 
     def create_adset_paused(self, campaign_id: str, payload: Mapping[str, Any],
                             approval: Verified) -> str:
-        require(approval, CREATE, payload, self._conn)
-        check_paused(payload)
+        spec = self._delivery(payload, approval)
+        fields = adset_fields(payload, spec)
+        fields["daily_budget"] = str(fields["daily_budget"])
         return self._id(self._post(f"{self.account}/adsets", {
             "name": campaign_name(payload) + " · ad set", "campaign_id": _oid(campaign_id),
-            "daily_budget": str(int(payload["campaign"]["daily_budget_minor"])),
-            "billing_event": "IMPRESSIONS", "optimization_goal": "LINK_CLICKS",
-            "bid_strategy": "LOWEST_COST_WITHOUT_CAP", "targeting": adset_targeting(payload),
-            "status": PAUSED}))
+            **fields, "bid_strategy": "LOWEST_COST_WITHOUT_CAP", "status": PAUSED}))
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
-                        approval: Verified) -> str:
-        require(approval, CREATE, payload, self._conn)
-        check_paused(payload)
-        ad, link = payload["ad"], str(payload.get("link", ""))
-        return self._id(self._post(f"{self.account}/adcreatives", {
-            "name": campaign_name(payload) + " · creative",
-            "object_story_spec": {"page_id": self.page_id, "link_data": {
-                "image_hash": image_hash, "link": link, "message": ad["primary_text"],
-                "name": ad["headline"], "description": ad["description"],
-                "call_to_action": {"type": ad["cta"], "value": {"link": link}}}}}))
+                        approval: Verified, *, form_id: str = "") -> str:
+        spec = self._delivery(payload, approval)
+        return self._id(self._post(f"{self.account}/adcreatives", creative_spec(
+            payload, spec, self.page_id, image_hash,
+            form_id=_oid(form_id) if form_id else "")))
 
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
                          approval: Verified) -> str:

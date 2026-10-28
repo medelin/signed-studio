@@ -77,14 +77,20 @@ APPROVAL_SIGNED_FIELDS = (
 
 # Signed too when present: the hash of the confirmed Brief v1 the content was made from.
 APPROVAL_BRIEF_FIELD = "brief_sha256"
+# Signed too when present: the hash of a campaign's delivery block (objective, optimisation
+# goal, destination, promoted object); every adapter step that sends it names the same hash.
+APPROVAL_SPEC_FIELD = "spec_sha256"
+SPEC_STEPS = frozenset({"campaign", "adset"})
 
 
 def approval_message(fields: Mapping[str, Any]) -> bytes:
     """The exact bytes a human approver signs (domain-separated canonical JSON). An
-    approval made from a confirmed Brief v1 also signs its ``brief_sha256``."""
+    approval made from a confirmed Brief v1 also signs its ``brief_sha256``; a campaign
+    approval also signs its delivery's ``spec_sha256``."""
     body = {"type": "approval", **{k: fields[k] for k in APPROVAL_SIGNED_FIELDS}}
-    if fields.get(APPROVAL_BRIEF_FIELD):
-        body[APPROVAL_BRIEF_FIELD] = fields[APPROVAL_BRIEF_FIELD]
+    for extra in (APPROVAL_BRIEF_FIELD, APPROVAL_SPEC_FIELD):
+        if fields.get(extra):
+            body[extra] = fields[extra]
     return canonical(body)
 
 
@@ -187,7 +193,7 @@ def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
                    if k.endswith("_sha256") and isinstance(v, str) and _SHA256.fullmatch(v)}
         return {**dict(redact({k: v for k, v in details.items() if k not in digests})),
                 **digests}
-    keep = (*APPROVAL_SIGNED_FIELDS, APPROVAL_BRIEF_FIELD, "sig")
+    keep = (*APPROVAL_SIGNED_FIELDS, APPROVAL_BRIEF_FIELD, APPROVAL_SPEC_FIELD, "sig")
     for k in keep:
         if k in details and not is_opaque(details[k]):
             raise ValueError(f"approval field {k!r} must be an opaque value, not free text")
@@ -435,6 +441,7 @@ class _Grant:
     content_sha256: str
     ts: int
     brief_sha256: str = ""
+    spec_sha256: str = ""
 
 
 def _check_brief(receipt: Receipt) -> tuple[list[str], str | None]:
@@ -503,10 +510,27 @@ def _check_approval(
     if (head == GENESIS and seen) or (head != GENESIS and head not in seen):
         errors.append(f"{receipt.id}: approval chain_head is not an earlier receipt of this run")
     errors += _check_brief_binding(receipt, brief)
+    spec = d.get(APPROVAL_SPEC_FIELD)
+    if spec not in (None, "") and (not isinstance(spec, str) or not _SHA256.fullmatch(spec)):
+        errors.append(f"{receipt.id}: approval spec_sha256 is malformed")
     if errors:
         return errors, None
     return [], _Grant(d["action"], d["item_id"], d["content_sha256"], d["ts"],
-                      str(d.get(APPROVAL_BRIEF_FIELD) or ""))
+                      str(d.get(APPROVAL_BRIEF_FIELD) or ""), str(spec or ""))
+
+
+def _spec_changed(receipt: Receipt, grant: _Grant) -> list[str]:
+    """A step or write that names a delivery hash must name the one the human signed; a
+    campaign or ad set step under a spec-signed approval must name it."""
+    sent = receipt.details.get(APPROVAL_SPEC_FIELD)
+    needs = (grant.spec_sha256 and receipt.kind == "tool_call"
+             and receipt.details.get("tool") in SPEC_STEPS)
+    if sent in (None, "") and not needs:
+        return []
+    if sent != grant.spec_sha256:
+        return [f"{receipt.id}: the delivery sent (objective, optimisation goal, promoted "
+                "object) is not the one the human signed (spec_sha256)"]
+    return []
 
 
 def _brief_changed(receipt: Receipt, grant: _Grant, brief: str | None) -> list[str]:
@@ -542,7 +566,7 @@ def _check_write(
     if receipt.ts - grant.ts > APPROVAL_TTL_S:
         errors.append(f"{receipt.id}: approval expired before the write "
                       f"(older than {APPROVAL_TTL_S} s)")
-    return errors + _brief_changed(receipt, grant, brief)
+    return errors + _brief_changed(receipt, grant, brief) + _spec_changed(receipt, grant)
 
 
 def _check_step(
@@ -566,7 +590,7 @@ def _check_step(
         return [f"{prefix}: not a step of the approved action {grant.action!r}"]
     if receipt.ts - grant.ts > APPROVAL_TTL_S:
         return [f"{prefix}: approval expired (older than {APPROVAL_TTL_S} s)"]
-    return _brief_changed(receipt, grant, brief)
+    return _brief_changed(receipt, grant, brief) + _spec_changed(receipt, grant)
 
 
 def verify(
@@ -596,6 +620,10 @@ def verify(
     approval that signs a ``brief_sha256`` must sign that one, a ``campaign.create``
     approval in a run with a confirmed brief must sign it, and a write or adapter step
     whose approval signed a brief fails if the run's brief changed since.
+
+    A campaign approval that signs a delivery (``spec_sha256``) binds its campaign and ad
+    set steps and its write: each must name that same hash, so a log of a campaign created
+    with another objective or promoted object than the one signed fails.
     """
     errors: list[str] = []
     signatures = 0

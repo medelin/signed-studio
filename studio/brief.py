@@ -16,6 +16,11 @@ fact changed after signing invalidates the approval (``receipts.verify`` checks 
 
 The advertiser is global: a person or a company, a display name, countries and a landing
 page. No national registry ids.
+
+The objective is one of Meta's six campaign objectives plus a sub-choice
+(``objective.sub``); ``promotion`` holds the ids that objective needs (pixel, app, event,
+catalog, the owner's privacy-policy page for an instant form). ``studio.meta.objectives``
+maps them to Meta's fields in code; a missing id is a field error, never a guess.
 """
 
 from __future__ import annotations
@@ -27,8 +32,9 @@ import unicodedata
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
+from studio.meta import objectives
 from studio.receipts import canonical, sha256_hex
 
 SCHEMA = "brief/v1"
@@ -41,8 +47,13 @@ MAX_QUESTIONS = 12
 MAX_SOURCE = 4000  # the owner's free text or edited transcript a draft starts from
 
 Placement = Literal["feed_1x1", "feed_4x5", "story_9x16"]
-Goal = Literal["awareness", "traffic", "engagement", "leads", "sales"]
-GOALS: tuple[str, ...] = ("awareness", "traffic", "engagement", "leads", "sales")
+Goal = Literal["awareness", "traffic", "engagement", "leads", "app_promotion", "sales"]
+GOALS: tuple[str, ...] = objectives.GOALS
+# "" = the goal's default sub-choice (``objectives.SUBS``)
+Sub = Literal["", "reach", "ad_recall_lift", "link_clicks", "landing_page_views",
+              "post_engagement", "messenger", "instagram_direct", "whatsapp",
+              "event_responses", "instant_form", "website", "app_installs", "catalog"]
+LeadField = Literal["FULL_NAME", "EMAIL", "PHONE", "CITY", "COMPANY_NAME"]
 
 
 class _Strict(BaseModel):
@@ -71,6 +82,22 @@ class Offer(_Strict):
 class Objective(_Strict):
     goal: Goal  # exactly one Meta objective
     kpi: str
+    sub: Sub = ""  # Meta's sub-choice for the goal (optimisation / destination)
+
+
+class Promotion(_Strict):
+    """Ids the chosen objective needs, as the owner gives them (``objectives.id_problems``
+    says which are required). Never filled in by a model or by default."""
+
+    pixel_id: str = ""
+    custom_event_type: str = ""  # "" = LEAD for leads, PURCHASE for sales
+    application_id: str = ""
+    object_store_url: str = ""
+    event_id: str = ""
+    product_catalog_id: str = ""
+    product_set_id: str = ""
+    privacy_policy_url: str = ""  # the owner's own page; required by Meta for an instant form
+    lead_fields: list[LeadField] = Field(default_factory=list)  # [] = full name and e-mail
 
 
 class Insight(_Strict):
@@ -136,6 +163,7 @@ class BriefV1(_Strict):
     placements: Placements
     assets: list[Asset]
     open_questions: list[FactQuestion]
+    promotion: Promotion = Field(default_factory=Promotion)
 
 
 class Resolution(_Strict):
@@ -260,6 +288,8 @@ def problems(brief: BriefV1, *, confirmed: bool = True, currency: str = "PLN",
         elif any(not 0 <= n < len(brief.confirmed_facts) for n in r.facts):
             out[path] = "bad_fact_ref"
     text("objective.kpi", brief.objective.kpi)
+    out.update(objectives.id_problems(brief.objective.goal, brief.objective.sub,
+                                      brief.promotion.model_dump()))
     au = brief.audience
     items("audience.locations", au.locations, required=True)
     items("audience.languages", au.languages, required=True)
@@ -375,14 +405,28 @@ def ground_draft(draft: BriefV1, source: str, lang: str = "en") -> BriefV1:
     reasons = [Reason(text=r.text, facts=[index[n] for n in r.facts if n in index])
                for r in offer.reasons_to_believe]
     offer = offer.model_copy(update={**updates, "reasons_to_believe": reasons})
+    promotion = ground_ids(draft.promotion, source)
     proposition = draft.proposition
     if ungrounded_numbers(proposition, source):
         questions.append(FactQuestion(question=ask.format(claim=proposition),
                                       claim=proposition))
         proposition = ""
     return draft.model_copy(update={"confirmed_facts": keep, "offer": offer,
-                                    "proposition": proposition,
+                                    "proposition": proposition, "promotion": promotion,
                                     "open_questions": questions[:MAX_QUESTIONS]})
+
+
+ID_FIELDS = ("pixel_id", "application_id", "object_store_url", "event_id",
+             "product_catalog_id", "product_set_id", "privacy_policy_url")
+
+
+def ground_ids(promotion: Promotion, source: str) -> Promotion:
+    """An id or URL in the draft that the owner never wrote is cleared: the field then
+    shows as required for the objective, so the owner types it in (never a guess)."""
+    folded = _fold(source)
+    cleared = {name: "" for name in ID_FIELDS
+               if getattr(promotion, name) and getattr(promotion, name) not in folded}
+    return promotion.model_copy(update=cleared) if cleared else promotion
 
 
 def grounding_corpus(brief: BriefV1) -> str:
@@ -420,7 +464,9 @@ def render(brief: BriefV1) -> str:
         "Reasons to believe: " + ("; ".join(
             f"{r.text} (facts {', '.join(str(n + 1) for n in r.facts)})"
             for r in o.reasons_to_believe) or "-"),
-        f"Objective: {brief.objective.goal}; KPI: {brief.objective.kpi}",
+        f"Objective: {brief.objective.goal}"
+        + (f" ({brief.objective.sub})" if brief.objective.sub else "")
+        + f"; KPI: {brief.objective.kpi}",
         f"Audience: {', '.join(au.locations)}; ages {au.age_min}-{au.age_max}; "
         f"languages {', '.join(au.languages)}",
         f"Insight: who {au.insight.who or '-'}; believes {au.insight.belief or '-'}; "

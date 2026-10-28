@@ -38,6 +38,7 @@ from studio.meta.adapter import (
     PausedOnly,
     campaign_name,
     check_paused,
+    spec_sha256,
 )
 from studio.receipts import Ledger, canonical
 
@@ -69,6 +70,14 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         # the facts the ad stands on changed after the signature: nothing is created
         executor.finish(conn, v, "failed", {"error": "brief_changed"})
         raise BuyError("the confirmed brief changed after the approval", "brief_changed")
+    spec = payload.get("delivery")
+    spec_hash = spec_sha256(spec) if isinstance(spec, dict) else ""
+    if not spec_hash or spec_hash != v.spec_sha256:
+        # the objective mapping is not the one the human signed: nothing is created
+        executor.finish(conn, v, "failed", {"error": "spec_changed"})
+        raise BuyError("the delivery block is not the signed one", "spec_changed")
+    assert isinstance(spec, dict)
+    spec_details = {"spec_sha256": spec_hash, "objective": spec["objective"]}
     created: dict[str, str] = {}
 
     def step(name: str, fn: Any, *args: Any) -> str:
@@ -83,7 +92,9 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step=name,
                              status="ok", details={"object": executor.safe_id(out),
                                                    **({"object_status": PAUSED} if name in (
-                                                       "campaign", "adset", "ad") else {})})
+                                                       "campaign", "adset", "ad") else {}),
+                                                   **(spec_details if name in (
+                                                       "campaign", "adset") else {})})
         return out
 
     try:
@@ -105,7 +116,7 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
     # Everything exists now: the write receipt and the campaign row come before the
     # preview, so a failed preview (a read) cannot leave PAUSED objects unaccounted for.
     executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
-        "status": "ok", "object_status": PAUSED,
+        "status": "ok", "object_status": PAUSED, **spec_details,
         "objects": {k: executor.safe_id(x) for k, x in created.items()}})
     with transaction(conn):
         conn.execute(

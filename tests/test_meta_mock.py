@@ -7,15 +7,19 @@ import pytest
 from studio import db
 from studio.agents import community
 from studio.approvals import Verified
-from studio.meta.adapter import PAUSED, NotApproved, PausedOnly, check_paused
+from studio.meta import objectives
+from studio.meta.adapter import MOCK_PAGE, PAUSED, NotApproved, PausedOnly, check_paused
 from studio.meta.mock import MockAdapter
 from tests.approve import approve
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"demo" * 10
 
+TRAFFIC = objectives.delivery("traffic", page_id=MOCK_PAGE)
+
 
 def payload(**over):
     p = {"action": "campaign.create", "run_id": "run_m1",
+         "delivery": TRAFFIC,
          "campaign": {"objective": "OUTCOME_TRAFFIC", "status": "PAUSED",
                       "daily_budget_minor": 3000, "currency": "PLN", "angle": "Slow mornings"},
          "audience": "home office", "link": "https://example.com/",

@@ -49,6 +49,7 @@ from studio.approvals import (
     verify_and_consume,
 )
 from studio.approvals import renew as renew_approval
+from studio.meta.adapter import MOCK_PAGE
 from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
@@ -179,7 +180,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 concept=settings.product_concept, data_dir=settings.data_dir,
                 landing_url=settings.landing_url, brief_source=brief_source,
                 max_daily_budget_pln=settings.max_daily_budget_pln,
-                brief_v1=confirmed, brief_sha256=digest)
+                brief_v1=confirmed, brief_sha256=digest,
+                page_id=getattr(getattr(app.state, "adapter", None), "page_id", "")
+                or MOCK_PAGE)
             producer.run(ctx, brief, run_id=run_id)
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)
@@ -590,7 +593,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                     pending_id=pending.id, action=pending.action, item_id=pending.item_id,
                     content_sha256=pending.content_sha256, chain_head=pending.chain_head,
                     approver=approver, nonce=pending.nonce, ts=pending.ts,
-                    signature=signature, brief_sha256=pending.brief_sha256)
+                    signature=signature, brief_sha256=pending.brief_sha256,
+                    spec_sha256=pending.spec_sha256)
                 verified = verify_and_consume(conn, approval, json.loads(row[0]),
                                               ledger=ledger, session_id=guard)
                 conn.execute("UPDATE run_state SET status = 'approved', updated_ts = ? "

@@ -44,6 +44,8 @@ from studio.agents.dispatcher import (
 )
 from studio.agents.schemas import CopyPack, CreativeSet, Plan
 from studio.approvals import Pending, confirmed_brief, transaction
+from studio.meta import objectives
+from studio.meta.adapter import MOCK_PAGE
 from studio.muse.client import MuseClient, MuseError, ToolCall
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import structured
@@ -79,6 +81,7 @@ class Context:
     # (the ``brief.confirmed`` receipt is written before the run starts).
     brief_v1: brief_v1.BriefV1 | None = None
     brief_sha256: str = ""
+    page_id: str = MOCK_PAGE  # the Facebook Page the campaign promotes (META_PAGE_ID)
 
 
 def _limit(ctx: Context) -> int:
@@ -144,21 +147,31 @@ def opaque_id(prefix: str) -> str:
 def campaign_payload(run: RunResult, variant_index: int,
                      link: str = "https://example.com/", *,
                      ceiling_pln: int = 50,
-                     brief: brief_v1.BriefV1 | None = None) -> dict[str, Any]:
+                     brief: brief_v1.BriefV1 | None = None,
+                     page_id: str = MOCK_PAGE) -> dict[str, Any]:
     """The exact content a ``campaign.create`` approval authorises (built by code). A
     daily budget above the activation ceiling is refused here, before anyone signs a
-    campaign that could never be activated. With a confirmed ``brief`` the payload also
-    carries its ``brief_sha256``, objective, budget and the brief's targeting; the Meta
-    objective stays ``OUTCOME_TRAFFIC`` (the adapters create traffic campaigns only)."""
+    campaign that could never be activated. ``delivery`` is the objective mapping
+    (``objectives.delivery``: objective, optimisation goal, billing event, destination,
+    promoted object) for the brief's goal and sub-choice, or traffic for a free-text brief.
+    With a confirmed ``brief`` the payload also carries its ``brief_sha256``, objective,
+    budget and the brief's targeting."""
     assert run.plan and run.copy and run.creatives and run.review
     if run.plan.budget_pln_daily > ceiling_pln:
         raise ToolError(f"daily budget {run.plan.budget_pln_daily} PLN is above the "
                         f"{ceiling_pln} PLN ceiling; lower it in the plan")
+    try:
+        spec = (objectives.delivery(brief.objective.goal, brief.objective.sub,
+                                    page_id=page_id, promotion=brief.promotion.model_dump())
+                if brief is not None else objectives.delivery("traffic", page_id=page_id))
+    except objectives.DeliveryError as exc:
+        raise ToolError(f"the objective cannot be mapped: {exc}") from None
     v = run.copy.variants[variant_index]
     payload = {
         "action": "campaign.create",
         "run_id": run.run_id,
-        "campaign": {"objective": "OUTCOME_TRAFFIC", "status": "PAUSED",
+        "delivery": spec,
+        "campaign": {"objective": spec["objective"], "status": "PAUSED",
                      "daily_budget_minor": run.plan.budget_pln_daily * 100,
                      "currency": "PLN", "angle": run.plan.angles[run.angle_index].name},
         "audience": run.plan.audience,
@@ -180,6 +193,7 @@ def campaign_payload(run: RunResult, variant_index: int,
         payload.update({
             "brief_sha256": brief_v1.brief_sha256(brief),
             "brief": {"schema": brief_v1.SCHEMA, "goal": brief.objective.goal,
+                      "sub": spec["sub"],
                       "kpi": brief.objective.kpi, "budget": brief.budget.model_dump(),
                       "automatic_placements": brief.placements.automatic,
                       "facts": len(brief.confirmed_facts)},
@@ -403,7 +417,7 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                                 f"(rule P10): {ungrounded[0].evidence[:200]}")
             link = ctx.brief_v1.advertiser.landing_url
         payload = campaign_payload(run, index, link, ceiling_pln=ctx.max_daily_budget_pln,
-                                   brief=ctx.brief_v1)
+                                   brief=ctx.brief_v1, page_id=ctx.page_id)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
                                  ledger=ctx.client.ledger, run_id=run.run_id,

@@ -17,7 +17,8 @@ from tests.test_brief import sample
 from tests.test_ui_studio import login, settings
 
 OWNER = ("Warsztaty z koła garncarskiego w Krakowie, 2 h, 180 zł od osoby, soboty o 10:00, "
-         "maksymalnie 8 osób. Wszystko w cenie. Budżet 40 zł dziennie.")
+         "maksymalnie 8 osób. Wszystko w cenie. Budżet 40 zł dziennie. "
+         "Polityka prywatności: https://clay.example/privacy")
 
 
 def draft_json():
