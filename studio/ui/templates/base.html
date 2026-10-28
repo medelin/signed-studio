@@ -13,12 +13,10 @@
 <body>
   <header class="top">
     <a class="brand" href="/">Muse Studio Lite</a>
-    <a href="/studio">Studio</a>
-    <a href="/inbox">Inbox</a>
-    <a href="/leads">Leads</a>
-    <a href="/report">Report</a>
-    <a href="/receipts">Receipts</a>
-    <a href="/help">Help</a>
+    {% set here = request.url.path %}
+    {% for href, name in (("/studio", "Studio"), ("/inbox", "Inbox"), ("/leads", "Leads"), ("/report", "Report"), ("/receipts", "Receipts"), ("/help", "Help")) %}
+    <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ name }}</a>
+    {% endfor %}
     <span class="tag">every agent leaves a receipt · a human signs every send</span>
     {% if read_only %}<span class="badge warn">read-only</span>{% endif %}
     {% if replay %}<span class="badge warn" title="Model API answers are recorded responses served offline (STUDIO_REPLAY=1)">replay</span>{% endif %}

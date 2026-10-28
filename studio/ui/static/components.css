@@ -27,3 +27,71 @@
 .cast-card { display: flex; flex-direction: column; justify-content: flex-end; }
 .cast-card .il { max-height: 15rem; }
 .cast-card p { margin: .25rem 0 0; font-size: .9rem; }
+
+/* -- HUD components ---------------------------------------------------------------- */
+
+/* chamfered card: 1px rule, one corner cut */
+.card-hud {
+  position: relative; border: 1px solid var(--rule-soft); background: var(--bg-raised);
+  padding: 1rem 1.1rem;
+  clip-path: polygon(0 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, 0 100%);
+}
+.card-hud::after, .panel::after { /* the cut edge, drawn */
+  content: ""; position: absolute; top: 0; left: calc(100% - var(--chamfer)); width: calc(var(--chamfer) * 1.42);
+  height: 1px; background: var(--rule); transform-origin: top left; transform: rotate(45deg);
+}
+
+/* the scale: ticks every 8px, a longer one every 64px */
+.ruler {
+  height: 12px; margin: .75rem 0;
+  background:
+    repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 64px) bottom / 100% 12px no-repeat,
+    repeating-linear-gradient(90deg, var(--rule-soft) 0 1px, transparent 1px var(--tick)) bottom / 100% 6px no-repeat;
+  border-bottom: 1px solid var(--rule);
+}
+
+/* state badge: ok / partial / down differ in lightness and in shape of the mark */
+.state {
+  display: inline-flex; align-items: center; gap: .4rem; padding: 0 .5rem;
+  font: 600 .72rem/1.7 var(--font-mono); text-transform: uppercase; letter-spacing: .1em;
+  border: 1px solid var(--rule); color: var(--ink);
+}
+.state::before { content: ""; width: .55rem; height: .55rem; background: var(--down); }
+.state.ok { border-color: var(--ok); background: var(--ok-soft); }
+.state.ok::before { background: var(--ok); border-radius: 50%; }
+.state.partial { border-color: var(--partial); background: var(--partial-soft); }
+.state.partial::before { background: var(--partial); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.state.down { color: var(--muted); }
+
+/* receipt chip: hash prefix, kind, model; links to its receipt */
+.chip {
+  display: inline-flex; align-items: stretch; border: 1px solid var(--rule); text-decoration: none;
+  font: .75rem/1.7 var(--font-mono); font-variant-numeric: tabular-nums slashed-zero; color: var(--ink);
+  background: var(--bg-raised); white-space: nowrap;
+}
+.chip > span { padding: 0 .45rem; }
+.chip > span + span { border-left: 1px solid var(--rule-soft); }
+.chip .chip-hash { color: var(--link); font-weight: 600; }
+.chip .chip-hash::before { content: "#"; color: var(--muted); }
+.chip .chip-model { color: var(--muted); }
+a.chip:hover { border-color: var(--signal); }
+
+/* crosshair marker: a target on a number or a node */
+.crosshair { position: relative; padding-left: 1.1rem; }
+.crosshair::before {
+  content: ""; position: absolute; left: 0; top: 50%; width: .8rem; height: .8rem; translate: 0 -50%;
+  background:
+    linear-gradient(var(--signal), var(--signal)) center / 100% 1.5px no-repeat,
+    linear-gradient(var(--signal), var(--signal)) center / 1.5px 100% no-repeat;
+  border-radius: 50%; outline: 1.5px solid var(--signal); outline-offset: -3px;
+}
+
+/* empty state: a small decorative drawing beside the sentence that says what to do */
+.empty-state { display: grid; grid-template-columns: minmax(8rem, 14rem) minmax(0, 1fr); gap: 1.25rem; align-items: center; padding: .5rem 0; }
+.empty-state .il { max-height: 10rem; }
+@media (max-width: 600px) { .empty-state { grid-template-columns: 1fr; } .empty-state .il { max-width: 12rem; } }
+
+/* index hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 2rem; align-items: center; margin-bottom: 1rem; }
+.hero p { max-width: 58ch; }
+@media (max-width: 760px) { .hero { grid-template-columns: 1fr; } }

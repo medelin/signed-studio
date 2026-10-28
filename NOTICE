@@ -1,2 +1,6 @@
 Muse Studio Lite
 Copyright 2026 Piotr Kaczmarski
+
+Bundled fonts: Geist and Geist Mono 1.3.1 (studio/ui/static/fonts/), Copyright (c) 2023
+Vercel, in collaboration with basement.studio, licensed under the SIL Open Font License 1.1
+(studio/ui/static/fonts/OFL-Geist.txt).

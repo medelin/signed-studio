@@ -61,6 +61,7 @@ table.receipts tbody tr:hover { background: var(--soft); }
 
 /* panels: chamfered corner, 1px rule */
 .panel {
+  position: relative;
   border: 1px solid var(--rule-soft); padding: .9rem 1.1rem; margin: 0 0 1rem; background: var(--bg-raised);
   clip-path: polygon(0 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, 0 100%);
 }

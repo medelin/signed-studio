@@ -1,10 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="intro">
+<section class="intro hero">
+  <div>
+  <p class="hud-label">two views of every ad</p>
   <p>Muse agents plan, write, draw and review. Nothing leaves the studio until a person signs
   the exact content. This page is public and read-only;
   {% if logged_in %}you are signed in as the judge.{% elif login_enabled %}judges sign in to run the studio.{% else %}sign-in is disabled on this instance.{% endif %}</p>
+  <p class="hint">Who checks what, and what it costs: <a href="/help">help</a>.</p>
+  </div>
+  <div class="il-place">{{ scene("amara", "signed", label="An owner, the four agents as diamonds on a dotted trace, her signature as the last node, and the ad record that is complete only after the signature.", cls="animate") }}</div>
 </section>
+<div class="ruler" aria-hidden="true"></div>
 <section>
   <h1>Latest receipts</h1>
   <p class="hint"><a href="/receipts">All receipts, filter by run, copy as JSON →</a></p>
@@ -22,13 +28,15 @@
         <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
         <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
         <td>${{ "%.5f" | format(r.cost_usd) }}</td>
-        <td><code title="{{ r.hash }}">{{ r.hash[:12] }}</code></td>
+        <td><a class="chip" href="/receipts?run={{ r.run_id | urlencode }}" title="{{ r.hash }}"><span class="chip-hash">{{ r.hash[:12] }}</span><span class="chip-kind">{{ r.kind }}</span>{% if r.model %}<span class="chip-model">{{ r.model }}</span>{% endif %}</a></td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   {% else %}
-  <p class="empty">No receipts yet. Start a run in the <a href="/studio">studio</a> or triage a comment in the <a href="/inbox">inbox</a>; every model call, tool call, review, signature and write appears here.</p>
+  <div class="empty-state">{{ scene("kofi", "unsigned") }}
+    <p class="empty">No receipts yet. Start a run in the <a href="/studio">studio</a> or triage a comment in the <a href="/inbox">inbox</a>; every model call, tool call, review, signature and write appears here.</p>
+  </div>
   {% endif %}
 </section>
 {% endblock %}

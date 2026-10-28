@@ -33,7 +33,9 @@
     {% if logged_in and not read_only %}<button type="button" data-act="score">{{ 'Re-score' if l.temp else 'Score' }}</button>{% endif %}
   </article>
 {% else %}
-  <p class="empty">No leads yet. A comment the community agent triages as a lead becomes a scored CRM card here (rules decide the score, Muse Spark writes the reasons).</p>
+  <div class="empty-state">{{ scene("diego", "solo") }}
+    <p class="empty">No leads yet. A comment the community agent triages as a lead becomes a scored CRM card here (rules decide the score, Muse Spark writes the reasons).</p>
+  </div>
 {% endfor %}
 </section>
 </div>

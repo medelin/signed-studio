@@ -50,7 +50,9 @@
     {% endif %}
   </article>
 {% else %}
-  <p class="empty">No comments yet. Add one with “Simulate a comment” above, or poll a Page post once a Meta adapter is connected. Every reply is drafted by the community agent and sent only after you sign it.</p>
+  <div class="empty-state">{{ scene("leila", "solo") }}
+    <p class="empty">No comments yet. Add one with “Simulate a comment” above, or poll a Page post once a Meta adapter is connected. Every reply is drafted by the community agent and sent only after you sign it.</p>
+  </div>
 {% endfor %}
 </section>
 </div>
