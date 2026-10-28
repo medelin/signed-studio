@@ -6,6 +6,7 @@ copy's ``risks`` travel inside the payload the human signs.
 """
 
 import json
+import re
 
 import pytest
 
@@ -82,6 +83,10 @@ EVASIONS = [
     "[F\u0410\u0421\u0422]",        # Cyrillic A, C, T
     "[\u0192act]",                  # Latin small f with hook
     "[\u03dc\u0391\u03f9\u03a4]",   # Greek digamma, alpha, lunate sigma, tau
+    "[F\u3164ACT]",                 # Hangul filler
+    "[\u115fFACT]",                 # Hangul choseong filler
+    "FACT\u200b",                   # no brackets, zero-width tail
+    "\u0424\u0410\u0421\u0422",      # all-Cyrillic, no brackets
 ]
 
 
@@ -89,8 +94,35 @@ EVASIONS = [
 def test_look_alike_placeholders_are_caught(ctx, token):
     variant = {**CLEAN, "headline": f"Glazed in {token}"}
     out = _approve(ctx, _run(variant, []))
-    assert out.status == "error" and "[FACT]" in out.output["error"]
+    assert out.status == "error"
+    error = out.output["error"]
+    assert "[FACT]" in error or re.fullmatch(r"unsupported character U\+[0-9A-F]{4,6} in "
+                                             r"headline", error), error
     assert ctx.conn.execute("SELECT count(*) FROM approvals").fetchone() == (0,)
+
+
+@pytest.mark.parametrize(("text", "code"), [
+    ("Kubek\u200b", "U+200B"), ("Ｓale", "U+FF33"), ("Kubek \u0430", "U+0430"),
+    ("mug\u3164", "U+1160"), ("caf\u00e9", "U+00E9"), ("kubek\u200d", "U+200D"),
+    ("a\ufe0f", "U+FE0F"), ("<b>", "U+003C"), ("[FACT]", "U+005B"),
+])
+def test_allowlist_names_the_first_unsupported_character(text, code):
+    from studio.agents import copywriter
+
+    v = CopyPack.model_validate({"variants": [{**CLEAN, "headline": text}] * 3,
+                                 "risks": []}).variants[0]
+    assert copywriter.unsupported_character(v) == f"unsupported character {code} in headline"
+
+
+def test_polish_copy_with_emoji_is_signable(ctx):
+    variant = {"primary_text": "Ręcznie toczony kubek – 350 ml; zmywarka? Tak! ☕\ufe0f\n"
+                               "Darmowa dostawa od 150\u00a0zł (PLN). Żółć, ćma, źdźbło…",
+               "headline": "Zaczynaj dzień spokojnie 👩\u200d💻",
+               "description": "89 zł / szt. — 100% kamionka, #handmade @studio & 2×",
+               "cta": "SHOP_NOW"}
+    variant["description"] = variant["description"].replace("×", "x")
+    out = _approve(ctx, _run(variant, []))
+    assert out.status == "ok", out.output
 
 
 def test_ordinary_copy_is_not_a_placeholder(ctx):

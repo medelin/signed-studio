@@ -17,24 +17,59 @@ from studio.pii import choose_tier
 
 AGENT = "copywriter"
 FACT = "[FACT]"
-# Look-alikes NFKC leaves alone (Cyrillic, Greek, Latin variants) folded to F, A, C, T.
-_CONFUSABLES = str.maketrans({
-    "\u0410": "A", "\u0430": "a", "\u0391": "A", "\u03b1": "a",  # Cyrillic/Greek A
-    "\u0421": "C", "\u0441": "c", "\u03f9": "C", "\u03f2": "c", "\u216d": "C",  # C
-    "\u0422": "T", "\u0442": "t", "\u03a4": "T", "\u03c4": "t",  # Cyrillic/Greek T
-    "\u03dc": "F", "\u03dd": "f", "\u0192": "f", "\u0191": "F", "\u1d6e": "f",  # F
-    "\u1d00": "a", "\u1d04": "c", "\u1d1b": "t", "\ua730": "f",  # small capitals
-})
+# Secondary net only (the allowlist below is the control): bracketed "fact" after NFKC and
+# with format characters removed.
 _FACT = re.compile(r"[\[({<\u27e6\u3010\u3014]\W*f\W*a\W*c\W*t\W*[\])}>\u27e7\u3011\u3015]",
                    re.IGNORECASE)
 
+# What a signed copy field may contain (checked after NFKC and on the original text):
+# Latin letters incl. Polish diacritics, digits, space/newline, common punctuation, emoji.
+_LETTERS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                     "ąćęłńóśźżĄĆĘŁŃÓŚŹŻ0123456789 \n")
+_PUNCT = frozenset(".,;:!?'\"-\u2013\u2014()/&%+@#*\u2026")
+_SPACES = frozenset("\u00a0\u202f")  # (narrow) no-break space, as in "89\u00a0zł"; NFKC → " "
+_ZWJ, _VS16 = "\u200d", "\ufe0f"
+SIGNED_FIELDS = ("headline", "primary_text", "description", "cta")
+
+
+def _emoji(ch: str) -> bool:
+    return 0x1F300 <= ord(ch) <= 0x1FAFF or 0x2600 <= ord(ch) <= 0x27BF
+
+
+def _unsupported(text: str, *, extra: frozenset[str] = frozenset()) -> str | None:
+    """First character outside the allowlist, or ``None``. ZWJ and VS16 pass only inside
+    an emoji sequence (VS16 right after an emoji; ZWJ between two emoji)."""
+    for i, ch in enumerate(text):
+        if ch in _LETTERS or ch in _PUNCT or ch in extra or _emoji(ch):
+            continue
+        prev = text[i - 1] if i else ""
+        nxt = text[i + 1] if i + 1 < len(text) else ""
+        if ch == _VS16 and prev and _emoji(prev):
+            continue
+        if ch == _ZWJ and prev and (_emoji(prev) or prev == _VS16) and nxt and _emoji(nxt):
+            continue
+        return ch
+    return None
+
+
+def unsupported_character(v: CopyVariant) -> str | None:
+    """``"unsupported character U+XXXX in <field>"`` for the first signed field holding a
+    character outside the allowlist (in its NFKC form or as written), else ``None``."""
+    for name in SIGNED_FIELDS:
+        text = str(getattr(v, name))
+        extra = frozenset("_") if name == "cta" else frozenset()
+        bad = (_unsupported(unicodedata.normalize("NFKC", text), extra=extra)
+               or _unsupported(text, extra=extra | _SPACES))
+        if bad is not None:
+            return f"unsupported character U+{ord(bad):04X} in {name}"
+    return None
+
 
 def normalise(text: str) -> str:
-    """NFKC, Unicode format characters (category Cf: zero-width, soft hyphen, bidi) removed,
-    confusable letters folded to Latin."""
-    folded = unicodedata.normalize("NFKC", text.translate(_CONFUSABLES))
-    folded = "".join(ch for ch in folded if unicodedata.category(ch) != "Cf")
-    return folded.translate(_CONFUSABLES)
+    """NFKC with Unicode format characters (category Cf: zero-width, soft hyphen, bidi)
+    removed."""
+    folded = unicodedata.normalize("NFKC", text)
+    return "".join(ch for ch in folded if unicodedata.category(ch) != "Cf")
 
 
 def count_unfilled_facts(v: CopyVariant) -> int:
@@ -43,7 +78,7 @@ def count_unfilled_facts(v: CopyVariant) -> int:
 
 
 def has_unfilled_fact(v: CopyVariant) -> bool:
-    """True if any signed field still holds a ``[FACT]`` placeholder, look-alikes included."""
+    """Secondary net: a ``[FACT]`` placeholder survives NFKC and Cf removal."""
     return count_unfilled_facts(v) > 0
 
 

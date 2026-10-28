@@ -263,9 +263,13 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
         if run.copy.unfilled_facts > 0:
             raise ToolError(f"the copy reports {run.copy.unfilled_facts} unfilled "
                             f"{copywriter.FACT} placeholder(s); rewrite it before approval")
-        if copywriter.has_unfilled_fact(run.copy.variants[index]):
+        variant = run.copy.variants[index]
+        if copywriter.has_unfilled_fact(variant):
             raise ToolError(f"variant {index} has an unfilled {copywriter.FACT} placeholder; "
                             "it cannot be sent for approval")
+        bad = copywriter.unsupported_character(variant)
+        if bad:
+            raise ToolError(bad)
         payload = campaign_payload(run, index, ctx.landing_url)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
