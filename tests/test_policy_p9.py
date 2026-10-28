@@ -101,3 +101,17 @@ def test_recorded_spark_review_blocks_the_p9_ad_on_its_own():
     assert result.verdict == "BLOCK"
     assert any(f.rule == "P9" and f.severity == "block" for f in result.findings)
     assert "P9" in sent[0]["messages"][0]["content"]  # the checklist the model was given
+
+
+@pytest.mark.parametrize("text", [
+    # The human-written ads Google Ads disapproved (operator's account, verbatim).
+    "Zmęczony wysokimi kosztami, podatkami ? Załóż spółkę LTD z oddziałem z o.o. lub "
+    "przenieś firmę do UK",
+    "Załóż własną spółkę LTD lub przenieś swoją firmę z Polski do Anglii, zredukuj koszty "
+    "i podatki.",
+    "Niskie podatki, brak obowiązku ZUS",
+])
+def test_net_catches_the_ads_an_ad_platform_rejected(text):
+    copy = CopyVariant(primary_text=text, headline="Spółka LTD", description="UK",
+                       cta="LEARN_MORE")
+    assert reviewer.policy_net(copy)

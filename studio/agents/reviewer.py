@@ -49,6 +49,7 @@ _P9 = [re.compile(p) for p in (
     r"\bfile\b.{0,30}\bgovernment\b",
     r"\burzedow\w*\s+dokument|\bdokument\w*\s+urzedow",
     r"\b(?:no|zero|bez)\s+zus\b|\bzus\s+obligation|\bnie\s+placisz\s+zus",
+    r"\b(?:brak|bez)\s+obowiazk\w*\s+(?:placenia\s+)?zus\b",
     r"\bpay\s+no\s+tax|\bno\s+tax(?:es)?\b|\btax[- ]free\b|\bstop\s+paying\s+"
     r"(?:tax|contributions|zus)",
     r"\bzero\s+(?:tax|podatk)|\bbez\s+podatk|\bnie\s+placisz\s+podatk",
