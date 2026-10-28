@@ -100,3 +100,13 @@ def test_visitor_view_redacts_every_string():
 def test_navigation_links_the_receipts_page(app):
     with client(app) as c:
         assert 'href="/receipts"' in c.get("/").text
+
+
+def test_table_scrolls_inside_the_content_width_and_json_is_its_own_row(app):
+    with client(app) as c:
+        html = c.get("/receipts").text
+    assert '<div class="table-scroll" role="region"' in html
+    assert html.count('<tr class="receipt-json">') == 3
+    css = (__import__("pathlib").Path(__file__).resolve().parents[1]
+           / "studio" / "ui" / "static" / "style.css").read_text()
+    assert ".table-scroll { max-width: 100%; overflow-x: auto;" in css

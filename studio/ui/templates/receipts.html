@@ -26,6 +26,7 @@
 </section>
 <section aria-label="Receipt list">
 {% if views %}
+  <div class="table-scroll" role="region" aria-label="Receipts table, scrolls sideways" tabindex="0">
   <table class="receipts">
     <caption class="sr-only">Receipts, newest first</caption>
     <thead><tr><th scope="col">time (UTC)</th><th scope="col">run</th><th scope="col">agent</th><th scope="col">kind</th><th scope="col">provider · model</th><th scope="col">tier</th><th scope="col">tokens in/out</th><th scope="col">cost</th><th scope="col">hash</th><th scope="col">JSON</th></tr></thead>
@@ -40,13 +41,14 @@
         <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
         <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
         <td>${{ "%.5f" | format(r.cost_usd) }}</td>
-        <td><code title="hash {{ r.hash }} · prev {{ r.prev }} · id {{ r.id }}" tabindex="0">{{ r.hash[:12] }}</code></td>
-        <td><button type="button" class="copy-json secondary" data-target="j-{{ r.id }}" aria-label="Copy receipt {{ r.id }} as JSON">Copy</button>
-          <details><summary>{{ r.id[:8] }}</summary><pre class="json" id="j-{{ r.id }}">{{ v.json }}</pre></details></td>
+        <td><span class="chip" title="hash {{ r.hash }} · prev {{ r.prev }} · id {{ r.id }}" tabindex="0"><span class="chip-hash">{{ r.hash[:12] }}</span></span></td>
+        <td><button type="button" class="copy-json secondary" data-target="j-{{ r.id }}" aria-label="Copy receipt {{ r.id }} as JSON">Copy</button></td>
       </tr>
+      <tr class="receipt-json"><td colspan="10"><details><summary>JSON · <code>{{ r.id }}</code></summary><pre class="json" id="j-{{ r.id }}">{{ v.json }}</pre></details></td></tr>
     {% endfor %}
     </tbody>
   </table>
+  </div>
 {% elif total == 0 %}
   <div class="empty-state">{{ scene("harjit", "verify") }}
     <p class="empty">No receipts yet. Start a run in the <a href="/studio">studio</a> or triage a comment in the <a href="/inbox">inbox</a>; every call appears here.</p>
