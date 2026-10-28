@@ -42,7 +42,7 @@ from studio import db, routes_inbox, routes_report, routes_studio
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
-from studio.receipts import public_key_raw
+from studio.receipts import public_key_raw, sha256_hex
 from studio.settings import ReadOnlyMode, Settings
 
 UI = Path(__file__).resolve().parent / "ui"
@@ -430,13 +430,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                                        settings.max_daily_budget_pln))
 
     @app.get("/api/campaigns/{item_id}")
-    def get_campaign(item_id: str) -> Response:
+    def get_campaign(item_id: str, request: Request) -> Response:
         c = media_buyer.campaign(conn, item_id) if routes_inbox.COMMENT_ID.fullmatch(
             item_id) else None
         if c is None:
             return JSONResponse({"error": "not_found"}, 404)
         created = c.pop("created")
-        return JSONResponse({**c, "preview": created.get("preview"),
+        preview = created.get("preview")
+        if session_of(request) is None:
+            # A visitor gets no Meta object ids and no Meta preview URL (its query string
+            # is a short-lived access token); the mock's inline preview carries neither.
+            for key in ("external_id", "adset_external_id", "ad_external_id"):
+                if c.get(key):
+                    c[key] = "sha256:" + sha256_hex(str(c[key]))[:32]
+            if not (isinstance(preview, dict) and preview.get("kind") == "inline"):
+                preview = None
+        return JSONResponse({**c, "preview": preview,
                              "preview_error": created.get("preview_error", ""),
                              "ceiling_pln": settings.max_daily_budget_pln})
 

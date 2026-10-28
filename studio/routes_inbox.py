@@ -55,8 +55,18 @@ def list_comments(conn: Any, full: bool) -> list[dict[str, Any]]:
             c[key] = envelope.clean(str(c[key] or ""))
         c["approval_status"] = statuses.get(c["pending_id"], "")
         c["actions"] = list(community.ACTIONS)
+        if not full:
+            c["author_name"] = initials(c["author_name"])
         out.append(c)
     return out if full else public_view(out)
+
+
+def initials(name: str) -> str:
+    """A visitor sees initials, never the Facebook name: the first letter of the first
+    two words that start with a letter (``"Joanna Kowalska" → "J. K."``), else
+    ``"Facebook user"``."""
+    letters = [w[0].upper() for w in name.split() if w[:1].isalpha()][:2]
+    return " ".join(f"{c}." for c in letters) if letters else "Facebook user"
 
 
 def public_view(value: Any) -> Any:
@@ -201,6 +211,7 @@ def list_leads(conn: Any, full: bool) -> list[dict[str, Any]]:
         lead["reasons"] = [envelope.clean(str(r)) for r in lead["reasons"]]
         lead["tasks"] = by_lead.get(lead["id"], [])
         if not full:
+            lead["name"] = initials(lead["name"])
             if lead["email"]:
                 lead["email"] = "[email]"
             if lead["phone"]:
