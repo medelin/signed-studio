@@ -8,7 +8,10 @@
   id; otherwise only its hash is kept.
 - Arguments are validated against a closed pydantic model before the handler runs.
 - Every executed call leaves a ``tool_call`` receipt (``ok`` or ``error``) with hashes of the
-  arguments and the output.
+  arguments and the output. A handler that raises anything other than ``ToolError`` still
+  gets an ``error`` receipt (with the exception's type, never its message) and the model
+  gets ``{"error": "tool failed", "error_type": ...}``; retries are bounded by the
+  producer's per-tool limits.
 """
 
 from __future__ import annotations
@@ -104,7 +107,7 @@ class Dispatcher:
         } for name in self.handlers]
 
     def _receipt(self, call: ToolCall, status: str, output: Any = None,
-                 reason: str = "") -> None:
+                 reason: str = "", error_type: str = "") -> None:
         name = call.name if is_opaque(call.name) else "unknown"
         details: dict[str, Any] = {"tool": name, "status": status, "call_id_sha256":
                                    sha256_hex(call.call_id)}
@@ -115,6 +118,8 @@ class Dispatcher:
             details["side_effects"] = skill.side_effects
         if reason:
             details["reason"] = reason
+        if error_type:
+            details["error_type"] = error_type
         self.ledger.append(
             self.run_id, agent="dispatcher", kind="tool_call",
             input_sha256=[sha256_hex(call.arguments)],
@@ -146,6 +151,14 @@ class Dispatcher:
         except ToolError as exc:
             out = {"error": str(exc)[:300]}
             self._receipt(call, "error", out, reason="tool refused")
+            return Outcome(call.call_id, call.name, "error", out)
+        except Exception as exc:  # noqa: BLE001 - every call ends in a receipt and an output
+            error_type = type(exc).__name__ if is_opaque(type(exc).__name__) else "Exception"
+            out = {"error": "tool failed", "error_type": error_type}
+            code = getattr(exc, "code", "")
+            if isinstance(code, str) and code and is_opaque(code):
+                out["code"] = code
+            self._receipt(call, "error", out, reason="tool failed", error_type=error_type)
             return Outcome(call.call_id, call.name, "error", out)
         self._receipt(call, "ok", out)
         return Outcome(call.call_id, call.name, "ok", out)
