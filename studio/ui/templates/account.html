@@ -172,6 +172,26 @@
   {% endif %}
 </section>
 
+<section class="panel account-part" id="notifications" aria-labelledby="notifications-h">
+  <h2 id="notifications-h">{{ t("account.section.notifications") }}</h2>
+  <p class="hint">{{ t("account.notify.lead") }}</p>
+  {% if not account.email %}<p class="hint">{{ t("account.notify.no_email") }}</p>{% endif %}
+  {% if account.is_demo %}<p class="hint">{{ t("account.demo_note") }}</p>{% else %}
+  <form method="post" action="/account/notifications" class="stack">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <fieldset>
+      <legend>{{ t("account.section.notifications") }}</legend>
+      <div class="choices">
+        <label class="choice"><input type="checkbox" name="campaigns" value="1"{% if notify_prefs.campaigns %} checked{% endif %}> {{ t("account.notify.campaigns") }}</label>
+        <label class="choice"><input type="checkbox" name="leads" value="1"{% if notify_prefs.leads %} checked{% endif %}> {{ t("account.notify.leads") }}</label>
+        <label class="choice"><input type="checkbox" checked disabled> {{ t("account.notify.security") }}</label>
+      </div>
+    </fieldset>
+    <p><button type="submit">{{ t("account.notify.save") }}</button></p>
+  </form>
+  {% endif %}
+</section>
+
 <section class="panel account-part" id="export" aria-labelledby="export-h">
   <h2 id="export-h">{{ t("account.section.export") }}</h2>
   <p class="hint">{{ t("account.export.lead") }}</p>
