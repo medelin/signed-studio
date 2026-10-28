@@ -90,12 +90,24 @@ function renderImages(runId, creatives) {
   cut.append(ci, el("figcaption", T("cutout_caption", { px: creatives.foreground_pixels })));
   box.append(cut);
   for (const im of creatives.images) {
+    if (im.placement === "video_9x16") continue;  // shown with its video below
     const fig = el("figure");
     const img = el("img");
     img.src = "/assets/" + runId + "/" + im.placement + ".png";
     img.alt = T("creative_alt", { placement: im.placement, w: im.width, h: im.height });
     img.loading = "lazy";
     fig.append(img, el("figcaption", im.placement + " · " + im.width + "×" + im.height + " · sha256 " + im.sha256.slice(0, 12)));
+    box.append(fig);
+  }
+  if (creatives.video) {
+    const fig = el("figure");
+    const v = el("video");
+    v.src = "/assets/" + runId + "/video_9x16.mp4";
+    v.poster = "/assets/" + runId + "/video_9x16.png";
+    v.controls = true;
+    v.preload = "none";
+    v.setAttribute("aria-label", T("video_alt", { s: creatives.video.seconds }));
+    fig.append(v, el("figcaption", T("video_caption", { s: creatives.video.seconds, model: creatives.video.storyboard })));
     box.append(fig);
   }
 }

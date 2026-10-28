@@ -46,6 +46,7 @@ from studio.meta.adapter import (
     PAUSED,
     REPLY,
     AdapterError,
+    AdJob,
     NotApproved,
     Preview,
     RemoteComment,
@@ -137,7 +138,8 @@ class GraphAdapter:
     # -- transport -----------------------------------------------------------------
 
     def _request(self, method: str, path: str, *, data: Mapping[str, Any] | None = None,
-                 params: Mapping[str, Any] | None = None, page: bool = False) -> dict[str, Any]:
+                 params: Mapping[str, Any] | None = None, page: bool = False,
+                 files: Mapping[str, Any] | None = None) -> dict[str, Any]:
         token = self._page_token if page else self._token
         headers: dict[str, str] = {}
         form = _form(data) if data is not None else None
@@ -155,7 +157,8 @@ class GraphAdapter:
         for attempt in range(RETRIES + 1):
             try:
                 resp = self._http.request(method, f"{self.base}/{path}", headers=headers,
-                                          data=form, params=query)
+                                          data=form, params=query,
+                                          files=dict(files) if files else None)
             except httpx.HTTPError as exc:
                 if method == "GET" and attempt < RETRIES:
                     self._sleep(2 ** attempt)
@@ -243,18 +246,32 @@ class GraphAdapter:
             **fields, "bid_strategy": "LOWEST_COST_WITHOUT_CAP", "status": PAUSED}))
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
-                        approval: Verified, *, form_id: str = "") -> str:
+                        approval: Verified, *, form_id: str = "", job: AdJob | None = None,
+                        hashes: Mapping[str, str] | None = None, video_id: str = "") -> str:
         spec = self._delivery(payload, approval)
         return self._id(self._post(f"{self.account}/adcreatives", creative_spec(
             payload, spec, self.page_id, image_hash,
-            form_id=_oid(form_id) if form_id else "")))
+            form_id=_oid(form_id) if form_id else "", job=job, hashes=hashes,
+            video_id=_oid(video_id) if video_id else "")))
+
+    def upload_video(self, mp4: bytes, payload: Mapping[str, Any], approval: Verified) -> str:
+        """``POST /act_{id}/advideos`` (multipart ``source``), only the approved video
+        (https://developers.facebook.com/docs/marketing-api/reference/ad-account/advideos/)."""
+        require(approval, CREATE, payload, self._conn)
+        digest = hashlib.sha256(mp4).hexdigest()
+        if digest != ((payload.get("format") or {}).get("video") or {}).get("sha256"):
+            raise NotApproved("video is not the approved video")
+        return self._id(self._request(
+            "POST", f"{self.account}/advideos", data={"name": campaign_name(payload)},
+            files={"source": ("video.mp4", mp4, "video/mp4")}))
 
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
-                         approval: Verified) -> str:
+                         approval: Verified, *, key: str = "ad") -> str:
         require(approval, CREATE, payload, self._conn)
         check_paused(payload)
+        suffix = "" if key == "ad" else " " + key[3:]
         return self._id(self._post(f"{self.account}/ads", {
-            "name": campaign_name(payload) + " · ad", "adset_id": _oid(adset_id),
+            "name": campaign_name(payload) + " · ad" + suffix, "adset_id": _oid(adset_id),
             "creative": {"creative_id": _oid(creative_id)}, "status": PAUSED}))
 
     def create_lead_form(self, payload: Mapping[str, Any], approval: Verified) -> str:

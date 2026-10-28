@@ -106,6 +106,17 @@ class CreativeImage(_Closed):
     response_id: str
 
 
+class VideoClip(_Closed):
+    """A 9:16 video cut by code from the rendered images (poster = first frame)."""
+
+    path: str
+    sha256: str
+    seconds: float
+    bytes: int
+    poster: str  # the placement of the poster image (``video_9x16``)
+    storyboard: str  # the model that ordered the shots, or "code" (fallback)
+
+
 class CreativeSet(_Closed):
     """Produced by the art director (code), not by a model."""
 
@@ -115,6 +126,8 @@ class CreativeSet(_Closed):
     images: list[CreativeImage]
     prompts: list[str]
     response_ids: list[str]
+    cards: list[str] = Field(default_factory=list)  # carousel card placements, in order
+    video: VideoClip | None = None
 
 
 class Finding(_Closed):

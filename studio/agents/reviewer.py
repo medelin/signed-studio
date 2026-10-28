@@ -38,6 +38,7 @@ SECOND_AGENT = "reviewer_open"
 MODEL = "muse-spark-1.3"
 MAX_SIDE = 1024  # reviewers see a downscaled copy: enough for policy, fewer image tokens
 _RANK = {"OK": 0, "WARN": 1, "BLOCK": 2}
+RANK = _RANK
 _SEVERITY_FLOOR = {"info": "OK", "warn": "WARN", "block": "BLOCK"}
 _RULE = re.compile(r"\b[PF]\d+\b")
 

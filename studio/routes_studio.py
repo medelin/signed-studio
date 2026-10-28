@@ -62,7 +62,8 @@ RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 APPROVER = re.compile(r"ed25519:[0-9a-f]{32}")
 SIGNATURE = re.compile(r"[0-9a-f]{128}")
 BRIEF_ID = re.compile(r"b_[0-9a-f]{16}")
-ASSET_NAMES = frozenset({"feed_1x1", "feed_4x5", "story_9x16", "cutout"})
+ASSET_NAMES = frozenset({"feed_1x1", "feed_4x5", "story_9x16", "cutout", "video_9x16",
+                         *(f"card_{i}" for i in range(1, 11))})
 VOICE_TYPES = frozenset({"audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/wave",
                          "audio/mp4", "audio/mpeg", "audio/aac"})
 SSE_POLL_S = 0.5
@@ -508,6 +509,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not path.is_file():
             return JSONResponse({"error": "not_found"}, 404)
         return FileResponse(path, media_type="image/png",
+                            headers={"Cache-Control": "private, max-age=3600"})
+
+    @app.get("/assets/{run_id}/video_9x16.mp4")
+    def video_asset(run_id: str) -> Response:
+        path = settings.data_dir / "assets" / run_id / "video_9x16.mp4"
+        if not RUN_ID.fullmatch(run_id) or not path.is_file():
+            return JSONResponse({"error": "not_found"}, 404)
+        return FileResponse(path, media_type="video/mp4",
                             headers={"Cache-Control": "private, max-age=3600"})
 
     def _pending_and_payload(approval_id: str) -> tuple[Pending, dict[str, Any]]:

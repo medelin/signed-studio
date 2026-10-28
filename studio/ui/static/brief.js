@@ -307,7 +307,7 @@
       else if (node.type === "checkbox" && "multi" in node.dataset) node.checked = (value || []).includes(node.value);
       else if (node.type === "checkbox") node.checked = Boolean(value);
       else if (node.dataset.kind === "lines") node.value = (value || []).join("\n");
-      else if (node.type === "number") node.value = value ? String(value) : "";
+      else if (node.type === "number") node.value = value || value === 0 ? String(value) : "";
       else node.value = value == null ? "" : String(value);
     }
     syncObjective();
@@ -336,7 +336,7 @@
         setPath(b, path, path === "advertiser.countries" || path === "audience.excluded_countries" ? items.map((c) => c.toUpperCase()) : items);
       } else if (node.type === "number") {
         const n = node.value.trim() === "" ? 0 : Number(node.value);
-        setPath(b, path, path.startsWith("audience.age") || path === "audience.lookalike_percent" ? Math.trunc(n) : n);
+        setPath(b, path, path.startsWith("audience.age") || ["audience.lookalike_percent", "placements.carousel_cards", "placements.copy_variants"].includes(path) ? Math.trunc(n) : n);
       } else setPath(b, path, path === "budget.currency" ? node.value.trim().toUpperCase() : node.value.trim());
     }
     for (const [path, values] of Object.entries(multi)) setPath(b, path, values);

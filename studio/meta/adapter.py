@@ -139,10 +139,16 @@ class Adapter(Protocol):
                             approval: Verified, *, lookalike_id: str = "") -> str: ...
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
-                        approval: Verified, *, form_id: str = "") -> str: ...
+                        approval: Verified, *, form_id: str = "", job: AdJob | None = None,
+                        hashes: Mapping[str, str] | None = None,
+                        video_id: str = "") -> str: ...
+
+    def upload_video(self, mp4: bytes, payload: Mapping[str, Any],
+                     approval: Verified) -> str:
+        """``POST /act_{id}/advideos`` with the approved video (its hash is signed)."""
 
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
-                         approval: Verified) -> str: ...
+                         approval: Verified, *, key: str = "ad") -> str: ...
 
     def create_lead_form(self, payload: Mapping[str, Any], approval: Verified) -> str:
         """``POST /{page_id}/leadgen_forms`` with the signed ``lead_form`` block."""
@@ -168,8 +174,22 @@ class Adapter(Protocol):
     def insights(self, campaign_id: str) -> dict[str, Any]: ...
 
 
+def activation_levels(payload: Mapping[str, Any]) -> list[str]:
+    """``ad``, then every further ad the signed payload names (``ad_2`` …), then the ad
+    set and the campaign: the parent goes live last."""
+    more = payload.get("more_ad_external_ids") or []
+    return ["ad", *(f"ad_{i + 2}" for i in range(len(more))), "adset", "campaign"]
+
+
 def activation_target(level: str, payload: Mapping[str, Any]) -> str:
     """The external id of ``level`` in a signed activation payload; refused when absent."""
+    if level.startswith("ad_") and level[3:].isdigit():
+        more = payload.get("more_ad_external_ids") or []
+        n = int(level[3:]) - 2
+        value = more[n] if isinstance(more, list) and 0 <= n < len(more) else None
+        if not isinstance(value, str) or not value:
+            raise NotApproved(f"the signed activation names no {level}")
+        return value
     if level not in ACTIVATION_KEYS:
         raise NotApproved(f"unknown activation level {level!r}")
     value = payload.get(ACTIVATION_KEYS[level])
@@ -216,6 +236,8 @@ def adset_fields(payload: Mapping[str, Any], spec: Mapping[str, Any],
         out["promoted_object"] = dict(spec["promoted_object"])
     if spec.get("attribution_spec"):
         out["attribution_spec"] = [dict(a) for a in spec["attribution_spec"]]
+    if dynamic_creative(payload, spec):
+        out["is_dynamic_creative"] = True
     return out
 
 
@@ -228,43 +250,150 @@ APP_DESTINATIONS: Final = {"MESSAGE_PAGE": "MESSENGER", "INSTAGRAM_MESSAGE": "IN
 LEAD_FORM_LINK: Final = "https://fb.me/"  # what Meta requires as the link of a lead ad
 
 
-def creative_spec(payload: Mapping[str, Any], spec: Mapping[str, Any], page_id: str,
-                  image_hash: str, *, form_id: str = "") -> dict[str, Any]:
-    """The creative body (``object_story_spec`` and, for a catalog, ``product_set_id``)
-    for the signed delivery's creative kind."""
-    ad, link = payload["ad"], str(payload.get("link", ""))
+@dataclass(frozen=True)
+class AdJob:
+    """One ad the media buyer creates: its step names, format and copy variant."""
+
+    key: str  # "ad", "ad_2", …  (the creative step is "creative", "creative_2", …)
+    fmt: str  # single | dynamic | carousel | video
+    variant: int = 0  # index into ``ad_variants`` (0 = the payload's ``ad``)
+
+    @property
+    def creative_key(self) -> str:
+        return "creative" + self.key[2:]
+
+
+MAX_ADS = 6
+
+
+def ad_variants(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The signed copy variants that run: ``ad_variants`` (A/B, primary first) or ``ad``."""
+    variants = payload.get("ad_variants")
+    if isinstance(variants, list) and variants:
+        return [dict(v) for v in variants]
+    return [dict(payload["ad"])]
+
+
+def dynamic_creative(payload: Mapping[str, Any], spec: Mapping[str, Any]) -> bool:
+    """Copy A/B through dynamic creative: only where Meta supports it for the
+    optimisation goal (``spec.dynamic_creative``) and only for a single-image ad set
+    (dynamic creative allows one ad per ad set)."""
+    fmt = payload.get("format") or {}
+    return (bool(spec.get("dynamic_creative")) and len(ad_variants(payload)) > 1
+            and not fmt.get("cards") and not fmt.get("video"))
+
+
+def ads_plan(payload: Mapping[str, Any], spec: Mapping[str, Any]) -> list[AdJob]:
+    """Every ad of the signed payload, in creation order: the image ad (one per copy
+    variant, or one dynamic-creative ad), then the carousel ad and the video ad."""
+    fmt = payload.get("format") or {}
+    if dynamic_creative(payload, spec):
+        jobs = [AdJob("ad", "dynamic")]
+    else:
+        jobs = [AdJob("ad" if i == 0 else f"ad_{i + 1}", "single", i)
+                for i in range(len(ad_variants(payload)))]
+    if fmt.get("cards"):
+        jobs.append(AdJob(f"ad_{len(jobs) + 1}", "carousel"))
+    if fmt.get("video"):
+        jobs.append(AdJob(f"ad_{len(jobs) + 1}", "video"))
+    if len(jobs) > MAX_ADS:
+        raise NotApproved("too many ads in one approval")
+    return jobs
+
+
+def _cta(spec: Mapping[str, Any], ad: Mapping[str, Any], link: str,
+         form_id: str) -> dict[str, Any] | None:
     kind = spec["creative"]
-    data: dict[str, Any] = {"image_hash": image_hash, "link": link,
-                            "message": ad["primary_text"], "name": ad["headline"],
-                            "description": ad["description"]}
-    cta: dict[str, Any] | None = {"type": ad["cta"], "value": {"link": link}}
     if kind == "message":
-        cta = {"type": spec["cta"], "value": {"app_destination": APP_DESTINATIONS[spec["cta"]]}}
-    elif kind == "app":
-        store = spec["promoted_object"]["object_store_url"]
-        data["link"] = store
-        cta = {"type": spec["cta"], "value": {
-            "application": spec["promoted_object"]["application_id"], "link": store}}
-    elif kind == "lead_form":
+        return {"type": spec["cta"], "value": {"app_destination": APP_DESTINATIONS[spec["cta"]]}}
+    if kind == "app":
+        return {"type": spec["cta"], "value": {
+            "application": spec["promoted_object"]["application_id"], "link": link}}
+    if kind == "lead_form":
         if not form_id:
             raise NotApproved("an instant-form ad needs the form created first")
-        data["link"] = LEAD_FORM_LINK
-        cta = {"type": spec["cta"], "value": {"lead_gen_form_id": form_id}}
-    elif kind == "event":
-        # an event ad links to the Facebook event; Meta shows its own response button
-        data["link"] = f"https://www.facebook.com/events/{spec['event_id']}/"
-        cta = None
-    if cta is not None:
-        data["call_to_action"] = cta
-    out: dict[str, Any] = {"name": campaign_name(payload) + " · creative"}
+        return {"type": spec["cta"], "value": {"lead_gen_form_id": form_id}}
+    if kind == "event":
+        return None  # an event ad links to the event; Meta shows its own response button
+    return {"type": ad["cta"], "value": {"link": link}}
+
+
+def _link(payload: Mapping[str, Any], spec: Mapping[str, Any]) -> str:
+    kind = spec["creative"]
+    if kind == "app":
+        return str(spec["promoted_object"]["object_store_url"])
+    if kind == "lead_form":
+        return LEAD_FORM_LINK
+    if kind == "event":
+        return f"https://www.facebook.com/events/{spec['event_id']}/"
+    return str(payload.get("link", ""))
+
+
+def creative_spec(payload: Mapping[str, Any], spec: Mapping[str, Any], page_id: str,
+                  image_hash: str, *, form_id: str = "", job: AdJob | None = None,
+                  hashes: Mapping[str, str] | None = None,
+                  video_id: str = "") -> dict[str, Any]:
+    """The creative body for one ad (``job``) of the signed delivery's creative kind:
+    a single image, a carousel (``child_attachments``, one per approved card), a video
+    (``video_data`` with the poster as thumbnail) or dynamic creative (``asset_feed_spec``
+    with every signed copy variant). References: ad creative object story spec and
+    link data (https://developers.facebook.com/docs/marketing-api/reference/ad-creative-link-data/),
+    video data (https://developers.facebook.com/docs/marketing-api/reference/ad-creative-video-data/),
+    asset feed spec (https://developers.facebook.com/docs/marketing-api/ad-creative/asset-feed-spec/)."""
+    job = job or AdJob("ad", "single")
+    variants = ad_variants(payload)
+    ad = variants[job.variant] if job.fmt != "dynamic" else variants[0]
+    link = _link(payload, spec)
+    kind = spec["creative"]
+    cta = _cta(spec, ad, link, form_id)
+    hashes = dict(hashes or {})
+    out: dict[str, Any] = {"name": campaign_name(payload) + " · creative"
+                                   + ("" if job.key == "ad" else " " + job.key[3:])}
     if kind == "catalog":
         # Advantage+ catalog ads: a template creative over the promoted product set
         # (https://developers.facebook.com/docs/marketing-api/advantage-catalog-ads/)
-        data.pop("image_hash")
+        data = {"link": link, "message": ad["primary_text"], "name": ad["headline"],
+                "description": ad["description"], **({"call_to_action": cta} if cta else {})}
         out["object_story_spec"] = {"page_id": page_id, "template_data": data}
         out["product_set_id"] = spec["promoted_object"]["product_set_id"]
+        return out
+    if job.fmt == "dynamic":
+        out["object_story_spec"] = {"page_id": page_id}
+        out["asset_feed_spec"] = {
+            "bodies": [{"text": v["primary_text"]} for v in variants],
+            "titles": [{"text": v["headline"]} for v in variants],
+            "descriptions": [{"text": v["description"]} for v in variants],
+            "images": [{"hash": image_hash}], "link_urls": [{"website_url": link}],
+            "call_to_action_types": [cta["type"] if cta else "LEARN_MORE"],
+            "ad_formats": ["SINGLE_IMAGE"]}
+        return out
+    if job.fmt == "video":
+        poster = (payload.get("format") or {}).get("video", {}).get("poster", "")
+        if not video_id or poster not in hashes:
+            raise NotApproved("a video ad needs the uploaded video and its poster")
+        video = {"video_id": video_id, "image_hash": hashes[poster],
+                 "message": ad["primary_text"], "title": ad["headline"],
+                 "link_description": ad["description"]}
+        if cta:
+            video["call_to_action"] = cta
+        out["object_story_spec"] = {"page_id": page_id, "video_data": video}
+        return out
+    data = {"link": link, "message": ad["primary_text"], "name": ad["headline"],
+            "description": ad["description"]}
+    if job.fmt == "carousel":
+        cards = list((payload.get("format") or {}).get("cards") or [])
+        if not 2 <= len(cards) <= 10 or any(c not in hashes for c in cards):
+            raise NotApproved("a carousel needs 2-10 approved, uploaded cards")
+        data["child_attachments"] = [
+            {"link": link, "image_hash": hashes[c], "name": ad["headline"],
+             "description": ad["description"], **({"call_to_action": cta} if cta else {})}
+            for c in cards]
+        data["multi_share_optimized"] = True
     else:
-        out["object_story_spec"] = {"page_id": page_id, "link_data": data}
+        data["image_hash"] = image_hash
+    if cta is not None:
+        data["call_to_action"] = cta
+    out["object_story_spec"] = {"page_id": page_id, "link_data": data}
     return out
 
 

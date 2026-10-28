@@ -98,6 +98,23 @@ EN_META: dict[str, str] = {
     "js.aud_advantage_off": "Advantage+ audience off: the brief's ages, genders and "
                             "interests are hard limits",
     "js.aud_lookalike": "lookalike of your audience {id}, {pct}% of the country",
+    # formats
+    "brief.f.carousel_cards": "Carousel cards (0 = no carousel, else 2-10)",
+    "brief.h.carousel": "Each card is one more Muse Image render, reviewed by both "
+                        "reviewers; about $0.01 per card plus two reviews.",
+    "brief.f.video": "Also make a 9:16 video ad",
+    "brief.h.video": "Code cuts a few-second video from the rendered images; Muse Wonder "
+                     "orders the shots. Its first frame is reviewed like every image.",
+    "brief.f.copy_variants": "Copy variants to test against each other (1-3)",
+    "brief.h.copy_variants": "More than one: every variant is reviewed and runs, as "
+                             "dynamic creative where Meta supports it for the objective, "
+                             "otherwise as separate ads in one ad set.",
+    "js.brief_err_carousel_cards": "Use 0, or 2 to 10 cards.",
+    "js.brief_err_copy_variants": "Use 1, 2 or 3.",
+    "js.brief_err_format_not_for_objective": "Event and catalog ads take a single image "
+                                             "and one copy variant.",
+    "js.video_alt": "9:16 video ad, {s} seconds",
+    "js.video_caption": "video_9x16 · {s} s · shots ordered by {model}",
 }
 
 PL_META: dict[str, str] = {
@@ -195,4 +212,21 @@ PL_META: dict[str, str] = {
     "js.aud_advantage_off": "Advantage+ wyłączone: wiek, płeć i zainteresowania z briefu "
                             "są sztywne",
     "js.aud_lookalike": "podobni do twojej grupy {id}, {pct}% kraju",
+    "brief.f.carousel_cards": "Karty karuzeli (0 = bez karuzeli, inaczej 2-10)",
+    "brief.h.carousel": "Każda karta to jeszcze jeden obraz Muse Image, sprawdzany przez "
+                        "obu recenzentów; około 0,01 $ za kartę plus dwie recenzje.",
+    "brief.f.video": "Zrób też reklamę wideo 9:16",
+    "brief.h.video": "Kod składa kilkusekundowe wideo z wygenerowanych obrazów; kolejność "
+                     "ujęć ustala Muse Wonder. Pierwsza klatka jest sprawdzana jak każdy "
+                     "obraz.",
+    "brief.f.copy_variants": "Warianty tekstu do porównania (1-3)",
+    "brief.h.copy_variants": "Więcej niż jeden: każdy wariant jest sprawdzany i emitowany, "
+                             "jako kreacja dynamiczna, gdy Meta ją wspiera dla celu, "
+                             "inaczej jako osobne reklamy w jednym zestawie.",
+    "js.brief_err_carousel_cards": "Podaj 0 albo od 2 do 10 kart.",
+    "js.brief_err_copy_variants": "Podaj 1, 2 albo 3.",
+    "js.brief_err_format_not_for_objective": "Reklamy wydarzeń i katalogu mają jeden obraz "
+                                             "i jeden wariant tekstu.",
+    "js.video_alt": "Reklama wideo 9:16, {s} s",
+    "js.video_caption": "video_9x16 · {s} s · kolejność ujęć: {model}",
 }

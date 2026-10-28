@@ -176,3 +176,23 @@ def test_audience_hints_are_resolved_by_code_and_signed_in_the_payload(env):
     (r,) = [x for x in ctx.client.ledger.receipts(run.run_id)
             if x.details.get("tool") == "targeting.search"]
     assert r.details["side_effects"] == "read" and r.details["unresolved"] == 0
+
+
+def test_ab_variants_and_their_review_binding(env):
+    from tests.test_brief import sample
+
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    assert producer.ab_variants(ctx, run, 1) == [1]
+    pl = sample().placements.model_dump()
+    ctx.brief_v1 = sample(placements={**pl, "copy_variants": 3})
+    assert producer.ab_variants(ctx, run, 1) == [1, 0, 2]
+    one = producer.review_binding(run, 1)
+    assert producer.review_binding(run, 1, [0, 2]) != one  # the A/B variants are covered
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 1,
+                  "ab": [{"variant_index": 0}, {"variant_index": 2}]}
+    p = producer.campaign_payload(run, 1)
+    assert [v["headline"] for v in p["ad_variants"]] == [
+        run.copy.variants[i].headline for i in (1, 0, 2)]

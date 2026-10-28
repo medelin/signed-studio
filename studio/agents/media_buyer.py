@@ -39,6 +39,9 @@ from studio.meta.adapter import (
     PAUSED,
     Adapter,
     PausedOnly,
+    activation_levels,
+    activation_target,
+    ads_plan,
     campaign_name,
     check_paused,
     spec_sha256,
@@ -54,14 +57,21 @@ class BuyError(Exception):
         self.code = code
 
 
-def _hero(payload: dict[str, Any], data_dir: Path) -> bytes:
-    """The approved hero image from disk, checked against the signed hash."""
-    image = payload["images"][0]
-    path = data_dir / "assets" / str(payload["run_id"]) / f"{image['placement']}.png"
-    png = path.read_bytes()
-    if hashlib.sha256(png).hexdigest() != image["sha256"]:
-        raise BuyError("the image on disk is not the approved image", "image_changed")
-    return png
+def _approved(payload: dict[str, Any], data_dir: Path, name: str, digest: str) -> bytes:
+    """An approved file from disk, checked against its signed hash."""
+    data = (data_dir / "assets" / str(payload["run_id"]) / name).read_bytes()
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise BuyError("the file on disk is not the approved one", "image_changed")
+    return data
+
+
+def _uploads(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """The images the ads use: the hero, then every carousel card and the video poster."""
+    images = payload["images"]
+    fmt = payload.get("format") or {}
+    wanted = set(fmt.get("cards") or []) | (
+        {fmt["video"]["poster"]} if fmt.get("video") else set())
+    return [images[0], *(i for i in images[1:] if i["placement"] in wanted)]
 
 
 def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
@@ -83,7 +93,7 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
     spec_details = {"spec_sha256": spec_hash, "objective": spec["objective"]}
     created: dict[str, str] = {}
 
-    def step(name: str, fn: Any, *args: Any) -> str:
+    def step(name: str, fn: Any, *args: Any, key: str = "") -> str:
         try:
             out = str(fn(*args))
         except Exception as exc:
@@ -91,7 +101,7 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
                                  status="error",
                                  details={"error": getattr(exc, "code", type(exc).__name__)})
             raise
-        created[name] = out
+        created[key or name] = out
         executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step=name,
                              status="ok", details={"object": executor.safe_id(out),
                                                    **({"object_status": PAUSED} if name in (
@@ -101,8 +111,17 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         return out
 
     try:
-        png = _hero(payload, data_dir)
-        image_hash = step("image", adapter.upload_image, png, payload, v)
+        hashes: dict[str, str] = {}
+        for n, im in enumerate(_uploads(payload)):
+            png = _approved(payload, data_dir, f"{im['placement']}.png", im["sha256"])
+            hashes[im["placement"]] = step("image", adapter.upload_image, png, payload, v,
+                                           key="image" if n == 0 else f"image_{n + 1}")
+        image_hash = hashes[payload["images"][0]["placement"]]
+        video_id = ""
+        clip = (payload.get("format") or {}).get("video")
+        if clip:
+            mp4 = _approved(payload, data_dir, f"{clip['poster']}.mp4", clip["sha256"])
+            video_id = step("video", adapter.upload_video, mp4, payload, v)
         campaign_id = step("campaign", adapter.create_campaign_paused, payload, v)
         lookalike_id = ""
         if payload.get("lookalike"):
@@ -113,9 +132,14 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         if spec["creative"] == "lead_form":
             form_id = step("lead_form", adapter.create_lead_form, payload, v)
             leadads.record_form(conn, form_id, v.item_id, v.run_id, adapter.name)
-        creative_id = step("creative", partial(adapter.create_creative, form_id=form_id),
-                           image_hash, payload, v)
-        ad_id = step("ad", adapter.create_ad_paused, adset_id, creative_id, payload, v)
+        ad_ids: list[str] = []
+        for job in ads_plan(payload, spec):
+            creative_id = step("creative", partial(
+                adapter.create_creative, form_id=form_id, job=job, hashes=hashes,
+                video_id=video_id), image_hash, payload, v, key=job.creative_key)
+            ad_ids.append(step("ad", partial(adapter.create_ad_paused, key=job.key),
+                               adset_id, creative_id, payload, v, key=job.key))
+        ad_id = ad_ids[0]
     except Exception as exc:
         failure = {"status": "partial" if created else "failed", "created": created,
                    "error": getattr(exc, "code", type(exc).__name__)}
@@ -133,11 +157,11 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
     with transaction(conn):
         conn.execute(
             "INSERT INTO campaigns (id, run_id, name, objective, status, daily_budget_minor, "
-            "adapter, external_id, adset_external_id, ad_external_id, created_ts) "
-            "VALUES (?, ?, ?, ?, 'PAUSED', ?, ?, ?, ?, ?, ?)",
+            "adapter, external_id, adset_external_id, ad_external_id, created_ts, "
+            "more_ad_ids) VALUES (?, ?, ?, ?, 'PAUSED', ?, ?, ?, ?, ?, ?, ?)",
             (v.item_id, v.run_id, campaign_name(payload), payload["campaign"]["objective"],
              int(payload["campaign"]["daily_budget_minor"]), adapter.name, campaign_id,
-             adset_id, ad_id, time.time()))
+             adset_id, ad_id, time.time(), json.dumps(ad_ids[1:])))
     result: dict[str, Any] = {"adapter": adapter.name, "status": PAUSED,
                               "campaign_item_id": v.item_id,
                               **{f"{k}_id": x for k, x in created.items()}}
@@ -154,7 +178,8 @@ def campaign(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
     with conn.lock:  # type: ignore[attr-defined]
         row = conn.execute(
             "SELECT c.id, c.run_id, c.name, c.status, c.daily_budget_minor, c.adapter, "
-            "c.external_id, c.adset_external_id, c.ad_external_id, e.result FROM campaigns c "
+            "c.external_id, c.adset_external_id, c.ad_external_id, e.result, c.more_ad_ids "
+            "FROM campaigns c "
             "LEFT JOIN executions e ON e.item_id = c.id AND e.action = 'campaign.create' "
             "WHERE c.id = ?", (item_id,)).fetchone()
     if row is None:
@@ -163,6 +188,7 @@ def campaign(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
             "adset_external_id", "ad_external_id")
     out = dict(zip(keys, row[:9], strict=True))
     out["created"] = json.loads(row[9]) if row[9] else {}
+    out["more_ad_external_ids"] = json.loads(row[10] or "[]")
     return out
 
 
@@ -184,6 +210,8 @@ def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
                   for level in ACTIVATION_ORDER}, "adapter": c["adapter"],
                "daily_budget_minor": c["daily_budget_minor"], "ceiling_minor": ceiling,
                "currency": "PLN", "run_id": c["run_id"]}
+    if c["more_ad_external_ids"]:  # every ad of the ad set goes live (copy A/B, formats)
+        payload["more_ad_external_ids"] = list(c["more_ad_external_ids"])
     pending = Pending.create("campaign.activate", c["id"], payload, ledger=ledger,
                              run_id=c["run_id"])
     with transaction(conn):
@@ -204,7 +232,8 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
     elif ([c[ACTIVATION_KEYS[x]] for x in ACTIVATION_ORDER] + [c["daily_budget_minor"],
                                                                c["adapter"]]) != (
             [payload.get(ACTIVATION_KEYS[x]) for x in ACTIVATION_ORDER]
-            + [payload.get("daily_budget_minor"), adapter.name]):
+            + [payload.get("daily_budget_minor"), adapter.name]) or (
+            c["more_ad_external_ids"] != list(payload.get("more_ad_external_ids") or [])):
         problem = "campaign_changed"
     elif int(payload["daily_budget_minor"]) > min(int(payload["ceiling_minor"]),
                                                   ceiling_pln * 100):
@@ -215,8 +244,8 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
                              status="rejected", details={"reason": problem})
         raise BuyError(f"activation refused: {problem}", problem)
     activated: list[str] = []
-    for level in ACTIVATION_ORDER:  # ad → ad set → campaign: the parent goes live last
-        step = "activate_" + level
+    for level in activation_levels(payload):  # ads → ad set → campaign: parent last
+        step = "activate_" + ("ad" if level.startswith("ad_") else level)
         try:
             adapter.activate(level, payload, v)
         except Exception as exc:
@@ -231,7 +260,7 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
         activated.append(level)
         executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step=step,
                              status="ok", details={
-                                 "object": executor.safe_id(str(payload[ACTIVATION_KEYS[level]])),
+                                 "object": executor.safe_id(activation_target(level, payload)),
                                  "object_status": "ACTIVE"})
     executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
         "status": "ok", "object_status": "ACTIVE", "activated": activated,

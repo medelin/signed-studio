@@ -32,7 +32,7 @@ from typing import Any
 
 from studio import brief as brief_v1
 from studio import envelope, leadads
-from studio.agents import art_director, copywriter, prompts, reviewer
+from studio.agents import art_director, copywriter, formats, prompts, reviewer
 from studio.agents.dispatcher import (
     ApprovalArgs,
     ArtDirectorArgs,
@@ -194,6 +194,17 @@ def campaign_payload(run: RunResult, variant_index: int,
                    "formats": [{"placement": f["placement"], "sha256": f["sha256"],
                                 "verdict": f["verdict"]} for f in run.review["formats"]]},
     }
+    ab = [x["variant_index"] for x in run.review.get("ab", [])]
+    if ab:  # copy A/B: every reviewed variant runs (dynamic creative or separate ads)
+        payload["ad_variants"] = [
+            {k: getattr(run.copy.variants[i], k) for k in ("primary_text", "headline",
+                                                            "description", "cta")}
+            for i in [variant_index, *ab]]
+    cards, clip = run.creatives.cards, run.creatives.video
+    if cards or clip:
+        payload["format"] = {"cards": list(cards), "video": {
+            "sha256": clip.sha256, "seconds": clip.seconds, "poster": clip.poster,
+            "storyboard": clip.storyboard} if clip else None}
     if spec["creative"] == "lead_form":
         assert brief is not None  # an instant form exists only for a confirmed brief
         # the questions the owner chose and the owner's own privacy page (Meta requires it)
@@ -245,15 +256,30 @@ def resolve_audience(ctx: Context, run_id: str,
     return res
 
 
-def review_binding(run: RunResult, variant_index: int) -> str:
-    """Hash of exactly what a review covers: the chosen variant and every image."""
+def ab_variants(ctx: Context, run: RunResult, chosen: int) -> list[int]:
+    """The copy variants that will run: the chosen one, then (copy A/B in the brief) the
+    next ones in order, up to ``placements.copy_variants``."""
+    assert run.copy
+    n = ctx.brief_v1.placements.copy_variants if ctx.brief_v1 is not None else 1
+    order = [chosen] + [i for i in range(len(run.copy.variants)) if i != chosen]
+    return order[:max(1, min(n, len(order)))]
+
+
+def review_binding(run: RunResult, variant_index: int, ab: list[int] | None = None) -> str:
+    """Hash of exactly what a review covers: the chosen variant (and the A/B variants)
+    and every image, carousel card and video."""
     assert run.copy and run.creatives
-    return sha256_hex(canonical({
+    body: dict[str, Any] = {
         "variant_index": variant_index,
         "variant": run.copy.variants[variant_index].model_dump(),
         "images": [{"placement": i.placement, "sha256": i.sha256}
                    for i in run.creatives.images],
-    }))
+    }
+    if ab:
+        body["ab"] = [{"index": i, "variant": run.copy.variants[i].model_dump()} for i in ab]
+    if run.creatives.video:
+        body["video"] = run.creatives.video.sha256
+    return sha256_hex(canonical(body))
 
 
 # A signed run stays ``approved``: the producer's last writes never move it back (the
@@ -382,12 +408,15 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
             raise ToolError("headline must be one of the copy variants' headlines")
         new_content()
         run.creatives = None
+        fmt = ctx.brief_v1.placements if ctx.brief_v1 is not None else None
         try:
             run.creatives = art_director.run(
                 ctx.client, ctx.photo_png, headline[:60], run_id=run.run_id,
                 concept=ctx.concept, data_dir=ctx.data_dir,
                 placements=art_director.clean_placements(run.plan.placements),
-                can_spend=lambda usd: _cost(ctx, run.run_id) + usd <= max_cost_usd)
+                can_spend=lambda usd: _cost(ctx, run.run_id) + usd <= max_cost_usd,
+                carousel_cards=fmt.carousel_cards if fmt else 0,
+                with_video=bool(fmt and fmt.video))
         except art_director.CostCapReached:
             raise ToolError("cost cap reached while rendering; no creative set") from None
         with transaction(ctx.conn):
@@ -417,8 +446,19 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         result = reviewer.run_formats(ctx.client, ctx.open_client, images,
                                       run.copy.variants[args.variant_index], run_id=run.run_id,
                                       brief=ctx.brief_v1)
-        run.review = {**result, "variant_index": args.variant_index,
-                      "binding": review_binding(run, args.variant_index)}
+        # copy A/B: every further variant that will run is reviewed on every image too
+        ab = []
+        for i in ab_variants(ctx, run, args.variant_index)[1:]:
+            extra = reviewer.run_formats(ctx.client, ctx.open_client, images,
+                                         run.copy.variants[i], run_id=run.run_id,
+                                         brief=ctx.brief_v1)
+            ab.append({**extra, "variant_index": i})
+        worst = max([result["verdict"], *(x["verdict"] for x in ab)],
+                    key=reviewer.RANK.__getitem__)
+        run.review = {**result, "verdict": worst, "primary_verdict": result["verdict"],
+                      "ab": ab, "variant_index": args.variant_index,
+                      "binding": review_binding(run, args.variant_index,
+                                                [x["variant_index"] for x in ab])}
         emit("review")
         return {"verdict": result["verdict"], "second_opinion": result["second_opinion"],
                 "disagreements": result["disagreements"],
@@ -434,28 +474,34 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         if run.review["verdict"] == "BLOCK":
             raise ToolError("the reviewers blocked this creative; fix it before approval")
         index = run.review["variant_index"]
-        if run.review.get("binding") != review_binding(run, index):
+        ab = [x["variant_index"] for x in run.review.get("ab", [])]
+        if run.review.get("binding") != review_binding(run, index, ab):
             raise ToolError("content changed since review; run_reviewers again")
         assert run.copy
         if run.copy.unfilled_facts > 0:
             raise ToolError(f"the copy reports {run.copy.unfilled_facts} unfilled "
                             f"{copywriter.FACT} placeholder(s); rewrite it before approval")
-        variant = run.copy.variants[index]
-        if copywriter.has_unfilled_fact(variant):
-            raise ToolError(f"variant {index} has an unfilled {copywriter.FACT} placeholder; "
-                            "it cannot be sent for approval")
-        bad = copywriter.unsupported_character(variant)
-        if bad:
-            raise ToolError(bad)
+        for i in [index, *ab]:
+            if copywriter.has_unfilled_fact(run.copy.variants[i]):
+                raise ToolError(f"variant {i} has an unfilled {copywriter.FACT} "
+                                "placeholder; it cannot be sent for approval")
+            bad = copywriter.unsupported_character(run.copy.variants[i])
+            if bad:
+                raise ToolError(bad)
+        if run.creatives and run.creatives.video:
+            found = formats.check_video(run.creatives.video.seconds, run.creatives.video.bytes)
+            if found:
+                raise ToolError(found[0].evidence)
         link = ctx.landing_url
         if ctx.brief_v1 is not None:
             if confirmed_brief(ctx.client.ledger, run.run_id) != ctx.brief_sha256 or \
                     brief_v1.brief_sha256(ctx.brief_v1) != ctx.brief_sha256:
                 raise ToolError("the confirmed brief changed during the run; confirm it again")
-            ungrounded = reviewer.grounding_net(variant, ctx.brief_v1)
-            if ungrounded:
-                raise ToolError(f"variant {index} states something the owner did not confirm "
-                                f"(rule P10): {ungrounded[0].evidence[:200]}")
+            for i in [index, *ab]:
+                ungrounded = reviewer.grounding_net(run.copy.variants[i], ctx.brief_v1)
+                if ungrounded:
+                    raise ToolError(f"variant {i} states something the owner did not "
+                                    f"confirm (rule P10): {ungrounded[0].evidence[:200]}")
             link = ctx.brief_v1.advertiser.landing_url
         resolved = None
         if ctx.brief_v1 is not None:

@@ -15,6 +15,10 @@ docs/policy.md):
   https://www.facebook.com/business/ads-guide/update/image/instagram-story
 - Meta Ads Guide, Instagram Reels image:
   https://www.facebook.com/business/ads-guide/update/image/instagram-reels
+- Meta Ads Guide, Facebook Feed carousel:
+  https://www.facebook.com/business/ads-guide/update/carousel/facebook-feed
+- Meta Ads Guide, Instagram Reels video:
+  https://www.facebook.com/business/ads-guide/update/video/instagram-reels
 - Meta Marketing API, Ad Creative "Fields-Level Limits":
   https://developers.facebook.com/docs/marketing-api/reference/ad-creative
 - Google Ads Help, responsive search ads: https://support.google.com/google-ads/answer/7684791
@@ -39,6 +43,8 @@ META_IG_FEED = "https://www.facebook.com/business/ads-guide/update/image/instagr
 META_IG_STORY = "https://www.facebook.com/business/ads-guide/update/image/instagram-story"
 META_IG_REELS = "https://www.facebook.com/business/ads-guide/update/image/instagram-reels"
 META_API = "https://developers.facebook.com/docs/marketing-api/reference/ad-creative"
+META_CAROUSEL = "https://www.facebook.com/business/ads-guide/update/carousel/facebook-feed"
+META_REELS_VIDEO = "https://www.facebook.com/business/ads-guide/update/video/instagram-reels"
 GOOGLE_RSA = "https://support.google.com/google-ads/answer/7684791"
 GOOGLE_PMAX = "https://support.google.com/google-ads/answer/17091269"
 GOOGLE_DGEN = "https://support.google.com/google-ads/answer/17091672"
@@ -91,6 +97,23 @@ PLATFORMS: dict[str, dict[str, Any]] = {
     ], "image": [
         ImageSpec("Instagram Stories / Reels 9:16", ((9, 16),), 0.01, 500, 0, META_IG_STORY),
     ]},
+    # one card of a carousel (placements card_1 … card_10): 2-10 cards, 1:1 ±3 %;
+    # "at least 1080 x 1080" is the guide's recommendation (warn), 600 px the hard floor
+    # of a Facebook Feed image
+    "carousel_card": {"platform": "meta", "text": [
+        TextLimit("primary_text", 80, False, "Facebook Feed carousel", META_CAROUSEL),
+        TextLimit("headline", 20, False, "Facebook Feed carousel", META_CAROUSEL),
+        TextLimit("description", 18, False, "Facebook Feed carousel", META_CAROUSEL),
+    ], "image": [
+        ImageSpec("Facebook Feed carousel card 1:1", ((1, 1),), 0.03, 600, 600, META_CAROUSEL),
+    ], "recommended": (1080, 1080, META_CAROUSEL)},
+    # the poster frame of the 9:16 video (placement video_9x16)
+    "video_9x16": {"platform": "meta", "text": [
+        TextLimit("primary_text", 125, False, "Instagram Stories", META_IG_STORY),
+        TextLimit("primary_text", 44, False, "Instagram Reels", META_REELS_VIDEO),
+    ], "image": [
+        ImageSpec("Instagram Reels video 9:16", ((9, 16),), 0.01, 500, 0, META_REELS_VIDEO),
+    ]},
     "google_rsa": {"platform": "google", "text": [
         TextLimit("headline", 30, True, "Google responsive search ad", GOOGLE_RSA, True),
         TextLimit("description", 90, True, "Google responsive search ad", GOOGLE_RSA, True),
@@ -119,6 +142,37 @@ PLATFORMS: dict[str, dict[str, Any]] = {
     "tiktok_in_feed": {"platform": "tiktok", "text": [], "image": []},
 }
 EXPORT_ONLY = frozenset(p for p, v in PLATFORMS.items() if v["platform"] != "meta")
+CAROUSEL_CARDS = (2, 10)  # Meta: "2 to 10" cards (META_CAROUSEL)
+VIDEO_MAX_S = 15 * 60  # Reels: "0 seconds to 15 minutes" (META_REELS_VIDEO)
+VIDEO_MAX_BYTES = 4 * 1024**3  # "Maximum file size: 4 GB"
+
+
+def surface(placement: str) -> str:
+    """The ``PLATFORMS`` key of a placement: ``card_<n>`` is one carousel card."""
+    if placement.startswith("card_") and placement[5:].isdigit():
+        return "carousel_card"
+    return placement
+
+
+def check_video(seconds: float, size_bytes: int) -> list[FormatFinding]:
+    """Hard video limits of the Reels / Stories placements (duration, file size)."""
+    out = []
+    if not 0 < seconds <= VIDEO_MAX_S:
+        out.append(FormatFinding("block", f"Meta video: {seconds:.1f} s, allowed up to "
+                                          f"{VIDEO_MAX_S} s ({META_REELS_VIDEO}, retrieved "
+                                          f"{RETRIEVED})"))
+    if size_bytes > VIDEO_MAX_BYTES:
+        out.append(FormatFinding("block", f"Meta video: {size_bytes} bytes, maximum 4 GB "
+                                          f"({META_REELS_VIDEO}, retrieved {RETRIEVED})"))
+    return out
+
+
+def check_carousel(cards: int) -> list[FormatFinding]:
+    lo, hi = CAROUSEL_CARDS
+    if lo <= cards <= hi:
+        return []
+    return [FormatFinding("block", f"Meta carousel: {cards} cards, allowed {lo} to {hi} "
+                                   f"({META_CAROUSEL}, retrieved {RETRIEVED})")]
 META_URL_MAX = 1000  # Marketing API: "Maximum length of a URL: 1000" (META_API)
 TIKTOK_NAME_MAX = 20  # "maximum of 10 characters (CJK) or 20 characters in other languages"
 TIKTOK_NAME_MAX_CJK = 10
@@ -152,7 +206,7 @@ def check(placement: str, ad: dict[str, Any],
     """Findings for one ad on one placement. ``ad`` holds text fields (``primary_text``,
     ``headline``, ``description``, optional ``long_headline``, ``business_name``,
     ``path``, ``display_name``, ``link``)."""
-    spec = PLATFORMS.get(placement)
+    spec = PLATFORMS.get(surface(placement))
     if spec is None:
         raise ValueError(f"unknown placement {placement!r}")
     out: list[FormatFinding] = []
@@ -178,6 +232,11 @@ def check(placement: str, ad: dict[str, Any],
         out += _tiktok(ad)
     if image_size is not None and spec["image"]:
         out += _image(spec["image"], image_size)
+        rec = spec.get("recommended")
+        if rec and not out and (image_size[0] < rec[0] or image_size[1] < rec[1]):
+            out.append(FormatFinding("warn", f"image {image_size[0]}×{image_size[1]} is "
+                                             f"below the recommended {rec[0]}×{rec[1]} "
+                                             f"({rec[2]}, retrieved {RETRIEVED})"))
     return out
 
 

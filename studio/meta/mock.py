@@ -24,10 +24,12 @@ from studio.meta.adapter import (
     PAUSED,
     REPLY,
     AdapterError,
+    AdJob,
     NotApproved,
     Preview,
     RemoteComment,
     activation_target,
+    ad_variants,
     adset_fields,
     campaign_fields,
     check_paused,
@@ -118,21 +120,37 @@ class MockAdapter:
             **adset_fields(payload, spec, lookalike_id)})
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
-                        approval: Verified, *, form_id: str = "") -> str:
+                        approval: Verified, *, form_id: str = "", job: AdJob | None = None,
+                        hashes: Mapping[str, str] | None = None, video_id: str = "") -> str:
         spec = self._delivery(payload, approval)
-        body = creative_spec(payload, spec, self.page_id, image_hash, form_id=form_id)
+        body = creative_spec(payload, spec, self.page_id, image_hash, form_id=form_id,
+                             job=job, hashes=hashes, video_id=video_id)
+        ad = ad_variants(payload)[job.variant if job else 0]
         story = body["object_story_spec"]
         data = story.get("link_data") or story.get("template_data") or {}
-        cta = data.get("call_to_action") or {}
+        cta = data.get("call_to_action") or (story.get("video_data") or {}).get(
+            "call_to_action") or {}
         return self._create("create_creative", "creative", payload, approval, {
-            "type": "creative", "image_hash": image_hash, "message": data["message"],
-            "name": data["name"], "description": data["description"],
-            "cta": cta.get("type", ""), "link": data["link"], "body": body})
+            "type": "creative", "image_hash": image_hash, "message": ad["primary_text"],
+            "name": ad["headline"], "description": ad["description"],
+            "cta": cta.get("type", ""), "link": data.get("link", payload.get("link", "")),
+            "body": body, "format": job.fmt if job else "single"})
+
+    def upload_video(self, mp4: bytes, payload: Mapping[str, Any], approval: Verified) -> str:
+        require(approval, CREATE, payload, self._conn)
+        digest = hashlib.sha256(mp4).hexdigest()
+        if digest != ((payload.get("format") or {}).get("video") or {}).get("sha256"):
+            raise NotApproved("video is not the approved video")
+        oid = "mockvid" + digest[:16]
+        self.objects[oid] = {"type": "video", "sha256": digest}
+        self.calls.append(("upload_video", oid))
+        return oid
 
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
-                         approval: Verified) -> str:
+                         approval: Verified, *, key: str = "ad") -> str:
         return self._create("create_ad_paused", "ad", payload, approval, {
-            "type": "ad", "adset_id": adset_id, "creative_id": creative_id, "status": PAUSED})
+            "type": "ad", "adset_id": adset_id, "creative_id": creative_id, "status": PAUSED,
+            "key": key})
 
     def create_lead_form(self, payload: Mapping[str, Any], approval: Verified) -> str:
         form = lead_form_of(payload)
@@ -180,7 +198,8 @@ class MockAdapter:
         require(approval, ACTIVATE, payload, self._conn)
         oid = activation_target(level, payload)
         obj = self.objects.get(oid)
-        if not obj or obj.get("type") != level:
+        kind = "ad" if level.startswith("ad_") else level
+        if not obj or obj.get("type") != kind:
             raise AdapterError(f"unknown {level}", code="not_found")
         obj["status"] = "ACTIVE"
         self.calls.append(("activate_" + level, oid))

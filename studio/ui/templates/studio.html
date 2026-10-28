@@ -262,6 +262,12 @@
         </fieldset>
         {{ err("bf-placements-deliverables") }}
       </div>
+      {{ field("placements.carousel_cards", "carousel_cards", "number", "brief.h.carousel", dictate=False, attrs='min="0" max="10" inputmode="numeric"') }}
+      <div class="bf-field" data-field="placements.video">
+        <p class="hint" id="hint-bf-placements-video">{{ t("brief.h.video") }}</p>
+        <label><input type="checkbox" id="bf-placements-video" data-path="placements.video" aria-describedby="hint-bf-placements-video"> {{ t("brief.f.video") }}</label>
+      </div>
+      {{ field("placements.copy_variants", "copy_variants", "number", "brief.h.copy_variants", dictate=False, attrs='min="1" max="3" inputmode="numeric"') }}
     </fieldset>
 
     <fieldset>

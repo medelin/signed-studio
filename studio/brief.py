@@ -149,6 +149,9 @@ class Budget(_Strict):
 class Placements(_Strict):
     automatic: bool = True  # Advantage+ placements unless the owner asks otherwise
     deliverables: list[Placement]
+    carousel_cards: int = 0  # 0 = no carousel ad; else 2-10 cards rendered by Muse Image
+    video: bool = False  # a 9:16 video ad cut from the rendered images
+    copy_variants: int = 1  # 1-3 copy variants run against each other (A/B)
 
 
 class Asset(_Strict):
@@ -357,6 +360,17 @@ def problems(brief: BriefV1, *, confirmed: bool = True, currency: str = "PLN",
         out["placements.deliverables"] = "required"
     elif len(set(brief.placements.deliverables)) != len(brief.placements.deliverables):
         out["placements.deliverables"] = "duplicate"
+    pl = brief.placements
+    if pl.carousel_cards and not 2 <= pl.carousel_cards <= 10:
+        out["placements.carousel_cards"] = "carousel_cards"
+    if not 1 <= pl.copy_variants <= 3:
+        out["placements.copy_variants"] = "copy_variants"
+    if brief.objective.goal in objectives.SUBS and (
+            brief.objective.sub in ("",) + objectives.SUBS[brief.objective.goal]):
+        kind = objectives.row(brief.objective.goal, brief.objective.sub).creative
+        if kind in ("event", "catalog") and (pl.carousel_cards or pl.video
+                                             or pl.copy_variants > 1):
+            out["placements.carousel_cards"] = "format_not_for_objective"
     if len(brief.assets) > MAX_ITEMS:
         out["assets"] = "too_many"
     elif any(len(x.note) > MAX_TEXT for x in brief.assets):
@@ -523,7 +537,12 @@ def render(brief: BriefV1) -> str:
         f"Budget: {b.kind} {b.amount:g} {b.currency}"
         + (f", {b.start or '?'} to {b.end or '?'}" if b.start or b.end else ""),
         f"Placements: {'automatic' if brief.placements.automatic else 'manual'}; "
-        f"deliverables {', '.join(brief.placements.deliverables)}",
+        f"deliverables {', '.join(brief.placements.deliverables)}"
+        + (f"; carousel of {brief.placements.carousel_cards} cards"
+           if brief.placements.carousel_cards else "")
+        + ("; a 9:16 video" if brief.placements.video else "")
+        + (f"; {brief.placements.copy_variants} copy variants tested"
+           if brief.placements.copy_variants > 1 else ""),
         "Assets: " + ("; ".join(f"{x.kind} ({x.note})" for x in brief.assets) or "-"),
     ]
     return "\n".join(lines)
