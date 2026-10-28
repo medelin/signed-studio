@@ -43,7 +43,9 @@ def _id(prefix: str) -> str:
 class MockAdapter:
     name = "mock"
 
-    def __init__(self, comments: list[RemoteComment] | None = None) -> None:
+    def __init__(self, comments: list[RemoteComment] | None = None, *,
+                 conn: Any = None) -> None:
+        self._conn = conn
         self.objects: dict[str, dict[str, Any]] = {}
         self.calls: list[tuple[str, str]] = []  # (method, object id)
         self.replies: dict[str, list[str]] = {}
@@ -52,7 +54,7 @@ class MockAdapter:
 
     def _create(self, method: str, prefix: str, payload: Mapping[str, Any],
                 approval: Verified, obj: dict[str, Any]) -> str:
-        require(approval, CREATE, payload)
+        require(approval, CREATE, payload, self._conn)
         check_paused(payload)
         if "status" in obj and obj["status"] != PAUSED:
             raise AssertionError("mock adapter: creation must be PAUSED")
@@ -63,7 +65,7 @@ class MockAdapter:
 
     def upload_image(self, png: bytes, payload: Mapping[str, Any],
                      approval: Verified) -> str:
-        require(approval, CREATE, payload)
+        require(approval, CREATE, payload, self._conn)
         digest = hashlib.sha256(png).hexdigest()
         if digest not in {i.get("sha256") for i in payload.get("images", [])}:
             raise NotApproved("image is not one of the approved images")
@@ -111,7 +113,7 @@ class MockAdapter:
                                          ("message", "name", "description", "cta", "link")})
 
     def activate(self, level: str, payload: Mapping[str, Any], approval: Verified) -> None:
-        require(approval, ACTIVATE, payload)
+        require(approval, ACTIVATE, payload, self._conn)
         oid = activation_target(level, payload)
         obj = self.objects.get(oid)
         if not obj or obj.get("type") != level:
@@ -124,7 +126,7 @@ class MockAdapter:
         return [c for c in self._comments if c.object_id == object_id and c.created_ts > since]
 
     def reply(self, payload: Mapping[str, Any], approval: Verified) -> str:
-        require(approval, REPLY, payload)
+        require(approval, REPLY, payload, self._conn)
         target = str(payload.get("external_id") or payload["comment_id"])
         reply_id = _id("reply")
         self.replies.setdefault(target, []).append(str(payload["message"]))
@@ -132,7 +134,7 @@ class MockAdapter:
         return reply_id
 
     def hide(self, payload: Mapping[str, Any], approval: Verified) -> None:
-        require(approval, HIDE, payload)
+        require(approval, HIDE, payload, self._conn)
         target = str(payload.get("external_id") or payload["comment_id"])
         self.hidden.add(target)
         self.calls.append(("hide", target))

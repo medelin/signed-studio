@@ -102,7 +102,8 @@ class GraphAdapter:
                  transport: httpx.BaseTransport | None = None,
                  sleep: Callable[[float], None] = time.sleep, timeout: float = 30.0,
                  token_transport: str = "form",  # noqa: S107 - a mode name, not a token
-                 app_secret: str = "") -> None:
+                 app_secret: str = "", conn: Any = None) -> None:
+        self._conn = conn
         m = _ACCOUNT.fullmatch(ad_account_id or "")
         if not access_token or m is None or not page_id:
             raise ValueError("graph adapter needs a token, an ad account id and a page id")
@@ -189,7 +190,7 @@ class GraphAdapter:
 
     def upload_image(self, png: bytes, payload: Mapping[str, Any],
                      approval: Verified) -> str:
-        require(approval, CREATE, payload)
+        require(approval, CREATE, payload, self._conn)
         digest = hashlib.sha256(png).hexdigest()
         if digest not in {i.get("sha256") for i in payload.get("images", [])}:
             raise NotApproved("image is not one of the approved images")
@@ -203,7 +204,7 @@ class GraphAdapter:
         raise AdapterError("Graph API returned no image hash", code="bad_response")
 
     def create_campaign_paused(self, payload: Mapping[str, Any], approval: Verified) -> str:
-        require(approval, CREATE, payload)
+        require(approval, CREATE, payload, self._conn)
         check_paused(payload)
         return self._id(self._post(f"{self.account}/campaigns", {
             "name": campaign_name(payload), "objective": payload["campaign"]["objective"],
@@ -212,7 +213,7 @@ class GraphAdapter:
 
     def create_adset_paused(self, campaign_id: str, payload: Mapping[str, Any],
                             approval: Verified) -> str:
-        require(approval, CREATE, payload)
+        require(approval, CREATE, payload, self._conn)
         check_paused(payload)
         return self._id(self._post(f"{self.account}/adsets", {
             "name": campaign_name(payload) + " · ad set", "campaign_id": _oid(campaign_id),
@@ -223,7 +224,7 @@ class GraphAdapter:
 
     def create_creative(self, image_hash: str, payload: Mapping[str, Any],
                         approval: Verified) -> str:
-        require(approval, CREATE, payload)
+        require(approval, CREATE, payload, self._conn)
         check_paused(payload)
         ad, link = payload["ad"], str(payload.get("link", ""))
         return self._id(self._post(f"{self.account}/adcreatives", {
@@ -235,7 +236,7 @@ class GraphAdapter:
 
     def create_ad_paused(self, adset_id: str, creative_id: str, payload: Mapping[str, Any],
                          approval: Verified) -> str:
-        require(approval, CREATE, payload)
+        require(approval, CREATE, payload, self._conn)
         check_paused(payload)
         return self._id(self._post(f"{self.account}/ads", {
             "name": campaign_name(payload) + " · ad", "adset_id": _oid(adset_id),
@@ -250,7 +251,7 @@ class GraphAdapter:
         return from_graph_body(str(data[0].get("body", "")))
 
     def activate(self, level: str, payload: Mapping[str, Any], approval: Verified) -> None:
-        require(approval, ACTIVATE, payload)
+        require(approval, ACTIVATE, payload, self._conn)
         body = self._post(_oid(activation_target(level, payload)), {"status": "ACTIVE"})
         if body.get("success") is not True:
             raise AdapterError("Graph API did not confirm the activation",
@@ -286,12 +287,12 @@ class GraphAdapter:
         return out
 
     def reply(self, payload: Mapping[str, Any], approval: Verified) -> str:
-        require(approval, REPLY, payload)
+        require(approval, REPLY, payload, self._conn)
         return self._id(self._post(f"{_oid(str(payload.get('external_id', '')))}/comments",
                                    {"message": str(payload["message"])}, page=True))
 
     def hide(self, payload: Mapping[str, Any], approval: Verified) -> None:
-        require(approval, HIDE, payload)
+        require(approval, HIDE, payload, self._conn)
         body = self._post(_oid(str(payload.get("external_id", ""))), {"is_hidden": "true"},
                           page=True)
         if body.get("success") is not True:

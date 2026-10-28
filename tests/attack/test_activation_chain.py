@@ -157,3 +157,28 @@ def test_a_campaign_row_without_adset_or_ad_cannot_request_activation(env):
     with pytest.raises(media_buyer.BuyError) as exc:
         media_buyer.request_activation(conn, ledger, "cmp_old", ceiling_pln=50)
     assert exc.value.code == "incomplete"
+
+
+def test_a_bound_adapter_writes_only_inside_a_claimed_running_execution(env):
+    from studio.meta.adapter import NotApproved
+    conn, ledger, data = env
+    mock = MockAdapter(conn=conn)
+    p = payload()
+    v = approve(conn, ledger, "campaign.create", "cmp_run1", p, RUN)
+    with pytest.raises(NotApproved):  # signed, but no executor claimed it
+        mock.create_campaign_paused(p, v)
+    assert mock.calls == []
+    out = media_buyer.create(conn, ledger, mock, v, p, data)  # authorize → running → done
+    assert out["status"] == "PAUSED"
+    with pytest.raises(NotApproved):  # finished: the approval cannot drive more writes
+        mock.create_campaign_paused(p, v)
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_run1", ceiling_pln=50)
+    va = approve(conn, ledger, "campaign.activate", "cmp_run1", act, RUN)
+    assert media_buyer.activate(conn, ledger, mock, va, act, 50)["status"] == "ACTIVE"
+
+
+def test_the_app_binds_its_adapter_to_the_database(tmp_path):
+    from studio.app import create_app
+    from tests.test_ui_studio import settings
+    a = create_app(settings(tmp_path))
+    assert a.state.adapter._conn is a.state.conn

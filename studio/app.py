@@ -405,7 +405,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
     # each runs only for a consumed, signed approval (studio.executor.authorize).
-    app.state.adapter = meta_adapter.make(settings)
+    app.state.adapter = meta_adapter.make(settings, conn=conn)
 
     def insights() -> dict[str, Any]:
         """Insights of the newest campaign made by this adapter; the synthetic fixture

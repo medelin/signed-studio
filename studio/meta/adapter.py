@@ -58,8 +58,12 @@ class PausedOnly(AdapterError):
     code = "paused_only"
 
 
-def require(approval: Any, action: str, payload: Mapping[str, Any]) -> Verified:
-    """The approval must be a ``Verified`` for this action and exactly this payload."""
+def require(approval: Any, action: str, payload: Mapping[str, Any],
+            conn: Any = None) -> Verified:
+    """The approval must be a ``Verified`` for this action and exactly this payload. With
+    ``conn`` (the app's database; adapters made by ``make`` have it), its execution must
+    also be claimed and still ``running`` (``executor.authorize`` ran, ``finish`` did not):
+    an adapter write cannot happen outside an executor."""
     if not isinstance(approval, Verified):
         raise NotApproved(f"{action} needs a verified human approval")
     if approval.action != action:
@@ -68,6 +72,12 @@ def require(approval: Any, action: str, payload: Mapping[str, Any]) -> Verified:
         raise NotApproved("payload differs from the content the human signed")
     if payload.get("action") != action:
         raise NotApproved("payload names another action")
+    if conn is not None:
+        with conn.lock:
+            row = conn.execute("SELECT status, action FROM executions WHERE approval_id = ?",
+                               (approval.pending_id,)).fetchone()
+        if row is None or tuple(row) != ("running", action):
+            raise NotApproved("no running execution claimed for this approval")
     return approval
 
 
@@ -159,7 +169,8 @@ def adset_targeting(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def make(settings: Any, **kwargs: Any) -> Adapter:
-    """The configured adapter: ``graph`` only with ``META_ADAPTER=graph``."""
+    """The configured adapter: ``graph`` only with ``META_ADAPTER=graph``. Pass
+    ``conn=`` to bind writes to claimed executions (see ``require``)."""
     if settings.meta_adapter == "graph":
         from studio.meta.graph import GraphAdapter
         return GraphAdapter.from_settings(settings, **kwargs)
