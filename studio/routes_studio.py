@@ -43,17 +43,17 @@ from studio import brief as brief_v1
 from studio import db
 from studio.agents import producer
 from studio.approvals import (
-    TTL_S,
     Approval,
     ApprovalError,
     Pending,
     verify_and_consume,
 )
+from studio.approvals import renew as renew_approval
 from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import StructuredOutputError
-from studio.receipts import BRIEF_KIND, Ledger, Receipt, canonical
+from studio.receipts import BRIEF_KIND, Ledger, Receipt
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
 LOG = logging.getLogger("studio.runs")
@@ -539,33 +539,23 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     @app.post("/api/approvals/{approval_id}/renew")
     async def renew(approval_id: str, request: Request) -> Response:
-        """No time limit for the human: an approval whose signing window (``TTL_S``) has
-        closed unsigned is re-issued for the same content, with a fresh nonce and time. The
-        old one can no longer be consumed (it is expired), so at most one is valid."""
+        """No time limit for the human: an approval whose signing window has closed
+        unsigned is re-issued for the same content with a fresh nonce and time
+        (``approvals.renew``: the old one is superseded, and a renewal is refused while the
+        item has an approved or another open approval)."""
         guard = write_guard(request)
         if isinstance(guard, JSONResponse):
             return guard
         try:
-            pending, payload = _pending_and_payload(approval_id)
-        except (ApprovalError, _NoPayload):
+            _, payload = _pending_and_payload(approval_id)
+            fresh, renewed = renew_approval(conn, approval_id, payload, ledger=ledger)
+        except _NoPayload:
             return JSONResponse({"error": "not_found"}, 404)
-        with conn.lock:
-            status = conn.execute("SELECT status FROM approvals WHERE id = ?",
-                                  (approval_id,)).fetchone()[0]
-        if status != "pending":
-            return JSONResponse({"error": "not_pending"}, 409)
-        if time.time() - pending.ts <= TTL_S:
-            return JSONResponse({"approval_id": pending.id, "renewed": False})
-        try:
-            fresh = Pending.create(pending.action, pending.item_id, payload, ledger=ledger,
-                                   run_id=pending.run_id, brief_sha256=pending.brief_sha256)
         except ApprovalError as exc:
             return JSONResponse({"error": exc.code}, exc.status)
+        if not renewed:
+            return JSONResponse({"approval_id": fresh.id, "renewed": False})
         with db.transaction(conn):
-            fresh.save(conn)
-            conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, "
-                         "created_ts) VALUES (?, ?, ?, ?)",
-                         (fresh.id, fresh.run_id, canonical(payload).decode(), time.time()))
             row = conn.execute("SELECT state FROM run_state WHERE run_id = ?",
                                (fresh.run_id,)).fetchone()
             if row is not None:

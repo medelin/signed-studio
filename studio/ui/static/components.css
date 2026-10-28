@@ -221,3 +221,4 @@ button.dictate[aria-pressed="true"] { background: var(--signal); color: var(--si
 @media (prefers-reduced-motion: reduce) {
   .brief-flow *, .brief-flow { transition: none !important; animation: none !important; }
 }
+.brief-v1 > p, .brief-v1 > h2 { margin: 0; }

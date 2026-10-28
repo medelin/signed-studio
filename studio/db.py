@@ -148,7 +148,8 @@ _SAFE_PHONE = re.compile(r"\+48 000 000 \d{3}")
 
 # Columns added after day 2 (``ALTER TABLE … ADD COLUMN`` on databases created earlier).
 MIGRATIONS: dict[str, dict[str, str]] = {
-    "approvals": {"brief_sha256": "TEXT NOT NULL DEFAULT ''"},
+    "approvals": {"brief_sha256": "TEXT NOT NULL DEFAULT ''",
+                  "superseded_by": "TEXT NOT NULL DEFAULT ''"},
     "briefs": {
         "draft_run_id": "TEXT NOT NULL DEFAULT ''",  # the run the draft's receipts are in
         "draft": "TEXT NOT NULL DEFAULT ''",  # Brief v1 as drafted (JSON)

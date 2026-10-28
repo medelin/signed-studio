@@ -621,8 +621,8 @@ def group(keys: Sequence[str], kind: str = "signed", label: str = "", cls: str =
                             f'height="20"/><text class="warn-text" x="{_n(cx + 23)}" '
                             f'y="235">?</text>')
     elif kind == "voice":
-        for r in (10, 18, 26):  # sound arcs where the trace leaves the owner
-            body.append(f'<path class="trace-solid" d="M{_n(sx + 4)} {_n(sy - 40 - r)}'
+        for r in (5, 10, 15):  # sound arcs above where the trace leaves the owner
+            body.append(f'<path class="trace-solid" d="M{_n(sx + 2)} {_n(sy - 62 - r)}'
                         f'a{r} {r} 0 0 1 0 {_n(2 * r)}"/>')
     elif kind == "reset":
         body.append(f'<path class="trace-solid" d="M{_n(rx + 190)} 98a22 22 0 1 1 '

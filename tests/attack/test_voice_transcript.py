@@ -135,6 +135,8 @@ def test_unknown_or_malformed_voice_brief_is_refused(app, brief_id, code):
 
 def test_app_js_sends_the_voice_brief_id():
     from pathlib import Path
-    js = (Path(__file__).resolve().parents[2] / "studio" / "ui" / "static" / "app.js"
-          ).read_text()
-    assert "voiceBriefId = data.brief_id" in js and "body.brief_id = voiceBriefId" in js
+    static = Path(__file__).resolve().parents[2] / "studio" / "ui" / "static"
+    js = (static / "app.js").read_text()
+    brief = (static / "brief.js").read_text()  # the draft request names the voice brief
+    assert "voiceBriefId = data.brief_id" in js and "voiceBriefId: () => voiceBriefId" in js
+    assert "body.brief_id = voiceId" in brief and "Studio.voiceBriefId()" in brief

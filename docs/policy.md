@@ -5,7 +5,8 @@ Every creative is checked three ways before a human can sign it:
 1. **Code checks, before any model.** Rule **F1** (format limits, below) and the **P9** phrase
    check (`reviewer.policy_net`). Deterministic; findings land in the `review` receipt
    (`details.format`, `details.policy_net`).
-2. **Two model reviewers** against the checklist P1–P9 (`studio/agents/prompts/_policy.md`):
+2. **Two model reviewers** against the checklist P1–P9 (plus P10 for ads made from a
+   confirmed Brief v1, below) (`studio/agents/prompts/_policy.md`):
    Muse Spark 1.3 vision and Muse Spark Open on Baseten. BLOCK from either side wins; every
    disagreement is shown on the approval screen.
 3. **The human** reads the exact payload and signs it, or not.
@@ -25,6 +26,24 @@ paid promotion of a small firm's ad, and two human-written ads promising company
 and "brak obowiązku ZUS" were disapproved by Google Ads. Since then the copywriter may not
 invent a fact (it writes `[FACT]` and the variant cannot be signed until a person fills it),
 and P9 is checked by both models and by code.
+
+## P10 — grounding in the confirmed Brief v1
+
+For an ad made from a confirmed Brief v1 ([brief.md](brief.md)) both model reviewers get,
+in the user message, the owner's confirmed statements (facts, offer, proposition,
+disclaimers, banned claims; inside an untrusted-content envelope, source `brief_facts`) and
+rule P10 (`studio/agents/prompts/_grounding.md`): every factual claim in the copy or the
+image (a price, number, date, time, duration, guarantee, availability, what is included)
+must be supported by a confirmed statement; an unsupported claim, or a claim the brief
+bans, is a **block**. Code checks the same before the models answer
+(`reviewer.grounding_net`): a number in the copy that appears nowhere in what the owner
+confirmed, or a banned claim, is a P10 block finding, and `request_approval` refuses such a
+variant even if a reviewer missed it. P10 is not part of the shared system prompt: it varies
+with each brief, and free-text runs (and their recordings) are reviewed as before, P1–P9.
+
+Why: P9 and the `[FACT]` placeholder stop invented claims in the copy; P10 closes the gap
+between the copy and the owner, so an ad can only say what the owner confirmed, and the
+owner's signature covers those facts (`brief_sha256`).
 
 ## F1 — format limits from each platform's own specifications
 

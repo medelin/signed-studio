@@ -988,6 +988,12 @@ EN_BRIEF: dict[str, str] = {
     "js.brief_err_answer_required": "Write the answer, or strike the claim instead.",
     "js.brief_err_duplicate": "Each placement once.",
     "js.brief_err_invalid": "This value is not valid.",
+    "err.brief_changed": "The confirmed brief changed after this approval was requested; "
+                         "confirm the brief again.",
+    "err.not_pending": "This approval is no longer waiting for a signature.",
+    "err.superseded": "This approval was renewed; sign the renewed one shown on the page.",
+    "err.unknown_draft": "This draft is unknown or was already confirmed; draft the brief "
+                         "again.",
     "js.brief_edit_then_draft": "Check and edit the transcript, then draft Brief v1.",
     "js.brief_renewed": "The signing window had closed; a fresh one was issued for the same "
                         "content. Sign again when you are ready.",
@@ -1154,6 +1160,13 @@ PL_BRIEF: dict[str, str] = {
     "js.brief_err_answer_required": "Wpisz odpowiedź albo zamiast tego skreśl twierdzenie.",
     "js.brief_err_duplicate": "Każde umiejscowienie tylko raz.",
     "js.brief_err_invalid": "Ta wartość jest niepoprawna.",
+    "err.brief_changed": "Potwierdzony brief zmienił się po wystawieniu tego zatwierdzenia; "
+                         "potwierdź brief jeszcze raz.",
+    "err.not_pending": "To zatwierdzenie nie czeka już na podpis.",
+    "err.superseded": "To zatwierdzenie zostało odnowione; podpisz odnowione, widoczne na "
+                      "stronie.",
+    "err.unknown_draft": "Ten szkic jest nieznany albo został już potwierdzony; przygotuj "
+                         "brief od nowa.",
     "js.brief_edit_then_draft": "Sprawdź i popraw transkrypcję, a potem przygotuj Brief v1.",
     "js.brief_renewed": "Okno podpisu się zamknęło; wydano nowe dla tej samej treści. "
                         "Podpisz, kiedy zechcesz.",

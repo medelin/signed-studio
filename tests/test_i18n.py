@@ -136,7 +136,7 @@ META = {"/": "index", "/style/cast": "cast"}
 # A few strings that must be Polish on the Polish render (and not on the English one).
 KNOWN_PL = {
     "/": "Najnowsze pokwitowania",
-    "/studio": "Uruchom studio",
+    "/studio": "Przygotuj Brief v1",
     "/inbox": "Skrzynka",
     "/leads": "Leady",
     "/report": "Raport",

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-28 — Brief v1: confirmed facts, [FACT] questions, signed brief hash
+
+- `brief/v1` (`studio/brief.py`, [docs/brief.md](docs/brief.md)): strict schema (advertiser, confirmed facts, offer, one Meta objective, audience and insight, proposition, tone, mandatories, budget, placements, assets, open questions). The producer drafts it from free text or an edited voice transcript; code turns any drafted fact with a number the owner never wrote into a `[FACT]` question; the owner answers or strikes every question and confirms. Free-text briefs still run as before.
+- The copywriter gets only the confirmed facts; both reviewers get them with rule P10 (grounding), and code blocks numbers and banned claims the owner did not confirm. `brief.confirmed` receipt with `brief_sha256`; the campaign approval signs it; the server, the media buyer and `studio verify` refuse a brief changed after signing. Expired approvals can be renewed (the old one is superseded), so no step has a time limit.
+- Studio UI: two equal input paths, editable transcript, `languageBias` from the page language, Dictate on every field and answer, fieldsets with legends, errors tied to fields, an error summary, a live region for steps and questions, read-back via the browser's speech synthesis, 44 px targets. Help: five new EN/PL entries with two new cast scenes (`facts`, `voice`).
+- Recorded replay set `brief` (the default for `make serve-replay`); eval: 500/500 tampered exports rejected across 20 classes, 165/165 attack tests.
+
 ## 2026-10-28 — i18n audit: every visible string in English and Polish
 
 - Audit of templates, scripts and server messages. Moved into the catalogue (EN and PL, same keys): a `<meta name="description">` for every page; the labels of enum values around agent output (comment status, intent, sentiment, risk, CTA buttons, review severity, run status, `/style/cast` scene names and theme headings); the receipt hash tooltip; the "signed bytes" dump in the inbox; the scripts' remaining hard-coded errors (`signer.js`, "no preview", "no executor"); and a sentence for every API error code (`err.*`), so toasts no longer show `login_required` or `model_api_unavailable`. `InboxError` carries a code and parameters (`detail_code`, `detail_params` in the JSON; `detail` stays English for logs). The cast gallery uses the Polish business names on the Polish render.

@@ -13,6 +13,7 @@ receipt that ``studio verify`` links back to the approval (``approval_id``, ``ac
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import time
 from collections.abc import Mapping
@@ -20,6 +21,8 @@ from typing import Any
 
 from studio.approvals import TTL_S, Verified, payload_sha256, transaction
 from studio.receipts import Ledger, Receipt
+
+LOG = logging.getLogger("studio.executor")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS executions (
@@ -41,8 +44,19 @@ class ExecutionRefused(Exception):
         self.code = code
 
 
+# One campaign per approved item: a renewed approval reuses its item id, so at most one
+# ``campaign.create`` for an item may run or be done (a failed one may be retried).
+ONCE_INDEX = ("CREATE UNIQUE INDEX IF NOT EXISTS executions_campaign_once ON executions "
+              "(action, item_id) WHERE action = 'campaign.create' "
+              "AND status IN ('running', 'done')")
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    try:
+        conn.execute(ONCE_INDEX)
+    except sqlite3.IntegrityError:  # an older database already holds duplicates
+        LOG.warning("executions: duplicate campaign.create rows; unique index not created")
 
 
 def authorize(conn: sqlite3.Connection, verified: Any, action: str,

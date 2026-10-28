@@ -12,6 +12,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 
 - Live sandbox (judge login; the password is in the submission): **https://muse.udun.eu**
 - Numbers: **[docs/eval.md](docs/eval.md)** · how it works: [docs/architecture.md](docs/architecture.md) ·
+  Brief v1 and the [FACT] questions: [docs/brief.md](docs/brief.md) ·
   threat model: [docs/SECURITY.md](docs/SECURITY.md) · review policy and platform limits: [docs/policy.md](docs/policy.md) · video script: [docs/demo-script.md](docs/demo-script.md)
 
 <!-- screenshots: docs/screenshots/ (studio run, signed approval, PAUSED campaign, studio verify) -->
@@ -37,9 +38,10 @@ rule P9).
 
 ## The demo loop
 
-brief (text or Polish voice) → **Producer** plan → **Copywriter** three variants →
+brief (typed, or spoken and edited) → **Producer** drafts a Brief v1 → the owner answers
+or strikes every [FACT] question and confirms (a `brief.confirmed` receipt) → **Producer** plan → **Copywriter** three variants →
 **Art director** SAM 3.1 cut-out + three Muse Image placements → **Reviewers** (Spark vision
-+ Spark Open second opinion + P9 code check) → **human signature** → **Media buyer** (code)
++ Spark Open second opinion + P9 and P10 code checks) → **human signature** → **Media buyer** (code)
 creates the campaign PAUSED → **Community** drafts a reply to a comment → signature → reply
 → **Lead scorer** card → **Analyst** report → `studio verify` on the exported log.
 
@@ -51,8 +53,9 @@ make demo-replay   # the whole loop offline from a recorded run, then studio ver
 make demo          # the UI at http://localhost:8000/studio (MODEL_API_KEY in .env for live calls)
 ```
 
-`make serve-replay` serves the UI on recorded answers (no key, no network; the header says
-**replay**). `make test` runs the suite offline, `make eval` regenerates
+`make serve-replay` serves the UI on recorded answers (the `brief` set by default: the Brief v1
+flow end to end; no key, no network; the header says **replay**). `make demo-replay SET=brief`
+replays that flow headless. `make test` runs the suite offline, `make eval` regenerates
 [docs/eval.md](docs/eval.md).
 
 ## Meta models used (exact ids from the code)
@@ -63,7 +66,7 @@ make demo          # the UI at http://localhost:8000/studio (MODEL_API_KEY in .e
 | `muse-spark-1.3-contributor` | Copywriter and image-prompt writer | chosen by code only when the input has no personal data (`pii.choose_tier`); the reason is in every receipt |
 | `muse-image-1.0` | Art director | first placement as a Responses turn with the cut-out, the others via `/images/edits` with the cut-out and the first image, so the series matches |
 | `sam-3.1` | Art director | product cut-out from the photo: streamed transport, batch parse (`meta_sam_parser`) |
-| `muse-voice-transcribe-1.0` | Voice brief | `POST /asr/transcribe`, `ENDPOINTING`, `languageBias: ["pl"]`, turns with timestamps |
+| `muse-voice-transcribe-1.0` | Voice brief, dictation into any Brief v1 field and [FACT] answers | `POST /asr/transcribe`, `ENDPOINTING`, `languageBias` from the page language (`pl` or `en`), turns with timestamps |
 | `meta-models/muse-spark-open` | Second-opinion reviewer (open weights, on Baseten) | same `Review` schema, different weights; BLOCK from either side wins; disagreements shown before signing |
 | `muse-wonder-1.0` | not in the runtime path | priced in the client so a call would be budgeted; kept out of the sandbox |
 
@@ -77,7 +80,9 @@ third party:
 
 - The browser holds a **non-extractable WebCrypto Ed25519 key**. "Approve" signs
   `{action, item_id, content_sha256, chain_head, approver, nonce, ts}` — the exact payload
-  hash *and* the provenance chain that produced it. The server consumes the one-time nonce in
+  hash *and* the provenance chain that produced it — plus, for a campaign made from a
+  confirmed [Brief v1](docs/brief.md), its `brief_sha256`: the owner signs the facts the
+  ad stands on, not only the ad. The server consumes the one-time nonce in
   the same transaction as the approval receipt; a replay, an edit after signing or a stale
   approval is refused.
 - No model can write outside the studio: external skills are not in any tool list; the media
@@ -86,9 +91,10 @@ third party:
 - Every model call, tool call, review, approval and write is a **receipt** in a hash chain
   per run, signed by the server's ledger key and closed by a signed manifest.
   `studio verify` re-checks it offline and exits 2 naming the receipt when anything is off:
-  in [docs/eval.md](docs/eval.md) it rejects **400/400 tampered exports across 16 tamper
+  in [docs/eval.md](docs/eval.md) it rejects **500/500 tampered exports across 20 tamper
   classes** (edited, re-hashed, deleted, reordered, truncated, rolled back, forged
-  signatures — and writes the server logged without an approval) and accepts every clean one.
+  signatures, writes the server logged without an approval, and a Brief v1 fact edited
+  after signing) and accepts every clean one.
 - The reviewer stops **19 of 20 seeded bad ads** (all **5/5 P9** ads blocked by the model
   alone), with **0 of 5** clean ads blocked. The open-weights second opinion (Muse Spark
   Open on Baseten) makes the **same OK-vs-flag decision on 25/25** ads (same verdict on

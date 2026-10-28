@@ -207,7 +207,7 @@ ENTRIES: tuple[Entry, ...] = (
                "<code>studio verify receipts.jsonl --server https://muse.udun.eu</code>. "
                "Exit code 0 means the chain is intact. Change one character in the file and "
                "run it again: it exits 2 and names the broken receipt. "
-               "<code>make eval</code> repeats this for 16 kinds of tampering.",
+               "<code>make eval</code> repeats this for 20 kinds of tampering.",
          "pl": "Każde wywołanie modelu i narzędzia, recenzja, podpis i zapis zostawia "
                "pokwitowanie: kto, jakim modelem, ile tokenów, ile kosztowało i skrót "
                "poprzedniego pokwitowania, podpisane przez serwer. Pobierz je z "
@@ -215,7 +215,7 @@ ENTRIES: tuple[Entry, ...] = (
                "<code>studio verify receipts.jsonl --server https://muse.udun.eu</code>. "
                "Kod wyjścia 0 znaczy, że łańcuch jest cały. Zmień jeden znak w pliku i "
                "uruchom znowu: wyjdzie z kodem 2 i wskaże zepsute pokwitowanie. "
-               "<code>make eval</code> powtarza to dla 16 rodzajów fałszerstw."}),
+               "<code>make eval</code> powtarza to dla 20 rodzajów fałszerstw."}),
     Entry(
         "reviewers", "leila", "blocked",
         {"en": "What do the reviewers check?",

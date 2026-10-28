@@ -47,6 +47,16 @@ flowchart LR
   ceiling.
 - **Everything leaves a receipt**, and `studio verify` re-checks the whole log offline.
 
+## Brief v1
+
+A run can start from a confirmed **Brief v1** ([brief.md](brief.md)): the producer drafts
+it from the owner's text or edited voice transcript (`POST /api/briefs/draft`), the owner
+answers or strikes every open `[FACT]` question and confirms (`POST /api/runs` with
+`brief_v1`), and a `brief.confirmed` receipt with its `brief_sha256` is written in the same
+transaction that starts the run. The copywriter gets only the confirmed facts, the
+reviewers check them (rule P10), and the `campaign.create` approval signs `brief_sha256`
+next to the content hash; `studio verify` checks that binding.
+
 ## Replay mode
 
 `STUDIO_REPLAY=1` swaps the HTTP transport of the Model API, Baseten and Graph clients for
@@ -78,10 +88,10 @@ byte-exact without carrying PII; readable content never enters a receipt, only i
 | `runs` | one row per agent run | created on first receipt |
 | `receipts` | the ledger | `seq` order, full receipt JSON in `body`; `UNIQUE(run_id, prev)` forbids forks; `hash` unique |
 | `ledger_meta` | single row: `key_epoch`, `seq` | `key_epoch` = fingerprint of the ledger key (signed into each manifest); `seq` = durable ledger version, bumped in the same transaction as every receipt write; never decreases |
-| `approvals` | pending / approved human approvals | `content_sha256`, `chain_head`, `nonce` (unique), `ts`, then `approver`, `signature`, `decided_ts` |
+| `approvals` | pending / approved human approvals | `content_sha256`, `chain_head`, `nonce` (unique), `ts`, `brief_sha256` (signed when set), then `approver`, `signature`, `decided_ts` |
 | `nonces` | consumed nonces | primary key = nonce; the insert is the atomic "exactly once" step |
 | `keys` | approver public keys | id = `ed25519:<fingerprint>`; session stored only as a SHA-256; `expires_ts` = session expiry, `revoked_ts` set on logout and on restart; inactive keys cannot sign new approvals but stay published so past approvals verify |
-| `briefs` | campaign briefs (text or voice transcript) | |
+| `briefs` | campaign briefs (text or voice transcript) | Brief v1: `draft`, `draft_run_id`, `brief_v1` (confirmed, JSON) and `brief_sha256` |
 | `creatives` | generated images per placement | file path + SHA-256 |
 | `campaigns` | campaigns created through the Meta adapter | `status` is `PAUSED` unless a second approval activates it; `external_id`, `adset_external_id`, `ad_external_id` are the Meta objects that approval names (activated ad → ad set → campaign) |
 | `comments` | incoming comments (untrusted text) | `new / drafted / replied / hidden` |

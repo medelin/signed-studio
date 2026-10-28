@@ -321,7 +321,7 @@ ATTACK_FILES = ["test_dispatcher.py", "test_paused_only.py", "test_injection.py"
                 "test_activation_chain.py", "test_unfilled_fact.py", "test_guest_views.py",
                 "test_comment_pii.py", "test_parallel_cost.py", "test_placements_cost.py",
                 "test_review_every_format.py", "test_voice_transcript.py",
-                "test_brief_binding.py"]
+                "test_brief_binding.py", "test_approval_renew.py"]
 
 
 def attack_suites() -> list[dict[str, Any]]:

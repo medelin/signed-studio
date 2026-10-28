@@ -232,6 +232,7 @@
       fs.append(el("legend", T("brief_question", { n }) + ": " + q.question));
       const claim = el("p", q.claim ? T("brief_claim", { text: q.claim }) : "", "hint");
       claim.id = "q-" + i + "-claim";
+      claim.hidden = !q.claim;
       const choice = el("div", null, "radios");
       choice.setAttribute("role", "radiogroup");
       choice.setAttribute("aria-label", T("brief_choice", { n }));
@@ -260,6 +261,8 @@
       const entry = { answer, strike, input, li };
       const sync = (announce) => {
         input.disabled = strike.checked;
+        const dictate = input.nextElementSibling;
+        if (dictate && dictate.classList.contains("dictate")) dictate.disabled = strike.checked;
         struck.hidden = !strike.checked;
         li.classList.toggle("is-struck", strike.checked);
         updateQuestions(announce);

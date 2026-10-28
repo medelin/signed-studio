@@ -71,10 +71,10 @@ On confirmation the ledger gets:
   "details": {
     "schema": "brief/v1",
     "brief_sha256": "<sha256 of canonical JSON>",
-    "facts": 4,
+    "facts": 8,
     "open_questions": 0,
     "answered": 1,
-    "struck": 3,
+    "struck": 2,
     "voice": "muse-voice-transcribe-1.0"
   }
 }

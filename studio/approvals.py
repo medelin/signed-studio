@@ -47,6 +47,8 @@ __all__ = [
     "Approval",
     "ApprovalError",
     "BriefChanged",
+    "Superseded",
+    "renew",
     "InvalidItemId",
     "KeyConflict",
     "KeyInactive",
@@ -90,7 +92,8 @@ CREATE TABLE IF NOT EXISTS approvals (
     approver TEXT,
     signature TEXT,
     decided_ts INTEGER,
-    brief_sha256 TEXT NOT NULL DEFAULT ''
+    brief_sha256 TEXT NOT NULL DEFAULT '',
+    superseded_by TEXT NOT NULL DEFAULT ''  -- set when a renewal replaced this approval
 );
 CREATE TABLE IF NOT EXISTS nonces (
     nonce TEXT PRIMARY KEY,
@@ -162,8 +165,18 @@ class BadSignature(ApprovalError):
     code, status = "bad_signature", 403
 
 
+class NotPending(ApprovalError):
+    code, status = "not_pending", 409
+
+
 class NonceUsed(ApprovalError):
     code, status = "nonce_used", 409
+
+
+class Superseded(ApprovalError):
+    """A renewal replaced this approval; only the renewed one can be signed."""
+
+    code, status = "superseded", 409
 
 
 class BriefChanged(ApprovalError):
@@ -433,6 +446,9 @@ def verify_and_consume(
             "approval receipt commits or rolls back with the nonce"
         )
     pending = Pending.load(conn, approval.pending_id)
+    if conn.execute("SELECT superseded_by FROM approvals WHERE id = ?",
+                    (pending.id,)).fetchone()[0]:
+        raise Superseded("this approval was renewed; sign the renewed one")
     if approval.action not in ACTIONS:
         raise UnknownAction(f"unknown action {approval.action!r}")
     if approval.action != pending.action or approval.item_id != pending.item_id:
@@ -507,3 +523,46 @@ def verify_and_consume(
         signature=approval.signature,
         brief_sha256=pending.brief_sha256,
     )
+
+
+def renew(conn: sqlite3.Connection, pending_id: str, payload: bytes | Mapping[str, Any], *,
+          ledger: Ledger, now: float | None = None) -> tuple[Pending, bool]:
+    """Re-issue an unsigned approval whose signing window closed: same action, item,
+    content and brief, a fresh nonce and time. Runs in one write transaction with the
+    caller's ``pending_payloads`` insert left to ``save_payload``; returns ``(pending,
+    renewed)`` — the same approval, unrenewed, while its window is still open.
+
+    One human decision stays one signable approval: the old approval is marked
+    superseded (it can be neither signed nor renewed again), and a renewal is refused
+    while the same run/action/item has an approved approval or another open one.
+    """
+    clock = time.time() if now is None else now
+    with transaction(conn):
+        pending = Pending.load(conn, pending_id)
+        status, superseded = conn.execute(
+            "SELECT status, superseded_by FROM approvals WHERE id = ?", (pending_id,)
+        ).fetchone()
+        if superseded:
+            raise Superseded("this approval was already renewed")
+        if status != "pending":
+            raise NotPending("this approval is no longer waiting for a signature")
+        if clock - pending.ts <= TTL_S:
+            return pending, False
+        others = conn.execute(
+            "SELECT status, ts FROM approvals WHERE run_id = ? AND action = ? AND item_id = ? "
+            "AND id != ? AND superseded_by = ''",
+            (pending.run_id, pending.action, pending.item_id, pending_id)).fetchall()
+        if any(s == "approved" for s, _ in others):
+            raise NotPending("this item was already approved")
+        if any(s == "pending" and clock - ts <= TTL_S for s, ts in others):
+            raise NotPending("another approval for this item is still open")
+        fresh = Pending.create(pending.action, pending.item_id, payload, ledger=ledger,
+                               run_id=pending.run_id, now=clock,
+                               brief_sha256=pending.brief_sha256)
+        fresh.save(conn)
+        conn.execute("UPDATE approvals SET superseded_by = ? WHERE id = ?", (fresh.id, pending_id))
+        conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
+                     "VALUES (?, ?, ?, ?)",
+                     (fresh.id, fresh.run_id, canonical(dict(payload)).decode()
+                      if not isinstance(payload, bytes) else payload.decode(), clock))
+    return fresh, True
