@@ -147,6 +147,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return app.state.sessions.check(request.cookies.get("studio_session")) is not None
 
     def clients() -> tuple[MuseClient, OpenWeightsClient]:
+        if settings.replay and app.state.muse is None:
+            app.state.muse, app.state.open_weights = replay_clients(settings, ledger)
         if app.state.muse is None:
             app.state.muse = MuseClient.from_settings(settings, ledger)
         if app.state.open_weights is None:
@@ -200,7 +202,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                    (brief_id,)).fetchone()
             if row is None or row[0] != "voice" or row[1]:
                 return JSONResponse({"error": "unknown_voice_brief"}, 409)
-        if app.state.muse is None and not settings.model_api_key:
+        if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         with app.state.run_lock:
             if app.state.active_run is not None:
@@ -234,7 +236,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
         if ctype not in VOICE_TYPES:
             return JSONResponse({"error": "unsupported_audio_type"}, 415)
-        if app.state.muse is None and not settings.model_api_key:
+        if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         data = await request.body()
         brief_id = "b_" + secrets.token_hex(8)
@@ -419,6 +421,26 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 out.update(executed=False, execution_error=getattr(exc, "code", "")
                            or type(exc).__name__)
         return JSONResponse(out)
+
+
+def replay_clients(settings: Settings, ledger: Ledger, transport: Any = None,
+                   root: Any = None) -> tuple[MuseClient, OpenWeightsClient]:
+    """Clients that answer from a recorded set (``STUDIO_REPLAY=1``): no network, no key,
+    no budget (nothing is spent); receipts name the provider ``<provider>-replay``. The
+    open-weights reviewer is available only if the set recorded it."""
+    from studio import replay
+
+    root = root or replay.REPLAY_DIR
+    tr = transport or replay.ReplayTransport.from_set(settings.replay_set, root)
+    muse = MuseClient("replay", settings.model_api_base_url, ledger=ledger, budget=None,
+                      read_only=settings.read_only, transport=tr)
+    muse.provider = f"{MuseClient.provider}-replay"
+    has_open = any("baseten" in str(i.get("route", ""))
+                   for i in replay.load_set(settings.replay_set, root).get("interactions", []))
+    ow = OpenWeightsClient("replay" if has_open else "", ledger=ledger,
+                           read_only=settings.read_only, transport=tr)
+    ow.provider = f"{OpenWeightsClient.provider}-replay"
+    return muse, ow
 
 
 class _NoPayload(Exception):

@@ -144,7 +144,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                (comment_id,)).fetchone()
         if row is None:
             return JSONResponse({"error": "not_found"}, 404)
-        if app.state.muse is None and not settings.model_api_key:
+        if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         muse, _ = app.state.clients()
         try:
@@ -261,7 +261,7 @@ def register_leads(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not COMMENT_ID.fullmatch(lead_id) or lead_scorer.load(conn, lead_id) is None:
             return JSONResponse({"error": "not_found"}, 404)
         muse = None
-        if app.state.muse is not None or settings.model_api_key:
+        if app.state.muse is not None or settings.model_available:
             muse, _ = app.state.clients()
         try:
             card = lead_scorer.score_lead(conn, ledger, muse, lead_id)

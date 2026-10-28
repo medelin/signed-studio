@@ -16,6 +16,7 @@
     <a href="/receipts">Receipts</a>
     <span class="tag">every agent leaves a receipt · a human signs every send</span>
     {% if read_only %}<span class="badge warn">read-only</span>{% endif %}
+    {% if replay %}<span class="badge warn" title="Model API answers are recorded responses served offline (STUDIO_REPLAY=1)">replay</span>{% endif %}
   </header>
   <main>{% block content %}{% endblock %}</main>
   <footer class="foot">

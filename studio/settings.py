@@ -111,7 +111,8 @@ class Settings:
     judge_password: str = field(default="", repr=False)
     read_only: bool = False
     daily_budget_usd: float = 8.0
-    replay: bool = False
+    replay: bool = False  # serve recorded Model API / Baseten / Graph responses (studio.replay)
+    replay_set: str = "demo"
     trusted_proxies: frozenset[str] = frozenset()
     cookie_secure: bool = True
     store_prompts: bool = False
@@ -127,6 +128,11 @@ class Settings:
     @property
     def judge_login_enabled(self) -> bool:
         return bool(self.judge_password)
+
+    @property
+    def model_available(self) -> bool:
+        """A model call can be made: a Model API key, or replay mode (recorded answers)."""
+        return bool(self.model_api_key) or self.replay
 
     def require_writable(self) -> None:
         if self.read_only:
@@ -217,6 +223,7 @@ class Settings:
             read_only=_bool(e, "STUDIO_READ_ONLY", False),
             daily_budget_usd=budget,
             replay=_bool(e, "STUDIO_REPLAY", False),
+            replay_set=_replay_set(e.get("STUDIO_REPLAY_SET", "") or "demo"),
             trusted_proxies=frozenset(proxies),
             cookie_secure=_bool(e, "COOKIE_SECURE", True),
             store_prompts=_bool(e, "STORE_PROMPTS", False),
@@ -366,3 +373,9 @@ class Budget:
         with self._lock:
             self._roll()
             return max(0.0, self.limit_usd - self._spent - self._reserved)
+
+
+def _replay_set(name: str) -> str:
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,40}", name):
+        raise ConfigError("STUDIO_REPLAY_SET must be a set name like 'demo'")
+    return name

@@ -97,7 +97,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                      "detail": str(exc)[:200]}, 400)
         elif body.strip() and ctype != "application/json":
             return JSONResponse({"error": "unsupported_media_type"}, 415)
-        if app.state.muse is None and not settings.model_api_key:
+        if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         if not lock.acquire(blocking=False):
             return JSONResponse({"error": "report_in_progress"}, 409)

@@ -173,6 +173,9 @@ def make(settings: Any, **kwargs: Any) -> Adapter:
     ``conn=`` to bind writes to claimed executions (see ``require``)."""
     if settings.meta_adapter == "graph":
         from studio.meta.graph import GraphAdapter
+        if getattr(settings, "replay", False) and "transport" not in kwargs:
+            from studio.replay import ReplayTransport
+            kwargs["transport"] = ReplayTransport.from_set(settings.replay_set)
         return GraphAdapter.from_settings(settings, **kwargs)
     from studio.meta.mock import MockAdapter
     return MockAdapter(**kwargs)

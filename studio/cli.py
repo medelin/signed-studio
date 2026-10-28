@@ -113,6 +113,28 @@ def run_verify(args: argparse.Namespace) -> int:
     return EXIT_INVALID
 
 
+def run_demo(args: argparse.Namespace) -> int:
+    """The whole loop headless; replay by default, ``--record`` against the real API."""
+    import tempfile
+
+    from studio import demo
+
+    key = ""
+    if args.record:
+        key = Settings.load(env_file=args.env_file).model_api_key
+        if not key:
+            raise UsageError("--record needs MODEL_API_KEY (in --env-file or the environment)")
+        if args.set not in demo.BRIEFS:
+            raise UsageError(f"--record knows the briefs {sorted(demo.BRIEFS)}")
+    with tempfile.TemporaryDirectory(prefix="studio-demo-") as tmp:
+        data_dir = Path(args.data_dir) if args.data_dir else Path(tmp)
+        summary = demo.run(args.set, data_dir=data_dir, record=args.record,
+                           model_api_key=key, max_cost_usd=args.max_cost)
+    print(json.dumps({k: v for k, v in summary.items() if k != "steps"}, indent=1))
+    ok = summary["verify_exit"] == 0 and summary["campaign_status"] == "PAUSED"
+    return 0 if ok or args.record else EXIT_INVALID
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="studio")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -127,12 +149,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_verify.add_argument("--key-file", help="file with the ledger public key (ledger.pub)")
     p_verify.add_argument("--approver-keys", help="JSON from /api/approver-keys")
     p_verify.add_argument("--skip-approver-signatures", action="store_true")
+    p_demo = sub.add_parser("demo", help="run the whole loop headless and verify it "
+                            "(replays a recorded set; --record calls the real Model API)")
+    p_demo.add_argument("--set", default="demo", help="replay set (fixtures/replay/<set>)")
+    p_demo.add_argument("--data-dir", help="keep the database and export here (default: temp)")
+    p_demo.add_argument("--record", action="store_true",
+                        help="real Model API calls; writes fixtures/replay/<set>/replay.json")
+    p_demo.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_demo.add_argument("--max-cost", type=float, default=0.40, help="USD cap for --record")
     args = parser.parse_args(argv)
     try:
         if args.cmd == "smoke-live":
             return smoke_live(args.env_file)
         if args.cmd == "verify":
             return run_verify(args)
+        if args.cmd == "demo":
+            return run_demo(args)
     except (ConfigError, MuseError, ReadOnlyMode, UsageError, OSError, httpx.HTTPError, ValueError,
             KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)

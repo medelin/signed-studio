@@ -368,6 +368,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.limiter = LoginLimiter()
     app.state.sessions = Sessions(settings.session_secret)
     templates = Jinja2Templates(directory=str(UI / "templates"))
+    templates.env.globals["replay"] = settings.replay
     app.mount("/static", StaticFiles(directory=str(UI / "static")), name="static")
     app.add_middleware(BodyLimit, paths=UPLOAD_LIMITS)
 
