@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-28 — UI: people side by side (operator feedback)
+
+- Illustrations show the people themselves: friendly monoline owners standing side by side with a gap, never overlapping (`cast.layout` computes each person's box from the silhouette and props; tests check no two boxes intersect and the trace and the ad start right of the last person). Removed: the soft blob behind every person, the dashed copy of the person inside the record (the record now shows the ad: image block, headline, text lines, signature or `!` field), the grid inside records, the page background grid and the `--grid` token. New group scenes (3–5 owners): help hero, index hero, 404, cast gallery. All screenshots regenerated light and dark.
+
 ## 2026-10-28 — UI: tokens, cast, help, motion
 
 - Company illustration style "two views" (`studio/ui/cast.py`): ten owners of one-person businesses — Amara (bike repair, afro), Tomasz (bakery, bald, grey beard), Leila (florist, hijab), Harjit (tailor, turban, beard, glasses), Mei (ceramics, grey bun, hearing aid), Diego (barber, curly), Kofi (maths tutoring, locs), Grace (food truck, head wrap), Priya (photography, braid, wheelchair user), Ola (yarn shop, straight hair, freckles) — each drawn from one silhouette: curves for the person, the same points as a dashed polyline for the ad record, a dotted trace whose diamonds are the agents and whose last node is the signature. Skin through `--skin-1..5` (face lines ≥ 3:1 on every tone in both themes, tested), colours only via classes, no style/id/defs, forced-colors fallback, ≤ 6 KB per scene. Gallery `/style/cast` (noindex). HTML 404 with a scene; API 404s stay JSON.

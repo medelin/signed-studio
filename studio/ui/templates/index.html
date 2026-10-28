@@ -8,7 +8,7 @@
   {% if logged_in %}you are signed in as the judge.{% elif login_enabled %}judges sign in to run the studio.{% else %}sign-in is disabled on this instance.{% endif %}</p>
   <p class="hint">Who checks what, and what it costs: <a href="/help">help</a>.</p>
   </div>
-  <div class="il-place">{{ scene("amara", "signed", label="An owner, the four agents as diamonds on a dotted trace, her signature as the last node, and the ad record that is complete only after the signature.", cls="animate") }}</div>
+  <div class="il-place wide">{{ group(["grace", "diego", "leila", "tomasz"], "signed", label="Four owners of small businesses side by side, the four agents as diamonds on a dotted trace, the owner's signature as the last node, and the ad that is complete only after the signature.", cls="animate") }}</div>
 </section>
 <section>
   <h1>Latest receipts</h1>

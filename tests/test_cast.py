@@ -58,6 +58,9 @@ def test_every_class_in_the_drawings_is_styled():
     for key, kind in ALL:
         for group in re.findall(r'class="([^"]+)"', str(cast.scene(key, kind))):
             used |= set(group.split())
+    for keys in GROUPS:
+        for group in re.findall(r'class="([^"]+)"', str(cast.group(keys))):
+            used |= set(group.split())
     used -= {"il", "animate", "rec", "chair", "on", "sig", "node"} | {
         f"n{i}" for i in range(1, 6)}
     missing = sorted(c for c in used if f".{c}" not in CSS)
@@ -98,10 +101,47 @@ def test_the_cast_is_diverse():
     assert len({p.prop for p in people}) == len(people)
 
 
-def test_record_uses_the_owners_own_silhouette():
-    p = cast.BY_KEY["harjit"]
-    assert cast.polyline(p.silhouette()) in str(cast.scene("harjit", "signed"))
-    assert cast.polyline(cast.BY_KEY["ola"].silhouette()) != cast.polyline(p.silhouette())
+GROUPS = [["amara", "harjit", "mei", "kofi"], ["grace", "diego", "leila", "tomasz"],
+          ["ola", "kofi", "mei"], ["priya", "amara", "tomasz"],
+          ["leila", "harjit", "ola", "diego", "grace"]]
+
+
+@pytest.mark.parametrize("keys", [[p.key] for p in cast.CAST] + GROUPS)
+@pytest.mark.parametrize("kind", [k for k in cast.SCENES if k != "solo"])
+def test_people_never_overlap_each_other_or_the_trace_and_record(keys, kind):
+    lay = cast.layout(keys, kind)
+    boxes = lay.boxes
+    for i, a in enumerate(boxes):
+        for b in boxes[i + 1:]:
+            assert not cast.overlaps(a, b), (keys, a, b)
+    right = max(b[2] for b in boxes)
+    sx, _ = lay.start
+    assert sx > right and min(x for x, _ in lay.nodes) > right
+    assert lay.rec[0] > right
+    assert max(b[2] for b in boxes) <= lay.width and all(b[0] >= 0 for b in boxes)
+    svg = str(cast.group(keys, kind))
+    top = float(re.search(r'viewBox="0 ([\d.]+) ', svg).group(1))
+    assert all(b[1] >= top for b in boxes)  # nobody is cut off at the top
+    assert len(svg.encode()) <= cast.MAX_BYTES * len(keys) + 2048  # 6 KB per person drawn
+
+
+def test_person_boxes_hold_their_silhouette():
+    for p in cast.CAST:
+        x0, y0, x1, y1 = cast.person_box(p)
+        for x, y in p.silhouette():
+            assert x0 <= x <= x1 and y0 <= y <= y1, p.key
+
+
+def test_no_grid_no_blob_no_silhouette_copy():
+    for key, kind in ALL:
+        svg = str(cast.scene(key, kind))
+        assert "r-grid" not in svg and "c-blob" not in svg
+        assert 'class="r"' not in svg  # no dashed copy of a person inside a record
+    css = "".join((STATIC / f).read_text() for f in ("tokens.css", "style.css",
+                                                      "components.css", "illustrations.css"))
+    assert "--grid" not in css and ".r-grid" not in css and "c-blob" not in css
+    style = (STATIC / "style.css").read_text()
+    assert "linear-gradient" not in style  # the page background has no grid
 
 
 def test_signature_makes_the_record_correct():
@@ -165,6 +205,7 @@ def test_help_renders_without_js_with_unique_anchors(client):
         assert f'href="#{e.anchor}"' in html
         assert f"<summary><h2>{e.q['en']}</h2></summary>" in html.replace("&#39;", "'")
     assert html.count('<svg class="il') == len(help_texts.ENTRIES) + 1
+    assert "c-blob" not in html
     assert "<noscript" not in html and "onclick" not in html
 
 

@@ -26,6 +26,7 @@ _API_PREFIXES = ("/api/", "/assets/", "/static/")
 def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2Templates,
              session_of: Callable[[Request], str | None]) -> None:
     templates.env.globals["scene"] = cast.scene
+    templates.env.globals["group"] = cast.group
     templates.env.globals["cast"] = cast.CAST
 
     def base(request: Request) -> dict[str, Any]:

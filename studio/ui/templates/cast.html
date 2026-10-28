@@ -2,9 +2,9 @@
 {% block title %}Cast · Muse Studio Lite{% endblock %}
 {% block content %}
 <h1>The cast</h1>
-<p class="lead">Owners of one-person businesses in the "two views" line: the person as a warm
-continuous line, their ad record as the same silhouette in a dashed polyline, the agents as
-diamonds on the trace between them, and the owner's signature as the last node.
+<p class="lead">Owners of one-person businesses, drawn as friendly monoline people who stand
+side by side and never overlap. The dotted trace carries the agents as diamonds and the
+owner's signature as the last node; the ad on the right is complete only after it.
 This page is not indexed.</p>
 {% for theme in ("light", "dark") %}
 <section class="cast-theme" data-theme="{{ theme }}" aria-labelledby="cast-{{ theme }}">
@@ -19,6 +19,12 @@ This page is not indexed.</p>
   </ul>
 </section>
 {% endfor %}
+<section aria-labelledby="groups-h">
+  <h2 id="groups-h" class="hud-label">groups</h2>
+  <div class="il-place wide">{{ group(["amara", "harjit", "mei", "kofi"], "signed") }}</div>
+  <div class="il-place wide">{{ group(["leila", "harjit", "ola", "diego", "grace"], "unsigned") }}</div>
+  <div class="il-place wide">{{ group(["priya", "amara", "tomasz"], "signed") }}</div>
+</section>
 <section aria-labelledby="scenes-h">
   <h2 id="scenes-h" class="hud-label">scenes</h2>
   <ul class="scene-grid">

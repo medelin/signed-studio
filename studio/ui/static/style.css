@@ -3,10 +3,6 @@
 html { background: var(--bg); }
 body {
   margin: 0; font: 15px/1.55 var(--font); color: var(--ink); background-color: var(--bg);
-  background-image:
-    linear-gradient(var(--grid) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 32px 32px;
   font-variant-numeric: tabular-nums slashed-zero;
 }
 a { color: var(--link); text-underline-offset: .18em; }

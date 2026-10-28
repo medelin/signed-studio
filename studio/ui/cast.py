@@ -1,10 +1,11 @@
 """The "two views" cast: one-person business owners drawn as server-rendered inline SVG.
 
-Each person is drawn twice from the same silhouette points:
+Two views of one ad:
 
-- the **owner**: a warm continuous line (Catmull-Rom curves through the points), skin from
-  one of five ``--skin-N`` tokens, hair, face, one warm accent (the prop of their trade);
-- the **record**: the same points as a dashed polyline on a gridded card with fields;
+- the **owner**: a friendly monoline person (Catmull-Rom curves through one set of
+  silhouette points), skin from one of five ``--skin-N`` tokens, hair, face, one warm accent
+  (the prop of their trade); people stand side by side and never overlap anything;
+- the **record**: the ad itself on a dashed card (image block, headline, text lines);
 
 joined by a dotted **trace** whose diamond nodes are the agents (producer, copywriter, art
 director, reviewers) and whose last node is the owner's signature. The record is correct
@@ -13,7 +14,7 @@ only after the signature; an unsigned record shows the ``!`` field.
 Rules (tested in ``tests/test_cast.py``): colours only through classes from
 ``static/illustrations.css`` (tokens), no ``style`` attribute, ``<style>``, ``id``,
 ``<defs>``, gradients, filters or images; no words in drawings (digits and signs only);
-every illustration at most 6 KB; informative = ``role="img"`` + label, decorative =
+at most 6 KB per person drawn; informative = ``role="img"`` + label, decorative =
 ``aria-hidden``.
 """
 
@@ -53,10 +54,6 @@ def curve(points: Sequence[Pt], closed: bool = False, t: float = 1.0) -> str:
         c2 = (p2[0] - (p3[0] - p1[0]) * t / 6, p2[1] - (p3[1] - p1[1]) * t / 6)
         out.append(f"C{_pts([c1, c2, p2])}")
     return "".join(out) + ("Z" if closed else "")
-
-
-def polyline(points: Sequence[Pt]) -> str:
-    return "M" + "L".join(f"{_n(x)} {_n(y)}" for x, y in points)
 
 
 def mirror(points: Sequence[Pt], cx: float = 60) -> list[Pt]:
@@ -362,14 +359,32 @@ PROPS = {
 }
 
 
-def bust(p: Person, x: float = 0, y: float = 0, s: float = 1.0, accent: bool = True,
-         blob: bool = True) -> str:
-    """The owner as a warm continuous line, 120 × 140 at scale 1."""
+Box = tuple[float, float, float, float]  # x0, y0, x1, y1
+
+
+def person_box(p: Person) -> Box:
+    """Bounding box of a drawn person in its own frame (bust 120 × 140, seated 160 × 240):
+    shoulders, hair or head covering, and the prop. Scenes place people so these never
+    intersect each other or anything else."""
+    if p.wheelchair:
+        return (4.0, -8.0, 152.0, 238.0)
+    reach = p.face_w + 24  # hijab drape, afro, braid
+    return (min(60 - p.shoulders, 60 - reach), -8.0, max(60 + p.shoulders, 60 + reach, 116),
+            140.0)
+
+
+def place(box: Box, x: float, y: float, s: float) -> Box:
+    return (x + box[0] * s, y + box[1] * s, x + box[2] * s, y + box[3] * s)
+
+
+def overlaps(a: Box, b: Box) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def bust(p: Person, x: float = 0, y: float = 0, s: float = 1.0, accent: bool = True) -> str:
+    """The owner as a warm continuous line, 120 × 140 at scale 1 (no background shape)."""
     sil = p.silhouette()
     parts = [f'<g transform="translate({_n(x)} {_n(y)}) scale({s})">']
-    if blob:
-        parts.append('<path class="c-blob" d="M-6 140C-10 92 18 62 60 60C104 58 132 92 126 '
-                     '140Z"/>')
     cloth = curve(sil[:4]) + curve(sil[-4:]).replace("M", "L", 1) + "Z"
     parts.append(f'<path class="c-cloth" d="{cloth}"/>')
     parts += _hair_back(p)
@@ -399,42 +414,46 @@ def seated(p: Person, x: float = 0, y: float = 0, s: float = 1.0, accent: bool =
              '-6 0"/><path class="c" d="M114 218v4"/><circle class="c" cx="114" cy="229" '
              'r="7"/>')
     return (f'<g transform="translate({_n(x)} {_n(y)}) scale({s})">'
-            f'<path class="c-blob" d="M-4 236C-8 120 30 64 80 62C130 60 164 120 160 236Z"/>'
-            f'{legs}{chair}{bust(p, 8, 0, 1, accent, blob=False)}</g>')
+            f'{legs}{chair}{bust(p, 8, 0, 1, accent)}</g>')
+
+
+def figure(p: Person, x: float, y: float, s: float) -> tuple[str, Box]:
+    """A person drawn at (x, y, s) and the box they occupy in the scene."""
+    draw = seated(p, x, y, s) if p.wheelchair else bust(p, x, y, s)
+    return draw, place(person_box(p), x, y, s)
 
 
 # -- the record, the trace and scenes ---------------------------------------------------
 
 
-def record(p: Person, x: float, y: float, w: float = 190, h: float = 150, *,
-           signed: bool = True, mark: str = "", score: int | None = None,
-           fields: tuple[float, ...] = (0.8, 0.55, 0.65)) -> str:
-    """The ad/campaign record of ``p``: dashed card, grid, portrait polyline, fields."""
-    grid = "".join(f"M{gx} 0V{_n(h)}" for gx in range(16, int(w), 16))
-    grid += "".join(f"M0 {gy}H{_n(w)}" for gy in range(16, int(h), 16))
-    left, width = 76, w - 90
+def record(x: float, y: float, w: float = 180, h: float = 150, *, signed: bool = True,
+           mark: str = "", score: int | None = None) -> str:
+    """The ad record: dashed card with the ad's image block, headline and text lines, the
+    signature field (or the ``!`` field while unsigned), optional score and corner mark."""
     out = [f'<g class="rec" transform="translate({_n(x)} {_n(y)})">',
            f'<rect class="r-card" width="{_n(w)}" height="{_n(h)}"/>',
-           f'<path class="r-grid" d="{grid}"/>',
-           '<rect class="r-field" x="10" y="12" width="56" height="64"/>',
-           f'<path class="r" transform="translate(12 14) scale(.43)" '
-           f'd="{polyline(p.silhouette())}"/>']
-    for i, dl in enumerate(fields):
-        fy = 14 + i * 22
-        out.append(f'<rect class="r-label" x="{left}" y="{fy}" width="{_n(width * .3)}" '
-                   f'height="5"/><rect class="r-value" x="{left}" y="{fy + 9}" '
-                   f'width="{_n(width * dl)}" height="6"/>')
-    sy = h - 30
+           # the ad image: a picture block with a sun and a hill
+           '<rect class="r-field" x="10" y="12" width="64" height="56"/>'
+           '<path class="r-pic" d="M14 62l16 -18 12 12 8 -8 20 14M58 26m-5 0a5 5 0 1 0 10 0'
+           'a5 5 0 1 0 -10 0"/>',
+           # headline and text lines
+           f'<rect class="r-value" x="84" y="14" width="{_n(w - 98)}" height="9"/>',
+           f'<rect class="r-label" x="84" y="32" width="{_n((w - 98) * .9)}" height="5"/>'
+           f'<rect class="r-label" x="84" y="43" width="{_n((w - 98) * .75)}" height="5"/>'
+           f'<rect class="r-label" x="84" y="54" width="{_n((w - 98) * .5)}" height="5"/>',
+           f'<rect class="r-label" x="10" y="80" width="{_n(w - 20)}" height="5"/>'
+           f'<rect class="r-label" x="10" y="91" width="{_n((w - 20) * .7)}" height="5"/>']
+    sy = h - 32
     if signed:  # the signature field, filled: the record is now correct
         out.append(f'<rect class="r-signed" x="10" y="{_n(sy)}" width="{_n(w - 56)}" '
-                   f'height="16"/><path class="r-sig" d="M16 {_n(sy + 11)}c6 -10 10 6 16 -2'
+                   f'height="18"/><path class="r-sig" d="M16 {_n(sy + 12)}c6 -10 10 6 16 -2'
                    f's6 -6 10 2 12 -4"/>')
     else:  # unsigned: the ! field
         out.append(f'<rect class="warn-field" x="10" y="{_n(sy)}" width="{_n(w - 56)}" '
-                   f'height="16"/><path class="warn-mark" d="M{_n(w / 2 - 18)} {_n(sy + 4)}'
-                   f'v5M{_n(w / 2 - 18)} {_n(sy + 12)}v.5"/>')
+                   f'height="18"/><path class="warn-mark" d="M{_n(w / 2 - 18)} {_n(sy + 4)}'
+                   f'v6M{_n(w / 2 - 18)} {_n(sy + 14)}v.5"/>')
     if score is not None:
-        out.append(f'<text class="r-text" x="{_n(w - 40)}" y="{_n(sy + 12)}">{score}</text>')
+        out.append(f'<text class="r-text" x="{_n(w - 38)}" y="{_n(sy + 13)}">{score}</text>')
     if mark:
         out.append(f'<g transform="translate({_n(w - 22)} -10)">'
                    '<path class="warn-field" d="M12 0L24 21H0Z"/>'
@@ -467,86 +486,128 @@ def svg(body: str, view: str, label: str = "", cls: str = "") -> Markup:
 
 SCENES = ("signed", "unsigned", "blocked", "verify", "private", "budget", "edit", "reset",
           "lost", "solo")
+GAP = 16  # space between people standing side by side
+
+
+@dataclass(frozen=True)
+class Layout:
+    scale: float
+    figures: list[tuple[Person, float, float]]
+    boxes: list[Box]
+    start: Pt
+    nodes: list[Pt]
+    rec: Pt
+    width: float
+    height: int
+
+
+def layout(keys: Sequence[str], kind: str = "signed") -> Layout:
+    """Where everything goes: people side by side (boxes never touch), then the trace and
+    the record to their right. Returned for the renderer and for the overlap tests."""
+    people = [BY_KEY[k] for k in keys]
+    single = len(people) == 1
+    s = 1.45 if single and not people[0].wheelchair else 1.0
+    base = 250  # every figure stands on the same floor line
+    figures: list[tuple[Person, float, float]] = []
+    boxes: list[Box] = []
+    cursor = 4.0
+    for p in people:
+        bx0, _, bx1, by1 = person_box(p)
+        x = cursor - bx0 * s
+        y = base - by1 * s if p.wheelchair or not single else 44
+        if p.wheelchair:
+            y = 12  # the seated figure fills the frame: 12 + 238 = the floor line
+        figures.append((p, x, y))
+        boxes.append(place(person_box(p), x, y, s))
+        cursor = boxes[-1][2] + GAP
+    right = max(b[2] for b in boxes)
+    sx = right + 8
+    sy = 150.0
+    nodes: list[Pt] = [(sx + 22, sy - 26), (sx + 56, 90), (sx + 94, 84), (sx + 126, 104),
+                       (sx + 158, 126)]
+    rec_x = sx + 186
+    width = rec_x + 194 if kind != "solo" else right + 4
+    return Layout(s, figures, boxes, (sx, sy), nodes, (rec_x, 58.0), width, 250)
 
 
 def scene(key: str, kind: str = "signed", label: str = "", cls: str = "") -> Markup:
-    """A two-views scene for ``key`` (a cast member). Digits and signs only, no words.
+    """A two-views scene for ``key`` (one cast member). Digits and signs only, no words.
 
     - signed: owner → producer, copywriter, art director, reviewers → signature → record;
     - unsigned: the same, signature node empty, the record shows the ``!`` field;
-    - blocked: reviewers' node lit as a stop (×), record not signed;
+    - blocked: reviewers' node crossed (×), record not signed;
     - verify: the record and a chain of receipts, one broken link (×);
     - private: a personal-data field stays inside the studio (the trace forks, one branch ×);
-    - budget: a daily cap gauge on the record;
-    - edit: the owner's pencil on a field before the signature;
+    - budget: a daily cap gauge under the record;
+    - edit: a pencil on a field of the record before the signature;
     - reset: the record with a circular arrow (hourly reset);
     - lost: 404, the record with a big ``?``;
     - solo: the owner alone (gallery card).
     """
-    p = BY_KEY[key]
-    tall = p.wheelchair
-    w_view, h_view = 560, 250
-    if tall:
-        owner = seated(p, 6, 4, 1.0)
-        start: Pt = (172, 118)
-    else:
-        owner = bust(p, 4, 44, 1.45)
-        start = (180, 160)
     if kind == "solo":
-        if tall:
-            return svg(seated(p, 4, 4, 1.0), "0 0 168 248", label, cls)
-        return svg(bust(p, 4, 4, 1.0), "0 0 128 148", label, cls)
-    sx, sy = start
-    # the trace runs through its nodes: four agents, then the signature, then the record
-    nodes: list[Pt] = [(sx + 22, sy - 26), (sx + 56, 90), (sx + 94, 84), (sx + 126, 104),
-                       (sx + 158, 126)]
-    d = curve([(sx, sy), *nodes, (352, 132)])
+        p = BY_KEY[key]
+        box = person_box(p)
+        draw = seated(p, -box[0] + 2, 10) if p.wheelchair else bust(p, -box[0] + 2, 10)
+        return svg(draw, f"0 0 {_n(box[2] - box[0] + 4)} {_n(box[3] + 14)}", label, cls)
+    return group([key], kind, label, cls)
+
+
+def group(keys: Sequence[str], kind: str = "signed", label: str = "", cls: str = "") -> Markup:
+    """Several owners standing side by side, then the trace and the record."""
+    lay = layout(keys, kind)
+    s = lay.scale
+    body = [figure(p, x, y, s)[0] for p, x, y in lay.figures]
+    sx, sy = lay.start
+    nodes = lay.nodes
+    rec_x, rec_y = lay.rec
+    d = curve([(sx, sy), *nodes, (rec_x - 8, 132)])
     signed = kind in ("signed", "verify", "budget", "reset", "private")
     lit = 4
-    body = [owner]
-    rec_x, rec_y = 362, 58
+    # crop the empty band above the tallest figure and the record's corner mark
+    top = max(0, int(min(min(b[1] for b in lay.boxes), 44) - 4))
+    view = f"0 {top} {_n(lay.width)} {lay.height - top}"
     if kind == "lost":
         body.append(trace(d, nodes[:2], signed=False, lit=1))
-        body.append(f'<g transform="translate({rec_x} {rec_y})">'
+        body.append(f'<g transform="translate({_n(rec_x)} {rec_y})">'
                     '<rect class="r-card" width="180" height="150"/>'
                     '<rect class="warn-field" x="40" y="24" width="100" height="96"/>'
                     '<text class="warn-big" x="90" y="98">?</text></g>')
-        return svg("".join(body), f"0 0 {w_view} {h_view}", label, cls)
+        return svg("".join(body), view, label, cls)
     if kind == "blocked":
         lit = 3
         signed = False
     body.append(trace(d, nodes, signed=signed, lit=lit))
     mark = {"unsigned": "!", "blocked": "×", "edit": "!"}.get(kind, "")
-    score = {"budget": 8, "verify": None}.get(kind)
-    body.append(record(p, rec_x, rec_y, signed=signed, mark=mark, score=score))
+    score = {"budget": 8}.get(kind)
+    body.append(record(rec_x, rec_y, signed=signed, mark=mark, score=score))
+    rx = rec_x
     if kind == "blocked":
         bx, by = nodes[3]
         body.append(f'<path class="stop" d="M{_n(bx - 5)} {_n(by - 5)}l10 10m0 -10l-10 10"/>')
     elif kind == "verify":
         for i in range(4):
-            cx = 372 + i * 44
+            cx = rx + 6 + i * 44
             cls_c = "chain bad" if i == 2 else "chain"
-            body.append(f'<rect class="{cls_c}" x="{cx}" y="222" width="32" height="20"/>')
+            body.append(f'<rect class="{cls_c}" x="{_n(cx)}" y="222" width="32" height="20"/>')
             if i:
-                body.append(f'<path class="trace-solid" d="M{cx - 12} 232h12"/>')
-        body.append('<text class="warn-text" x="476" y="237">×</text>')
+                body.append(f'<path class="trace-solid" d="M{_n(cx - 12)} 232h12"/>')
+        body.append(f'<text class="warn-text" x="{_n(rx + 110)}" y="237">×</text>')
     elif kind == "private":
-        body.append(f'<path class="trace" d="M{sx + 22} {sy - 14}q30 60 90 70"/>'
-                    f'<rect class="warn-field" x="{sx + 104}" y="{sy + 46}" width="40" '
-                    f'height="18"/><path class="stop" d="M{sx + 119} {sy + 50}l10 10m0 -10'
+        body.append(f'<path class="trace" d="M{_n(sx + 22)} {sy - 14}q30 60 90 70"/>'
+                    f'<rect class="warn-field" x="{_n(sx + 104)}" y="{sy + 46}" width="40" '
+                    f'height="18"/><path class="stop" d="M{_n(sx + 119)} {sy + 50}l10 10m0 -10'
                     f'l-10 10"/>')
     elif kind == "budget":
-        body.append(f'<rect class="r-field" x="{rec_x + 10}" y="{rec_y + 160}" width="170" '
-                    f'height="12"/><rect class="r-score" x="{rec_x + 10}" y="{rec_y + 160}" '
-                    f'width="96" height="12"/><path class="stop-line" d="M{rec_x + 180} '
-                    f'{rec_y + 154}v24"/>')
+        body.append(f'<rect class="r-field" x="{_n(rx + 10)}" y="222" width="160" '
+                    f'height="12"/><rect class="r-score" x="{_n(rx + 10)}" y="222" '
+                    f'width="96" height="12"/><path class="stop-line" d="M{_n(rx + 170)} '
+                    f'216v24"/>')
     elif kind == "edit":
-        body.append(f'<path class="c-accent" d="M{rec_x + 150} {rec_y + 66}l22 -26l5 4'
-                    f'l-22 26l-7 2z"/><rect class="edit-field" x="{rec_x + 74}" '
-                    f'y="{rec_y + 32}" width="70" height="12"/>')
+        body.append(f'<path class="c-accent" d="M{_n(rx + 150)} 124l22 -26l5 4'
+                    f'l-22 26l-7 2z"/><rect class="edit-field" x="{_n(rx + 82)}" '
+                    f'y="88" width="70" height="12"/>')
     elif kind == "reset":
-        body.append(f'<path class="trace-solid" d="M{rec_x + 196} {rec_y + 40}a22 22 0 1 1 '
-                    f'-8 -16"/><path class="r-score" d="M{rec_x + 186} {rec_y + 14}l6 12'
-                    f'l-12 0z"/><text class="r-text" x="{rec_x + 166}" y="{rec_y + 176}">'
-                    '60</text>')
-    return svg("".join(body), f"0 0 {w_view} {h_view}", label, cls)
+        body.append(f'<path class="trace-solid" d="M{_n(rx + 190)} 98a22 22 0 1 1 '
+                    f'-8 -16"/><path class="r-score" d="M{_n(rx + 180)} 72l6 12'
+                    f'l-12 0z"/><text class="r-text" x="{_n(rx + 150)}" y="234">60</text>')
+    return svg("".join(body), view, label, cls)
