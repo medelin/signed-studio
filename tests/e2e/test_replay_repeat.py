@@ -18,7 +18,7 @@ def test_two_runs_back_to_back_in_one_replay_process(tmp_path):
         "SESSION_SECRET": secrets.token_urlsafe(32), "STUDIO_REPLAY": "1",
         "STUDIO_REPLAY_SET": "demo", "META_ADAPTER": "mock"}))
     with TestClient(app, base_url="https://testserver") as c:
-        assert c.post("/login", data={"username": "judge", "password": password}
+        assert c.post("/login", json={"username": "judge", "password": password}
                       ).status_code == 200
         statuses = []
         for _ in range(2):
