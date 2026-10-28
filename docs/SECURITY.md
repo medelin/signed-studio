@@ -19,6 +19,7 @@ rather than in a public issue.
 | Secrets | Model API key, Meta tokens leak | env only, `.env` mode 600 enforced, never in receipts, errors, URLs or `repr`; Meta token only in the graph adapter; the sandbox has none; gitleaks + kingfisher | `settings.py`, `muse/client.py`, `meta/graph.py` |
 | Budget | runaway agent loop or abuse burns credits | per-run step and cost caps, durable daily budget with reservation before each call, sandbox limits and kill switch | `settings.py`, `agents/producer.py`, `sandbox.py` |
 | Web app | CSRF, session theft, brute force, oversized bodies, XSS | same-origin check on writes, HttpOnly/SameSite/Secure session, login limiter, body limits, CSP without inline script, autoescaped templates | `app.py`, `sandbox.py` |
+| MCP clients (`studio mcp`) | an external agent signs, sends, changes a budget or an account, or injects a send through a brief | stdio only, one active account; read and draft tools only, replay and a read-only mock Meta surface; a send answers `awaiting_human_signature` with the approval page; agent text enveloped like a transcript; a `tool_call` receipt per call (`mcp:<client>`) outside campaign runs | `mcp_server.py`, [mcp.md](mcp.md) |
 | Accounts | see [Accounts](#accounts) below | argon2id, no enumeration, TOTP second factor, account-bound sessions, typed-confirmation deletion | `accounts.py`, `routes_account.py`, `cli_account.py` |
 
 ## Accounts
@@ -63,6 +64,7 @@ There is no self-registration: the operator creates accounts with `studio accoun
 | `test_objective_binding.py` | every objective created PAUSED from the signed delivery only; a signed but invalid mapping, a payload without one, another Page: no call; verify rejects a step that sent another mapping |
 | `test_lead_ads.py` | the instant form without the owner's privacy page; unsigned, wrongly signed or unconfigured leadgen webhooks; leads for forms the studio did not make; contact data in receipts |
 | `test_recommendations.py` | a recommendation executed without, or twice on, a signed `campaign.update`; a budget over the ceiling; a "pause" that activates; verify on an update logged without approval |
+| `test_mcp.py` | every MCP tool with valid, extra and malformed arguments and invented signing tools while signing, execution, Meta writes and account changes are tripwires; a prompt injection in the brief fields and a forged approval in a `[FACT]` answer; verify on writes that name an MCP receipt or the unsigned pending approval |
 
 Accounts: `tests/test_account_pages.py` (wrong current password, a reused TOTP code, a
 recovery code used twice, CSRF missing or forged on every account form, cross-origin posts,

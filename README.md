@@ -13,7 +13,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - Live sandbox (judge login; the password is in the submission): **https://muse.udun.eu**
 - Numbers: **[docs/eval.md](docs/eval.md)** · how it works: [docs/architecture.md](docs/architecture.md) ·
   Brief v1 and the [FACT] questions: [docs/brief.md](docs/brief.md) ·
-  threat model: [docs/SECURITY.md](docs/SECURITY.md) · review policy and platform limits: [docs/policy.md](docs/policy.md) · video script: [docs/demo-script.md](docs/demo-script.md)
+  threat model: [docs/SECURITY.md](docs/SECURITY.md) · MCP server: [docs/mcp.md](docs/mcp.md) · review policy and platform limits: [docs/policy.md](docs/policy.md) · video script: [docs/demo-script.md](docs/demo-script.md)
 
 <!-- screenshots: docs/screenshots/ (studio run, signed approval, PAUSED campaign, studio verify) -->
 
@@ -134,6 +134,21 @@ real check, pin the ledger key once, out of band (`ledger.pub`, published with t
 release or copied from the operator), pass it with `--key-file ledger.pub` together with
 `--server` (a mismatch is refused), and keep the highest `seq` you have seen to pass as
 `--min-seq` next time, so a rollback to an older log cannot go unnoticed.
+
+## Drive it from another agent (MCP)
+
+`studio mcp` is a stdio MCP server for an external agent such as Claude Code: it reads
+briefs, runs, campaigns, receipts and the report, drafts a Brief v1 and runs the pipeline
+from recorded answers, and runs `studio verify`. It cannot sign, send, change a budget or
+touch an account; a run ends with `awaiting_human_signature` and the link to the approval
+page, and every call is a receipt with the agent `mcp:<client name>`.
+
+```bash
+claude mcp add muse-studio -- /path/to/.venv/bin/studio mcp --account owner \
+    --env-file /path/to/.env --ui-url http://localhost:8000
+```
+
+Tools, receipts and limits: [docs/mcp.md](docs/mcp.md).
 
 ## Honest status
 
