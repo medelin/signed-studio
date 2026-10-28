@@ -381,7 +381,22 @@ class MuseClient:
 
     # -- internals -------------------------------------------------------------------
 
-    def _call(
+    retry_delay_s = 2.0
+    RETRY_STATUS = frozenset({502, 503, 504, 529})
+
+    def _call(self, *args: Any, **kwargs: Any) -> MuseResult:
+        """``_call_once``, retried once after ``retry_delay_s`` when the API answered
+        502/503/504/529 (an answered error, so nothing was produced; the failed attempt
+        keeps its own error receipt). Network errors and every other status are final."""
+        try:
+            return self._call_once(*args, **kwargs)
+        except MuseError as exc:
+            if exc.status not in self.RETRY_STATUS:
+                raise
+        time.sleep(self.retry_delay_s)
+        return self._call_once(*args, **kwargs)
+
+    def _call_once(
         self,
         path: str,
         endpoint: str,

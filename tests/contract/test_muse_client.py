@@ -470,3 +470,40 @@ def test_unverified_model_prices_are_not_listed():
     from studio.muse.client import TOKEN_PRICES
 
     assert not any(m.startswith(("muse-spark-1.1", "muse-spark-1.2")) for m in TOKEN_PRICES)
+
+
+def test_a_503_is_retried_once_and_both_attempts_have_receipts():
+    """Day 4: the API answered 503 mid-run in a real recording; one retry after a pause."""
+    from studio.muse import client as mc
+
+    ok = {"id": "x", "model": "muse-spark-1.3", "choices": [{
+        "index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "hi"}}],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}}
+    led = Ledger()
+    c = mc.MuseClient("test-key-not-a-secret", ledger=led, budget=Budget(1.0))
+    c.retry_delay_s = 0.0
+    with respx.mock() as router:
+        route = router.post(f"{mc.BASE_URL}/chat/completions").mock(side_effect=[
+            httpx.Response(503, json={"error": {"type": "server_error"}}),
+            httpx.Response(200, json=ok)])
+        assert c.chat("muse-spark-1.3", [{"role": "user", "content": "x"}], run_id="r",
+                      agent="a").text == "hi"
+    assert route.call_count == 2
+    statuses = [r.details.get("error_status") for r in led.receipts("r")]
+    assert statuses == [503, None]
+
+
+def test_other_errors_and_a_second_503_are_not_retried():
+    from studio.muse import client as mc
+
+    led = Ledger()
+    c = mc.MuseClient("test-key-not-a-secret", ledger=led, budget=Budget(1.0))
+    c.retry_delay_s = 0.0
+    for first, calls in ((400, 1), (503, 2)):
+        with respx.mock() as router:
+            route = router.post(f"{mc.BASE_URL}/chat/completions").mock(
+                return_value=httpx.Response(first, json={"error": {"type": "e"}}))
+            with pytest.raises(mc.MuseError):
+                c.chat("muse-spark-1.3", [{"role": "user", "content": "x"}], run_id="r",
+                       agent="a")
+        assert route.call_count == calls

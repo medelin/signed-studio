@@ -37,7 +37,7 @@ from studio.agents.dispatcher import (
 )
 from studio.agents.schemas import CopyPack, CreativeSet, Plan
 from studio.approvals import Pending, transaction
-from studio.muse.client import MuseClient, ToolCall
+from studio.muse.client import MuseClient, MuseError, ToolCall
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import structured
 from studio.receipts import canonical, is_opaque, sha256_hex
@@ -365,6 +365,32 @@ def _dispatch_turn(ctx: Context, dispatcher: Dispatcher, calls: list[ToolCall],
     return outcomes
 
 
+TURN_RETRY_DELAY_S = 1.5
+
+
+def _turn(ctx: Context, next_input: list[dict[str, Any]], run_id: str,
+          tools: list[dict[str, Any]], previous: str | None) -> Any:
+    """One producer turn. A 400 on a chained turn ("referenced response not found or
+    expired", seen in real runs right after the previous response) is retried once."""
+    def call() -> Any:
+        return ctx.client.respond(
+            MODEL, next_input, run_id=run_id, agent=AGENT, tools=tools,
+            reasoning={"effort": "medium", "summary": "auto"},
+            previous_response_id=previous, max_output_tokens=4000,
+            tier="standard", tier_reason="producer loop", parallel_tool_calls=True,
+            # the brief is only in the first turn; later turns chain to it
+            envelope_sources=_sources(ctx) if previous is None else (),
+        )
+
+    try:
+        return call()
+    except MuseError as exc:
+        if previous is None or exc.status != 400:
+            raise
+    time.sleep(TURN_RETRY_DELAY_S)
+    return call()
+
+
 def run(
     ctx: Context,
     brief: str,
@@ -400,14 +426,16 @@ def run(
             if _cost(ctx, run_id) >= max_cost_usd:
                 result.status = "max_cost"
                 break
-            turn = ctx.client.respond(
-                MODEL, next_input, run_id=run_id, agent=AGENT, tools=tools,
-                reasoning={"effort": "medium", "summary": "auto"},
-                previous_response_id=previous, max_output_tokens=4000,
-                tier="standard", tier_reason="producer loop", parallel_tool_calls=True,
-                # the brief is only in the first turn; later turns chain to it
-                envelope_sources=_sources(ctx) if previous is None else (),
-            )
+            try:
+                turn = _turn(ctx, next_input, run_id, tools, previous)
+            except MuseError as exc:
+                if not result.pending_id:
+                    raise
+                # The approval is already requested: the run is complete, only the
+                # closing summary is missing (the failed call has its error receipt).
+                result.summary = f"(summary unavailable: the model call failed, {exc.code})"
+                result.status = "awaiting_approval"
+                break
             result.steps = step + 1
             if turn.reasoning_summary:
                 result.reasoning.append(turn.reasoning_summary[:500])
