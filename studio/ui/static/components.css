@@ -41,15 +41,6 @@
   height: 1px; background: var(--rule); transform-origin: top left; transform: rotate(45deg);
 }
 
-/* the scale: ticks every 8px, a longer one every 64px */
-.ruler {
-  height: 12px; margin: .75rem 0;
-  background:
-    repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 64px) bottom / 100% 12px no-repeat,
-    repeating-linear-gradient(90deg, var(--rule-soft) 0 1px, transparent 1px var(--tick)) bottom / 100% 6px no-repeat;
-  border-bottom: 1px solid var(--rule);
-}
-
 /* state badge: ok / partial / down differ in lightness and in shape of the mark */
 .state {
   display: inline-flex; align-items: center; gap: .4rem; padding: 0 .5rem;

@@ -84,3 +84,12 @@ def test_motion_inventory_is_guarded_by_reduced_motion():
     assert "prefers-reduced-motion: reduce" in js and "still.matches" in js
     for target in ("ticker", "images", "signature", "run-hud"):
         assert f'getElementById("{target}")' in js
+
+
+def test_no_ruler_motif() -> None:
+    """The company style takes only the character language; no ruler, scale or tick strip."""
+    root = Path(__file__).resolve().parents[1] / "studio" / "ui"
+    for path in [*root.glob("static/*.css"), *root.glob("templates/*.html")]:
+        text = path.read_text(encoding="utf-8")
+        assert "ruler" not in text, path
+        assert "repeating-linear-gradient(90deg" not in text, path

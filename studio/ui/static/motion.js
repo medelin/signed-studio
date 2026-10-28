@@ -28,8 +28,6 @@
       if (now === "active") li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current");
       if (now && now !== was) animate(li.querySelector(".tick"), [{ transform: "scale(.2) rotate(45deg)" }, { transform: "scale(1) rotate(45deg)" }], { duration: 320 });
     });
-    const ticks = hud.querySelector(".hud-ticks");
-    if (ticks) ticks.dataset.progress = String(Math.min(reached + 1, 5));
   }
   function resetHud() {
     reached = -1;

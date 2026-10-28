@@ -19,11 +19,6 @@ a:hover { text-decoration-thickness: 2px; }
   padding: .9rem 1.5rem; border-bottom: 1px solid var(--rule); background: var(--bg-raised);
   position: relative;
 }
-.top::after { /* the scale: a tick every 8px along the header rule */
-  content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 6px;
-  background: repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px var(--tick));
-  pointer-events: none;
-}
 .brand { font-weight: 700; color: var(--ink); text-decoration: none; letter-spacing: .01em; }
 .brand::before { content: "⌖ "; color: var(--signal); }
 .top a:not(.brand) { font: 600 .78rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .12em; text-decoration: none; color: var(--ink-2); padding: .2rem 0; }
