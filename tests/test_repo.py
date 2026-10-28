@@ -42,3 +42,8 @@ def test_cassette_images_are_small_and_not_duplicated():
     loop = json.dumps(json.loads((root / "fixtures" / "cassettes" /
                                   "producer_loop.json").read_text()))
     assert "@file:fixtures/cassettes/files/image_series-1.png" in loop
+
+
+def test_readme_describes_sam_as_streamed_transport_batch_parse():
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text()
+    assert "streamed transport, batch parse" in " ".join(readme.split())

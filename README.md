@@ -41,8 +41,10 @@ make demo        # http://localhost:8000/studio — sign in as the judge, run a 
 ```
 
 One brief → plan (Muse Spark 1.3) → three copy variants (Spark Contributor) → SAM 3.1
-cut-out of the product photo → three placements (Muse Image 1.0) → two reviews (Spark
-vision + Spark Open on Baseten) → a pending approval. The browser signs the exact approval
+cut-out of the product photo → three placements (Muse Image 1.0) → two reviews of every
+placement (Spark vision + Spark Open on Baseten) → a pending approval. SAM 3.1 is a
+streamed transport, batch parse: the cut-out request is a streamed Responses call, and the
+mask lane is parsed once the stream has ended (no partial masks are used). The browser signs the exact approval
 bytes with a non-extractable WebCrypto Ed25519 key; every step is a receipt in the live
 ticker. The demo product photo is synthetic (model-generated); set `STUDIO_PRODUCT_PHOTO`
 and `STUDIO_PRODUCT_CONCEPT` to use your own.
