@@ -5,7 +5,9 @@ screenshot) in one long-context call.
   visitors without a session get every string redacted (``public_view``).
 - ``POST /api/reports`` (session, same-origin, writable) runs the analyst. Body: empty or
   JSON for no screenshot, or a raw ``image/png`` / ``image/jpeg`` Ads Manager screenshot
-  (≤ 5 MB). One report at a time; the call is capped at ``MAX_COST_USD`` and the
+  (≤ 5 MB), re-encoded without metadata before use (400 ``invalid_screenshot`` if it is
+  not a readable image; 413 ``context_too_large`` if the insights alone overflow the
+  prompt). One report at a time; the call is capped at ``MAX_COST_USD`` and the
   remaining daily budget.
 """
 
@@ -26,6 +28,7 @@ from fastapi.templating import Jinja2Templates
 
 from studio.agents import analyst
 from studio.muse.client import MuseError
+from studio.muse.vision import strip_metadata
 from studio.receipts import Ledger
 from studio.routes_inbox import public_view
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
@@ -87,7 +90,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if ctype in ("image/png", "image/jpeg"):
             if len(body) > MAX_SCREENSHOT:
                 return JSONResponse({"error": "screenshot_too_large"}, 413)
-            shot = body
+            try:
+                shot = await run_in_threadpool(strip_metadata, body)
+            except ValueError as exc:
+                return JSONResponse({"error": "invalid_screenshot",
+                                     "detail": str(exc)[:200]}, 400)
         elif body.strip() and ctype != "application/json":
             return JSONResponse({"error": "unsupported_media_type"}, 415)
         if app.state.muse is None and not settings.model_api_key:
@@ -104,8 +111,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 analyst.report, muse, ledger.export_jsonl(), insights(), shot, run_id=run_id,
                 summary=analyst.inbox_summary(conn), max_cost_usd=cap))
             report_id = analyst.save(conn, ledger, run_id, out)
-        except ValueError as exc:  # bad screenshot bytes
-            return JSONResponse({"error": "invalid_screenshot", "detail": str(exc)[:200]}, 400)
+        except analyst.ContextTooLarge:
+            return JSONResponse({"error": "context_too_large"}, 413)
         except (ReadOnlyMode, BudgetExceeded) as exc:
             return JSONResponse({"error": type(exc).__name__}, 503)
         except MuseError as exc:

@@ -60,7 +60,8 @@ def test_screenshot_part_present_and_unknown_refs_are_not_evidence():
         out = analyst.report(client, _export(3), INSIGHTS, SHOT, run_id="an_1")
     body = json.loads(route.calls[0].request.content)
     parts = body["input"][1]["content"]
-    assert [p["type"] for p in parts] == ["input_text", "input_text", "input_image"]
+    assert [p["type"] for p in parts] == ["input_text", "input_text", "input_image",
+                                          "input_text"]
     assert parts[2]["image_url"].startswith("data:image/png;base64,")
     assert body["reasoning"] == {"effort": "high", "summary": "auto"}
     assert body["text"]["format"]["type"] == "json_schema" and "tools" not in body
@@ -128,3 +129,87 @@ def test_report_route_runs_once_and_redacts_for_visitors(tmp_path):
     assert "Read 1,000 tokens in one prompt" in anon.get("/report").text
     kinds = [x.kind for x in a.state.ledger.receipts() if x.agent == "analyst"]
     assert kinds == ["model_call", "tool_call"]
+
+
+def _jpeg_with_exif():
+    import io
+
+    from PIL import Image
+    img = Image.new("RGB", (64, 48), (200, 30, 30))
+    exif = Image.Exif()
+    exif[0x013B] = "Operator Name Secret"  # Artist
+    exif[0x010F] = "PhoneMaker"  # Make
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", exif=exif.tobytes())
+    return buf.getvalue()
+
+
+def _png_with_text():
+    import io
+
+    from PIL import Image, PngImagePlugin
+    info = PngImagePlugin.PngInfo()
+    info.add_text("Comment", "operator@example.com GPS 50.06,19.94")
+    buf = io.BytesIO()
+    Image.new("RGBA", (32, 32), (0, 0, 0, 0)).save(buf, "PNG", pnginfo=info)
+    return buf.getvalue()
+
+
+def test_screenshot_sits_inside_the_envelope_it_declares():
+    client = MuseClient(FAKE_KEY, ledger=Ledger(), budget=Budget(1.0))
+    with respx.mock() as router:
+        route = router.post(url__startswith=BASE_URL).mock(
+            return_value=httpx.Response(200, json=_fake(REPORT)))
+        analyst.report(client, _export(3), INSIGHTS, SHOT, run_id="an_4")
+    parts = json.loads(route.calls[0].request.content)["input"][1]["content"]
+    assert [p["type"] for p in parts] == ["input_text", "input_text", "input_image",
+                                          "input_text"]
+    assert parts[1]["text"].startswith(envelope.opening("screenshot"))
+    assert envelope.END not in parts[1]["text"]  # still open when the image comes
+    assert parts[3]["text"] == envelope.END
+
+
+@pytest.mark.parametrize("shot, secret", [(_jpeg_with_exif(), b"Operator Name Secret"),
+                                          (_png_with_text(), b"operator@example.com")])
+def test_screenshot_metadata_is_removed_before_the_model(shot, secret):
+    import base64
+    import io
+
+    from PIL import Image
+    assert secret in shot
+    client = MuseClient(FAKE_KEY, ledger=Ledger(), budget=Budget(1.0))
+    with respx.mock() as router:
+        route = router.post(url__startswith=BASE_URL).mock(
+            return_value=httpx.Response(200, json=_fake(REPORT)))
+        analyst.report(client, _export(3), INSIGHTS, shot, run_id="an_5")
+    parts = json.loads(route.calls[0].request.content)["input"][1]["content"]
+    url = parts[2]["image_url"]
+    assert url.startswith("data:image/png;base64,")
+    sent = base64.b64decode(url.split(",", 1)[1])
+    assert secret not in sent
+    img = Image.open(io.BytesIO(sent))
+    assert not img.getexif() and not getattr(img, "text", {})
+
+
+def test_report_route_tells_a_bad_screenshot_from_an_oversized_context(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from studio.app import create_app
+    from tests.test_ui_studio import login, settings
+
+    a = create_app(settings(tmp_path))
+    a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0),
+                              transport=httpx.MockTransport(
+                                  lambda req: httpx.Response(200, json=_fake(REPORT))))
+    with TestClient(a, base_url="https://testserver") as c:
+        login(c)
+        bad = c.post("/api/reports", content=b"\x89PNG\r\n\x1a\nnot really",
+                     headers={"content-type": "image/png"})
+        assert bad.status_code == 400 and bad.json()["error"] == "invalid_screenshot"
+
+        def too_big(*args, **kwargs):
+            raise analyst.ContextTooLarge("insights and summary alone exceed the budget")
+
+        monkeypatch.setattr(analyst, "report", too_big)
+        r = c.post("/api/reports", content=SHOT, headers={"content-type": "image/png"})
+        assert r.status_code == 413 and r.json()["error"] == "context_too_large"
