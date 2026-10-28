@@ -91,3 +91,17 @@ def test_payload_angle_is_the_angle_the_copy_was_written_for(env):
     run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
                   "formats": [], "variant_index": 0}
     assert producer.campaign_payload(run, 0)["campaign"]["angle"] == "angle 2"
+
+
+def test_payload_refuses_a_budget_above_the_activation_ceiling(env):
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 0}
+    run.plan = run.plan.model_copy(update={"budget_pln_daily": 80})
+    with pytest.raises(producer.ToolError, match="above the 50 PLN"):
+        producer.campaign_payload(run, 0, ceiling_pln=50)
+    assert producer.campaign_payload(run, 0, ceiling_pln=80)["campaign"][
+        "daily_budget_minor"] == 8000
+    assert ctx.max_daily_budget_pln == 50  # the default ceiling reaches the producer

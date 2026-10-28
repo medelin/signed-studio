@@ -66,6 +66,7 @@ class Context:
     # "operator" (typed brief) or "transcript" (a voice brief, possibly edited): a
     # transcript is customer-grade text — enveloped, declared, never on Contributor.
     brief_source: str = "operator"
+    max_daily_budget_pln: int = 50  # STUDIO_MAX_DAILY_BUDGET_PLN
 
 
 def brief_block(ctx: Context, brief: str) -> str:
@@ -125,9 +126,15 @@ def opaque_id(prefix: str) -> str:
 
 
 def campaign_payload(run: RunResult, variant_index: int,
-                     link: str = "https://example.com/") -> dict[str, Any]:
-    """The exact content a ``campaign.create`` approval authorises (built by code)."""
+                     link: str = "https://example.com/", *,
+                     ceiling_pln: int = 50) -> dict[str, Any]:
+    """The exact content a ``campaign.create`` approval authorises (built by code). A
+    daily budget above the activation ceiling is refused here, before anyone signs a
+    campaign that could never be activated."""
     assert run.plan and run.copy and run.creatives and run.review
+    if run.plan.budget_pln_daily > ceiling_pln:
+        raise ToolError(f"daily budget {run.plan.budget_pln_daily} PLN is above the "
+                        f"{ceiling_pln} PLN ceiling; lower it in the plan")
     v = run.copy.variants[variant_index]
     return {
         "action": "campaign.create",
@@ -316,7 +323,8 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         bad = copywriter.unsupported_character(variant)
         if bad:
             raise ToolError(bad)
-        payload = campaign_payload(run, index, ctx.landing_url)
+        payload = campaign_payload(run, index, ctx.landing_url,
+                                   ceiling_pln=ctx.max_daily_budget_pln)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
                                  ledger=ctx.client.ledger, run_id=run.run_id)

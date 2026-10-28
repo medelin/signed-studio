@@ -113,7 +113,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 client=muse, open_client=open_weights, conn=conn,
                 photo_png=settings.product_photo.read_bytes(),
                 concept=settings.product_concept, data_dir=settings.data_dir,
-                landing_url=settings.landing_url, brief_source=brief_source)
+                landing_url=settings.landing_url, brief_source=brief_source,
+                max_daily_budget_pln=settings.max_daily_budget_pln)
             producer.run(ctx, brief, run_id=run_id)
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
             LOG.warning("run %s failed: %s", run_id, type(exc).__name__)
