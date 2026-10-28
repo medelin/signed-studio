@@ -1,8 +1,10 @@
 """PII detection and model-tier routing, decided in code before any model call.
 
 ``contains_pii`` finds e-mail addresses, Polish and UK phone numbers (spaced, dashed,
-bracketed or contiguous, with or without +48/+44), and NIP/PESEL numbers whose checksum is
-valid. ``choose_tier`` never selects the Contributor tier for text with PII, nor for
+bracketed or contiguous, with or without +48/+44), also when another number follows or
+precedes them in the same digit run (3-3-3 and 2-3-2-2 groupings on group boundaries), and
+NIP/PESEL numbers whose checksum is valid. ``choose_tier`` never selects the Contributor
+tier for text with PII, nor for
 customer-originated text (comments, leads, transcripts), and explains why in a reason that
 names only the kind of PII, never its value.
 """
@@ -66,17 +68,55 @@ def _classify(raw: str) -> str | None:
     return None
 
 
+# Digit groupings of a PL number inside a longer run ("600 123 456 89 PLN").
+_PHONE_GROUPS = ((3, 3, 3), (2, 3, 2, 2), (9,))
+_GROUP = re.compile(r"\d+")
+
+
+def _phone_window(raw: str) -> tuple[int, int] | None:
+    """Span of a 3-3-3 / 2-3-2-2 / 9-digit grouping that starts and ends on group
+    boundaries of ``raw`` (with a directly preceding +48/0048 included), or ``None``."""
+    groups = list(_GROUP.finditer(raw))
+    lengths = [len(g.group()) for g in groups]
+    for i in range(len(groups)):
+        for pattern in _PHONE_GROUPS:
+            if tuple(lengths[i:i + len(pattern)]) != pattern:
+                continue
+            start, end = groups[i].start(), groups[i + len(pattern) - 1].end()
+            if i > 0 and groups[i - 1].group() in ("48", "0048"):
+                prefix = groups[i - 1].start()
+                if raw[prefix - 1:prefix] == "+" or groups[i - 1].group() == "0048":
+                    start = prefix - (raw[prefix - 1:prefix] == "+")
+            return start, end
+    return None
+
+
+def _phones(text: str) -> list[tuple[str, int, int]]:
+    """``(kind, start, end)`` for each digit run that classifies, whole or by window."""
+    out = []
+    for run in _RUN.finditer(text):
+        raw = run.group().strip(" -.(")
+        offset = run.start() + run.group().index(raw)
+        kind = _classify(raw)
+        if kind:
+            out.append((kind, offset, offset + len(raw)))
+            continue
+        window = _phone_window(raw)
+        if window:
+            out.append(("phone", offset + window[0], offset + window[1]))
+    return out
+
+
 def contains_pii(text: str) -> Match | None:
     """First PII match in ``text`` (by position), or ``None``."""
     found: list[Match] = []
     m = _EMAIL.search(text)
     if m:
         found.append(Match("email", m.start(), m.end()))
-    for run in _RUN.finditer(text):
-        kind = _classify(run.group().strip(" -.("))
-        if kind:
-            found.append(Match(kind, run.start(), run.end()))
-            break
+    phones = _phones(text)
+    if phones:
+        kind, start, end = phones[0]
+        found.append(Match(kind, start, end))
     return min(found, key=lambda x: x.start) if found else None
 
 
@@ -100,8 +140,7 @@ def find_email(text: str) -> str:
 
 
 def find_phone(text: str) -> str:
-    for run in _RUN.finditer(text):
-        raw = run.group().strip(" -.(")
-        if _classify(raw) == "phone":
-            return raw
+    for kind, start, end in _phones(text):
+        if kind == "phone":
+            return text[start:end]
     return ""

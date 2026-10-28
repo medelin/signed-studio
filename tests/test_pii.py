@@ -2,7 +2,13 @@
 
 import pytest
 
-from studio.pii import CONTRIBUTOR_MODEL, STANDARD_MODEL, choose_tier, contains_pii
+from studio.pii import (
+    CONTRIBUTOR_MODEL,
+    STANDARD_MODEL,
+    choose_tier,
+    contains_pii,
+    find_phone,
+)
 
 # Checksums: NIP 5260250274 (weights 6,5,7,2,3,4,5,6,7), PESEL 44051401359 / 02270803624.
 CASES = [
@@ -73,3 +79,28 @@ def test_customer_text_never_goes_to_contributor(source):
 def test_unknown_tier_refused():
     with pytest.raises(ValueError):
         choose_tier("x", "local")
+
+
+# Day 2 fix round (I5): a phone number next to another number is still a phone number.
+ADJACENT = [
+    ("Zadzwoń 600 123 456 89 PLN za kubek", "600 123 456"),
+    ("tel. 600 123 456 2026", "600 123 456"),
+    ("rok 2026 600 123 456", "600 123 456"),
+    ("stacjonarny 22 123 45 67 89 zł", "22 123 45 67"),
+    ("+48 600 123 456 2026", "+48 600 123 456"),
+    ("600-123-456 15", "600-123-456"),
+]
+
+
+@pytest.mark.parametrize(("text", "phone"), ADJACENT)
+def test_phone_next_to_another_number_is_found(text, phone):
+    m = contains_pii(text)
+    assert m is not None and m.kind == "phone", text
+    assert choose_tier(text, "contributor")[0] == "standard"
+    assert find_phone(text) == phone
+
+
+@pytest.mark.parametrize("text", ["89 PLN, 350 ml, 2026", "Order 1234 5678 9012 3456",
+                                  "12 345 678", "350 ml 89 PLN 2026"])
+def test_numbers_that_are_not_phone_groupings_stay_clean(text):
+    assert contains_pii(text) is None
