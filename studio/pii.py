@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
+from typing import Any
 
 STANDARD_MODEL = "muse-spark-1.3"
 CONTRIBUTOR_MODEL = "muse-spark-1.3-contributor"
@@ -204,6 +205,24 @@ def contains_pii(text: str) -> Match | None:
         kind, start, end = phones[0]
         found.append(Match(kind, start, end))
     return min(found, key=lambda x: x.start) if found else None
+
+
+def redact(text: str) -> str:
+    """``text`` with every e-mail (``[email]``), phone/NIP/PESEL (``[phone]``, ``[nip]``,
+    ``[pesel]``) and long digit run (``[digits]``) replaced: what a model may see of
+    customer text. Detection runs on the original first (``contains_pii``)."""
+    spans = [(m.start(), m.end(), "email") for m in _EMAIL.finditer(text)]
+    spans += [(start, end, kind) for kind, start, end in _phones(fold(text))]
+    spans.sort()
+    merged: list[list[Any]] = []
+    for start, end, kind in spans:
+        if merged and start < merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end, kind])
+    for start, end, kind in reversed(merged):
+        text = text[:start] + f"[{kind}]" + text[end:]
+    return redact_digit_runs(text, "[digits]")
 
 
 def choose_tier(text: str, requested: str, *, source: str = "operator") -> tuple[str, str, str]:

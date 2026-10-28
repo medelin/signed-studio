@@ -1,6 +1,8 @@
 """Community manager: triage one comment, draft a reply, never send anything.
 
-- The comment is customer text: it enters the prompt only inside an untrusted envelope
+- The comment is customer text: PII is detected on the original, then e-mails, phone
+  numbers, NIP/PESEL and long digit runs are masked (``pii.redact``) and the masked
+  comment enters the prompt only inside an untrusted envelope
   (``envelope.wrap``, declared to the client as ``envelope_sources=["comment"]``), on the
   Standard tier (``choose_tier(..., source="comment")``), with no tools in the request.
 - The model returns a strict ``Triage``. Code then enforces the rules the model cannot
@@ -28,7 +30,7 @@ from studio.agents.schemas import Triage
 from studio.approvals import Pending, transaction
 from studio.muse.client import MuseClient, MuseResult
 from studio.muse.structured import structured
-from studio.pii import choose_tier, contains_pii, long_digit_run
+from studio.pii import choose_tier, contains_pii, long_digit_run, redact
 from studio.receipts import Ledger, canonical, is_opaque, sha256_hex
 
 AGENT = "community"
@@ -135,11 +137,12 @@ def triage(
 ) -> Triaged:
     """One strict ``Triage`` for ``comment``; no tools, envelope declared, Standard tier."""
     comment = comment[:MAX_COMMENT]
+    # Tier and flags are decided on the original; the model sees contact data masked.
     tier, reason, model = choose_tier(comment, "standard", source="comment")
     raw, result = structured(
         client, model,
         [{"role": "system", "content": system_prompt()},
-         {"role": "user", "content": _user_message(comment)}],
+         {"role": "user", "content": _user_message(redact(comment))}],
         Triage, tier=tier, tier_reason=reason, run_id=run_id, agent=AGENT,
         max_tokens=max_tokens, reasoning_effort="low", envelope_sources=["comment"],
     )
