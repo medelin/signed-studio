@@ -124,6 +124,10 @@ class RemoteComment:
 
 class Adapter(Protocol):
     name: str
+    page_id: str
+
+    def account_info(self) -> dict[str, str]:
+        """The ad account's ``currency`` and ``timezone_name`` (budgets are in it)."""
 
     def upload_image(self, png: bytes, payload: Mapping[str, Any],
                      approval: Verified) -> str: ...
@@ -457,4 +461,4 @@ def make(settings: Any, **kwargs: Any) -> Adapter:
             kwargs["transport"] = ReplayTransport.from_set(settings.replay_set)
         return GraphAdapter.from_settings(settings, **kwargs)
     from studio.meta.mock import MockAdapter
-    return MockAdapter(**kwargs)
+    return MockAdapter(currency=getattr(settings, "account_currency", "PLN"), **kwargs)

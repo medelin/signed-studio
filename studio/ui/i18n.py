@@ -228,7 +228,7 @@ EN: dict[str, str] = {
     "js.signed_in_key": "Signed in. Your approver key is {key}.",
     "js.your_key": "Your approver key is {key}.",
     "js.audience": "Audience: {value}",
-    "js.budget": "Budget: {pln} PLN / day · placements: {placements}",
+    "js.budget": "Budget: {amount} / day (ad account currency) · placements: {placements}",
     "js.reasoning": "Reasoning summary: {text}", "js.sent_for_review": " (sent for review)",
     "js.risks": "Risks: {list}",
     "js.cutout_alt": "SAM 3.1 cut-out of the product ({px} foreground pixels)",
@@ -257,13 +257,13 @@ EN: dict[str, str] = {
     "js.transcription_failed": "Transcription failed: {error}",
     "js.transcribed": "Transcribed {seconds} s for ${cost}.", "js.recording": "Recording…",
     "js.no_mic": "Microphone not available: {error}",
-    "js.campaign": "{name} · status {status} · {budget} PLN/day · adapter {adapter} · "
-                   "ceiling {ceiling} PLN/day",
+    "js.campaign": "{name} · status {status} · {budget} {currency}/day · adapter {adapter} · "
+                   "ceiling {ceiling} {currency}/day",
     "js.preview_title": "Meta ad preview", "js.preview_alt": "Ad image (feed 1:1)",
     "js.mock_preview": "Mock preview rendered by the studio (no Meta call).",
     "js.no_preview": "Preview unavailable ({error}); the PAUSED ad is in Ads Manager.",
     "js.activation_refused": "activation refused: {error}",
-    "js.signing_activation": "Signing activation of {budget} PLN/day…",
+    "js.signing_activation": "Signing activation of {budget} {currency}/day…",
     "js.not_activated": "not activated: {error}",
     "js.activated": "Activated via the {adapter} adapter (signature {sig}…).",
     "js.signing_label": "Signing {label} in the browser…",
@@ -636,7 +636,8 @@ PL: dict[str, str] = {
     "js.signed_in_key": "Zalogowano. Twój klucz zatwierdzającego to {key}.",
     "js.your_key": "Twój klucz zatwierdzającego to {key}.",
     "js.audience": "Odbiorcy: {value}",
-    "js.budget": "Budżet: {pln} zł / dzień · formaty: {placements}",
+    "js.budget": "Budżet: {amount} / dzień (w walucie konta reklamowego) · formaty: "
+                 "{placements}",
     "js.reasoning": "Podsumowanie rozumowania: {text}",
     "js.sent_for_review": " (wysłany do recenzji)", "js.risks": "Ryzyka: {list}",
     "js.cutout_alt": "Wycięcie produktu przez SAM 3.1 ({px} pikseli pierwszego planu)",
@@ -666,13 +667,13 @@ PL: dict[str, str] = {
     "js.transcription_failed": "Transkrypcja nie powiodła się: {error}",
     "js.transcribed": "Przepisano {seconds} s za ${cost}.", "js.recording": "Nagrywanie…",
     "js.no_mic": "Mikrofon niedostępny: {error}",
-    "js.campaign": "{name} · status {status} · {budget} zł/dzień · adapter {adapter} · "
-                   "limit {ceiling} zł/dzień",
+    "js.campaign": "{name} · status {status} · {budget} {currency}/dzień · adapter "
+                   "{adapter} · limit {ceiling} {currency}/dzień",
     "js.preview_title": "Podgląd reklamy Mety", "js.preview_alt": "Obraz reklamy (feed 1:1)",
     "js.mock_preview": "Podgląd z atrapy, wyrenderowany przez studio (bez wywołania Mety).",
     "js.no_preview": "Podgląd niedostępny ({error}); WSTRZYMANA reklama jest w Ads Managerze.",
     "js.activation_refused": "włączenie odrzucone: {error}",
-    "js.signing_activation": "Podpisywanie włączenia {budget} zł/dzień…",
+    "js.signing_activation": "Podpisywanie włączenia {budget} {currency}/dzień…",
     "js.not_activated": "nie włączono: {error}",
     "js.activated": "Włączono przez adapter {adapter} (podpis {sig}…).",
     "js.signing_label": "Podpisywanie ({label}) w przeglądarce…",
@@ -927,7 +928,8 @@ EN_BRIEF: dict[str, str] = {
     "brief.f.amount": "Amount",
     "brief.h.amount": "Daily budgets above the server's ceiling are refused.",
     "brief.f.currency": "Currency",
-    "brief.h.currency": "The ad account's currency (PLN on this studio).",
+    "brief.h.currency": "The ad account's currency: Meta books budgets in it, so the studio "
+                        "never converts.",
     "brief.f.start": "Start date", "brief.f.end": "End date",
     "brief.s.placements": "Placements",
     "brief.f.automatic": "Automatic placements (recommended by Meta)",
@@ -986,9 +988,10 @@ EN_BRIEF: dict[str, str] = {
     "js.brief_err_age_range": "Ages must be between 13 and 65, from ≤ to.",
     "js.brief_err_amount": "Enter an amount above zero.",
     "js.brief_err_over_ceiling": "Above the daily-budget ceiling of this studio ({ceiling} "
-                                 "PLN).",
+                                 "{currency}).",
     "js.brief_err_bad_currency": "Use a three-letter currency code, for example PLN.",
-    "js.brief_err_account_currency": "This studio's ad account books budgets in PLN.",
+    "js.brief_err_account_currency": "This studio's ad account books budgets in {currency}; "
+                                     "give the budget in {currency}.",
     "js.brief_err_no_fact_ref": "Pick at least one fact this reason rests on.",
     "js.brief_err_bad_fact_ref": "This reason points to a fact that no longer exists.",
     "js.brief_err_one_sentence": "Keep it to one sentence.",
@@ -1095,7 +1098,8 @@ PL_BRIEF: dict[str, str] = {
     "brief.f.amount": "Kwota",
     "brief.h.amount": "Budżet dzienny powyżej limitu serwera jest odrzucany.",
     "brief.f.currency": "Waluta",
-    "brief.h.currency": "Waluta konta reklamowego (w tym studiu PLN).",
+    "brief.h.currency": "Waluta konta reklamowego: Meta rozlicza w niej budżety, więc studio "
+                        "niczego nie przelicza.",
     "brief.f.start": "Data startu", "brief.f.end": "Data końca",
     "brief.s.placements": "Umiejscowienia",
     "brief.f.automatic": "Automatyczne umiejscowienia (zalecane przez Metę)",
@@ -1157,9 +1161,10 @@ PL_BRIEF: dict[str, str] = {
                               "„do”.",
     "js.brief_err_amount": "Wpisz kwotę większą od zera.",
     "js.brief_err_over_ceiling": "Powyżej dziennego limitu budżetu w tym studiu ({ceiling} "
-                                 "zł).",
+                                 "{currency}).",
     "js.brief_err_bad_currency": "Użyj trzyliterowego kodu waluty, na przykład PLN.",
-    "js.brief_err_account_currency": "Konto reklamowe tego studia rozlicza budżety w PLN.",
+    "js.brief_err_account_currency": "Konto reklamowe tego studia rozlicza budżety w "
+                                     "{currency}; podaj budżet w {currency}.",
     "js.brief_err_no_fact_ref": "Wybierz co najmniej jeden fakt, na którym opiera się ten "
                                 "powód.",
     "js.brief_err_bad_fact_ref": "Ten powód wskazuje fakt, którego już nie ma.",

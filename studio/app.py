@@ -489,7 +489,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.executors["campaign.activate"] = (
         lambda verified, payload: media_buyer.activate(conn, ledger, app.state.adapter,
                                                        verified, payload,
-                                                       settings.max_daily_budget_pln))
+                                                       settings.max_daily_budget))
 
     @app.get("/api/campaigns/{item_id}")
     def get_campaign(item_id: str, request: Request) -> Response:
@@ -509,7 +509,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 preview = None
         return JSONResponse({**c, "preview": preview,
                              "preview_error": created.get("preview_error", ""),
-                             "ceiling_pln": settings.max_daily_budget_pln})
+                             "ceiling": settings.max_daily_budget})
 
     @app.post("/api/campaigns/{item_id}/activate")
     def request_activate(item_id: str, request: Request) -> Response:
@@ -520,7 +520,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"error": "not_found"}, 404)
         try:
             pending, payload = media_buyer.request_activation(
-                conn, ledger, item_id, settings.max_daily_budget_pln)
+                conn, ledger, item_id, settings.max_daily_budget)
         except media_buyer.BuyError as exc:
             return JSONResponse({"error": exc.code}, 404 if exc.code == "not_found" else 409)
         return JSONResponse({"approval_id": pending.id, "content": payload,

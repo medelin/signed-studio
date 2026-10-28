@@ -99,12 +99,12 @@ def test_payload_refuses_a_budget_above_the_activation_ceiling(env):
                          ("run_art_director", '{"headline": "Pair"}')])
     run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
                   "formats": [], "variant_index": 0}
-    run.plan = run.plan.model_copy(update={"budget_pln_daily": 80})
+    run.plan = run.plan.model_copy(update={"budget_daily": 80})
     with pytest.raises(producer.ToolError, match="above the 50 PLN"):
-        producer.campaign_payload(run, 0, ceiling_pln=50)
-    assert producer.campaign_payload(run, 0, ceiling_pln=80)["campaign"][
+        producer.campaign_payload(run, 0, ceiling=50)
+    assert producer.campaign_payload(run, 0, ceiling=80)["campaign"][
         "daily_budget_minor"] == 8000
-    assert ctx.max_daily_budget_pln == 50  # the default ceiling reaches the producer
+    assert ctx.max_daily_budget == 50  # the default ceiling reaches the producer
 
 
 @pytest.mark.parametrize(("goal", "sub", "objective"), [

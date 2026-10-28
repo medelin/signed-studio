@@ -125,8 +125,11 @@ class Settings:
     product_photo: Path = DEFAULT_PRODUCT_PHOTO
     product_concept: str = "mug"
     keep_audio: bool = False  # voice briefs: keep the converted WAV after transcription
-    # campaign.activate is refused above this daily budget (PLN), whatever was signed
-    max_daily_budget_pln: int = 50
+    # campaign.activate is refused above this daily budget (whole units of the ad account's
+    # currency), whatever was signed
+    max_daily_budget: int = 50
+    # the mock adapter's ad account currency (the graph adapter reads the real account's)
+    account_currency: str = "PLN"
     landing_url: str = "https://example.com/"
 
     @property
@@ -202,11 +205,12 @@ class Settings:
             raise ConfigError("MODEL_API_BASE_URL must use https")
 
         try:
-            ceiling = int(e.get("STUDIO_MAX_DAILY_BUDGET_PLN", "") or 50)
+            ceiling = int(e.get("STUDIO_MAX_DAILY_BUDGET", "")
+                          or e.get("STUDIO_MAX_DAILY_BUDGET_PLN", "") or 50)
         except ValueError:
-            raise ConfigError("STUDIO_MAX_DAILY_BUDGET_PLN must be an integer") from None
+            raise ConfigError("STUDIO_MAX_DAILY_BUDGET must be an integer") from None
         if not 1 <= ceiling <= 500:
-            raise ConfigError("STUDIO_MAX_DAILY_BUDGET_PLN must be 1-500")
+            raise ConfigError("STUDIO_MAX_DAILY_BUDGET must be 1-500")
         landing = _landing_url(e, adapter)
         transport = e.get("META_TOKEN_TRANSPORT", "") or "form"
         if transport not in ("form", "bearer"):
@@ -240,7 +244,8 @@ class Settings:
             product_photo=Path(e.get("STUDIO_PRODUCT_PHOTO", "") or DEFAULT_PRODUCT_PHOTO),
             product_concept=concept,
             keep_audio=_bool(e, "STUDIO_KEEP_AUDIO", False),
-            max_daily_budget_pln=ceiling,
+            max_daily_budget=ceiling,
+            account_currency=_currency(e.get("STUDIO_ACCOUNT_CURRENCY", "") or "PLN"),
             landing_url=landing,
         )
 
@@ -382,6 +387,12 @@ class Budget:
         with self._lock:
             self._roll()
             return max(0.0, self.limit_usd - self._spent - self._reserved)
+
+
+def _currency(code: str) -> str:
+    if not re.fullmatch(r"[A-Z]{3}", code):
+        raise ConfigError("STUDIO_ACCOUNT_CURRENCY must be an ISO 4217 code, e.g. GBP")
+    return code
 
 
 def _replay_set(name: str) -> str:

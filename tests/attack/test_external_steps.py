@@ -53,7 +53,7 @@ def test_genuine_create_and_activation_verify(env):
     conn, ledger, data = env
     mock = MockAdapter()
     _created(conn, ledger, data, mock, "cmp_x1")
-    _, act = media_buyer.request_activation(conn, ledger, "cmp_x1", ceiling_pln=50)
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_x1", ceiling=50)
     va = approve(conn, ledger, "campaign.activate", "cmp_x1", act, RUN)
     media_buyer.activate(conn, ledger, mock, va, act, 50)
     report = _report(conn, ledger, data)
@@ -76,7 +76,7 @@ def test_external_step_using_another_runs_approval_is_unauthorised(env):
     conn, ledger, data = env
     mock = MockAdapter()
     _created(conn, ledger, data, mock, "cmp_x2")
-    _, act = media_buyer.request_activation(conn, ledger, "cmp_x2", ceiling_pln=50)
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_x2", ceiling=50)
     va = approve(conn, ledger, "campaign.activate", "cmp_x2", act, RUN)
     ledger.append("run_other", agent="producer", kind="model_call")
     _step(ledger, run="run_other", approval_id=va.pending_id)
@@ -97,7 +97,7 @@ def test_extra_step_after_the_write_consumed_the_approval_is_unauthorised(env):
     conn, ledger, data = env
     mock = MockAdapter()
     _created(conn, ledger, data, mock, "cmp_x4")
-    _, act = media_buyer.request_activation(conn, ledger, "cmp_x4", ceiling_pln=50)
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_x4", ceiling=50)
     va = approve(conn, ledger, "campaign.activate", "cmp_x4", act, RUN)
     media_buyer.activate(conn, ledger, mock, va, act, 50)
     _step(ledger, approval_id=va.pending_id)  # a second activation riding on the first
@@ -108,7 +108,7 @@ def test_external_step_after_the_ttl_is_unauthorised(env, monkeypatch):
     conn, ledger, data = env
     mock = MockAdapter()
     _created(conn, ledger, data, mock, "cmp_x5")
-    _, act = media_buyer.request_activation(conn, ledger, "cmp_x5", ceiling_pln=50)
+    _, act = media_buyer.request_activation(conn, ledger, "cmp_x5", ceiling=50)
     va = approve(conn, ledger, "campaign.activate", "cmp_x5", act, RUN)
     import time as _time
     later = _time.time() + APPROVAL_TTL_S + 60

@@ -63,8 +63,8 @@ ENTRIES: tuple[Entry, ...] = (
                "would move them; Meta treats this as suggestions. <strong>Proposition"
                "</strong>: one sentence. <strong>Tone and brand</strong>, <strong>mandatory "
                "items</strong> (disclaimers, banned claims, dates), <strong>budget</strong> "
-               "(daily, or a total spread over the days; in the ad account's currency, PLN "
-               "here; a daily amount above the server's ceiling is refused), "
+               "(daily, or a total spread over the days; in the ad account's currency, read "
+               "from the account; a daily amount above the server's ceiling is refused), "
                "<strong>placements</strong> (automatic by default, plus the images to make) "
                "and <strong>assets</strong>.",
          "pl": "<strong>Reklamodawca</strong>: osoba albo firma, nazwa, którą widzą ludzie "
@@ -82,7 +82,8 @@ ENTRIES: tuple[Entry, ...] = (
                "przewodnia</strong>: jedno zdanie. <strong>Ton i marka</strong>, "
                "<strong>elementy obowiązkowe</strong> (zastrzeżenia, zakazane twierdzenia, "
                "daty), <strong>budżet</strong> (dzienny albo łączny rozłożony na dni; w "
-               "walucie konta reklamowego, tutaj PLN; kwota dzienna powyżej limitu serwera "
+               "walucie konta reklamowego, odczytanej z konta; kwota dzienna powyżej limitu "
+               "serwera "
                "jest odrzucana), <strong>umiejscowienia</strong> (domyślnie automatyczne, "
                "plus obrazy do przygotowania) i <strong>materiały</strong>."}),
     Entry(
@@ -189,15 +190,16 @@ ENTRIES: tuple[Entry, ...] = (
                "nonce) and expires after 15 minutes. Any change after signing, a replay or "
                "a late signature is refused. Campaigns are always created "
                "<strong>PAUSED</strong>; turning one on is a second signature, and the "
-               "daily budget can never exceed the ceiling set on the server (50 PLN by "
-               "default).",
+               "daily budget can never exceed the ceiling set on the server (50 in the "
+               "ad account's currency by default).",
          "pl": "Nie. Żaden agent nie zapisuje niczego w Mecie: robi to tylko kod i tylko po "
                "podpisie złożonym w Twojej przeglądarce kluczem, który jej nie opuszcza. "
                "Podpis obejmuje dokładnie te bajty, które widzisz (ich skrót SHA-256), działa "
                "jeden raz (jednorazowy nonce) i wygasa po 15 minutach. Zmiana po podpisie, "
                "powtórka albo spóźniony podpis są odrzucane. Kampania powstaje zawsze "
                "<strong>WSTRZYMANA</strong>; włączenie jej to drugi podpis, a budżet dzienny "
-               "nigdy nie przekroczy limitu ustawionego na serwerze (domyślnie 50 zł)."}),
+               "nigdy nie przekroczy limitu ustawionego na serwerze (domyślnie 50 w walucie "
+               "konta reklamowego)."}),
     Entry(
         "receipts", "harjit", "verify",
         {"en": "What is a receipt, and how do I check one?",

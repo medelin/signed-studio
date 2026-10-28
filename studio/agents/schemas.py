@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from studio.muse.structured import strict_schema
 
@@ -55,7 +55,8 @@ class Angle(_Closed):
 class Plan(_Closed):
     audience: str
     angles: list[Angle]
-    budget_pln_daily: int
+    # whole units of the ad account's currency per day ("budget_pln_daily" in recorded runs)
+    budget_daily: int = Field(validation_alias=AliasChoices("budget_daily", "budget_pln_daily"))
     placements: list[Placement]
     tasks: list[str]
 
@@ -69,8 +70,8 @@ class Plan(_Closed):
             raise ValueError("placements must be unique")
         if len(self.placements) > len(PLACEMENT_SIZES):
             raise ValueError(f"at most {len(PLACEMENT_SIZES)} placements")
-        if not 1 <= self.budget_pln_daily <= 500:
-            raise ValueError("daily budget must be 1-500 PLN")
+        if not 1 <= self.budget_daily <= 500:
+            raise ValueError("daily budget must be 1-500 in the account currency")
         return self
 
 

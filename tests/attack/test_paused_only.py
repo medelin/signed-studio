@@ -174,15 +174,15 @@ def test_activation_needs_its_own_approval_and_respects_the_ceiling(env):
     p = payload()
     v = approve(conn, ledger, "campaign.create", "cmp_act", p, RUN)
     media_buyer.create(conn, ledger, mock, v, p, data)
-    pending, act = media_buyer.request_activation(conn, ledger, "cmp_act", ceiling_pln=50)
+    pending, act = media_buyer.request_activation(conn, ledger, "cmp_act", ceiling=50)
     with pytest.raises(ExecutionRefused):  # the creation approval cannot activate
         media_buyer.activate(conn, ledger, mock, v, act, 50)
     va = approve(conn, ledger, "campaign.activate", "cmp_act", act, RUN)
     with pytest.raises(media_buyer.BuyError) as exc:  # ceiling lowered after signing
-        media_buyer.activate(conn, ledger, mock, va, act, ceiling_pln=20)
+        media_buyer.activate(conn, ledger, mock, va, act, ceiling=20)
     assert exc.value.code == "over_ceiling"
     assert media_buyer.campaign(conn, "cmp_act")["status"] == "PAUSED"
-    _, act2 = media_buyer.request_activation(conn, ledger, "cmp_act", ceiling_pln=50)
+    _, act2 = media_buyer.request_activation(conn, ledger, "cmp_act", ceiling=50)
     va2 = approve(conn, ledger, "campaign.activate", "cmp_act", act2, RUN)
     out = media_buyer.activate(conn, ledger, mock, va2, act2, 50)
     assert out["status"] == "ACTIVE" and media_buyer.campaign(conn, "cmp_act")[
@@ -197,5 +197,5 @@ def test_over_ceiling_campaign_cannot_even_request_activation(env):
     v = approve(conn, ledger, "campaign.create", "cmp_big", p, RUN)
     media_buyer.create(conn, ledger, mock, v, p, data)
     with pytest.raises(media_buyer.BuyError) as exc:
-        media_buyer.request_activation(conn, ledger, "cmp_big", ceiling_pln=50)
+        media_buyer.request_activation(conn, ledger, "cmp_big", ceiling=50)
     assert exc.value.code == "over_ceiling"

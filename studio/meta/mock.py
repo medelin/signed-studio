@@ -53,9 +53,10 @@ class MockAdapter:
     name = "mock"
 
     def __init__(self, comments: list[RemoteComment] | None = None, *,
-                 conn: Any = None, page_id: str = MOCK_PAGE) -> None:
+                 conn: Any = None, page_id: str = MOCK_PAGE, currency: str = "PLN") -> None:
         self._conn = conn
         self.page_id = page_id
+        self.currency = currency
         self.objects: dict[str, dict[str, Any]] = {}
         self.calls: list[tuple[str, str]] = []  # (method, object id)
         self.replies: dict[str, list[str]] = {}
@@ -83,6 +84,9 @@ class MockAdapter:
         self.objects[image_hash] = {"type": "image", "sha256": digest}
         self.calls.append(("upload_image", image_hash))
         return image_hash
+
+    def account_info(self) -> dict[str, str]:
+        return {"currency": self.currency, "timezone_name": "Europe/Warsaw"}
 
     def _delivery(self, payload: Mapping[str, Any], approval: Verified) -> dict[str, Any]:
         require(approval, CREATE, payload, self._conn)

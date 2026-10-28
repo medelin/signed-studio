@@ -22,7 +22,7 @@ def search(kind, q):
     table = {("adinterest", "ceramics"): [{"id": "6003107902433", "name": "Pottery"},
                                           {"id": "6003000000001", "name": "Ceramics"}],
              ("adinterest", "coffee"): [{"id": "6003012345678", "name": "Coffee"}],
-             ("adlocale", "pl"): [{"key": 15, "name": "Polish"}]}
+             ("adlocale", "pol"): [{"key": 15, "name": "polski"}]}
     return table.get((kind, q.casefold()), [])
 
 
@@ -31,7 +31,7 @@ def test_resolve_prefers_the_exact_name_and_never_guesses():
     assert r.interests == [{"hint": "Ceramics", "id": "6003000000001", "name": "Ceramics"},
                            {"hint": "coffee", "id": "6003012345678", "name": "Coffee"}]
     assert r.excluded_interests[0]["id"] == "6003012345678"
-    assert r.locales == [{"hint": "pl", "key": 15, "name": "Polish"}]
+    assert r.locales == [{"hint": "pl", "key": 15, "name": "polski"}]
     assert r.unresolved == ["zzz-unknown"] and r.searches == 5
     offline = audience.resolve(None, ["coffee"])
     assert offline.interests == [] and offline.unresolved == ["coffee"]

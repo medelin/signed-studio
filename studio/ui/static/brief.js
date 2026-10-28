@@ -13,7 +13,7 @@
   if (!form || !v1 || !window.Studio) return;
   const lang = document.documentElement.lang === "pl" ? "pl" : "en";
   const live = $("brief-live");
-  let draft = null;  // {brief_id, draft_run_id, brief, ceiling_pln}
+  let draft = null;  // {brief_id, draft_run_id, brief, ceiling, currency}
   let dictated = false;  // any voice input makes the run a transcript run (stricter)
   let facts = [];  // [{id, input}]
   let factSeq = 0;
@@ -377,7 +377,7 @@
     const entries = Object.entries(fields);
     for (const [path, code] of entries) {
       const { p, id } = errTarget(path);
-      const msg = T(ERR_PREFIX + code, { ceiling: draft.ceiling_pln });
+      const msg = T(ERR_PREFIX + code, { ceiling: draft.ceiling, currency: draft.currency });
       p.textContent = msg;
       p.hidden = false;
       const holder = p.closest(".bf-field, .bv-item, fieldset");

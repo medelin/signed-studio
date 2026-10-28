@@ -37,6 +37,12 @@ ADVANTAGE_AGE_MAX = 65
 MAX_HINTS = 10
 NUMERIC_ID = re.compile(r"\d{1,30}")
 
+# Locale search matches language names in the account's language, not ISO codes ("pl"
+# finds nothing, "Pol" finds "polski": recorded 2026-10-28, graph_readonly.json), so an
+# ISO 639-1 code is looked up by a name prefix.
+LANGUAGE_QUERY = {"pl": "Pol", "en": "English", "de": "Deutsch", "uk": "Україн",
+                  "fr": "Français", "es": "Español", "it": "Italiano", "cs": "Čeština"}
+
 # (kind, query) → search results [{"id"|"key", "name"}]; kind: adinterest | adlocale
 Search = Callable[[str, str], list[dict[str, Any]]]
 
@@ -55,7 +61,7 @@ class Resolved:
 
 
 def _best(hint: str, results: Sequence[Mapping[str, Any]]) -> Mapping[str, Any] | None:
-    folded = hint.strip().casefold()
+    folded = LANGUAGE_QUERY.get(hint.strip().casefold(), hint).strip().casefold()
     for r in results:
         if str(r.get("name", "")).strip().casefold() == folded:
             return r
@@ -72,9 +78,10 @@ def resolve(search: Search | None, interests: Sequence[str],
                                 (languages, out.locales, "adlocale")):
         for hint in list(dict.fromkeys(h.strip() for h in hints if h.strip()))[:MAX_HINTS]:
             results = []
+            query = LANGUAGE_QUERY.get(hint.casefold(), hint) if kind == "adlocale" else hint
             if search is not None:
                 out.searches += 1
-                results = [r for r in search(kind, hint) if isinstance(r, Mapping)]
+                results = [r for r in search(kind, query) if isinstance(r, Mapping)]
             best = _best(hint, results)
             ident = None if best is None else best.get("key" if kind == "adlocale" else "id")
             if best is None or ident in (None, ""):

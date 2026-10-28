@@ -49,7 +49,7 @@ from studio.approvals import (
     verify_and_consume,
 )
 from studio.approvals import renew as renew_approval
-from studio.meta.adapter import MOCK_PAGE
+from studio.meta.adapter import MOCK_PAGE, AdapterError
 from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
@@ -171,6 +171,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     # action -> executor(verified, payload) -> result dict; runs after the approval commits
     app.state.executors = {}
 
+    def account_currency() -> str:
+        """The ad account's currency (the adapter reads it once); PLN before the adapter
+        exists (never: create_app makes it right after the routes)."""
+        adapter = getattr(app.state, "adapter", None)
+        return adapter.account_info()["currency"] if adapter is not None else \
+            settings.account_currency
+
     def worker(run_id: str, brief: str, brief_source: str = "operator",
                confirmed: brief_v1.BriefV1 | None = None, digest: str = "") -> None:
         try:
@@ -180,7 +187,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 photo_png=settings.product_photo.read_bytes(),
                 concept=settings.product_concept, data_dir=settings.data_dir,
                 landing_url=settings.landing_url, brief_source=brief_source,
-                max_daily_budget_pln=settings.max_daily_budget_pln,
+                max_daily_budget=settings.max_daily_budget, currency=account_currency(),
                 brief_v1=confirmed, brief_sha256=digest,
                 page_id=getattr(getattr(app.state, "adapter", None), "page_id", "")
                 or MOCK_PAGE,
@@ -231,7 +238,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if missing:
             return fields_error(missing)
         confirmed, answered, struck = brief_v1.resolve(draft, resolutions)
-        problems = brief_v1.problems(confirmed, ceiling_daily=settings.max_daily_budget_pln)
+        try:
+            currency = account_currency()
+        except AdapterError as exc:
+            return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
+        problems = brief_v1.problems(confirmed, ceiling_daily=settings.max_daily_budget,
+                                     currency=currency)
         if problems:
             return fields_error(problems)
         if app.state.muse is None and not settings.model_available:
@@ -330,8 +342,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "brief_id": brief_id, "draft_run_id": run_id, "source": source,
             "brief": draft.model_dump(mode="json"),
             "problems": brief_v1.problems(draft, confirmed=False,
-                                          ceiling_daily=settings.max_daily_budget_pln),
-            "ceiling_pln": settings.max_daily_budget_pln,
+                                          ceiling_daily=settings.max_daily_budget,
+                                          currency=account_currency()),
+            "ceiling": settings.max_daily_budget, "currency": account_currency(),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 
     @app.post("/api/runs")

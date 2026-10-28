@@ -85,7 +85,7 @@ def test_pending_binds_the_code_built_payload(replay):
     data = json.loads(payload)
     assert payload_sha256(data) == pending.content_sha256
     assert data["campaign"]["status"] == "PAUSED"
-    assert data["campaign"]["daily_budget_minor"] == result.plan.budget_pln_daily * 100
+    assert data["campaign"]["daily_budget_minor"] == result.plan.budget_daily * 100
     assert [i["sha256"] for i in data["images"]] == [i.sha256 for i in result.creatives.images]
     status = conn.execute("SELECT status FROM approvals WHERE id = ?", (pending.id,)).fetchone()
     assert status == ("pending",)

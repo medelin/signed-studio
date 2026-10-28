@@ -161,6 +161,7 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         "adset_external_id": "TEXT NOT NULL DEFAULT ''",
         "ad_external_id": "TEXT NOT NULL DEFAULT ''",
         "more_ad_ids": "TEXT NOT NULL DEFAULT '[]'",  # further ads of the ad set (JSON)
+        "currency": "TEXT NOT NULL DEFAULT 'PLN'",  # the ad account's, as signed
     },
     "comments": {
         "source": "TEXT NOT NULL DEFAULT 'seed'",

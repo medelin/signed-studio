@@ -1,0 +1,161 @@
+{
+ "_provenance": "recorded",
+ "recorded": "2026-10-28",
+ "_note": "Read-only Graph API v25.0 GET responses from the operator's own ad account and Page (no object was created). Tokens are never stored; the ad account and Page ids are replaced by act_100000000000001 and 600000000000001; Meta's public interest and locale ids are kept.",
+ "interactions": [
+  {
+   "name": "account",
+   "request": {
+    "method": "GET",
+    "path": "/v25.0/act_100000000000001",
+    "params": {
+     "fields": "currency,timezone_name"
+    }
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "currency": "GBP",
+     "timezone_name": "Europe/Warsaw"
+    }
+   }
+  },
+  {
+   "name": "search_interest",
+   "request": {
+    "method": "GET",
+    "path": "/v25.0/search",
+    "params": {
+     "type": "adinterest",
+     "q": "ceramics",
+     "limit": "3"
+    }
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "data": [
+      {
+       "id": "6003845951252",
+       "name": "Ceramics Monthly",
+       "audience_size_lower_bound": 51360,
+       "audience_size_upper_bound": 60400,
+       "path": [
+        "Zainteresowania",
+        "Dodatkowe zainteresowania",
+        "Ceramics Monthly"
+       ],
+       "description": null,
+       "disambiguation_category": "Magazyn",
+       "topic": "News and entertainment"
+      },
+      {
+       "id": "6004165592024",
+       "name": "Contemporary Ceramics",
+       "audience_size_lower_bound": 21147,
+       "audience_size_upper_bound": 24870,
+       "path": [
+        "Zainteresowania",
+        "Dodatkowe zainteresowania",
+        "Contemporary Ceramics"
+       ],
+       "description": null,
+       "disambiguation_category": "Galeria sztuki",
+       "topic": "Travel, places and events"
+      },
+      {
+       "id": "6002989694968",
+       "name": "Sztuki wizualne (sztuka)",
+       "audience_size_lower_bound": 534538554,
+       "audience_size_upper_bound": 628617340,
+       "path": [
+        "Zainteresowania",
+        "Dodatkowe zainteresowania",
+        "Sztuki wizualne (sztuka)"
+       ],
+       "description": null,
+       "topic": "News and entertainment"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "name": "search_locale",
+   "request": {
+    "method": "GET",
+    "path": "/v25.0/search",
+    "params": {
+     "type": "adlocale",
+     "q": "Pol",
+     "limit": "3"
+    }
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "data": [
+      {
+       "name": "polski",
+       "key": 15
+      }
+     ],
+     "paging": {
+      "cursors": {
+       "before": "MAZDZD",
+       "after": "MAZDZD"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "insights_empty_account",
+   "request": {
+    "method": "GET",
+    "path": "/v25.0/act_100000000000001/insights",
+    "params": {
+     "fields": "results,cost_per_result,impressions,reach,frequency,spend,cpm,ctr,inline_link_clicks,actions,cost_per_action_type,attribution_setting",
+     "date_preset": "last_7d",
+     "use_unified_attribution_setting": "true"
+    }
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "data": [
+      {
+       "spend": "0",
+       "inline_link_clicks": "0",
+       "attribution_setting": "na",
+       "date_start": "2026-10-21",
+       "date_stop": "2026-10-27"
+      }
+     ],
+     "paging": {
+      "cursors": {
+       "before": "MAZDZD",
+       "after": "MAZDZD"
+      }
+     }
+    }
+   }
+  },
+  {
+   "name": "leadgen_forms",
+   "request": {
+    "method": "GET",
+    "path": "/v25.0/600000000000001/leadgen_forms",
+    "params": {
+     "fields": "id,name,status"
+    }
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "data": []
+    }
+   }
+  }
+ ]
+}

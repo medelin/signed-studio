@@ -55,7 +55,7 @@ function renderPlan(plan, reasoning) {
   box.replaceChildren();
   box.classList.remove("empty");
   box.append(el("p", T("audience", { value: plan.audience })));
-  box.append(el("p", T("budget", { pln: plan.budget_pln_daily, placements: plan.placements.join(", ") })));
+  box.append(el("p", T("budget", { amount: plan.budget_daily, placements: plan.placements.join(", ") })));
   const ol = el("ol");
   for (const a of plan.angles) ol.append(el("li", a.name + " — " + a.hook + " (" + a.persona + ")"));
   box.append(ol);
@@ -397,6 +397,11 @@ $("open-form").addEventListener("submit", (ev) => {
 // -- campaign + activation ------------------------------------------------------------
 
 let currentCampaign = null;
+// Meta's currency offsets: these currencies have no subdivisions in the API (offset 1).
+const OFFSET_ONE = ["CLP", "COP", "CRC", "HUF", "ISK", "IDR", "JPY", "KRW", "PYG", "TWD", "VND"];
+function minor(value, currency) {
+  return OFFSET_ONE.includes(currency) ? String(value) : (value / 100).toFixed(2);
+}
 
 async function showCampaign(runId, itemId) {
   const r = await fetch("/api/campaigns/" + encodeURIComponent(itemId), { credentials: "same-origin" });
@@ -405,7 +410,7 @@ async function showCampaign(runId, itemId) {
   currentCampaign = c;
   $("campaign-panel").hidden = false;
   $("campaign-summary").textContent = T("campaign", { name: c.name, status: c.status,
-    budget: (c.daily_budget_minor / 100).toFixed(2), adapter: c.adapter, ceiling: c.ceiling_pln });
+    budget: minor(c.daily_budget_minor, c.currency), currency: c.currency, adapter: c.adapter, ceiling: c.ceiling });
   const box = $("preview");
   box.replaceChildren();
   const p = c.preview || {};
@@ -439,7 +444,7 @@ $("activate-button").addEventListener("click", async () => {
     const r = await postJSON("/api/campaigns/" + encodeURIComponent(currentCampaign.id) + "/activate", {});
     if (!r.ok) throw new Error(T("activation_refused", { error: E(r.data, r.status) }));
     const payload = await Signer.loadPayload(r.data.approval_id);
-    status("activate-status", T("signing_activation", { budget: (payload.content.daily_budget_minor / 100).toFixed(2) }));
+    status("activate-status", T("signing_activation", { budget: minor(payload.content.daily_budget_minor, payload.content.currency), currency: payload.content.currency }));
     const done = await Signer.sign(payload);
     if (!done.executed) throw new Error(T("not_activated", { error: done.execution_error || T("no_executor") }));
     status("activate-status", T("activated", { adapter: done.result.adapter, sig: done.signature.slice(0, 16) }));

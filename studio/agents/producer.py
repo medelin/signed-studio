@@ -46,6 +46,7 @@ from studio.agents.schemas import CopyPack, CreativeSet, Plan
 from studio.approvals import Pending, confirmed_brief, transaction
 from studio.meta import audience, objectives
 from studio.meta.adapter import MOCK_PAGE
+from studio.meta.currency import to_minor
 from studio.muse.client import MuseClient, MuseError, ToolCall
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import structured
@@ -76,7 +77,8 @@ class Context:
     # "operator" (typed brief) or "transcript" (a voice brief, possibly edited): a
     # transcript is customer-grade text — enveloped, declared, never on Contributor.
     brief_source: str = "operator"
-    max_daily_budget_pln: int = 50  # STUDIO_MAX_DAILY_BUDGET_PLN
+    max_daily_budget: int = 50  # STUDIO_MAX_DAILY_BUDGET, in the ad account's currency
+    currency: str = "PLN"  # the ad account's currency (Adapter.account_info)
     # The confirmed Brief v1 this run is made from (None: a free-text brief) and its hash
     # (the ``brief.confirmed`` receipt is written before the run starts).
     brief_v1: brief_v1.BriefV1 | None = None
@@ -149,7 +151,8 @@ def opaque_id(prefix: str) -> str:
 
 def campaign_payload(run: RunResult, variant_index: int,
                      link: str = "https://example.com/", *,
-                     ceiling_pln: int = 50,
+                     ceiling: int = 50,
+                     currency: str = "PLN",
                      brief: brief_v1.BriefV1 | None = None,
                      page_id: str = MOCK_PAGE,
                      resolved: audience.Resolved | None = None) -> dict[str, Any]:
@@ -163,9 +166,9 @@ def campaign_payload(run: RunResult, variant_index: int,
     the hints ``resolved`` to Meta ids (``audience``, shown before signing), exclusions,
     the owner's custom audiences and, from the owner's source audience, a lookalike."""
     assert run.plan and run.copy and run.creatives and run.review
-    if run.plan.budget_pln_daily > ceiling_pln:
-        raise ToolError(f"daily budget {run.plan.budget_pln_daily} PLN is above the "
-                        f"{ceiling_pln} PLN ceiling; lower it in the plan")
+    if run.plan.budget_daily > ceiling:
+        raise ToolError(f"daily budget {run.plan.budget_daily} {currency} is above the "
+                        f"{ceiling} {currency} ceiling; lower it in the plan")
     try:
         spec = (objectives.delivery(brief.objective.goal, brief.objective.sub,
                                     page_id=page_id, promotion=brief.promotion.model_dump())
@@ -178,8 +181,8 @@ def campaign_payload(run: RunResult, variant_index: int,
         "run_id": run.run_id,
         "delivery": spec,
         "campaign": {"objective": spec["objective"], "status": "PAUSED",
-                     "daily_budget_minor": run.plan.budget_pln_daily * 100,
-                     "currency": "PLN", "angle": run.plan.angles[run.angle_index].name},
+                     "daily_budget_minor": to_minor(run.plan.budget_daily, currency),
+                     "currency": currency, "angle": run.plan.angles[run.angle_index].name},
         "audience": run.plan.audience,
         "targeting": {"countries": ["PL"], "age_min": 25, "age_max": 55},
         "link": link,
@@ -321,6 +324,7 @@ def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
         ctx.client, MODEL,
         [{"role": "system", "content": _system(ctx)},
          {"role": "user", "content": f"Brief:\n{brief_block(ctx, brief)}\n\n"
+                                     f"Ad account currency: {ctx.currency}\n"
                                      "Write the campaign plan only."}],
         Plan, tier="standard", tier_reason=(
             "producer plan from a voice transcript" if ctx.brief_source == "transcript"
@@ -330,7 +334,7 @@ def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
     )
     if ctx.brief_v1 is not None:
         plan = plan.model_copy(update={
-            "budget_pln_daily": brief_v1.daily_budget(ctx.brief_v1),
+            "budget_daily": brief_v1.daily_budget(ctx.brief_v1),
             "placements": list(ctx.brief_v1.placements.deliverables)})
     return plan
 
@@ -506,7 +510,8 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         resolved = None
         if ctx.brief_v1 is not None:
             resolved = resolve_audience(ctx, run.run_id, ctx.brief_v1)
-        payload = campaign_payload(run, index, link, ceiling_pln=ctx.max_daily_budget_pln,
+        payload = campaign_payload(run, index, link, ceiling=ctx.max_daily_budget,
+                                   currency=ctx.currency,
                                    brief=ctx.brief_v1, page_id=ctx.page_id,
                                    resolved=resolved)
         item_id = opaque_id("cmp_")

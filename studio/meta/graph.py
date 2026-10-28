@@ -211,6 +211,20 @@ class GraphAdapter:
                     return str(item["hash"])
         raise AdapterError("Graph API returned no image hash", code="bad_response")
 
+    def account_info(self) -> dict[str, str]:
+        """``GET /act_{id}?fields=currency,timezone_name``, read once and kept."""
+        cached = getattr(self, "_account", None)
+        if cached is None:
+            body = self._request("GET", self.account, params={
+                "fields": "currency,timezone_name"})
+            currency = body.get("currency")
+            if not isinstance(currency, str) or len(currency) != 3:
+                raise AdapterError("Graph API returned no account currency",
+                                   code="bad_response")
+            cached = {"currency": currency, "timezone_name": str(body.get("timezone_name", ""))}
+            self._account: dict[str, str] | None = cached
+        return dict(cached)
+
     def _delivery(self, payload: Mapping[str, Any], approval: Verified) -> dict[str, Any]:
         require(approval, CREATE, payload, self._conn)
         check_paused(payload)

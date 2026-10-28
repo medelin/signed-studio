@@ -14,7 +14,8 @@
   with the campaign, ad set and ad ids, the daily budget and the ceiling in the signed
   payload. Activation sets ``ACTIVE`` on the ad, the ad set, then the campaign, one
   ``tool_call`` receipt per level, all under that one approval; the ceiling
-  (``STUDIO_MAX_DAILY_BUDGET_PLN``) is checked again at execution time.
+  (``STUDIO_MAX_DAILY_BUDGET``, in the ad account's currency) is checked again at
+  execution time.
 
 Nothing here is reachable from a model: there is no tool for it (``skills.yaml`` marks
 both actions external), and every entry point starts with ``executor.authorize``.
@@ -46,6 +47,7 @@ from studio.meta.adapter import (
     check_paused,
     spec_sha256,
 )
+from studio.meta.currency import to_minor
 from studio.receipts import Ledger, canonical
 
 AGENT = "media_buyer"
@@ -158,10 +160,11 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         conn.execute(
             "INSERT INTO campaigns (id, run_id, name, objective, status, daily_budget_minor, "
             "adapter, external_id, adset_external_id, ad_external_id, created_ts, "
-            "more_ad_ids) VALUES (?, ?, ?, ?, 'PAUSED', ?, ?, ?, ?, ?, ?, ?)",
+            "more_ad_ids, currency) VALUES (?, ?, ?, ?, 'PAUSED', ?, ?, ?, ?, ?, ?, ?, ?)",
             (v.item_id, v.run_id, campaign_name(payload), payload["campaign"]["objective"],
              int(payload["campaign"]["daily_budget_minor"]), adapter.name, campaign_id,
-             adset_id, ad_id, time.time(), json.dumps(ad_ids[1:])))
+             adset_id, ad_id, time.time(), json.dumps(ad_ids[1:]),
+             str(payload["campaign"].get("currency", "PLN"))))
     result: dict[str, Any] = {"adapter": adapter.name, "status": PAUSED,
                               "campaign_item_id": v.item_id,
                               **{f"{k}_id": x for k, x in created.items()}}
@@ -178,7 +181,8 @@ def campaign(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
     with conn.lock:  # type: ignore[attr-defined]
         row = conn.execute(
             "SELECT c.id, c.run_id, c.name, c.status, c.daily_budget_minor, c.adapter, "
-            "c.external_id, c.adset_external_id, c.ad_external_id, e.result, c.more_ad_ids "
+            "c.external_id, c.adset_external_id, c.ad_external_id, e.result, c.more_ad_ids, "
+            "c.currency "
             "FROM campaigns c "
             "LEFT JOIN executions e ON e.item_id = c.id AND e.action = 'campaign.create' "
             "WHERE c.id = ?", (item_id,)).fetchone()
@@ -189,11 +193,12 @@ def campaign(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
     out = dict(zip(keys, row[:9], strict=True))
     out["created"] = json.loads(row[9]) if row[9] else {}
     out["more_ad_external_ids"] = json.loads(row[10] or "[]")
+    out["currency"] = str(row[11])
     return out
 
 
 def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
-                       ceiling_pln: int) -> tuple[Pending, dict[str, Any]]:
+                       ceiling: int) -> tuple[Pending, dict[str, Any]]:
     """A pending ``campaign.activate`` for a PAUSED campaign within the budget ceiling."""
     c = campaign(conn, item_id)
     if c is None:
@@ -202,14 +207,15 @@ def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
         raise BuyError("campaign is not PAUSED", "not_paused")
     if not all(c[ACTIVATION_KEYS[level]] for level in ACTIVATION_ORDER):
         raise BuyError("campaign, ad set or ad id missing", "incomplete")
-    ceiling = ceiling_pln * 100
-    if c["daily_budget_minor"] > ceiling:
-        raise BuyError(f"daily budget above the {ceiling_pln} PLN ceiling", "over_ceiling")
+    currency = c["currency"]
+    ceiling_minor = to_minor(ceiling, currency)
+    if c["daily_budget_minor"] > ceiling_minor:
+        raise BuyError(f"daily budget above the {ceiling} {currency} ceiling", "over_ceiling")
     payload = {"action": "campaign.activate", "campaign_id": c["id"],
                **{ACTIVATION_KEYS[level]: c[ACTIVATION_KEYS[level]]
                   for level in ACTIVATION_ORDER}, "adapter": c["adapter"],
-               "daily_budget_minor": c["daily_budget_minor"], "ceiling_minor": ceiling,
-               "currency": "PLN", "run_id": c["run_id"]}
+               "daily_budget_minor": c["daily_budget_minor"], "ceiling_minor": ceiling_minor,
+               "currency": currency, "run_id": c["run_id"]}
     if c["more_ad_external_ids"]:  # every ad of the ad set goes live (copy A/B, formats)
         payload["more_ad_external_ids"] = list(c["more_ad_external_ids"])
     pending = Pending.create("campaign.activate", c["id"], payload, ledger=ledger,
@@ -223,7 +229,7 @@ def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
 
 
 def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
-             payload: dict[str, Any], ceiling_pln: int) -> dict[str, Any]:
+             payload: dict[str, Any], ceiling: int) -> dict[str, Any]:
     v: Verified = executor.authorize(conn, verified, "campaign.activate", payload)
     c = campaign(conn, v.item_id)
     problem = ""
@@ -235,8 +241,10 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
             + [payload.get("daily_budget_minor"), adapter.name]) or (
             c["more_ad_external_ids"] != list(payload.get("more_ad_external_ids") or [])):
         problem = "campaign_changed"
+    elif payload.get("currency") != c["currency"]:
+        problem = "campaign_changed"
     elif int(payload["daily_budget_minor"]) > min(int(payload["ceiling_minor"]),
-                                                  ceiling_pln * 100):
+                                                  to_minor(ceiling, c["currency"])):
         problem = "over_ceiling"
     if problem:
         executor.finish(conn, v, "failed", {"error": problem})
