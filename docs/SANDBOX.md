@@ -11,7 +11,7 @@ in the submission form.
 | Meta | `META_ADAPTER=mock`: campaign writes produce receipts with `adapter: mock`, status PAUSED, no Graph calls; the sandbox never holds a Meta token |
 | Kill switch | `STUDIO_READ_ONLY=1`: every write and model call is a 503, pages stay up |
 | API down | `STUDIO_REPLAY=1`: recorded responses instead of live calls |
-| Health | `GET /healthz` → `{"ok": true, "read_only": false}` (public, minimal) |
+| Health | `GET /healthz` → `{"ok": true, "read_only": false}` (public, minimal; `HEAD` works on every page for uptime monitors) |
 
 ## Guards (`studio/sandbox.py`, enabled by `STUDIO_SANDBOX=1`)
 

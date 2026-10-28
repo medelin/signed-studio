@@ -6,6 +6,7 @@ guards (``write_guard``, ``BodyLimit``, the login limiter, the daily model budge
 
 - **judge-only writes**: any state-changing request except ``/login`` and ``/logout`` needs a
   valid judge session *before* its body is read (401 otherwise), whatever the route does;
+- **HEAD** requests are routed as ``GET`` (for uptime monitors; the server sends no body);
 - **limits**: per client prefix (IPv4 /32, IPv6 /64) for all requests and for writes, and
   per session for writes per minute and per hour (429 with ``Retry-After``); the tables are
   bounded and evict their least recently used entries;
@@ -243,6 +244,9 @@ class SandboxGuard:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        if scope.get("method") == "HEAD":
+            # Uptime monitors probe with HEAD; route it as GET (the server drops the body).
+            scope = {**scope, "method": "GET"}
         request = Request(scope)
         ip = self.ip_of(request)
         wait = self.ip_requests.hit(ip)

@@ -172,6 +172,8 @@ def test_public_pages_stay_readable(make_client):
         assert client.get("/").status_code == 200
         assert client.get("/healthz").json()["ok"] is True
         assert client.get("/api/receipts.jsonl").status_code == 200
+        head = client.head("/healthz")
+        assert head.status_code == 200 and head.content == b""
 
 
 @pytest.mark.parametrize("path", ["/api/runs", "/api/keys", "/api/comments/simulate",
