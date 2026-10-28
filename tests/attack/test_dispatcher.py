@@ -134,7 +134,8 @@ def _ready_run(verdict="OK"):
     run.creatives = CreativeSet(cutout_path="c.png", cutout_sha256="0" * 64,
                                 foreground_pixels=1, images=[img], prompts=[],
                                 response_ids=[])
-    run.review = {"verdict": verdict, "second_opinion": "unavailable", "disagreements": []}
+    run.review = {"verdict": verdict, "second_opinion": "unavailable", "disagreements": [],
+                  "variant_index": 0, "binding": producer.review_binding(run, 0)}
     return run
 
 

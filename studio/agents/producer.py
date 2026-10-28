@@ -34,7 +34,7 @@ from studio.approvals import Pending, transaction
 from studio.muse.client import MuseClient
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import structured
-from studio.receipts import canonical, is_opaque
+from studio.receipts import canonical, is_opaque, sha256_hex
 
 AGENT = "producer"
 MODEL = "muse-spark-1.3"
@@ -116,6 +116,17 @@ def campaign_payload(run: RunResult, variant_index: int,
     }
 
 
+def review_binding(run: RunResult, variant_index: int) -> str:
+    """Hash of exactly what a review covers: the chosen variant and every image."""
+    assert run.copy and run.creatives
+    return sha256_hex(canonical({
+        "variant_index": variant_index,
+        "variant": run.copy.variants[variant_index].model_dump(),
+        "images": [{"placement": i.placement, "sha256": i.sha256}
+                   for i in run.creatives.images],
+    }))
+
+
 def _save_state(conn: sqlite3.Connection, run: RunResult, status: str) -> None:
     with transaction(conn):
         conn.execute(
@@ -142,15 +153,20 @@ def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
 
 
 def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
-    variant_for_review = {"index": 0}
-
     def emit(kind: str, **data: Any) -> None:
         _save_state(ctx.conn, run, "running")
         if ctx.on_event:
             ctx.on_event(kind, data)
 
+    def new_content() -> None:
+        """Copy or images are about to change: the old review no longer applies."""
+        if run.pending_id:
+            raise ToolError("approval already requested; the run's content is frozen")
+        run.review = None
+
     def run_copywriter(args: CopywriterArgs) -> dict[str, Any]:
         assert run.plan
+        new_content()
         if not 0 <= args.angle_index < len(run.plan.angles):
             raise ToolError("angle_index must be 0, 1 or 2")
         angle = run.plan.angles[args.angle_index]
@@ -164,6 +180,7 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
         headline = args.headline.strip()[:60]
         if not headline:
             raise ToolError("headline is required")
+        new_content()
         run.creatives = art_director.run(
             ctx.client, ctx.photo_png, headline, run_id=run.run_id, concept=ctx.concept,
             data_dir=ctx.data_dir)
@@ -184,11 +201,11 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
             raise ToolError("run_copywriter and run_art_director must finish first")
         if not 0 <= args.variant_index < len(run.copy.variants):
             raise ToolError("variant_index must be 0, 1 or 2")
-        variant_for_review["index"] = args.variant_index
         hero = ctx.data_dir / run.creatives.images[0].path
         result = reviewer.run(ctx.client, ctx.open_client, hero.read_bytes(),
                               run.copy.variants[args.variant_index], run_id=run.run_id)
-        run.review = {**result.as_dict(), "variant_index": args.variant_index}
+        run.review = {**result.as_dict(), "variant_index": args.variant_index,
+                      "binding": review_binding(run, args.variant_index)}
         emit("review")
         return {"verdict": result.verdict, "second_opinion": result.second_status,
                 "disagreements": result.disagreements,
@@ -201,7 +218,10 @@ def _handlers(ctx: Context, run: RunResult, brief: str) -> dict[str, Any]:
             raise ToolError("run_reviewers must finish first")
         if run.review["verdict"] == "BLOCK":
             raise ToolError("the reviewers blocked this creative; fix it before approval")
-        payload = campaign_payload(run, variant_for_review["index"], ctx.landing_url)
+        index = run.review["variant_index"]
+        if run.review.get("binding") != review_binding(run, index):
+            raise ToolError("content changed since review; run_reviewers again")
+        payload = campaign_payload(run, index, ctx.landing_url)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
                                  ledger=ctx.client.ledger, run_id=run.run_id)

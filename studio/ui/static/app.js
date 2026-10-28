@@ -112,8 +112,12 @@ function renderReviewBlock(title, review) {
 
 function renderReview(review) {
   const box = $("review");
-  if (!review) return;
   box.replaceChildren();
+  if (!review) {
+    box.classList.add("empty");
+    box.textContent = "No review yet.";
+    return;
+  }
   box.classList.remove("empty");
   const head = el("p", "Combined verdict ");
   head.append(el("span", review.verdict, "verdict " + review.verdict));
