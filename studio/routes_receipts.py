@@ -34,6 +34,28 @@ def receipt_view(r: Receipt, *, full: bool) -> dict[str, Any]:
     return data if full else public_view(data)  # type: ignore[no-any-return]
 
 
+def loop_marks(receipts: list[Receipt]) -> dict[str, dict[str, str]]:
+    """The reviewer -> rewrite loop in a ledger: per receipt id, ``blocked`` (a review with
+    verdict BLOCK; ``rules`` lists the rules), ``rewrite`` (the copywriter call that
+    answered it) or ``after`` (the review that followed, ``verdict`` OK/WARN/BLOCK)."""
+    marks: dict[str, dict[str, str]] = {}
+    state: dict[str, str] = {}  # run -> "" | "blocked" | "rewritten"
+    for r in receipts:
+        mode = state.get(r.run_id, "")
+        if r.kind == "review":
+            verdict = str(r.details.get("verdict", ""))
+            if mode == "rewritten":
+                marks[r.id] = {"mark": "after", "verdict": verdict}
+            elif verdict == "BLOCK":
+                state[r.run_id] = "blocked"
+                marks[r.id] = {"mark": "blocked", "verdict": verdict,
+                               "rules": ", ".join(r.details.get("rules") or [])}
+        elif mode == "blocked" and r.agent == "copywriter" and r.kind == "model_call":
+            state[r.run_id] = "rewritten"
+            marks[r.id] = {"mark": "rewrite"}
+    return marks
+
+
 def utc(ts: float) -> str:
     return datetime.fromtimestamp(ts, UTC).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -60,7 +82,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2
         return templates.TemplateResponse(request, "receipts.html", {
             "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": full,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
-            "views": views, "runs": runs, "kinds": sorted(KINDS),
+            "views": views, "loopmarks": loop_marks(everything),
+            "runs": runs, "kinds": sorted(KINDS),
             "run": run if not bad_filter else "", "kind": kind if kind in KINDS else "",
             "total": len(everything), "matched": len(rows), "limit": MAX_ROWS,
             "bad_filter": bad_filter,

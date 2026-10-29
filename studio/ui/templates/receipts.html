@@ -34,7 +34,7 @@
         <td>{{ r.ts | utc }}</td>
         <td><a href="/receipts?run={{ r.run_id | urlencode }}"><code>{{ r.run_id }}</code></a></td>
         <td>{{ r.agent }}</td>
-        <td><span class="kind {{ r.kind }}">{{ r.kind }}</span>{% if r.envelope %} <span class="badge" title="{{ t('receipts.envelope_title') }}">{{ t("receipts.envelope") }}</span>{% endif %}</td>
+        <td><span class="kind {{ r.kind }}">{{ r.kind }}</span>{% if r.envelope %} <span class="badge" title="{{ t('receipts.envelope_title') }}">{{ t("receipts.envelope") }}</span>{% endif %}{% set lp = loopmarks.get(r.id) %}{% if lp %}<span class="badge loop-{{ lp.mark }}">{{ t("loop.mark_" ~ lp.mark, verdict=lp.verdict, rules=lp.rules) }}</span>{% endif %}</td>
         <td>{{ r.provider or "—" }} · {{ r.model or "—" }}</td>
         <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
         <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>

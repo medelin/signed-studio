@@ -123,8 +123,15 @@ FACTS_RULE = ("This run was made from a Brief v1 the owner confirmed. Use only t
               f"{FACT}.")
 
 
+REWRITE_RULE = ("Your previous copy for this angle was BLOCKED by the policy reviewers. Write "
+                "three new variants that make none of the blocked claims, not even reworded "
+                "(drop the claim; keep the product, the facts that are allowed, the tone). "
+                "Blocked findings:")
+
+
 def _user_message(angle: Angle, persona: str, brief: str,
-                  brief_source: str = "operator", facts: list[str] | None = None) -> str:
+                  brief_source: str = "operator", facts: list[str] | None = None,
+                  blocked: list[dict[str, str]] | None = None) -> str:
     lines = [f"Angle: {angle.name}", f"Hook: {angle.hook}", f"Persona: {persona}"]
     if brief and brief_source == "transcript":
         lines.append("Brief (voice transcript):\n" + envelope.wrap(brief, "transcript",
@@ -136,6 +143,9 @@ def _user_message(angle: Angle, persona: str, brief: str,
         lines.append("Confirmed facts:\n" + ("\n".join(f"{i + 1}. {f}"
                                                        for i, f in enumerate(facts))
                                             or "(none: state no facts at all)"))
+    if blocked:
+        lines.append(REWRITE_RULE + "\n" + "\n".join(
+            f"- {b['rule']}: {b['evidence']}" for b in blocked))
     return "\n".join(lines)
 
 
@@ -163,12 +173,13 @@ def write(
     max_tokens: int = 4000,
     facts: list[str] | None = None,
     open_weights: bool = False,
+    blocked: list[dict[str, str]] | None = None,
 ) -> tuple[CopyPack, MuseResult]:
     """``brief_source="transcript"``: the brief is a voice transcript — enveloped, declared,
     and on Standard (``choose_tier(..., source="transcript")``). ``facts``: the confirmed
     facts of a Brief v1, the only facts the copy may use."""
     transcript = bool(brief) and brief_source == "transcript"
-    user = _user_message(angle, persona, brief, brief_source, facts)
+    user = _user_message(angle, persona, brief, brief_source, facts, blocked)
     tier, reason, model = choose_tier(user, "contributor",
                                       source="transcript" if transcript else "operator",
                                       open_weights=open_weights)
