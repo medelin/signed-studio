@@ -11,6 +11,11 @@ For an ad made from a confirmed Brief v1 both reviewers also get the owner's con
 statements and rule P10 (``prompts/_grounding.md``) in the user message, and code adds
 ``grounding_net``: a number the owner never confirmed, or a claim the brief bans, is a
 P10 block.
+
+Rules S1 (product fidelity) and S2 (no people) are code too, from SAM 3.1 on each
+generated image (``sam_findings``): the product missing is a block; a silhouette that
+does not match the cut-out, a product that is too small, too large or cut by an edge, or
+a person in the image is a warning, always with the numbers.
 """
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ from PIL import Image
 from studio import brief as brief_v1
 from studio import envelope
 from studio.agents import formats, prompts
-from studio.agents.schemas import CopyVariant, Finding, Review
+from studio.agents.schemas import CopyVariant, Finding, Review, SamCheck
 from studio.muse import openweights
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.structured import StructuredOutputError, response_format
@@ -40,7 +45,16 @@ MAX_SIDE = 1024  # reviewers see a downscaled copy: enough for policy, fewer ima
 _RANK = {"OK": 0, "WARN": 1, "BLOCK": 2}
 RANK = _RANK
 _SEVERITY_FLOOR = {"info": "OK", "warn": "WARN", "block": "BLOCK"}
-_RULE = re.compile(r"\b[PF]\d+\b")
+_RULE = re.compile(r"\b[PFS]\d+\b")
+SAM_RULE = "S1"  # product fidelity (SAM 3.1 on the generated image)
+PEOPLE_RULE = "S2"  # no people (the placement prompt forbids them)
+SAM_RULES = (SAM_RULE, PEOPLE_RULE)
+# silhouette IoU vs the cut-out: below WARN the product was redrawn, below BLOCK it is
+# another object
+IOU_WARN, IOU_BLOCK = 0.5, 0.25
+# product mask share of the image, per placement (a story leaves room for the headline)
+AREA_BOUNDS: dict[str, tuple[float, float]] = {"story_9x16": (0.03, 0.55)}
+AREA_DEFAULT = (0.05, 0.65)
 
 # P9, checked by code as well as by both models: claims of registering companies or
 # providing official documents, and absolute tax/legal promises. Patterns run on
@@ -114,6 +128,63 @@ def format_check(placement: str, ad: CopyVariant | dict[str, Any],
             for f in formats.check(placement, fields, size)]
 
 
+def _pct(x: float) -> str:
+    return f"{100 * x:.1f} %"
+
+
+def sam_findings(placement: str, check: SamCheck | None) -> list[Finding]:
+    """Rules S1/S2 from the SAM check of one generated image (``[]`` if none ran: an
+    image older than the check, or the video poster)."""
+    if check is None:
+        return []
+    if check.status == "not_recorded":
+        return [Finding(rule=SAM_RULE, severity="info",
+                        evidence="code check (SAM 3.1): not recorded in this replay set")]
+    if check.status == "skipped":
+        return [Finding(rule=SAM_RULE, severity="info",
+                        evidence="code check (SAM 3.1): skipped, the run budget was reached")]
+    if check.status == "failed":
+        return [Finding(rule=SAM_RULE, severity="warn",
+                        evidence=f"code check (SAM 3.1) failed ({check.error or 'error'}); "
+                                 "product fidelity not verified")]
+    if check.matches == 0 or check.iou is None:
+        return [Finding(rule=SAM_RULE, severity="block",
+                        evidence="code check (SAM 3.1): the product was not found in the "
+                                 "image")]
+    lo, hi = AREA_BOUNDS.get(placement, AREA_DEFAULT)
+    flip = ", mirrored" if check.mirrored else ""
+    numbers = (f"silhouette IoU {check.iou:.2f} vs the cut-out{flip}, area "
+               f"{_pct(check.area)} (bounds {_pct(lo)}-{_pct(hi)})")
+    out: list[Finding] = []
+    if check.iou < IOU_BLOCK:
+        out.append(Finding(rule=SAM_RULE, severity="block",
+                           evidence=f"code check (SAM 3.1): the product's outline does not "
+                                    f"match the cut-out: {numbers}; below {IOU_BLOCK}"))
+    elif check.iou < IOU_WARN:
+        out.append(Finding(rule=SAM_RULE, severity="warn",
+                           evidence=f"code check (SAM 3.1): the product looks redrawn: "
+                                    f"{numbers}; below {IOU_WARN}"))
+    if not lo <= check.area <= hi:
+        out.append(Finding(rule=SAM_RULE, severity="warn",
+                           evidence=f"code check (SAM 3.1): the product is too "
+                                    f"{'small' if check.area < lo else 'large'}: {numbers}"))
+    if check.edges:
+        out.append(Finding(rule=SAM_RULE, severity="warn",
+                           evidence="code check (SAM 3.1): the product touches the "
+                                    f"{', '.join(check.edges)} edge (cropped?): {numbers}"))
+    if not out:
+        out.append(Finding(rule=SAM_RULE, severity="info",
+                           evidence=f"code check (SAM 3.1): product present: {numbers}"
+                                    + (f", {check.matches} matches" if check.matches > 1
+                                       else "")))
+    if check.people:
+        out.append(Finding(rule=PEOPLE_RULE, severity="warn",
+                           evidence=f"code check (SAM 3.1): {check.people} person match(es), "
+                                    f"{_pct(check.people_area)} of the image; the prompt "
+                                    "asked for no people"))
+    return out
+
+
 def with_findings(review: Review, extra: list[Finding]) -> Review:
     if not extra:
         return review
@@ -161,7 +232,8 @@ def downscale(png: bytes, max_side: int = MAX_SIDE) -> bytes:
 def normalize(review: Review) -> Review:
     """Rule ids mapped onto the checklist (``"P4 Price"`` → ``P4``, unknown → ``UNMAPPED``);
     the verdict is never milder than the worst finding's severity."""
-    valid = set(prompts.policy_rule_ids()) | {formats.RULE, prompts.GROUNDING_RULE}
+    valid = set(prompts.policy_rule_ids()) | {formats.RULE, prompts.GROUNDING_RULE,
+                                              *SAM_RULES}
     findings = []
     for f in review.findings:
         m = _RULE.search(f.rule)
@@ -272,12 +344,15 @@ def run(
     run_id: str,
     placement: str | None = None,
     brief: brief_v1.BriefV1 | None = None,
+    sam_check: SamCheck | None = None,
 ) -> Reconciled:
     """Both reviews, reconciled, plus one ``review`` receipt with the outcome. With a
     ``placement`` the format check (F1) runs first and its findings join both reviews;
-    with a confirmed ``brief`` the grounding check (P10) joins them too."""
+    with a confirmed ``brief`` the grounding check (P10) joins them too, and with a
+    ``sam_check`` the SAM findings (S1/S2)."""
+    sam_found = sam_findings(placement or "", sam_check)
     fmt = (format_check(placement, copy, image_png) if placement else []) + \
-        grounding_net(copy, brief)
+        grounding_net(copy, brief) + sam_found
     primary = with_findings(
         with_policy_net(review(client, image_png, copy, run_id=run_id, brief=brief), copy),
         fmt)
@@ -300,6 +375,9 @@ def run(
                  "rules": sorted({f.rule for f in primary.findings}),
                  "policy_net": sorted({f.rule for f in policy_net(copy)}),
                  "format": [f.severity for f in fmt if f.rule == formats.RULE],
+                 **({"sam": {"status": sam_check.status,
+                             "findings": [f"{f.rule}:{f.severity}" for f in sam_found]}}
+                    if sam_check is not None else {}),
                  **({"grounding": [f.severity for f in fmt
                                    if f.rule == prompts.GROUNDING_RULE]}
                     if brief is not None else {})},
@@ -315,8 +393,10 @@ def run_formats(
     *,
     run_id: str,
     brief: brief_v1.BriefV1 | None = None,
+    sam_checks: dict[str, SamCheck | None] | None = None,
 ) -> dict[str, Any]:
     """Review each ``(placement, sha256, png)``; the combined verdict is the worst one.
+    ``sam_checks`` (by placement) add rules S1/S2.
 
     ``disagreements`` are prefixed with the placement; ``second_opinion`` is "available"
     only when every format had one ("failed" if any failed)."""
@@ -325,7 +405,7 @@ def run_formats(
     formats = []
     for placement, digest, png in images:
         result = run(client, open_client, png, copy, run_id=run_id, placement=placement,
-                     brief=brief)
+                     brief=brief, sam_check=(sam_checks or {}).get(placement))
         formats.append({"placement": placement, "sha256": digest, **result.as_dict()})
     statuses = {f["second_opinion"] for f in formats}
     second = ("available" if statuses == {"available"}

@@ -42,6 +42,16 @@ def test_brief_loop_replays_and_verifies(loop):
     assert steps[1:3] == ["brief drafted", "brief confirmed"]
 
 
+def test_a_set_recorded_before_the_sam_check_degrades_to_not_recorded(loop):
+    _, tmp = loop
+    rs = receipts(tmp)
+    checks = [r["details"] for r in rs if r["details"].get("tool") == "sam.check"]
+    assert checks and {c["status"] for c in checks} == {"not_recorded"}
+    reviews = [r["details"] for r in rs if r["kind"] == "review"]
+    assert reviews and all(d["sam"] == {"status": "not_recorded", "findings": ["S1:info"]}
+                           for d in reviews)
+
+
 def test_the_campaign_approval_signs_the_confirmed_brief(loop):
     summary, tmp = loop
     run = [r for r in receipts(tmp) if r["run_id"] == summary["run_id"]]

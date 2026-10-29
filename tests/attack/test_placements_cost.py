@@ -63,6 +63,7 @@ def env(tmp_path, monkeypatch):
     db.init(conn)
     ledger = db.open_ledger(conn, tmp_path / "ledger.key")
     client = MuseClient(FAKE_KEY, ledger=ledger, budget=Budget(5.0))
+    client.unrecorded = frozenset({"sam.check"})  # cassette recorded before sam.check
     ctx = producer.Context(client=client, open_client=None, conn=conn, photo_png=PHOTO,
                            concept="mug", data_dir=tmp_path / "var")
     images = []

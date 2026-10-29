@@ -40,6 +40,7 @@ def app(tmp_path):
     tr, sent = transport("producer_loop")
     a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0),
                               transport=tr)
+    a.state.muse.unrecorded = frozenset({"sam.check"})  # cassette recorded before sam.check
     a.state.open_weights = OpenWeightsClient("", ledger=a.state.ledger)
     a.state.sent = sent
     return a
@@ -80,6 +81,7 @@ def finished(tmp_path_factory):
     tr, _ = transport("producer_loop")
     a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0),
                               transport=tr)
+    a.state.muse.unrecorded = frozenset({"sam.check"})  # cassette recorded before sam.check
     a.state.open_weights = OpenWeightsClient("", ledger=a.state.ledger)
     with new_client(a) as c:
         login(c)

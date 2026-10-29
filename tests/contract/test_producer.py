@@ -24,6 +24,7 @@ def replay(tmp_path_factory):
     db.init(conn)
     ledger = db.open_ledger(conn, tmp / "ledger.key")
     client = MuseClient(FAKE_KEY, ledger=ledger, budget=Budget(1.0))
+    client.unrecorded = frozenset({"sam.check"})  # cassette recorded before sam.check
     events = []
     ctx = producer.Context(client=client, open_client=OpenWeightsClient("", ledger=ledger),
                            conn=conn, photo_png=PHOTO, concept="mug", data_dir=tmp / "var",

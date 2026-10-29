@@ -52,6 +52,10 @@ def test_studio_verify_passes_on_the_replayed_export(loop):
     assert providers == {"meta-model-api-replay", "baseten-replay"}  # labelled as a replay
     reviews = [r for r in receipts if r["kind"] == "review"]
     assert reviews and all(r["details"]["second_opinion"] == "available" for r in reviews)
+    # the demo set records the SAM check of every generated image (rule S1 in the review)
+    checks = [r["details"] for r in receipts if r["details"].get("tool") == "sam.check"]
+    assert checks and all(c["status"] == "ok" and c["silhouette_iou"] > 0 for c in checks)
+    assert all(r["details"]["sam"]["status"] == "ok" for r in reviews)
 
 
 def test_the_demo_set_is_a_real_recording():

@@ -116,7 +116,19 @@ def route_of(request: httpx.Request, body: Any) -> str:
                        if isinstance(t, dict))
         parts += [str(body.get("model", "")), "stream" if body.get("stream") else "",
                   ",".join(tools)]
+        # a declared purpose (the SAM check of a generated image) is its own route, so a
+        # set recorded before it never answers it with another call's recording
+        meta = body.get("metadata")
+        purpose = meta.get("purpose") if isinstance(meta, dict) else None
+        if isinstance(purpose, str) and purpose:
+            parts.append("purpose=" + purpose)
     return " ".join(parts)
+
+
+def has_purpose(data: dict[str, Any], purpose: str) -> bool:
+    """Whether a loaded set recorded any request with this ``metadata.purpose``."""
+    tag = "purpose=" + purpose
+    return any(str(i.get("route", "")).endswith(tag) for i in data.get("interactions") or [])
 
 
 def schema_name(body: Any) -> str:

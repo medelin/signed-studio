@@ -44,6 +44,7 @@ def _run(tmp_path, failures):
     ledger = db.open_ledger(conn, tmp_path / "ledger.key")
     client = MuseClient(FAKE_KEY, ledger=ledger, budget=Budget(1.0),
                         transport=httpx.MockTransport(handler))
+    client.unrecorded = frozenset({"sam.check"})  # cassette recorded before sam.check
     ctx = producer.Context(client=client, open_client=OpenWeightsClient("", ledger=ledger),
                            conn=conn, photo_png=PHOTO, concept="mug", data_dir=tmp_path / "v")
     producer.TURN_RETRY_DELAY_S = 0.0

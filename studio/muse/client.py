@@ -545,6 +545,8 @@ class MuseClient:
     # -- provider hooks (overridden by the open-weights client) -------------------------
 
     provider = PROVIDER
+    # tools a replay set has no recordings for (``replay_clients``): skipped, not missed
+    unrecorded: frozenset[str] = frozenset()
     key_name = "MODEL_API_KEY"
     api_label = "Model API"
     open_weights = False  # True for clients that serve open weights (tier "open")

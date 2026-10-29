@@ -544,15 +544,16 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 run.review = None
                 raise ToolError(f"{im.placement} changed on disk since it was rendered")
             images.append((im.placement, im.sha256, png))
+        checks = {im.placement: im.sam_check for im in run.creatives.images}
         result = reviewer.run_formats(ctx.client, ctx.open_client, images,
                                       run.copy.variants[args.variant_index], run_id=run.run_id,
-                                      brief=ctx.brief_v1)
+                                      brief=ctx.brief_v1, sam_checks=checks)
         # copy A/B: every further variant that will run is reviewed on every image too
         ab = []
         for i in ab_variants(ctx, run, args.variant_index)[1:]:
             extra = reviewer.run_formats(ctx.client, ctx.open_client, images,
                                          run.copy.variants[i], run_id=run.run_id,
-                                         brief=ctx.brief_v1)
+                                         brief=ctx.brief_v1, sam_checks=checks)
             ab.append({**extra, "variant_index": i})
         worst = max([result["verdict"], *(x["verdict"] for x in ab)],
                     key=reviewer.RANK.__getitem__)

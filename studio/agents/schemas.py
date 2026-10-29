@@ -26,6 +26,7 @@ __all__ = [
     "PreScreen",
     "Report",
     "Review",
+    "SamCheck",
     "Score",
     "Triage",
     "strict_schema",
@@ -98,6 +99,26 @@ class CopyPack(_Closed):
         return self
 
 
+class SamCheck(_Closed):
+    """SAM 3.1 on a generated image (``sam.check``), produced by code. ``status``:
+    ``ok``, ``not_recorded`` (a replay set made before the check), ``skipped`` (run
+    budget) or ``failed`` (a SAM error; its error receipt says which)."""
+
+    status: Literal["ok", "not_recorded", "skipped", "failed"]
+    matches: int = 0
+    area: float = 0.0  # product mask / image pixels
+    box: list[float] = Field(default_factory=list)  # fractions: left, top, right, bottom
+    edges: list[str] = Field(default_factory=list)
+    iou: float | None = None  # silhouette IoU vs the cut-out
+    mirrored: bool = False
+    people: int | None = None
+    people_area: float = 0.0
+    overlay: str = ""  # mask overlay PNG, relative to the data dir
+    overlay_sha256: str = ""
+    receipt_id: str = ""
+    error: str = ""
+
+
 class CreativeImage(_Closed):
     placement: str
     size: str
@@ -106,6 +127,7 @@ class CreativeImage(_Closed):
     width: int
     height: int
     response_id: str
+    sam_check: SamCheck | None = None
 
 
 class VideoClip(_Closed):

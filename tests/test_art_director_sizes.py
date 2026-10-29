@@ -34,7 +34,7 @@ def test_first_non_square_placement_uses_images_edits(tmp_path, monkeypatch):
 
     monkeypatch.setattr(image, "respond_image", fake("responses"))
     monkeypatch.setattr(image, "edit", fake("edits"))
-    client = types.SimpleNamespace(ledger=Ledger())
+    client = types.SimpleNamespace(ledger=Ledger(), unrecorded=frozenset({"sam.check"}))
     out = art_director.run(client, _png(80, 80), "Team mugs", run_id="run_x", concept="mug",
                            data_dir=tmp_path, placements=("feed_4x5", "story_9x16"))
     assert calls == [("edits", "1024x1280"), ("edits", "1080x1920")]
