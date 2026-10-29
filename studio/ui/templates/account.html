@@ -196,9 +196,23 @@
       <div class="choices">
         <label class="choice"><input type="checkbox" name="whatsapp" value="1"{% if whatsapp_prefs.on %} checked{% endif %}> {{ t("account.whatsapp.on") }}</label>
       </div>
+      {% if whatsapp_prefs.number %}<p class="hint" id="wa-state">{% if whatsapp_prefs.verified %}{{ t("account.whatsapp.verified") }}{% else %}{{ t("account.whatsapp.pending") }}{% endif %}</p>{% endif %}
     </fieldset>
     <p><button type="submit">{{ t("account.notify.save") }}</button></p>
   </form>
+  {% if whatsapp_prefs.number and not whatsapp_prefs.verified %}
+  {% if whatsapp_code %}
+  <div class="stack" id="wa-code" role="status">
+    <p>{{ t("account.whatsapp.send_code", minutes=whatsapp_code_minutes) }}</p>
+    <p><code class="secret">{{ whatsapp_code }}</code></p>
+    {% if whatsapp_studio_number %}<p>{{ t("account.whatsapp.studio_number") }} <a href="https://wa.me/{{ whatsapp_studio_number[1:] }}?text={{ whatsapp_code }}" rel="noopener">{{ whatsapp_studio_number }}</a></p>{% endif %}
+  </div>
+  {% endif %}
+  <form method="post" action="/account/whatsapp/code">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <p><button type="submit">{{ t("account.whatsapp.new_code") }}</button></p>
+  </form>
+  {% endif %}
   {% endif %}
 </section>
 

@@ -157,6 +157,7 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         # WhatsApp (studio.whatsapp): the owner's number in E.164 and the opt-in
         "whatsapp_number": "TEXT NOT NULL DEFAULT ''",
         "notify_whatsapp": "INTEGER NOT NULL DEFAULT 0",
+        "whatsapp_verified_ts": "REAL NOT NULL DEFAULT 0",  # 0 = pending (not proven)
     },
     "approvals": {"brief_sha256": "TEXT NOT NULL DEFAULT ''",
                   "superseded_by": "TEXT NOT NULL DEFAULT ''",

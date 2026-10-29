@@ -29,6 +29,18 @@ draft made there (`GET /api/briefs/{id}`, signed-in only). The owner answers or 
 
 `/account#notifications`: the owner's WhatsApp number (E.164, validated: `+` and the country
 code; spaces, dashes and a leading `00` are accepted and normalised) and an opt-in checkbox.
+
+**Proof of control.** A saved number is *pending*: nothing is sent to it and nothing it
+sends is processed. The page shows a one-time code (`MUSE-` + 6 digits, valid 15 minutes,
+stored only as a hash bound to the account and the number; "Get a new code" replaces it),
+and the owner sends it **from that WhatsApp** to the studio's number (shown with a `wa.me`
+link when `STUDIO_WHATSAPP_NUMBER` is set). Only a message from exactly that number with a
+live code verifies it (`accounts.whatsapp_verified_ts`); no approved template is needed.
+A unique index allows one account per verified number. A number verified by another
+account moves only by the same proof: the old account's link is cleared, with a receipt for
+both (`verified`, `unlinked`). A WhatsApp brief belongs to that account: `GET
+/api/briefs/{id}`, the confirmation, the re-draft and the MCP tools answer "not found" /
+`unknown_draft` to any other account, the judge demo account included.
 The number is stored on the account (`accounts.whatsapp_number`, `accounts.notify_whatsapp`;
 migration in `studio/db.py`), included in the account export and erased with the account.
 The campaign / leads switches apply to both channels. The shared judge (demo) account never

@@ -128,7 +128,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     def page(request: Request, sid: str, account: Account, *, status: int = 200,
              errors: dict[str, tuple[str, str]] | None = None, codes: list[str] | None = None,
-             values: dict[str, str] | None = None) -> Response:
+             values: dict[str, str] | None = None, whatsapp_code: str = "") -> Response:
         done = request.query_params.get("done", "")
         pending = store.totp_pending_secret(account.id) if account.totp_pending else None
         uri = accounts.provisioning_uri(pending, account.username) if pending else ""
@@ -145,6 +145,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "notify_prefs": notify.preferences(conn, account.id),
             "whatsapp_prefs": whatsapp.preferences(conn, account.id),
             "whatsapp_enabled": settings.whatsapp.enabled,
+            "whatsapp_code": whatsapp_code,
+            "whatsapp_studio_number": settings.whatsapp.display_number,
+            "whatsapp_code_minutes": whatsapp.CODE_TTL_S // 60,
         }, status_code=status, headers=NO_STORE)
         return response
 
@@ -352,7 +355,27 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                         errors={"notifications": ("account.whatsapp.invalid", "")})
         notify.set_preferences(conn, account.id, campaigns="campaigns" in fields,
                                leads="leads" in fields)
+        prefs = whatsapp.preferences(conn, account.id)
+        if prefs["number"] and not prefs["verified"]:  # pending: show a code to send
+            sid, _, _ = got
+            return page(request, sid, account,
+                        whatsapp_code=whatsapp.issue_code(conn, account.id))
         return done("notify")
+
+    @app.post("/account/whatsapp/code")
+    async def whatsapp_code(request: Request) -> Response:
+        """A new one-time code for the pending number (shown once, on this page)."""
+        got = await posted(request)
+        if isinstance(got, Response):
+            return got
+        sid, account, _ = got
+        if account.is_demo:
+            return JSONResponse({"error": "demo_account"}, 403)
+        try:
+            code = whatsapp.issue_code(conn, account.id)
+        except ValueError:
+            return done("notify")
+        return page(request, sid, account, whatsapp_code=code)
 
     @app.post("/account/delete")
     async def delete(request: Request) -> Response:

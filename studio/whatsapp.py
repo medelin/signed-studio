@@ -69,11 +69,23 @@ WAMID = re.compile(r"[A-Za-z0-9_.:=+/-]{1,256}")
 LANGS = {"pl": "pl", "en": "en_US"}
 AUDIO_TYPES = ("audio",)
 
+CODE_TTL_S = 900  # a verification code is valid for 15 minutes
+CODE_RE = re.compile(r"\bMUSE-([0-9]{6})\b", re.IGNORECASE)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS whatsapp_inbound (
     message_sha256 TEXT PRIMARY KEY,  -- a wamid encodes the sender's number: kept hashed
     ts REAL NOT NULL
 );
+CREATE TABLE IF NOT EXISTS whatsapp_codes (
+    account_id TEXT PRIMARY KEY,  -- one live code per account
+    number TEXT NOT NULL,  -- the number it proves (E.164)
+    code_sha256 TEXT NOT NULL,  -- sha256(account | number | code): never the code itself
+    expires_ts REAL NOT NULL
+);
+-- one account per verified number
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_whatsapp_verified ON accounts (whatsapp_number)
+    WHERE whatsapp_verified_ts > 0 AND whatsapp_number != '';
 """
 
 
@@ -92,6 +104,7 @@ class WhatsAppConfig:
     waba_id: str = ""
     app_secret: str = field(default="", repr=False)
     verify_token: str = field(default="", repr=False)
+    display_number: str = ""  # the studio's own number, shown with the verification code
 
     @property
     def enabled(self) -> bool:
@@ -127,11 +140,18 @@ class WhatsAppConfig:
         if verify and not TOKEN_OK.fullmatch(verify):
             raise ValueError("STUDIO_WHATSAPP_VERIFY_TOKEN must be 16-128 characters of "
                              "[A-Za-z0-9_.~-]")
+        display = e.get("STUDIO_WHATSAPP_NUMBER", "")
+        if display:
+            try:
+                display = normalize_number(display)
+            except ValueError:
+                raise ValueError("STUDIO_WHATSAPP_NUMBER must be the studio's number in "
+                                 "E.164, e.g. +15551982857") from None
         if waba_id and not DIGITS.fullmatch(waba_id):
             raise ValueError("META_WHATSAPP_WABA_ID must be the numeric WhatsApp Business "
                              "Account id")
         return cls(transport, token=token, phone_id=phone_id or "0" * 15, waba_id=waba_id,
-                   app_secret=secret, verify_token=verify)
+                   app_secret=secret, verify_token=verify, display_number=display)
 
 
 # -- numbers and hashes ----------------------------------------------------------------
@@ -440,33 +460,112 @@ class Linked:
 
 
 def preferences(conn: sqlite3.Connection, account_id: str) -> dict[str, Any]:
+    """``number``, ``on`` (the opt-in) and ``verified`` (the owner proved control of the
+    number by sending a code from it). A number that is not verified is *pending*: nothing
+    is sent to it and nothing it sends is processed."""
     with _locked(conn):
-        row = conn.execute("SELECT whatsapp_number, notify_whatsapp FROM accounts WHERE id = ?",
-                           (account_id,)).fetchone()
-    return {"number": row[0] if row else "", "on": bool(row[1]) if row else False}
+        row = conn.execute("SELECT whatsapp_number, notify_whatsapp, whatsapp_verified_ts "
+                           "FROM accounts WHERE id = ?", (account_id,)).fetchone()
+    number = row[0] if row else ""
+    return {"number": number, "on": bool(row[1]) if row else False,
+            "verified": bool(row and number and row[2] > 0)}
 
 
 def set_preferences(conn: sqlite3.Connection, account_id: str, *, number: str,
                     on: bool) -> str:
     """Store the owner's number (validated E.164, '' clears it) and the opt-in; the stored
-    number. ``ValueError`` for an invalid number. On without a number is refused."""
+    number. ``ValueError`` for an invalid number. On without a number is refused. A
+    changed number starts unverified (pending) and its old code is dropped."""
     number = normalize_number(number) if number.strip() else ""
     if on and not number:
         raise ValueError("a number is required to turn WhatsApp on")
     with transaction(conn) as c:
+        row = c.execute("SELECT whatsapp_number FROM accounts WHERE id = ?",
+                        (account_id,)).fetchone()
+        if row is not None and row[0] != number:
+            c.execute("UPDATE accounts SET whatsapp_verified_ts = 0 WHERE id = ?",
+                      (account_id,))
+            c.execute("DELETE FROM whatsapp_codes WHERE account_id = ?", (account_id,))
         c.execute("UPDATE accounts SET whatsapp_number = ?, notify_whatsapp = ? WHERE id = ?",
                   (number, int(on), account_id))
     return number
 
 
+def _code_hash(account_id: str, number: str, code: str) -> str:
+    return sha256_text(f"{account_id}|{number}|{code.upper()}")
+
+
+def issue_code(conn: sqlite3.Connection, account_id: str, *,
+               now: float | None = None) -> str:
+    """A one-time ``MUSE-123456`` for the account's pending number (15 min; only its hash
+    is stored; a new code replaces the old). ``ValueError`` without a pending number."""
+    now = time.time() if now is None else now
+    prefs = preferences(conn, account_id)
+    if not prefs["number"] or prefs["verified"]:
+        raise ValueError("no pending number to verify")
+    code = f"MUSE-{secrets.randbelow(10**6):06d}"
+    with transaction(conn) as c:
+        c.execute("INSERT INTO whatsapp_codes (account_id, number, code_sha256, expires_ts) "
+                  "VALUES (?, ?, ?, ?) ON CONFLICT (account_id) DO UPDATE SET "
+                  "number = excluded.number, code_sha256 = excluded.code_sha256, "
+                  "expires_ts = excluded.expires_ts",
+                  (account_id, prefs["number"],
+                   _code_hash(account_id, prefs["number"], code), now + CODE_TTL_S))
+    return code
+
+
+@dataclass(frozen=True)
+class Verified:
+    account_id: str
+    lang: str
+    unlinked: tuple[str, ...]  # accounts whose verified link to this number was cleared
+
+
+def verify_code(conn: sqlite3.Connection, sender: str, text: str, *,
+                now: float | None = None) -> Verified | None:
+    """Link ``sender`` to the account whose live code for exactly this number is in
+    ``text``; any other account's verified link to the number is cleared (it moves only by
+    the same proof). ``None`` when no code, a wrong, expired or other-number code."""
+    now = time.time() if now is None else now
+    found = CODE_RE.search(text or "")
+    digits = re.sub(r"[^0-9]", "", sender or "")
+    if found is None or not DIGITS.fullmatch(digits):
+        return None
+    code, number = "MUSE-" + found.group(1), "+" + digits
+    with transaction(conn) as c:
+        rows = c.execute("SELECT w.account_id, w.code_sha256, a.lang FROM whatsapp_codes w "
+                         "JOIN accounts a ON a.id = w.account_id WHERE w.number = ? AND "
+                         "w.expires_ts > ? AND a.whatsapp_number = w.number AND "
+                         "a.status = 'active' AND a.is_demo = 0",
+                         (number, now)).fetchall()
+        match = next((r for r in rows if hmac.compare_digest(
+            r[1], _code_hash(r[0], number, code))), None)
+        if match is None:
+            return None
+        account_id = str(match[0])
+        others = tuple(str(r[0]) for r in c.execute(
+            "SELECT id FROM accounts WHERE whatsapp_number = ? AND whatsapp_verified_ts > 0 "
+            "AND id != ?", (number, account_id)).fetchall())
+        for other in others:
+            c.execute("UPDATE accounts SET whatsapp_number = '', notify_whatsapp = 0, "
+                      "whatsapp_verified_ts = 0 WHERE id = ?", (other,))
+        c.execute("UPDATE accounts SET whatsapp_verified_ts = ? WHERE id = ?",
+                  (now, account_id))
+        c.execute("DELETE FROM whatsapp_codes WHERE account_id = ? OR expires_ts < ?",
+                  (account_id, now))
+    return Verified(account_id, str(match[2] or "en"), others)
+
+
 def account_by_sender(conn: sqlite3.Connection, sender: str) -> Linked | None:
-    """The active, non-demo account that linked this number (``from`` of a webhook)."""
+    """The active, non-demo account that verified this number (``from`` of a webhook);
+    a pending (unverified) claim never counts."""
     digits = re.sub(r"[^0-9]", "", sender or "")
     if not DIGITS.fullmatch(digits):
         return None
     with _locked(conn):
         row = conn.execute("SELECT id, whatsapp_number, lang FROM accounts WHERE "
-                           "whatsapp_number = ? AND status = 'active' AND is_demo = 0 "
+                           "whatsapp_number = ? AND whatsapp_verified_ts > 0 AND "
+                           "status = 'active' AND is_demo = 0 "
                            "ORDER BY created_ts LIMIT 1", ("+" + digits,)).fetchone()
     return Linked(row[0], row[1], row[2] or "en") if row else None
 
@@ -479,7 +578,8 @@ def _locked(conn: Any) -> Any:
 
 
 _OPTED_IN = ("SELECT id, whatsapp_number, lang FROM accounts WHERE status = 'active' AND "
-             "is_demo = 0 AND notify_whatsapp = 1 AND whatsapp_number != ''")
+             "is_demo = 0 AND notify_whatsapp = 1 AND whatsapp_number != '' AND "
+             "whatsapp_verified_ts > 0")
 _RECIPIENTS = {"campaigns": _OPTED_IN + " AND notify_campaigns = 1",
                "leads": _OPTED_IN + " AND notify_leads = 1"}
 
@@ -668,6 +768,9 @@ class Inbox:
         for m in messages(event, self.client.cfg.phone_id):
             if not self._first_time(m.message_id):
                 continue  # a retry of a message already handled
+            if m.kind == "text" and CODE_RE.search(m.text):
+                self._verify(m)
+                continue
             who = account_by_sender(self.conn, m.sender)
             if who is None:
                 self._receipt(m, "ignored_unknown_sender")
@@ -686,6 +789,21 @@ class Inbox:
             self._submit(partial(self._work, who, m))
             queued += 1
         return queued
+
+    def _verify(self, m: Inbound) -> None:
+        """A verification code: link the sender's number to the code's account."""
+        if not self.limiter.allow(number_hash(m.sender, self.key)):
+            self._receipt(m, "rate_limited")
+            return
+        got = verify_code(self.conn, m.sender, m.text, now=self.clock())
+        if got is None:
+            self._receipt(m, "verification_failed")  # no reply: the number proved nothing
+            return
+        self._receipt(m, "verified", got.account_id)
+        for other in got.unlinked:
+            self._receipt(m, "unlinked", other)
+        who = Linked(got.account_id, "+" + re.sub(r"[^0-9]", "", m.sender), got.lang)
+        self._submit(partial(self._answer, who, m, "whatsapp.reply.verified", {}))
 
     def _work(self, who: Linked, m: Inbound) -> None:
         audio: bytes | None = None
