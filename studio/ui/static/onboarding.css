@@ -1,0 +1,143 @@
+/*
+ * Onboarding (/start): six illustrated steps. Tokens only, both themes, nothing wider than
+ * the screen from 320 px. Without JavaScript, or under prefers-reduced-motion, every step is
+ * listed and every drawing rests on its final frame. With onboarding.js (.ob.live) the
+ * steps stack in one place and play as a ~48 s loop; each drawing moves only while its step
+ * is shown (.is-active), so the motion restarts on every visit to the step.
+ */
+.ob { max-width: 980px; min-width: 0; }
+.ob p, .ob li { overflow-wrap: anywhere; }
+.ob-head { margin-bottom: 1rem; }
+.ob-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); }
+.ob-step {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem 1.5rem; align-items: center;
+  border: 1px solid var(--rule-soft); background: var(--bg-raised); padding: 1rem; min-width: 0;
+}
+@media (min-width: 720px) { .ob-step { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); padding: 1.25rem 1.5rem; } }
+.ob-figure { margin: 0; min-width: 0; }
+.ob-figure .il { max-height: 20rem; }
+.ob-text { min-width: 0; }
+.ob-text h2 { font-size: 1.2rem; margin: .25rem 0 .5rem; }
+.ob-text p { margin: 0 0 .6rem; max-width: 46ch; }
+.ob-see { color: var(--ink-2); font-size: .92rem; border-left: 3px solid var(--signal); padding-left: .65rem; }
+.ob-see-label { display: block; font: 600 .7rem/1.4 var(--font-mono); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+
+/* the player: the steps share one cell, so the controls never jump */
+.ob-progress { display: none; height: 3px; background: var(--rule-soft); margin: 0 0 .5rem; overflow: hidden; }
+.ob-bar { display: block; height: 100%; background: var(--signal); transform-origin: left center; transform: scaleX(0); }
+.ob.live .ob-progress { display: block; }
+.ob.live .ob-steps { grid-template-areas: "step"; }
+.ob.live .ob-step { grid-area: step; visibility: hidden; }
+.ob.live .ob-step.is-active { visibility: visible; }
+
+.ob-controls { display: flex; flex-wrap: wrap; gap: .5rem .6rem; align-items: center; margin: .75rem 0 0; }
+.ob-controls button { min-height: 2.75rem; }
+.ob-play { min-width: 7.5rem; }
+.ob-dots { display: flex; flex-wrap: wrap; gap: 0; }
+.ob-controls .ob-dot {
+  width: 2.5rem; padding: 0; background: transparent; clip-path: none; position: relative;
+}
+.ob-dot::before {
+  content: ""; position: absolute; inset: 0; margin: auto; width: .7rem; height: .7rem;
+  transform: rotate(45deg); border: 2px solid var(--signal); background: var(--bg);
+}
+.ob-dot[aria-current="step"]::before { background: var(--signal); width: .9rem; height: .9rem; }
+.ob-dot:hover::before { background: var(--signal-soft); }
+.ob-dot[aria-current="step"]:hover::before { background: var(--signal); }
+.ob-pos { min-width: 7rem; }
+
+.ob-end { margin-top: 1.5rem; }
+.ob-end h2 { margin-top: 0; }
+.ob-cta { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; margin: 0; }
+
+/* drawing parts that only the onboarding uses */
+.il .ob-cut { fill: none; stroke: var(--signal); stroke-width: 2; stroke-dasharray: 5 4; }
+.il .ob-frame { fill: var(--bg); stroke: var(--ink-2); stroke-width: 1.75; }
+.il .ob-tray { fill: var(--soft); stroke: var(--ink); stroke-width: 2; stroke-linejoin: round; }
+.il .ob-bubble { fill: var(--bg-raised); stroke: var(--ink-2); stroke-width: 1.75; stroke-linejoin: round; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .ob.live .ob-step.is-active { animation: ob-in 260ms var(--ease) both; }
+  .ob.live .ob-bar.run { animation: ob-progress 8s linear forwards; animation-play-state: paused; }
+  .ob.live.playing .ob-bar.run { animation-play-state: running; }
+
+  .ob .ob-word, .ob .ob-answer, .ob .ob-product, .ob .ob-block, .ob .ob-pass, .ob .ob-paused,
+  .ob .ob-d1, .ob .ob-d2, .ob .ob-d3 { transform-box: fill-box; transform-origin: center; }
+  .ob.live .is-active .ob-art .trace { animation: il-march 1.4s var(--ease) both; }
+  .ob.live .is-active .ob-art .node { animation: il-light 400ms var(--ease) both; }
+  .ob.live .is-active .ob-art .ob-n1 { animation-delay: 300ms; }
+  .ob.live .is-active .ob-art .ob-n2 { animation-delay: 900ms; }
+  .ob.live .is-active .ob-art .ob-n3 { animation-delay: 1500ms; }
+  .ob.live .is-active .ob-art .ob-n4 { animation-delay: 2100ms; }
+
+  /* 1 · the words leave the speaker and settle as the brief's lines */
+  .ob.live .is-active .ob-art-1 .ob-arc { animation: ob-pulse 1.4s ease-in-out infinite; }
+  .ob.live .is-active .ob-art-1 .ob-a1 { animation-delay: 0ms; }
+  .ob.live .is-active .ob-art-1 .ob-a2 { animation-delay: 200ms; }
+  .ob.live .is-active .ob-art-1 .ob-a3 { animation-delay: 400ms; }
+  .ob.live .is-active .ob-art-1 .ob-flow { animation-delay: 300ms; }
+  .ob.live .is-active .ob-art-1 .ob-word { animation: ob-fly 900ms var(--ease) both; }
+  .ob.live .is-active .ob-art-1 .ob-w1 { animation-delay: 900ms; }
+  .ob.live .is-active .ob-art-1 .ob-w2 { animation-delay: 1400ms; }
+  .ob.live .is-active .ob-art-1 .ob-w3 { animation-delay: 1900ms; }
+
+  /* 2 · confirmed facts appear, then the open question is answered */
+  .ob.live .is-active .ob-art-2 .ob-row { animation: ob-in 400ms var(--ease) both; }
+  .ob.live .is-active .ob-art-2 .ob-r1 { animation-delay: 300ms; }
+  .ob.live .is-active .ob-art-2 .ob-r2 { animation-delay: 700ms; }
+  .ob.live .is-active .ob-art-2 .ob-arrow { animation: ob-in 400ms var(--ease) 1500ms both; }
+  .ob.live .is-active .ob-art-2 .ob-answer { animation: ob-pop 500ms var(--ease) 2100ms both; }
+
+  /* 3 · write (headline, lines), draw (picture), cut out (product, marching outline) */
+  .ob.live .is-active .ob-art-3 .ob-head,
+  .ob.live .is-active .ob-art-3 .ob-lines { animation: ob-in 400ms var(--ease) 1100ms both; }
+  .ob.live .is-active .ob-art-3 .ob-pic { animation: ob-in 500ms var(--ease) 1700ms both; }
+  .ob.live .is-active .ob-art-3 .ob-product { animation: ob-pop 500ms var(--ease) 2300ms both; }
+  .ob.live .is-active .ob-art-3 .ob-cut { animation: ob-in 300ms var(--ease) 2600ms both, ob-cut 1s linear 2600ms infinite; }
+
+  /* 4 · BLOCK, the text is rewritten, PASS */
+  .ob.live .is-active .ob-art-4 .ob-n1 { animation-delay: 200ms; }
+  .ob.live .is-active .ob-art-4 .ob-n2 { animation-delay: 450ms; }
+  .ob.live .is-active .ob-art-4 .ob-block { animation: ob-pop 500ms var(--ease) 1100ms both; }
+  .ob.live .is-active .ob-art-4 .ob-edit { animation: ob-in 400ms var(--ease) 1800ms both; }
+  .ob.live .is-active .ob-art-4 .ob-arrow { animation: ob-in 400ms var(--ease) 2300ms both; }
+  .ob.live .is-active .ob-art-4 .ob-pass { animation: ob-pop 500ms var(--ease) 2900ms both; }
+
+  /* 5 · the signature draws, the ad slides into the account, the pause badge stamps */
+  .ob.live .is-active .ob-art-5 .ob-sign { stroke-dasharray: 100; animation: ob-draw 1.4s var(--ease) 300ms both; }
+  .ob.live .is-active .ob-art-5 .ob-flow { animation-delay: 1500ms; }
+  .ob.live .is-active .ob-art-5 .ob-frame-in { animation: ob-slide 500ms var(--ease) 2000ms both; }
+  .ob.live .is-active .ob-art-5 .ob-paused { animation: ob-pop 500ms var(--ease) 2800ms both; }
+
+  /* 6 · comments and a lead drop in, a reply goes back, the receipts light one by one */
+  .ob.live .is-active .ob-art-6 .ob-d1,
+  .ob.live .is-active .ob-art-6 .ob-d2,
+  .ob.live .is-active .ob-art-6 .ob-d3 { animation: ob-drop 600ms var(--ease) both; }
+  .ob.live .is-active .ob-art-6 .ob-d1 { animation-delay: 200ms; }
+  .ob.live .is-active .ob-art-6 .ob-d2 { animation-delay: 650ms; }
+  .ob.live .is-active .ob-art-6 .ob-d3 { animation-delay: 1100ms; }
+  .ob.live .is-active .ob-art-6 .ob-flow { animation-delay: 1500ms; }
+  .ob.live .is-active .ob-art-6 .ob-rc { animation: ob-in 300ms var(--ease) both; }
+  .ob.live .is-active .ob-art-6 .ob-c1 { animation-delay: 2000ms; }
+  .ob.live .is-active .ob-art-6 .ob-c2 { animation-delay: 2250ms; }
+  .ob.live .is-active .ob-art-6 .ob-c3 { animation-delay: 2500ms; }
+  .ob.live .is-active .ob-art-6 .ob-c4 { animation-delay: 2750ms; }
+  .ob.live .is-active .ob-art-6 .ob-c5 { animation-delay: 3000ms; }
+}
+@keyframes ob-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ob-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes ob-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@keyframes ob-fly { from { opacity: 0; transform: translate(-120px, 30px); } 35% { opacity: 1; } to { transform: none; } }
+@keyframes ob-pop { 0% { opacity: 0; transform: scale(.3); } 70% { opacity: 1; transform: scale(1.12); } 100% { transform: scale(1); } }
+@keyframes ob-cut { to { stroke-dashoffset: -18; } }
+@keyframes ob-draw { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+@keyframes ob-slide { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+@keyframes ob-drop { from { opacity: 0; transform: translateY(-44px); } 60% { opacity: 1; } to { transform: none; } }
+
+@media (forced-colors: active) {
+  .il .ob-cut, .il .ob-frame, .il .ob-tray, .il .ob-bubble { stroke: CanvasText; }
+  .il .ob-frame, .il .ob-tray, .il .ob-bubble { fill: Canvas; }
+  .ob-dot::before { border-color: ButtonText; background: Canvas; }
+  .ob-dot[aria-current="step"]::before { background: Highlight; }
+  .ob-bar { background: Highlight; }
+}

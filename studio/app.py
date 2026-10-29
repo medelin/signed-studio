@@ -56,6 +56,7 @@ from studio import (
     routes_help,
     routes_inbox,
     routes_meta,
+    routes_onboarding,
     routes_receipts,
     routes_report,
     routes_studio,
@@ -467,6 +468,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_receipts.register(app, settings, ledger, templates, session_of)
     routes_help.register(app, settings, ledger, templates, session_of)
     routes_try.register(app, settings, templates, session_of)
+    routes_onboarding.register(app, settings, ledger, templates, session_of, COOKIE)
     routes_account.register(app, settings, ledger, conn, templates, session_of)
 
     # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
