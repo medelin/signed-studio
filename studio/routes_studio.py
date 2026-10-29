@@ -319,6 +319,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             app.state.open_weights = OpenWeightsClient.from_settings(settings, ledger)
         return app.state.muse, app.state.open_weights
 
+    app.state.clients = clients  # the disapproval flow (routes_meta) uses the same clients
+
     app.state.clients = clients
 
     def inbox_client() -> MuseClient:

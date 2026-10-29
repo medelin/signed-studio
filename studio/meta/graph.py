@@ -49,6 +49,7 @@ from studio.meta.adapter import (
     HIDE,
     PAUSED,
     REPLY,
+    REVIEW_FIELDS,
     UPDATE,
     AdapterError,
     AdJob,
@@ -64,7 +65,9 @@ from studio.meta.adapter import (
     delivery_of,
     lead_form_of,
     lookalike_of,
+    replacement_of,
     require,
+    review_of,
     update_of,
 )
 from studio.meta.preview import from_graph_body
@@ -465,6 +468,47 @@ class GraphAdapter:
         body = self._post(_oid(target), {"status": value})
         if body.get("success") is not True:
             raise AdapterError("Graph API did not confirm the pause", code="bad_response")
+
+    # -- a disapproved ad: read its review, replace its creative under a signed update ----
+
+    def ad_review(self, ad_id: str) -> dict[str, Any]:
+        """``GET /{ad_id}?fields=effective_status,ad_review_feedback,issues_info`` (read)."""
+        body = self._request("GET", _oid(ad_id), params={"fields": REVIEW_FIELDS})
+        return review_of(body)
+
+    def _replacement(self, payload: Mapping[str, Any],
+                     approval: Verified) -> tuple[dict[str, Any], dict[str, Any]]:
+        require(approval, UPDATE, payload, self._conn)
+        check_paused(payload)
+        return replacement_of(payload, self.page_id)
+
+    def upload_replacement_image(self, png: bytes, payload: Mapping[str, Any],
+                                 approval: Verified) -> str:
+        self._replacement(payload, approval)
+        if hashlib.sha256(png).hexdigest() != payload["image"]["sha256"]:
+            raise NotApproved("image is not the approved image")
+        body = self._post(f"{self.account}/adimages",
+                          {"bytes": base64.b64encode(png).decode()})
+        for item in (body.get("images") or {}).values() if isinstance(
+                body.get("images"), dict) else []:
+            if isinstance(item, dict) and isinstance(item.get("hash"), str):
+                return str(item["hash"])
+        raise AdapterError("Graph API returned no image hash", code="bad_response")
+
+    def create_replacement_creative(self, image_hash: str, payload: Mapping[str, Any],
+                                    approval: Verified) -> str:
+        creative, spec = self._replacement(payload, approval)
+        form = str(payload.get("form_external_id") or "")
+        return self._id(self._post(f"{self.account}/adcreatives", creative_spec(
+            creative, spec, self.page_id, image_hash, form_id=_oid(form) if form else "")))
+
+    def create_replacement_ad(self, creative_id: str, payload: Mapping[str, Any],
+                              approval: Verified) -> str:
+        creative, _ = self._replacement(payload, approval)
+        return self._id(self._post(f"{self.account}/ads", {
+            "name": campaign_name(creative) + " · ad (replacement)",
+            "adset_id": _oid(str(payload["adset_external_id"])),
+            "creative": {"creative_id": _oid(creative_id)}, "status": PAUSED}))
 
     def insights(self, campaign_id: str) -> dict[str, Any]:
         return self._request("GET", f"{_oid(campaign_id)}/insights", params={

@@ -302,4 +302,11 @@ def pull_all(conn: sqlite3.Connection, ledger: Ledger, adapter: Any,
                          currency=currency)
         recs += len(store_recommendations(conn, cid, snapshot_id, made))
         n += 1
-    return {"campaigns": n, "recommendations": recs}
+    out = {"campaigns": n, "recommendations": recs}
+    # every ad's review state (read-only): a newly disapproved ad is stored and explained
+    from studio import disapprovals
+
+    found = disapprovals.check_all(conn, ledger, adapter)
+    if found:
+        out["disapproved"] = found
+    return out

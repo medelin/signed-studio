@@ -33,7 +33,7 @@ from studio.pii import redact_digit_runs
 GENESIS = "0" * 64
 APPROVAL_TTL_S = 900  # an approval authorises one write within this many seconds of issue
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review",
-                   "brief.confirmed", "insights.snapshot"})
+                   "brief.confirmed", "insights.snapshot", "ad.review"})
 BRIEF_KIND = "brief.confirmed"
 BRIEF_SCHEMA = "brief/v1"
 # Actions whose approval must sign the run's confirmed brief (``brief_sha256``) when the
@@ -49,7 +49,9 @@ EXTERNAL_STEPS: dict[str, frozenset[str]] = {
     "reply.post": frozenset({"reply.post"}),
     "comment.hide": frozenset({"comment.hide"}),
     # a signed recommendation: a budget change or a pause; ``update`` is a refused one
-    "campaign.update": frozenset({"update_budget", "update_status", "update"}),
+    "campaign.update": frozenset({"update_budget", "update_status", "update",
+                                  # a disapproved ad's creative replaced (A7)
+                                  "replace_image", "replace_creative", "replace_ad"}),
     # Google Search: a dry run (validateOnly) and the creation, both of the signed spec;
     # ``google_activate`` is the one mutate that enables ad, ad group and campaign
     "google.create": frozenset({"google_validate", "google_create"}),

@@ -277,6 +277,80 @@ class MockAdapter:
         obj["status"] = PAUSED
         self.calls.append(("pause", target))
 
+    # A disapproval as Meta's Ad object reports it (``ad_review_feedback`` / ``issues_info``,
+    # Marketing API v25 Ad reference); ``disapprove`` gives it to one ad, deterministically.
+    DISAPPROVAL: dict[str, Any] = {
+        "effective_status": "DISAPPROVED",
+        "ad_review_feedback": {"global": {
+            "Personal Health": "Ads must not contain claims that a product can cure or "
+                               "prevent a health condition, or assert or imply a person's "
+                               "health condition."}},
+        "issues_info": [],
+    }
+
+    def disapprove(self, ad_id: str, body: Mapping[str, Any] | None = None) -> None:
+        """Mark an ad DISAPPROVED with ``DISAPPROVAL`` (or ``body``): tests and the demo."""
+        obj = self.objects.get(ad_id)
+        if not obj or obj.get("type") != "ad":
+            raise AdapterError("unknown ad", code="not_found")
+        obj["review"] = dict(body or self.DISAPPROVAL)
+
+    def ad_review(self, ad_id: str) -> dict[str, Any]:
+        from studio.meta.adapter import review_of
+
+        self.calls.append(("ad_review", ad_id))
+        obj = self.objects.get(ad_id)
+        if not obj or obj.get("type") != "ad":
+            raise AdapterError("unknown ad", code="not_found")
+        return review_of(obj.get("review") or {"effective_status": obj.get("status", PAUSED)})
+
+    def _replacement(self, payload: Mapping[str, Any],
+                     approval: Verified) -> tuple[dict[str, Any], dict[str, Any]]:
+        from studio.meta.adapter import replacement_of
+
+        require(approval, UPDATE, payload, self._conn)
+        check_paused(payload)
+        return replacement_of(payload, self.page_id)
+
+    def upload_replacement_image(self, png: bytes, payload: Mapping[str, Any],
+                                 approval: Verified) -> str:
+        self._replacement(payload, approval)
+        digest = hashlib.sha256(png).hexdigest()
+        if digest != payload["image"]["sha256"]:
+            raise NotApproved("image is not the approved image")
+        image_hash = "mockhash" + digest[:24]
+        self.objects[image_hash] = {"type": "image", "sha256": digest}
+        self.calls.append(("upload_replacement_image", image_hash))
+        return image_hash
+
+    def create_replacement_creative(self, image_hash: str, payload: Mapping[str, Any],
+                                    approval: Verified) -> str:
+        creative, spec = self._replacement(payload, approval)
+        body = creative_spec(creative, spec, self.page_id, image_hash,
+                             form_id=str(payload.get("form_external_id") or ""))
+        ad = creative["ad"]
+        oid = _id("creative")
+        self.objects[oid] = {"type": "creative", "image_hash": image_hash,
+                             "message": ad["primary_text"], "name": ad["headline"],
+                             "description": ad["description"], "cta": ad["cta"],
+                             "link": creative["link"], "body": body, "format": "single"}
+        self.calls.append(("create_replacement_creative", oid))
+        return oid
+
+    def create_replacement_ad(self, creative_id: str, payload: Mapping[str, Any],
+                              approval: Verified) -> str:
+        self._replacement(payload, approval)
+        adset = str(payload["adset_external_id"])
+        if self.objects.get(adset, {}).get("type") != "adset":
+            raise AdapterError("unknown adset", code="not_found")
+        if self.objects.get(creative_id, {}).get("type") != "creative":
+            raise AdapterError("unknown creative", code="not_found")
+        oid = _id("ad")
+        self.objects[oid] = {"type": "ad", "adset_id": adset, "creative_id": creative_id,
+                             "status": PAUSED, "key": "replacement"}
+        self.calls.append(("create_replacement_ad", oid))
+        return oid
+
     def insights(self, campaign_id: str = "") -> dict[str, Any]:
         self.calls.append(("insights", campaign_id))
         return json.loads(INSIGHTS.read_text())  # type: ignore[no-any-return]

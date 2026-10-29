@@ -15,6 +15,34 @@
   <p class="status" id="inbox-status" role="status" aria-live="polite"></p>
 </section>
 
+{% if disapprovals %}
+<section class="panel" aria-labelledby="dp-h" id="disapprovals">
+  <h2 id="dp-h">{{ t("dp.title") }}</h2>
+  <p class="hint">{{ t("dp.lead") }}</p>
+  {% for d in disapprovals %}
+  <article class="disapproved" data-id="{{ d.id }}" data-status="{{ d.status }}">
+    <h3>{{ t("dp.ad", campaign=d.campaign_id) }} <span class="badge warn">{{ tv("dp_status", d.status) }}</span></h3>
+    <p>{{ d.explain.sentence }} {% if d.explain.source.startswith("https://") %}<a href="{{ d.explain.source }}" rel="noopener noreferrer" target="_blank">{{ t("dp.policy") }}</a>{% endif %}</p>
+    {% if d.body.reasons %}<p class="hint">{{ t("dp.meta_said") }}</p>
+    <ul class="plain">{% for r in d.body.reasons %}<li><strong>{{ r.key }}</strong>: {{ r.text }}</li>{% endfor %}</ul>{% endif %}
+    {% if d.proposal.variant %}
+    <p class="hint">{{ t("dp.proposal", verdict=d.proposal.verdict) }}</p>
+    <blockquote><strong>{{ d.proposal.variant.headline }}</strong> — {{ d.proposal.variant.primary_text }}</blockquote>
+    {% endif %}
+    {% if logged_in and not read_only %}
+    <div class="stack">
+      {% if d.status in ("open", "blocked") %}<button type="button" data-dp="propose">{{ t("dp.propose") }}</button>{% endif %}
+      {% if d.status == "requested" and d.approval_id %}<button type="button" data-dp="sign" data-approval="{{ d.approval_id }}">{{ t("dp.sign") }}</button>{% endif %}
+      <p class="status" role="status" aria-live="polite"></p>
+      <details hidden><summary>{{ t("inbox.signed_content") }}</summary><pre></pre></details>
+    </div>
+    {% endif %}
+    <p class="hint">{{ t("dp.safety") }}</p>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
 <section aria-label="{{ t('inbox.list') }}" id="comments" class="cards">
 {% for c in comments %}
   <article class="panel comment" data-id="{{ c.id }}" data-status="{{ c.status }}" data-approval="{{ c.approval_status }}" data-pending="{{ c.pending_id }}">

@@ -23,7 +23,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from studio import envelope
+from studio import disapprovals, envelope
 from studio.agents import community
 from studio.meta.adapter import AdapterError
 from studio.muse.client import MuseError
@@ -87,6 +87,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": logged_in,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
             "comments": list_comments(conn, logged_in), "adapter": settings.meta_adapter,
+            # ads Meta disapproved (A7): Meta's reason explained, a compliant variant to sign
+            "disapprovals": disapprovals.listing(
+                conn, getattr(request.state, "lang", "en") or "en"),
         })
 
     @app.get("/api/comments")
