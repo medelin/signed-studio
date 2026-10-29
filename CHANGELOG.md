@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-29 — live instant-form campaign, recorded
+
+- A live run created a lead-ads campaign on the Muse Studio Lite ad account, all PAUSED: campaign 52566271991766 (`OUTCOME_LEADS`), ad set 52566271996766 (`LEAD_GENERATION`, `ON_AD`), ad 52566272012166 and the instant form 3911812868960523 (full name, e-mail, company; privacy page https://muse.udun.eu/privacy; after sending, the person goes to the landing page the owner set in the brief).
+- The model calls of that run are the replay set `leadform`. A set may carry `owner_fields` (what the owner sets in the brief form, not the draft: objective, landing page, privacy page, form fields); `studio demo` applies them before confirming. Tests: `tests/e2e/test_replay_leadform.py`.
+- Instant forms take their locale from the brief's first language (the live form had English buttons under a Polish ad).
+
 ## 2026-10-29 — open-weights mode (Muse Spark Open) and a Muse Glimmer pre-filter path
 
 - **Open-weights mode**: `STUDIO_OPEN_WEIGHTS=1` (needs `BASETEN_API_KEY`, else `ConfigError`), or per run `open_weights: true` on `POST /api/runs` (checkbox "Run on open weights" on the brief; `400 invalid_open_weights`, `503 open_weights_unavailable`). The copywriter (same prompt, same strict `CopyPack`, `reasoning_effort=low`, ≥12k tokens for the reasoning), the comment triage (`Triage`) and the lead rationale (`Score`) run on Muse Spark Open. Comments and leads follow the studio setting, not the run switch. The run state carries `open_weights`.

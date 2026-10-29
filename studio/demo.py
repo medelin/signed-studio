@@ -119,6 +119,10 @@ def _brief_v1(c: Any, meta: dict[str, Any], step: Callable[..., None],
     d = r.json()
     if google:  # the owner also ticks Google Search (the prompts do not change)
         d["brief"]["channels"] = {"google_search": True, "google_daily_budget": google}
+    # what the owner sets in the brief form, not the draft: objective, landing page,
+    # privacy page, form fields (a set's ``owner_fields``: {section: {field: value}})
+    for section, fields in (meta.get("owner_fields") or {}).items():
+        d["brief"][section] = {**d["brief"].get(section, {}), **fields}
     res = resolutions(d["brief"]["open_questions"], meta.get("answers") or {})
     step("brief drafted", facts=len(d["brief"]["confirmed_facts"]),
          questions=len(res), answered=sum(x["action"] == "answer" for x in res))
