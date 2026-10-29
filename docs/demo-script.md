@@ -25,10 +25,11 @@ Record 1080p30 in a fresh browser profile, English subtitles, model ids visible 
 - Say: "Each step is a receipt with its model id. Copy runs on the contributor tier because the input has no personal data; the reason is in the receipt."
 - Proves: `muse-spark-1.3` (`studio/agents/producer.py`), `muse-spark-1.3-contributor` (`studio/pii.py`), `sam-3.1`, `muse-image-1.0`, `studio/receipts.py`.
 
-**4. Two reviewers, disagreement, BLOCK then rewrite then OK (1:30-2:05)**
-- On screen: review panel with Spark vision verdict per placement and the open-weights second opinion side by side; one disagreement highlighted; a human-written ad text ("Niskie podatki, brak obowiązku ZUS", disapproved in Google Ads) gets BLOCK on P9 with the policy name; rewrite; OK from both.
-- Say: "Two different weights review every image, and a block from either side wins. I wrote that ad myself and the platform rejected it; the studio catches it before anything is published."
-- Proves: `studio/agents/reviewer.py`, `meta-models/muse-spark-open` (`studio/muse/openweights.py`), policy P9 ([docs/policy.md](policy.md)), [docs/eval.md](eval.md).
+**4. The copywriter refuses a forbidden claim; two reviewers disagree out loud (1:30-2:05)**
+- On screen: a brief whose owner insists on "obniża ciśnienie w 7 dni, gwarantujemy" (a health claim and a guarantee); the three copy variants come back without it and the copywriter's `risks` list names the dropped claim and the rule (P8 health, P3 guarantees). Then the review panel: Muse Spark's vision verdict per placement beside the open-weights Spark Open opinion, one disagreement highlighted (WARN vs OK on the missing advertiser name), and the SAM 3.1 product check with its numbers and the mask toggle.
+- Say: "I asked for a claim Meta forbids. The copywriter left it out and told me why, in writing. Then two different model families review every ad and every image, and Muse shows where they disagree instead of averaging. A block from either side would stop the run and send the findings back for one rewrite."
+- Proves: `studio/agents/copywriter.py` (`risks`), `studio/agents/reviewer.py`, `meta-models/muse-spark-open` (`studio/muse/openweights.py`), the S1 product check (`studio/muse/sam.py`), the rewrite loop (`studio/agents/producer.py`, `tests/test_rewrite_loop.py`), policy rules ([docs/policy.md](policy.md)), [docs/eval.md](eval.md).
+- Note: in seven live recordings the copywriter never produced a blockable claim, so no BLOCK is staged; do not fake one on screen.
 
 **5. The owner signs on a phone; the PAUSED campaign appears in Ads Manager (2:05-2:40)**
 - On screen: approval panel on a phone (content hash, chain head, expiry) -> "Approve and sign" -> campaign, ad set, creative, ad created **PAUSED**; cut to Meta Ads Manager showing the PAUSED campaign and the lead form.
