@@ -51,7 +51,7 @@ from studio.meta import audience, objectives, pixel
 from studio.meta.adapter import MOCK_PAGE
 from studio.meta.currency import to_minor
 from studio.muse.client import MuseClient, MuseError, ToolCall
-from studio.muse.openweights import OpenWeightsClient
+from studio.muse.openweights import OpenWeightsClient, OpenWeightsUnavailable
 from studio.muse.structured import structured
 from studio.receipts import canonical, is_opaque, sha256_hex
 
@@ -95,6 +95,9 @@ class Context:
     # the Meta adapter's read-only pixel check (``Adapter.pixel_check``); None: a pixel
     # objective gets a failed "pixel_unverified" result, which cannot be signed
     pixel_check: Callable[..., dict[str, Any]] | None = None
+    # open-weights mode (STUDIO_OPEN_WEIGHTS=1 or the run's own toggle): the copywriter
+    # runs on Muse Spark Open (``open_client``), same prompt and CopyPack schema
+    open_weights: bool = False
 
 
 def _limit(ctx: Context) -> int:
@@ -135,6 +138,7 @@ class RunResult:
     cost_usd: float = 0.0
     summary: str = ""
     reasoning: list[str] = field(default_factory=list)
+    open_weights: bool = False  # the run's copywriter ran on Muse Spark Open
 
     def state(self) -> dict[str, Any]:
         return {
@@ -146,7 +150,7 @@ class RunResult:
             "pixel_check": self.pixel_check,
             "angle_index": self.angle_index, "steps": self.steps,
             "cost_usd": round(self.cost_usd, 6), "summary": self.summary,
-            "reasoning": self.reasoning[-5:],
+            "reasoning": self.reasoning[-5:], "open_weights": self.open_weights,
         }
 
 
@@ -479,10 +483,12 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         if not 0 <= args.angle_index < len(run.plan.angles):
             raise ToolError("angle_index must be 0, 1 or 2")
         angle = run.plan.angles[args.angle_index]
+        writer = ctx.open_client if ctx.open_weights and ctx.open_client else ctx.client
         run.copy, _ = copywriter.write(
-            ctx.client, angle, angle.persona, run_id=run.run_id, brief=brief,
+            writer, angle, angle.persona, run_id=run.run_id, brief=brief,
             brief_source=ctx.brief_source,
-            facts=ctx.brief_v1.confirmed_facts if ctx.brief_v1 is not None else None)
+            facts=ctx.brief_v1.confirmed_facts if ctx.brief_v1 is not None else None,
+            open_weights=ctx.open_weights)
         run.angle_index = args.angle_index
         emit("copy")
         return {"variants": [v.model_dump() for v in run.copy.variants],
@@ -715,7 +721,10 @@ def run(
     if not brief or len(brief) > _limit(ctx):
         raise ValueError(f"brief must be 1-{_limit(ctx)} characters")
     run_id = run_id or new_run_id()
-    result = RunResult(run_id=run_id, status="running")
+    if ctx.open_weights and (ctx.open_client is None or not ctx.open_client.available()):
+        raise OpenWeightsUnavailable("open-weights mode needs BASETEN_API_KEY (Muse Spark "
+                                     "Open)", code="unavailable")
+    result = RunResult(run_id=run_id, status="running", open_weights=ctx.open_weights)
     _save_state(ctx.conn, result, "running")
     try:
         result.plan = make_plan(ctx, brief, run_id)

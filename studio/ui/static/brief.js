@@ -483,7 +483,8 @@
     const btn = $("confirm-button");
     btn.disabled = true;
     status("confirm-status", T("brief_confirming"));
-    const r = await Signer.postJSON("/api/runs", { brief_id: draft.brief_id, brief_v1: brief, resolutions, dictated });
+    const ow = $("open-weights-run");
+    const r = await Signer.postJSON("/api/runs", { brief_id: draft.brief_id, brief_v1: brief, resolutions, dictated, open_weights: !!(ow && ow.checked) });
     btn.disabled = false;
     if (r.status === 422 && r.data.fields) { showErrors(r.data.fields); status("confirm-status", T("brief_errors", { n: Object.keys(r.data.fields).length }), true); return; }
     if (r.status === 409 && r.data.run_id) { Studio.follow(r.data.run_id); return; }

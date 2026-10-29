@@ -291,6 +291,10 @@
       {{ field("assets", "assets", "lines") }}
     </fieldset>
 
+    <div class="bf-field">
+      <label><input type="checkbox" id="open-weights-run" aria-describedby="hint-open-weights"{% if open_weights_forced %} checked disabled{% endif %}> {{ t("brief.f.open_weights") }}</label>
+      <p class="hint" id="hint-open-weights">{{ t("brief.h.open_weights_forced" if open_weights_forced else "brief.h.open_weights") }}</p>
+    </div>
     <p class="hint" id="confirm-hint">{{ t("brief.confirm_hint") }}</p>
     <div class="inline">
       <button type="submit" id="confirm-button" class="big" aria-describedby="confirm-hint">{{ t("brief.confirm_button") }}</button>

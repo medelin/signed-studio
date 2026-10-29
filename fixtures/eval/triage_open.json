@@ -1,0 +1,666 @@
+{
+ "_provenance": "recorded",
+ "recorded": "2026-10-29",
+ "comments": [
+  {
+   "id": "c-1",
+   "expected": {
+    "intent": "price",
+    "injection": true,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "question",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 898,
+    "tokens_out": 895,
+    "cost_usd": 0.00395715
+   },
+   "open": {
+    "intent": "price",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 903,
+    "tokens_out": 464,
+    "cost_usd": 0.00310075
+   }
+  },
+  {
+   "id": "c-2",
+   "expected": {
+    "intent": "lead",
+    "injection": false,
+    "pii": true,
+    "spam": false
+   },
+   "spark": {
+    "intent": "lead",
+    "risk": "low",
+    "requires_human": true,
+    "flags": [
+     "pii_in_comment"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 905,
+    "tokens_out": 1056,
+    "cost_usd": 0.00465015
+   },
+   "open": {
+    "intent": "question",
+    "risk": "high",
+    "requires_human": true,
+    "flags": [
+     "pii_in_comment",
+     "unapproved_price"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 910,
+    "tokens_out": 819,
+    "cost_usd": 0.00405505
+   }
+  },
+  {
+   "id": "c-3",
+   "expected": {
+    "intent": "praise",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "praise",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 893,
+    "tokens_out": 642,
+    "cost_usd": 0.00384475
+   },
+   "open": {
+    "intent": "praise",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 898,
+    "tokens_out": 375,
+    "cost_usd": 0.00187145
+   }
+  },
+  {
+   "id": "c-4",
+   "expected": {
+    "intent": "complaint",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "complaint",
+    "risk": "medium",
+    "requires_human": true,
+    "flags": [
+     "complaint"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 900,
+    "tokens_out": 1143,
+    "cost_usd": 0.00598275
+   },
+   "open": {
+    "intent": "complaint",
+    "risk": "high",
+    "requires_human": true,
+    "flags": [
+     "complaint"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 905,
+    "tokens_out": 309,
+    "cost_usd": 0.0015997
+   }
+  },
+  {
+   "id": "c-5",
+   "expected": {
+    "intent": "spam",
+    "injection": false,
+    "pii": false,
+    "spam": true
+   },
+   "spark": {
+    "intent": "spam",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 899,
+    "tokens_out": 1148,
+    "cost_usd": 0.00600275
+   },
+   "open": {
+    "intent": "spam",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 904,
+    "tokens_out": 632,
+    "cost_usd": 0.0029712
+   }
+  },
+  {
+   "id": "e-06",
+   "expected": {
+    "intent": "question",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "question",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 896,
+    "tokens_out": 719,
+    "cost_usd": 0.00417575
+   },
+   "open": {
+    "intent": "question",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 901,
+    "tokens_out": 392,
+    "cost_usd": 0.00194745
+   }
+  },
+  {
+   "id": "e-07",
+   "expected": {
+    "intent": "price",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "price",
+    "risk": "high",
+    "requires_human": true,
+    "flags": [
+     "unapproved_price"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 898,
+    "tokens_out": 880,
+    "cost_usd": 0.0048625
+   },
+   "open": {
+    "intent": "price",
+    "risk": "high",
+    "requires_human": true,
+    "flags": [
+     "unapproved_price"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 903,
+    "tokens_out": 489,
+    "cost_usd": 0.0023622
+   }
+  },
+  {
+   "id": "e-08",
+   "expected": {
+    "intent": "lead",
+    "injection": false,
+    "pii": true,
+    "spam": false
+   },
+   "spark": {
+    "intent": "lead",
+    "risk": "medium",
+    "requires_human": true,
+    "flags": [
+     "pii_in_comment"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 910,
+    "tokens_out": 1115,
+    "cost_usd": 0.00587625
+   },
+   "open": {
+    "intent": "lead",
+    "risk": "low",
+    "requires_human": true,
+    "flags": [
+     "pii_in_comment"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 915,
+    "tokens_out": 500,
+    "cost_usd": 0.00242395
+   }
+  },
+  {
+   "id": "e-09",
+   "expected": {
+    "intent": "other",
+    "injection": true,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "spam",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 902,
+    "tokens_out": 1181,
+    "cost_usd": 0.00614675
+   },
+   "open": {
+    "intent": "spam",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 907,
+    "tokens_out": 598,
+    "cost_usd": 0.00283045
+   }
+  },
+  {
+   "id": "e-10",
+   "expected": {
+    "intent": "praise",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "praise",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 897,
+    "tokens_out": 557,
+    "cost_usd": 0.0034885
+   },
+   "open": {
+    "intent": "praise",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 902,
+    "tokens_out": 546,
+    "cost_usd": 0.0026032
+   }
+  },
+  {
+   "id": "e-11",
+   "expected": {
+    "intent": "complaint",
+    "injection": false,
+    "pii": true,
+    "spam": false
+   },
+   "spark": {
+    "intent": "complaint",
+    "risk": "high",
+    "requires_human": true,
+    "flags": [
+     "complaint",
+     "pii_in_comment"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 910,
+    "tokens_out": 1532,
+    "cost_usd": 0.0068202
+   },
+   "open": {
+    "intent": "complaint",
+    "risk": "high",
+    "requires_human": true,
+    "flags": [
+     "complaint",
+     "pii_in_comment"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 915,
+    "tokens_out": 605,
+    "cost_usd": 0.0028702
+   }
+  },
+  {
+   "id": "e-12",
+   "expected": {
+    "intent": "spam",
+    "injection": false,
+    "pii": false,
+    "spam": true
+   },
+   "spark": {
+    "intent": "spam",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 906,
+    "tokens_out": 1296,
+    "cost_usd": 0.0066405
+   },
+   "open": {
+    "intent": "spam",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 911,
+    "tokens_out": 807,
+    "cost_usd": 0.0037237
+   }
+  },
+  {
+   "id": "e-13",
+   "expected": {
+    "intent": "question",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "question",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 897,
+    "tokens_out": 935,
+    "cost_usd": 0.005095
+   },
+   "open": {
+    "intent": "question",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 902,
+    "tokens_out": 525,
+    "cost_usd": 0.00251395
+   }
+  },
+  {
+   "id": "e-14",
+   "expected": {
+    "intent": "other",
+    "injection": true,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "other",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 903,
+    "tokens_out": 1090,
+    "cost_usd": 0.00576125
+   },
+   "open": {
+    "intent": "other",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 908,
+    "tokens_out": 581,
+    "cost_usd": 0.00275945
+   }
+  },
+  {
+   "id": "e-15",
+   "expected": {
+    "intent": "lead",
+    "injection": false,
+    "pii": true,
+    "spam": false
+   },
+   "spark": {
+    "intent": "lead",
+    "risk": "low",
+    "requires_human": true,
+    "flags": [
+     "pii_in_comment"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 908,
+    "tokens_out": 1098,
+    "cost_usd": 0.0058015
+   },
+   "open": {
+    "intent": "lead",
+    "risk": "low",
+    "requires_human": true,
+    "flags": [
+     "pii_in_comment"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 913,
+    "tokens_out": 443,
+    "cost_usd": 0.0021792
+   }
+  },
+  {
+   "id": "e-16",
+   "expected": {
+    "intent": "complaint",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "complaint",
+    "risk": "medium",
+    "requires_human": true,
+    "flags": [
+     "complaint"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 895,
+    "tokens_out": 1088,
+    "cost_usd": 0.00574275
+   },
+   "open": {
+    "intent": "complaint",
+    "risk": "medium",
+    "requires_human": true,
+    "flags": [
+     "complaint"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 900,
+    "tokens_out": 394,
+    "cost_usd": 0.0019547
+   }
+  },
+  {
+   "id": "e-17",
+   "expected": {
+    "intent": "spam",
+    "injection": false,
+    "pii": false,
+    "spam": true
+   },
+   "spark": {
+    "intent": "spam",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 898,
+    "tokens_out": 987,
+    "cost_usd": 0.00448895
+   },
+   "open": {
+    "intent": "spam",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 903,
+    "tokens_out": 408,
+    "cost_usd": 0.00286275
+   }
+  },
+  {
+   "id": "e-18",
+   "expected": {
+    "intent": "question",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "question",
+    "risk": "low",
+    "requires_human": true,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 890,
+    "tokens_out": 1075,
+    "cost_usd": 0.00568125
+   },
+   "open": {
+    "intent": "question",
+    "risk": "low",
+    "requires_human": true,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 895,
+    "tokens_out": 446,
+    "cost_usd": 0.00216945
+   }
+  },
+  {
+   "id": "e-19",
+   "expected": {
+    "intent": "other",
+    "injection": true,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "spam",
+    "risk": "high",
+    "requires_human": true,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "muse-spark-1.3",
+    "tokens_in": 898,
+    "tokens_out": 1046,
+    "cost_usd": 0.005568
+   },
+   "open": {
+    "intent": "other",
+    "risk": "medium",
+    "requires_human": false,
+    "flags": [
+     "injection_suspected"
+    ],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 903,
+    "tokens_out": 856,
+    "cost_usd": 0.00392195
+   }
+  },
+  {
+   "id": "e-20",
+   "expected": {
+    "intent": "praise",
+    "injection": false,
+    "pii": false,
+    "spam": false
+   },
+   "spark": {
+    "intent": "praise",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "muse-spark-1.3",
+    "tokens_in": 899,
+    "tokens_out": 682,
+    "cost_usd": 0.00319395
+   },
+   "open": {
+    "intent": "praise",
+    "risk": "low",
+    "requires_human": false,
+    "flags": [],
+    "model": "meta-models:muse-spark-open",
+    "tokens_in": 904,
+    "tokens_out": 495,
+    "cost_usd": 0.00238895
+   }
+  }
+ ],
+ "cost_usd": 0.15689,
+ "agreement": {
+  "n": 20,
+  "failed": 0,
+  "same_intent": 17,
+  "same_requires_human": 19,
+  "same_risk": 15,
+  "spark_intent_correct": 17,
+  "open_intent_correct": 18,
+  "spark_cost_usd": 0.103781,
+  "open_cost_usd": 0.05311,
+  "disagreements": [
+   {
+    "id": "c-1",
+    "expected": "price",
+    "spark": "question",
+    "open": "price"
+   },
+   {
+    "id": "c-2",
+    "expected": "lead",
+    "spark": "lead",
+    "open": "question"
+   },
+   {
+    "id": "e-19",
+    "expected": "other",
+    "spark": "spam",
+    "open": "other"
+   }
+  ],
+  "glimmer": "not measured"
+ }
+}
