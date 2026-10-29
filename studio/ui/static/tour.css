@@ -1,0 +1,93 @@
+/* The public tour (/try): tokens.css only, both themes; nothing wider than the screen. */
+.tour { max-width: 980px; min-width: 0; }
+.tour h3 { font-size: 1rem; margin: 1rem 0 .4rem; }
+.tour p, .tour li, .tour dd, .tour blockquote { overflow-wrap: anywhere; }
+.tour-notice {
+  border: 1px solid var(--partial); background: var(--partial-soft); color: var(--ink);
+  padding: .6rem .8rem; margin: .5rem 0 1rem;
+}
+.tour-cta { display: flex; flex-wrap: wrap; gap: .6rem 1rem; align-items: center; }
+.tour-button {
+  display: inline-block; padding: .65rem 1.1rem; text-decoration: none;
+  font: 600 .85rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .08em;
+  background: var(--signal); color: var(--signal-ink);
+}
+.tour-button.secondary { background: var(--ink-2); color: var(--bg); }
+
+/* controls: sticky on top while reading; the step list wraps, never scrolls the page */
+.tour-controls {
+  position: sticky; top: 0; z-index: 2; background: var(--bg); padding: .5rem 0;
+  border-bottom: 1px solid var(--rule-soft); margin-bottom: 1rem;
+}
+.tour-buttons { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+.tour-nav { display: flex; flex-wrap: wrap; gap: .3rem; list-style: none; margin: 0; padding: 0; }
+.tour-nav a {
+  display: inline-flex; align-items: center; gap: .35rem; min-height: 2.4rem; padding: .2rem .55rem;
+  border: 1px solid var(--rule-soft); background: var(--bg-raised); color: var(--ink-2);
+  font: 600 .75rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .06em;
+  text-decoration: none;
+}
+.tour-nav a[aria-current="step"] { border-color: var(--signal); color: var(--ink); box-shadow: inset 0 -2px 0 var(--signal); }
+.tour-nav a.seen .tour-n { background: var(--ink-2); color: var(--bg); }
+.tour-n {
+  display: inline-grid; place-items: center; min-width: 1.4rem; height: 1.4rem;
+  border: 1px solid var(--rule); font-size: .7rem;
+}
+
+.tour-steps { list-style: none; margin: 0; padding: 0; }
+.tour-step { scroll-margin-top: 7rem; }
+/* with the script: only revealed steps are shown */
+.tour.live .tour-step:not(.shown) { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .tour.live .tour-step.shown.enter { animation: tour-in var(--dur, 240ms) var(--ease, ease-out) both; }
+  @keyframes tour-in { from { opacity: 0; transform: translateY(.6rem); } to { opacity: 1; transform: none; } }
+}
+
+.tour-quote {
+  margin: .5rem 0 0; padding: .6rem .9rem; border-left: 3px solid var(--signal);
+  background: var(--soft); font-size: 1.02rem;
+}
+.tour-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 1rem; }
+.tour-dl { display: grid; grid-template-columns: minmax(0, 11rem) minmax(0, 1fr); gap: .3rem .8rem; margin: .5rem 0; }
+.tour-dl dt { font-weight: 600; color: var(--ink-2); }
+.tour-dl dd { margin: 0; min-width: 0; }
+@media (max-width: 520px) { .tour-dl { grid-template-columns: minmax(0, 1fr); } .tour-dl dd { margin-bottom: .4rem; } }
+.tour-hash { overflow-wrap: anywhere; word-break: break-all; }
+.tour-cards { list-style: none; padding: 0; margin: .4rem 0; display: grid; gap: .6rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); }
+.tour-card { border: 1px solid var(--rule-soft); background: var(--bg); padding: .6rem .75rem; min-width: 0; }
+.tour-card p { margin: .3rem 0; }
+.tour-card.chosen { border-color: var(--signal); box-shadow: inset 3px 0 0 var(--signal); }
+.tour-headline { font-weight: 700; }
+.tour-images { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.tour-figure { margin: 0; flex: 1 1 14rem; max-width: 100%; min-width: 0; }
+.tour-figure.tall { flex: 0 1 12rem; }
+.tour-figure img { display: block; width: 100%; height: auto; border: 1px solid var(--rule-soft); background: var(--soft); }
+.tour-figure figcaption { font-size: .82rem; color: var(--muted); margin-top: .3rem; }
+.tour-verdict { display: inline-block; padding: 0 .45rem; border: 1px solid var(--rule); font: 600 .78rem/1.6 var(--font-mono); }
+.tour-verdict.v-ok { border-color: var(--ok); background: var(--ok-soft); }
+.tour-verdict.v-warn { border-color: var(--partial); background: var(--partial-soft); }
+.tour-verdict.v-block, .tour-verdict.v-fail { border-color: var(--signal); background: var(--signal-soft); }
+.tour-disagree li { margin: .2rem 0; }
+.tour-pre { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; background: var(--soft); padding: .6rem; margin: .4rem 0 0; }
+.tour-receipts td.tour-mark { width: 2rem; text-align: center; font-weight: 700; }
+.tour-receipts tr.ok td.tour-mark { color: var(--ok); }
+.tour-receipts tr.bad td { background: var(--signal-soft); }
+.tour-receipts tr.bad td.tour-mark { color: var(--signal); }
+.tour-verify { margin-top: 1rem; }
+.tour-checks { list-style: none; padding: 0; margin: .4rem 0; max-height: 18rem; overflow-y: auto; font-size: .85rem; }
+.tour-checks li { padding: .1rem 0; overflow-wrap: anywhere; }
+.tour-checks li.ok::before { content: "✓ "; color: var(--ok); font-weight: 700; }
+.tour-checks li.bad::before { content: "✗ "; color: var(--signal); font-weight: 700; }
+.tour-checks li.note::before { content: "· "; color: var(--muted); }
+#tour-verdict.ok { color: var(--ok); font-weight: 700; }
+#tour-verdict.bad { color: var(--signal); font-weight: 700; }
+.tour-end { margin: 1.5rem 0 0; }
+/* the receipts table scrolls inside its box; without paint containment Chromium still
+   counts its width towards the page on phones */
+.tour .table-scroll { contain: paint; min-width: 0; }
+/* phones: the controls would cover half the screen if they stuck to the top */
+@media (max-width: 760px) {
+  .tour-controls { position: static; }
+  .tour-step { scroll-margin-top: .5rem; }
+}
