@@ -97,3 +97,12 @@ def test_no_ruler_motif() -> None:
         text = path.read_text(encoding="utf-8")
         assert "ruler" not in text, path
         assert "repeating-linear-gradient(90deg" not in text, path
+
+
+@pytest.mark.parametrize("name", ("illustrations.css", "help.js"))
+def test_static_files_are_revalidated_so_a_deploy_is_seen_at_once(client, name):
+    r = client.get(f"/static/{name}")
+    assert r.status_code == 200
+    assert r.headers["cache-control"] == "no-cache"
+    again = client.get(f"/static/{name}", headers={"If-None-Match": r.headers["etag"]})
+    assert again.status_code == 304

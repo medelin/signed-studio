@@ -451,6 +451,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
+        if request.url.path.startswith("/static/") and "Cache-Control" not in response.headers:
+            # unversioned URLs: revalidate by ETag (304) so a deploy shows on the next load
+            response.headers["Cache-Control"] = "no-cache"
         return response
 
     def session_of(request: Request) -> str | None:
