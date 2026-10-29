@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from studio.approvals import Verified
+from studio.meta import pixel
 from studio.meta.adapter import (
     ACTIVATE,
     CREATE,
@@ -90,6 +91,26 @@ class MockAdapter:
 
     def account_info(self) -> dict[str, str]:
         return {"currency": self.currency, "timezone_name": "Europe/Warsaw"}
+
+    def pixel_check(self, pixel_id: str, landing_url: str, *,
+                    event_type: str = "") -> dict[str, Any]:
+        """A deterministic healthy pixel (read-only): found in the ad account, fired
+        recently, events in the last 7 days (the campaign's event among them) and its id
+        in the landing page. Nothing is fetched."""
+        self.calls.append(("pixel_check", pixel_id))
+        name = pixel.EVENT_NAMES.get(event_type, "Lead")
+        events = {"total": 1240, "by_event": {"PageView": 1180, name: 60}}
+        checks = [pixel.entry("pixel_found", "ok", "the pixel exists and is available"),
+                  pixel.entry("account_ok", "ok", "the ad account can use the pixel"),
+                  *pixel.activity_checks(self.PIXEL_FIRED, events, event_type or "LEAD",
+                                         self.PIXEL_NOW),
+                  pixel.entry("landing_found", "ok", "the pixel id is in the landing "
+                                                     "page's HTML")]
+        return pixel.result(pixel_id, checks, last_fired_time=self.PIXEL_FIRED,
+                            events=events, landing_url=landing_url)
+
+    PIXEL_FIRED = "2026-10-28T09:00:00+0000"
+    PIXEL_NOW = 1793264400.0  # 2026-10-29 09:00 UTC: the mock's clock for the check
 
     def _delivery(self, payload: Mapping[str, Any], approval: Verified) -> dict[str, Any]:
         require(approval, CREATE, payload, self._conn)

@@ -19,6 +19,9 @@ strings, as in the reference's cURL examples.
   most ``RETRIES`` times); 10, 100, 190 and anything else are fatal. A
   network error on a POST is not retried (the write may have happened; a duplicate PAUSED
   object is better found by a human than created twice silently).
+- ``pixel_check`` is read-only (Graph GETs and the SSRF-safe landing-page fetch of
+  ``pixel.Fetcher``); with an injected Graph ``transport`` (tests, replay) and no
+  ``fetcher`` the landing page is not fetched at all (``pixel.Offline``).
 - Campaign, ad set and ad bodies carry ``status=PAUSED`` from a literal; activation is
   ``POST /{id} status=ACTIVE`` for the ad, the ad set and the campaign (in that order,
   one call per level), each behind the same ``campaign.activate`` approval.
@@ -39,6 +42,7 @@ from typing import Any, Final
 import httpx
 
 from studio.approvals import Verified
+from studio.meta import pixel
 from studio.meta.adapter import (
     ACTIVATE,
     CREATE,
@@ -116,8 +120,12 @@ class GraphAdapter:
                  sleep: Callable[[float], None] = time.sleep, timeout: float = 30.0,
                  token_transport: str = "form",  # noqa: S107 - a mode name, not a token
                  app_secret: str = "", conn: Any = None,
-                 dsa_beneficiary: str = "", dsa_payor: str = "") -> None:
+                 dsa_beneficiary: str = "", dsa_payor: str = "",
+                 fetcher: Any = None, clock: Callable[[], float] = time.time) -> None:
         self._conn = conn
+        self._fetcher = fetcher or (pixel.Offline() if transport is not None
+                                    else pixel.Fetcher())
+        self._clock = clock
         self._dsa = {"dsa_beneficiary": dsa_beneficiary, "dsa_payor": dsa_payor}
         m = _ACCOUNT.fullmatch(ad_account_id or "")
         if not access_token or m is None or not page_id:
@@ -235,6 +243,73 @@ class GraphAdapter:
             cached = {"currency": currency, "timezone_name": str(body.get("timezone_name", ""))}
             self._account: dict[str, str] | None = cached
         return dict(cached)
+
+    PIXEL_FIELDS = "id,name,last_fired_time,is_unavailable"
+    PIXEL_PAGES = 5  # at most 5 x 100 pixels of the ad account are listed
+
+    def _account_pixels(self) -> set[str]:
+        """``GET /act_{id}/adspixels?fields=id``: the pixels the ad account can use (its
+        own and those shared with it), following the ``after`` cursor."""
+        ids: set[str] = set()
+        params: dict[str, Any] = {"fields": "id", "limit": "100"}
+        for _ in range(self.PIXEL_PAGES):
+            body = self._request("GET", f"{self.account}/adspixels", params=params)
+            ids |= {str(x["id"]) for x in body.get("data") or []
+                    if isinstance(x, dict) and isinstance(x.get("id"), str)}
+            paging = body.get("paging")
+            paging = paging if isinstance(paging, dict) else {}
+            after = (paging.get("cursors") or {}).get("after") if paging.get("next") else None
+            if not isinstance(after, str) or not after:
+                break
+            params = {**params, "after": after}
+        return ids
+
+    def pixel_check(self, pixel_id: str, landing_url: str, *,
+                    event_type: str = "") -> dict[str, Any]:
+        """Read-only pixel check (``studio.meta.pixel``): the pixel exists and is not
+        unavailable, the ad account can use it, its recent activity, and its id in the
+        landing page. Never raises for Graph errors: they become check entries."""
+        if not pixel.PIXEL_ID.fullmatch(pixel_id or ""):
+            return pixel.unverified(str(pixel_id)[:30], "bad_id", landing_url)
+        try:
+            body = self._request("GET", pixel_id, params={"fields": self.PIXEL_FIELDS})
+        except AdapterError as exc:
+            if exc.graph_code in (100, 803):  # no such object, or not visible to this token
+                return pixel.result(pixel_id, [pixel.entry(
+                    "pixel_not_found", "fail", "the pixel does not exist or this account "
+                    "cannot see it")], landing_url=landing_url)
+            return pixel.unverified(pixel_id, exc.code, landing_url)
+        if str(body.get("id", "")) != pixel_id:
+            return pixel.unverified(pixel_id, "bad_response", landing_url)
+        checks = []
+        if body.get("is_unavailable") is True:
+            checks.append(pixel.entry("pixel_unavailable", "fail",
+                                      "Meta marks the pixel as unavailable"))
+        else:
+            checks.append(pixel.entry("pixel_found", "ok", "the pixel exists and is available"))
+        try:
+            listed = pixel_id in self._account_pixels()
+            checks.append(pixel.entry("account_ok", "ok", "the ad account can use the pixel")
+                          if listed else pixel.entry(
+                              "pixel_not_in_account", "fail",
+                              "the pixel is not among the ad account's pixels"))
+        except AdapterError:
+            checks.append(pixel.entry("account_unknown", "warn",
+                                      "the ad account's pixels could not be listed"))
+        now = self._clock()
+        try:
+            stats = self._request("GET", f"{pixel_id}/stats", params={
+                "aggregation": "event", "start_time": str(int(now - pixel.WINDOW_S)),
+                "end_time": str(int(now))})
+            events: dict[str, Any] | None = pixel.events_of(stats)
+        except AdapterError:
+            events = None
+        fired = body.get("last_fired_time")
+        fired = fired if isinstance(fired, str) else ""
+        checks += pixel.activity_checks(fired, events, event_type, now)
+        checks.append(pixel.landing_check(self._fetcher, pixel_id, landing_url))
+        return pixel.result(pixel_id, checks, last_fired_time=fired, events=events,
+                            landing_url=landing_url)
 
     def _delivery(self, payload: Mapping[str, Any], approval: Verified) -> dict[str, Any]:
         require(approval, CREATE, payload, self._conn)
