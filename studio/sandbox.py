@@ -18,8 +18,9 @@ guards (``write_guard``, ``BodyLimit``, the login limiter, the daily model budge
   receipts, runs, consumed nonces and approver keys are kept; a reset is deferred while
   judges are writing, but never by more than half an interval;
 - startup refuses an unsafe sandbox: no judge password (writes would be impossible, and an
-  empty password must never be an open door), a Graph (real Meta) adapter, or cookies
-  without ``Secure``.
+  empty password must never be an open door), a Graph (real Meta) adapter unless
+  ``STUDIO_SANDBOX_LIVE_META=1`` (then the judge account can create PAUSED campaigns only,
+  see ``routes_studio.demo_refused``), or cookies without ``Secure``.
 """
 
 from __future__ import annotations
@@ -68,6 +69,7 @@ class SandboxConfig:
     session_writes_per_min: int = 30
     session_writes_per_hour: int = 300
     reset_thread: bool = True
+    live_meta: bool = False  # STUDIO_SANDBOX_LIVE_META=1: real Meta, judge kept to PAUSED
 
     @classmethod
     def load(cls, env: Mapping[str, str] | None = None) -> SandboxConfig:
@@ -75,6 +77,9 @@ class SandboxConfig:
         raw = e.get("STUDIO_SANDBOX", "").strip().lower()
         if raw not in _TRUE | _FALSE:
             raise ConfigError(f"STUDIO_SANDBOX must be 0 or 1, got {raw!r}")
+        live = e.get("STUDIO_SANDBOX_LIVE_META", "").strip().lower()
+        if live not in _TRUE | _FALSE:
+            raise ConfigError(f"STUDIO_SANDBOX_LIVE_META must be 0 or 1, got {live!r}")
 
         def number(name: str, default: float, low: float, high: float) -> float:
             try:
@@ -87,6 +92,7 @@ class SandboxConfig:
 
         return cls(
             enabled=raw in _TRUE,
+            live_meta=live in _TRUE,
             reset_interval_s=number("STUDIO_RESET_INTERVAL_S", 3600, MIN_INTERVAL_S, 7 * 86400),
             ip_requests_per_min=int(number("STUDIO_IP_REQUESTS_PER_MIN", 600, 10, 100_000)),
             ip_writes_per_min=int(number("STUDIO_IP_WRITES_PER_MIN", 30, 1, 10_000)),
@@ -101,8 +107,11 @@ class SandboxConfig:
             return
         if not settings.judge_login_enabled:
             raise ConfigError("STUDIO_SANDBOX=1 requires JUDGE_PASSWORD and SESSION_SECRET")
-        if settings.meta_adapter != "mock":
-            raise ConfigError("STUDIO_SANDBOX=1 requires META_ADAPTER=mock")
+        if settings.meta_adapter != "mock" and not self.live_meta:
+            # opt-in only: the judge account may then create PAUSED campaigns but never
+            # sign activate/update/reply/hide (routes_studio.demo_refused)
+            raise ConfigError("STUDIO_SANDBOX=1 requires META_ADAPTER=mock "
+                              "(or STUDIO_SANDBOX_LIVE_META=1)")
         if settings.google_adapter != "mock":
             raise ConfigError("STUDIO_SANDBOX=1 requires GOOGLE_ADS_ADAPTER=mock")
         if not settings.cookie_secure:

@@ -70,6 +70,16 @@ def test_sandbox_refuses_the_graph_adapter(tmp_path):
         SandboxConfig(enabled=True).validate(s)
 
 
+def test_sandbox_takes_live_meta_only_when_asked_and_the_judge_is_kept_paused(tmp_path):
+    s = settings(tmp_path, META_ADAPTER="graph", META_ACCESS_TOKEN="t", META_AD_ACCOUNT_ID="1",
+                 META_PAGE_ID="2", META_LANDING_URL="https://example.com/")
+    cfg = SandboxConfig.load({"STUDIO_SANDBOX": "1", "STUDIO_SANDBOX_LIVE_META": "1"})
+    assert cfg.live_meta is True
+    cfg.validate(s)  # starts: the judge account cannot sign live writes (demo_refused)
+    with pytest.raises(ConfigError):
+        SandboxConfig.load({"STUDIO_SANDBOX": "1", "STUDIO_SANDBOX_LIVE_META": "maybe"})
+
+
 def test_sandbox_refuses_the_google_rest_adapter(tmp_path):
     s = settings(tmp_path, GOOGLE_ADS_ADAPTER="rest", GOOGLE_ADS_CLIENT_ID="a",
                  GOOGLE_ADS_CLIENT_SECRET="b", GOOGLE_ADS_REFRESH_TOKEN="c",

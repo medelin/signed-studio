@@ -45,7 +45,7 @@ else changes in existing tables.
 | What | Setting |
 | --- | --- |
 | Model calls | real Muse Model API (`MODEL_API_KEY`), daily cap `STUDIO_DAILY_BUDGET_USD=8` (UTC day, rebuilt from the receipts after a restart) |
-| Meta | `META_ADAPTER=mock`: campaign writes produce receipts with `adapter: mock`, status PAUSED, no Graph calls; the sandbox never holds a Meta token |
+| Meta | `META_ADAPTER=mock` by default: campaign writes produce receipts with `adapter: mock`, status PAUSED, no Graph calls. With `STUDIO_SANDBOX_LIVE_META=1` and `META_ADAPTER=graph` the judge account creates real campaigns on the Muse ad account, always PAUSED and within `STUDIO_MAX_DAILY_BUDGET`; it cannot sign `campaign.activate`, `campaign.update`, `reply.post` or `comment.hide` (`demo_live_write`, before the nonce is consumed). Only the owner's own account can turn a campaign on |
 | Google Ads | `GOOGLE_ADS_ADAPTER=mock` (default): Search campaign writes produce receipts with `adapter: mock`, status PAUSED, no Google calls; the sandbox never holds a Google credential |
 | Kill switch | `STUDIO_READ_ONLY=1`: every write and model call is a 503, pages stay up |
 | API down | `STUDIO_REPLAY=1`: recorded responses instead of live calls |
