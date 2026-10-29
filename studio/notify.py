@@ -17,6 +17,9 @@
 - **No personal data in a mail body**: a count and a link, never a lead's name or contact.
 - **Rate limit**: leads and recommendations at most once per account per ten minutes; the
   counts of the suppressed events are added to the next mail.
+- **WhatsApp** (``studio.whatsapp.Channel``, optional): the same studio events with a
+  template (approval waiting, new leads, ad disapproved) to accounts that opted in with a
+  number; it runs on the same worker, after the mails, with its own rate-limit state.
 - **Receipts**: one ``notify.send`` tool-call receipt per mail (event, category, language,
   status, account id; no address, no subject, no body).
 """
@@ -70,6 +73,7 @@ EVENTS: dict[str, Event] = {
     "campaign_paused": Event("campaigns", "/studio"),
     "lead_new": Event("leads", "/leads", coalesce=True),
     "insights_ready": Event("campaigns", "/report", coalesce=True),
+    "ad_disapproved": Event("campaigns", "/studio"),  # hook name: ``ad.disapproved``
     "password_changed": Event("security", "/account#password"),
     "two_factor_on": Event("security", "/account#two-factor"),
     "two_factor_off": Event("security", "/account#two-factor"),
@@ -77,6 +81,8 @@ EVENTS: dict[str, Event] = {
     "deletion_requested": Event("security", ""),
     "export_ready": Event("security", "/account#export"),
 }
+
+ALIASES = {"ad.disapproved": "ad_disapproved"}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS notify_state (
@@ -316,13 +322,15 @@ class Notifier:
     """Queue events; one worker thread resolves, rate-limits, sends and receipts them."""
 
     def __init__(self, conn: sqlite3.Connection, ledger: Ledger, mail: MailConfig,
-                 public_url: str = "", *, clock: Callable[[], float] = time.time) -> None:
+                 public_url: str = "", *, clock: Callable[[], float] = time.time,
+                 whatsapp: Any = None) -> None:
         self.conn = conn
         self.ledger = ledger
         self.mail = mail
         self.public_url = public_url.rstrip("/")
         self.clock = clock
         self.outbox: list[Sent] = []
+        self.whatsapp = whatsapp  # a studio.whatsapp.Channel, or None
         self.transport: SmtpTransport | JmapTransport | None = (
             JmapTransport(mail) if mail.transport == "jmap"
             else SmtpTransport(mail) if mail.transport == "smtp" else None)
@@ -338,7 +346,8 @@ class Notifier:
 
     def event(self, name: str, *, count: int = 1) -> None:
         """A studio event for every account that wants it; returns at once."""
-        if not self.enabled:
+        name = ALIASES.get(name, name)
+        if not self.enabled and self.whatsapp is None:
             return
         ev = EVENTS[name]
         self._submit(lambda: self._deliver(name, ev, None, count))
@@ -406,6 +415,14 @@ class Notifier:
             return total
 
     def _deliver(self, name: str, ev: Event, who: Recipient | None, count: int) -> None:
+        if self.enabled:
+            self._deliver_mail(name, ev, who, count)
+        if self.whatsapp is not None and who is None:
+            self.whatsapp.deliver(
+                name, ev.category, count, coalesce=ev.coalesce,
+                due=lambda w, key, n: self._due(Recipient(w.account_id, "", w.lang), key, n))
+
+    def _deliver_mail(self, name: str, ev: Event, who: Recipient | None, count: int) -> None:
         for r in [who] if who else self._recipients(ev):
             n = count
             if ev.coalesce:

@@ -4,7 +4,8 @@
   judge session except ``/login``, ``/healthz``, static assets and the public verification
   material ``studio verify --server`` fetches (``/api/ledger-key``, ``/api/ledger-manifest``,
   ``/api/approver-keys``) and the recorded tour (``/try``, ``/pl/try``, ``/try/data.json``,
-  ``/try/img/``). Unauthenticated page requests are redirected to
+  ``/try/img/``) and the WhatsApp webhook (``/webhooks/whatsapp``, HMAC-signed, the
+  one CSRF-exempt path). Unauthenticated page requests are redirected to
   ``/login?next=<same-site path>``; API and asset requests get 401 JSON.
 - State-changing requests from a browser must be same-origin by Fetch Metadata
   (``Sec-Fetch-Site``); the existing ``Origin`` check in the routes stays.
@@ -44,8 +45,12 @@ PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favic
                           "/privacy", "/data-deletion",
                           "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys",
                           "/try", "/pl/try", "/try/data.json",  # the recorded tour
-                          "/start", "/pl/start"})  # onboarding
+                          "/start", "/pl/start",  # onboarding
+                          "/webhooks/whatsapp"})  # Meta's servers; authenticated by HMAC
 PUBLIC_PREFIXES = ("/static/", "/try/img/")
+# Posted by Meta's servers, never by a browser: the X-Hub-Signature-256 HMAC of the raw body
+# (checked in studio.routes_whatsapp) is the authentication, so no CSRF token is asked for.
+CSRF_EXEMPT_PATHS = frozenset({"/webhooks/whatsapp"})
 JSON_PREFIXES = ("/api/", "/assets/")
 
 
@@ -123,6 +128,7 @@ class Gate:
                 return
             ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
             if (ctype in FORM_TYPES and path not in FORM_CHECKED_IN_ROUTE
+                    and path not in CSRF_EXEMPT_PATHS
                     and not path.startswith(FORM_CHECKED_PREFIXES)
                     and not tokens_match(cookie, request.headers.get(CSRF_HEADER))):
                 await JSONResponse({"error": "csrf"}, 403)(scope, receive, send)

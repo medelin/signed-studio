@@ -209,10 +209,11 @@ def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
     if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
         raise Refused(400, {"error": "invalid_brief_id"})
     with conn.lock:
-        row = conn.execute("SELECT source, run_id, draft_run_id FROM briefs WHERE id = ?",
-                           (brief_id,)).fetchone()
+        row = conn.execute("SELECT source, run_id, draft_run_id, channel FROM briefs "
+                           "WHERE id = ?", (brief_id,)).fetchone()
     if row is None or not row[2] or row[1]:
         raise Refused(409, {"error": "unknown_draft"})
+    untrusted = untrusted or row[3] == "whatsapp"  # sent from a phone: customer-grade text
     try:
         draft = brief_v1.BriefV1.model_validate(body["brief_v1"])
     except ValidationError as exc:
@@ -478,6 +479,33 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "ceiling": settings.max_daily_budget, "currency": account_currency(),
             "google_currency": draft_google_currency(),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
+
+    @app.get("/api/briefs/{brief_id}")
+    def stored_draft(brief_id: str, request: Request) -> Response:
+        """A stored, unconfirmed Brief v1 draft (one sent from WhatsApp opens this way:
+        ``/studio?brief=<id>``), in the shape ``POST /api/briefs/draft`` answers."""
+        if not logged_in(request):
+            return JSONResponse({"error": "login_required"}, 401)
+        if not BRIEF_ID.fullmatch(brief_id):
+            return JSONResponse({"error": "not_found"}, 404)
+        with conn.lock:
+            row = conn.execute("SELECT draft, draft_run_id, run_id, source, channel FROM "
+                               "briefs WHERE id = ?", (brief_id,)).fetchone()
+        if row is None or not row[0] or row[2]:
+            return JSONResponse({"error": "not_found"}, 404)
+        stored = {k: v for k, v in json.loads(row[0]).items() if k != "schema"}
+        draft = brief_v1.BriefV1.model_validate(stored)
+        source = "transcript" if row[3] == "voice" or row[4] == "whatsapp" else "operator"
+        return JSONResponse({
+            "brief_id": brief_id, "draft_run_id": row[1], "source": source,
+            "channel": row[4], "brief": draft.model_dump(mode="json"),
+            "problems": brief_v1.problems(draft, confirmed=False,
+                                          ceiling_daily=settings.max_daily_budget,
+                                          currency=account_currency()),
+            "ceiling": settings.max_daily_budget, "currency": account_currency(),
+            "google_currency": draft_google_currency(),
+            "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(row[1])), 6)},
+            headers={"Cache-Control": "no-store"})
 
     @app.post("/api/runs")
     async def start_run(request: Request) -> Response:
