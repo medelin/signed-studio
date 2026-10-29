@@ -52,6 +52,7 @@ from studio import (
     notify,
     prefs,
     routes_account,
+    routes_api,
     routes_google,
     routes_help,
     routes_inbox,
@@ -77,7 +78,8 @@ LOG = logging.getLogger("studio.login")
 COOKIE = "studio_session"
 SESSION_TTL_S = 8 * 3600
 MAX_BODY = 64 * 1024
-UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024 * 1024}
+UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024 * 1024,
+                 **routes_api.UPLOAD_LIMITS}
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
@@ -510,6 +512,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget)))
 
     routes_google.register(app, settings, ledger, conn, write_guard, session_of)
+    routes_api.install(app)  # /api/v1 and /mcp for the owner's own assistant (bearer tokens)
 
     @app.get("/api/campaigns/{item_id}")
     def get_campaign(item_id: str, request: Request) -> Response:

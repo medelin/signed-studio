@@ -412,14 +412,17 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "open_weights_unavailable"}, 503)
         return on
 
-    def confirm_and_start(body: dict[str, Any], owner: str | None = None) -> Response:
+    def confirm_and_start(body: dict[str, Any], owner: str | None = None, *,
+                          agent: str = "owner", untrusted: bool = False) -> Response:
         """Confirm a drafted Brief v1 (every open question answered or struck, every field
         valid) and start its run; the ``brief.confirmed`` receipt, the brief row and the
-        run state commit together."""
+        run state commit together. ``agent``/``untrusted``: the assistants API
+        (``studio.assistants``) confirms as ``api:<label>``, its text enveloped."""
         try:
             c = check_confirmation(conn, body, ceiling=settings.max_daily_budget,
                                    currency=account_currency,
-                                   google_currency=google_account_currency, owner=owner)
+                                   google_currency=google_account_currency,
+                                   untrusted=untrusted, owner=owner)
         except Refused as exc:
             return JSONResponse(exc.body, exc.status)
         if app.state.muse is None and not settings.model_available:
@@ -433,7 +436,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                      "run_id": app.state.active_run}, 409)
             app.state.active_run = c.run_id
         try:
-            commit_confirmation(conn, ledger, c)
+            commit_confirmation(conn, ledger, c, agent=agent)
         except Refused as exc:
             with app.state.run_lock:
                 app.state.active_run = None
@@ -444,6 +447,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         app.state.last_thread = thread
         thread.start()
         return JSONResponse({"run_id": c.run_id, "brief_sha256": c.digest, **c.counts}, 202)
+
+    app.state.confirm_and_start = confirm_and_start  # the assistants API starts runs here
 
     @app.post("/api/briefs/draft")
     async def draft_brief(request: Request) -> Response:

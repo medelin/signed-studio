@@ -19,6 +19,7 @@ from jinja2 import pass_context
 from markupsafe import Markup
 
 from studio.ui.i18n_accounts import EN_ACCOUNTS, PL_ACCOUNTS
+from studio.ui.i18n_assistants import EN_ASSISTANTS, PL_ASSISTANTS
 from studio.ui.i18n_google import EN_GOOGLE, PL_GOOGLE
 from studio.ui.i18n_mcp import EN_MCP, PL_MCP
 from studio.ui.i18n_meta import EN_META, PL_META
@@ -1262,6 +1263,8 @@ EN.update(EN_OPEN)
 PL.update(PL_OPEN)
 EN.update(EN_ONBOARDING)
 PL.update(PL_ONBOARDING)
+EN.update(EN_ASSISTANTS)
+PL.update(PL_ASSISTANTS)
 EN.update(EN_WHATSAPP)
 PL.update(PL_WHATSAPP)
 

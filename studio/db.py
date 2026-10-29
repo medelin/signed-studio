@@ -26,7 +26,17 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from studio import accounts, approvals, disapprovals, executor, leadads, notify, store, whatsapp
+from studio import (
+    accounts,
+    api_tokens,
+    approvals,
+    disapprovals,
+    executor,
+    leadads,
+    notify,
+    store,
+    whatsapp,
+)
 from studio.approvals import transaction
 from studio.google import store as google_store
 from studio.meta import measurement
@@ -229,6 +239,7 @@ def init(conn: sqlite3.Connection) -> None:
     measurement.ensure_schema(conn)
     disapprovals.ensure_schema(conn)
     google_store.ensure_schema(conn)
+    api_tokens.ensure_schema(conn)  # assistants: personal access tokens, API-drafted briefs
 
 
 def _strings(value: Any) -> list[str]:

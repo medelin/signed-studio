@@ -515,28 +515,29 @@ def open_studio(env_file: Path, username: str, **kwargs: Any) -> StudioMcp:
     return StudioMcp(settings, conn, ledger, account, **kwargs)
 
 
-def build_server(studio: StudioMcp) -> Any:
-    """The MCP server (low-level SDK): the tool list from ``TOOLS``, every call through
-    ``StudioMcp.call`` in a worker thread. Input is validated there, not by the SDK, so a
-    malformed call still leaves its receipt."""
+def make_server(tools: list[tuple[str, str, dict[str, Any]]],
+                call: Callable[[Any, str, dict[str, Any]], dict[str, Any]], *,
+                instructions: str | None = None) -> Any:
+    """A low-level MCP server for ``tools`` (name, description, input schema): every call
+    goes to ``call(request_context, name, arguments)`` in a worker thread. Input is
+    validated there, not by the SDK, so a malformed call still leaves its receipt. Shared
+    by the stdio server below and the remote one (``studio.remote_mcp``)."""
     import anyio
     from mcp import types
     from mcp.server.lowlevel import Server
 
-    server: Any = Server(SERVER_NAME)
+    server: Any = Server(SERVER_NAME, instructions=instructions)
 
     @server.list_tools()  # type: ignore[untyped-decorator]
     async def list_tools() -> list[types.Tool]:
-        return [types.Tool(name=t.name, description=t.description, inputSchema=t.schema)
-                for t in TOOLS.values()]
+        return [types.Tool(name=name, description=description, inputSchema=schema)
+                for name, description, schema in tools]
 
     @server.call_tool(validate_input=False)  # type: ignore[untyped-decorator]
     async def call_tool(name: str, arguments: dict[str, Any]) -> types.CallToolResult:
-        params = server.request_context.session.client_params
-        client = params.clientInfo.name if params is not None else ""
-
+        ctx = server.request_context
         try:
-            result = await anyio.to_thread.run_sync(studio.call, client, name, arguments)
+            result = await anyio.to_thread.run_sync(call, ctx, name, arguments)
         except ReadOnlyMode:
             result = {"error": "read_only"}
         return types.CallToolResult(
@@ -545,6 +546,18 @@ def build_server(studio: StudioMcp) -> Any:
             structuredContent=result, isError="error" in result)
 
     return server
+
+
+def build_server(studio: StudioMcp) -> Any:
+    """The stdio MCP server: the tool list from ``TOOLS``, every call through
+    ``StudioMcp.call`` with the client's name from its ``initialize``."""
+
+    def call(ctx: Any, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        params = ctx.session.client_params
+        return studio.call(params.clientInfo.name if params is not None else "", name,
+                           arguments)
+
+    return make_server([(t.name, t.description, t.schema) for t in TOOLS.values()], call)
 
 
 def serve(studio: StudioMcp) -> int:

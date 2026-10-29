@@ -1,0 +1,56 @@
+<section class="panel account-part" id="assistants" aria-labelledby="assistants-h">
+  <h2 id="assistants-h">{{ t("account.section.assistants") }}</h2>
+  <p class="hint">{{ t("assist.lead") }}</p>
+  <p class="hint">{{ t("assist.how_html") }}</p>
+  {{ error_of("assistants", "assistants-error") }}
+  {% if account.is_demo %}
+  <p class="hint" id="assistants-demo">{{ t("err.token_demo") }}</p>
+  {% else %}
+  {% if new_token %}
+  <div class="panel" id="new-token" role="status">
+    <h3>{{ t("assist.new_title") }}</h3>
+    <p class="hint" id="new-token-hint">{{ t("assist.new_hint") }}</p>
+    <p><code class="token-value" aria-describedby="new-token-hint">{{ new_token }}</code></p>
+  </div>
+  {% endif %}
+  <form method="post" action="/account/tokens/create" class="stack">
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <label for="token-label">{{ t("assist.label") }}</label>
+    <input id="token-label" name="label" maxlength="40" required aria-describedby="token-label-hint"{{ invalid("assistants", "assistants-error") }}>
+    <p class="hint" id="token-label-hint">{{ t("assist.label_hint") }}</p>
+    <fieldset>
+      <legend>{{ t("assist.scope") }}</legend>
+      <label><input type="radio" name="scope" value="read" checked> {{ t("assist.scope.read") }}</label>
+      <label><input type="radio" name="scope" value="draft"> {{ t("assist.scope.draft") }}</label>
+    </fieldset>
+    <label for="token-days">{{ t("assist.expiry") }}</label>
+    <select id="token-days" name="days">
+      {% for d in token_days %}<option value="{{ d }}"{% if d == token_default_days %} selected{% endif %}>{{ t("assist.days", days=d) }}</option>{% endfor %}
+    </select>
+    <p class="hint" id="token-reauth">{{ t("assist.reauth_hint") }}</p>
+    <label for="token-password">{{ t("assist.password") }}</label>
+    <input id="token-password" name="password" type="password" autocomplete="current-password" required aria-describedby="token-reauth">
+    {% if account.totp_enabled %}
+    <label for="token-code">{{ t("assist.code") }}</label>
+    <input id="token-code" name="code" inputmode="numeric" autocomplete="one-time-code" required>
+    {% endif %}
+    <button type="submit">{{ t("assist.create") }}</button>
+  </form>
+  {% if api_tokens %}
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tokens-caption">
+  <table class="receipts tokens">
+    <caption id="tokens-caption">{{ t("assist.caption") }}</caption>
+    <thead><tr><th scope="col">{{ t("assist.col.label") }}</th><th scope="col">{{ t("assist.col.scope") }}</th><th scope="col">{{ t("assist.col.created") }}</th><th scope="col">{{ t("assist.col.expires") }}</th><th scope="col">{{ t("assist.col.last_used") }}</th><th scope="col">{{ t("assist.col.action") }}</th></tr></thead>
+    <tbody>
+    {% for k in api_tokens %}
+      <tr><td>{{ k.label }}</td><td>{{ k.scopes | join(", ") }}</td><td>{{ k.created_ts | utc }}</td><td>{{ k.expires_ts | utc }}</td><td>{% if k.last_used_ts %}{{ k.last_used_ts | utc }}{% else %}{{ t("assist.never") }}{% endif %}</td>
+      <td>{% if k.revoked_ts %}{{ t("assist.revoked") }}{% elif not k.active %}{{ t("assist.expired") }}{% else %}<form method="post" action="/account/tokens/revoke" class="inline-form"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><input type="hidden" name="token" value="{{ k.id }}"><button type="submit" class="secondary small-button" aria-label="{{ t('assist.revoke_label', label=k.label) }}">{{ t("assist.revoke") }}</button></form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="hint">{{ t("assist.none") }}</p>
+  {% endif %}
+  {% endif %}
+</section>
