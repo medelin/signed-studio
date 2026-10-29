@@ -103,6 +103,16 @@ def test_net_does_not_duplicate_a_p9_finding_the_model_made():
     assert [f.rule for f in merged.findings] == ["P9"]
 
 
+@pytest.mark.parametrize("severity", ["info", "warn"])
+def test_a_weak_model_p9_finding_does_not_switch_the_net_off_on_google(severity):
+    ad = next(a for a in ADS if a["id"] == "p9-no-zus")
+    model = Review.model_validate({"verdict": "OK", "summary": "x", "findings": [
+        {"rule": "P9", "evidence": "mentions ZUS", "severity": severity}]})
+    merged = reviewer.with_policy_net(model, _copy(ad), GOOGLE)
+    assert merged.verdict == "BLOCK"
+    assert any(f.rule == "P9" and f.severity == "block" for f in merged.findings)
+
+
 def test_recorded_spark_review_blocks_the_p9_ad_on_its_own():
     """Real Muse Spark 1.3 vision call (cassette ``review_p9``), before the code check."""
     import respx

@@ -205,10 +205,13 @@ def with_findings(review: Review, extra: list[Finding],
 def with_policy_net(review: Review, copy: CopyVariant,
                     channels: tuple[str, ...] = (rules.META,)) -> Review:
     """The model's review plus the code's P9 findings (unless the model already cited
-    P9); levels and verdict follow the table (``rules``)."""
+    P9 at the level the table allows here, so a weaker model finding never switches the
+    code check off); levels and verdict follow the table (``rules``)."""
     net = policy_net(copy, channels)
-    if not net or any(f.rule == "P9" for f in review.findings):
-        return normalize(review, channels)
+    capped = normalize(review, channels)
+    top = rules.cap("P9", channels)
+    if not net or any(f.rule == "P9" and f.severity == top for f in capped.findings):
+        return capped
     return normalize(Review(verdict=review.verdict, findings=[*review.findings, *net],
                             summary=review.summary), channels)
 
