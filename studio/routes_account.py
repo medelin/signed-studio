@@ -29,8 +29,9 @@ from studio.ui import i18n
 
 CHALLENGE_COOKIE = "studio_2fa"
 DONE = frozenset({"profile", "password", "2fa_started", "2fa_cancelled", "2fa_off",
-                  "session_revoked", "sessions_revoked", "notify"})
-SECTIONS = ("profile", "password", "two-factor", "sessions", "notifications", "export", "delete")
+                  "session_revoked", "sessions_revoked", "notify", "token_revoked"})
+SECTIONS = ("profile", "password", "two-factor", "sessions", "assistants", "notifications",
+            "export", "delete")
 NO_STORE = {"Cache-Control": "no-store"}
 MAX_FIELDS = 20
 
@@ -99,6 +100,12 @@ def second_step(app: FastAPI, request: Request, account: Account, nxt: str, html
     return response
 
 
+def _extras(app: FastAPI, account: Account) -> dict[str, Any]:
+    """More of the account page's context, from ``app.state.account_extras`` when set."""
+    hook = getattr(app.state, "account_extras", None)
+    return dict(hook(account)) if hook is not None else {}
+
+
 def _fields(raw: bytes) -> dict[str, str] | None:
     try:
         form = parse_qs(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=MAX_FIELDS)
@@ -128,7 +135,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     def page(request: Request, sid: str, account: Account, *, status: int = 200,
              errors: dict[str, tuple[str, str]] | None = None, codes: list[str] | None = None,
-             values: dict[str, str] | None = None) -> Response:
+             values: dict[str, str] | None = None, extra: dict[str, Any] | None = None
+             ) -> Response:
         done = request.query_params.get("done", "")
         pending = store.totp_pending_secret(account.id) if account.totp_pending else None
         uri = accounts.provisioning_uri(pending, account.username) if pending else ""
@@ -143,6 +151,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "advertiser_types": accounts.ADVERTISER_TYPES, "sections": SECTIONS,
             "min_password": accounts.MIN_PASSWORD_LEN,
             "notify_prefs": notify.preferences(conn, account.id),
+            **_extras(app, account),  # studio.routes_api: the "Assistants & API" section
+            **(extra or {}),
         }, status_code=status, headers=NO_STORE)
         return response
 
@@ -180,6 +190,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                  errors={form: ("err.too_many_attempts", "")})
         r.headers["Retry-After"] = str(app.state.limiter.retry_after(ip))
         return r
+
+    app.state.account_page = page  # the "Assistants & API" forms (studio.routes_api)
+    app.state.account_posted = posted
 
     # -- pages -----------------------------------------------------------------------------
 

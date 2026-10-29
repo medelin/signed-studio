@@ -47,6 +47,8 @@ PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favic
                           "/start", "/pl/start"})  # onboarding
 PUBLIC_PREFIXES = ("/static/", "/try/img/")
 JSON_PREFIXES = ("/api/", "/assets/")
+# /api/v1 and /mcp authenticate with a bearer token (studio.routes_api), never a cookie
+BEARER_PATHS = ("/api/v1", "/mcp")
 
 
 def safe_next(value: str | None) -> str:
@@ -89,6 +91,11 @@ def is_public(path: str) -> bool:
     return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
 
 
+def is_bearer(path: str) -> bool:
+    """A path whose routes check ``Authorization: Bearer`` themselves (and ignore cookies)."""
+    return any(path == p or path.startswith(p + "/") for p in BEARER_PATHS)
+
+
 def tokens_match(cookie: str | None, sent: str | None) -> bool:
     return bool(cookie and sent) and hmac.compare_digest(str(cookie).encode(),
                                                          str(sent).encode())
@@ -128,7 +135,8 @@ class Gate:
                 await JSONResponse({"error": "csrf"}, 403)(scope, receive, send)
                 return
 
-        if self.require_login() and not is_public(path) and self.session_of(request) is None:
+        if (self.require_login() and not is_public(path) and not is_bearer(path)
+                and self.session_of(request) is None):
             if path.startswith(JSON_PREFIXES) or method not in SAFE_METHODS:
                 response: JSONResponse | RedirectResponse = JSONResponse(
                     {"error": "login_required"}, 401)

@@ -9,9 +9,9 @@
 	encode zstd gzip
 
 	# Body limits (the app enforces the same per-path limits again, 413 either way).
-	@voice path /api/briefs/voice
+	@voice path /api/briefs/voice /api/v1/briefs/voice
 	@report path /api/reports
-	@small not path /api/briefs/voice /api/reports
+	@small not path /api/briefs/voice /api/v1/briefs/voice /api/reports
 	request_body @voice {
 		max_size 33MB
 	}
@@ -39,7 +39,17 @@
 		format json
 	}
 
+	# The owner's own assistant: /mcp (remote MCP, Streamable HTTP) and /api/v1 authenticate
+	# with a bearer token in the app; their answers are passed on at once, never buffered.
+	@assistants path /mcp /mcp/* /api/v1 /api/v1/*
+	handle @assistants {
+		reverse_proxy app:8000 {
+			flush_interval -1
+		}
+	}
 	# Caddy replaces any client X-Forwarded-For with the real peer address; the app trusts
 	# it only from TRUSTED_PROXY (this container's fixed address in docker-compose.yml).
-	reverse_proxy app:8000
+	handle {
+		reverse_proxy app:8000
+	}
 }

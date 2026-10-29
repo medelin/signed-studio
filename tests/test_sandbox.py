@@ -234,6 +234,11 @@ def test_caddyfiles_match_the_app(path):
     assert _caddy_header(text, "Content-Security-Policy") == CSP
     assert _caddy_header(text, "Strict-Transport-Security").startswith("max-age=")
     assert "max_size 128KB" in text and "max_size 33MB" in text
+    # the assistants' endpoints: the voice upload limit, and unbuffered answers
+    assert "@voice path /api/briefs/voice /api/v1/briefs/voice" in text
+    assert "@assistants path /mcp /mcp/* /api/v1 /api/v1/*" in text
+    block = text[text.index("handle @assistants"):]
+    assert "flush_interval -1" in block[:block.index("handle {")]
 
 
 def test_systemd_unit_is_hardened():

@@ -65,6 +65,7 @@ There is no self-registration: the operator creates accounts with `studio accoun
 | `test_objective_binding.py` | every objective created PAUSED from the signed delivery only; a signed but invalid mapping, a payload without one, another Page: no call; verify rejects a step that sent another mapping |
 | `test_lead_ads.py` | the instant form without the owner's privacy page; unsigned, wrongly signed or unconfigured leadgen webhooks; leads for forms the studio did not make; contact data in receipts |
 | `test_recommendations.py` | a recommendation executed without, or twice on, a signed `campaign.update`; a budget over the ceiling; a "pause" that activates; verify on an update logged without approval |
+| `test_assistants.py` | `/api/v1` and remote `/mcp` with no token, a forged one, a session cookie instead, a read token that drafts, another account's token, revoked / expired / disabled-account tokens, invented signing endpoints and tools, a flood (per-token limit), read-only mode, the sandbox; signing, execution, Meta writes and account changes are tripwires; the token value never in logs, receipts or the database |
 | `test_mcp.py` | every MCP tool with valid, extra and malformed arguments and invented signing tools while signing, execution, Meta writes and account changes are tripwires; a prompt injection in the brief fields and a forged approval in a `[FACT]` answer; verify on writes that name an MCP receipt or the unsigned pending approval |
 
 Accounts: `tests/test_account_pages.py` (wrong current password, a reused TOTP code, a
@@ -101,6 +102,11 @@ only searched for the pixel id and never stored, rendered or passed to a model. 
 injected Graph transport (tests, replay) nothing is fetched at all.
 
 ## Residual risks
+
+- **Personal access tokens are bearer secrets.** Whoever holds one can read (and, with
+  `draft`, draft and start runs) as that account until it expires (≤ 90 days) or is
+  revoked on `/account`; it can never sign. Only a keyed hash is stored; the value is shown
+  once. Leads and comments go to the owner's assistant as the signed-in UI shows them.
 
 - **TOFU in `studio verify --server`.** Without a pinned key, `--server` trusts the key and
   `seq` the server serves at that moment; a compromised server can serve a matching forged

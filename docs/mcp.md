@@ -5,6 +5,10 @@ Muse Studio Lite over the [Model Context Protocol](https://modelcontextprotocol.
 agent can read and draft. It cannot sign, send or spend: a human still signs every send in
 the web UI, and every call the agent makes is a receipt that `studio verify` checks.
 
+For the owner's own assistant over the network (Claude Desktop, Claude Code, ChatGPT,
+with a personal access token), see [docs/assistants.md](assistants.md): the remote MCP
+endpoint `/mcp` and the HTTPS API `/api/v1` share this module's server construction.
+
 Module: `studio/mcp_server.py` (official `mcp` Python SDK, low-level server, pinned
 `mcp==1.30.0`). Tests: `tests/test_mcp.py`, `tests/attack/test_mcp.py`.
 
