@@ -20,7 +20,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - **Pitch:** an AI ad agency for a one-person business that creates the Meta campaign PAUSED, and only after the owner signed the exact bytes; every step is a receipt you can check offline.
 - **Theme:** Build for Your World, Indie track: small-business owners running their own Meta ads safely.
 - **Try it:** https://muse.udun.eu, login `judge`; the password is in the submission form, not in this repo.
-<!-- - No-login tour: https://muse.udun.eu/try -->
+- **No login:** a recorded run replayed and verifiable in your browser at https://muse.udun.eu/try
 - **3-minute video:** <!-- VIDEO_URL -->
 - **Built during the event:** first commit 2026-10-27; solo.
 
