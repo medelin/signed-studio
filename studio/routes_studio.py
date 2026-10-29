@@ -278,7 +278,8 @@ def commit_confirmation(conn: Any, ledger: Ledger, c: Confirmation, *,
 def run_context(settings: Settings, conn: Any, muse: MuseClient,
                 open_weights: OpenWeightsClient | None, adapter: Any, *, currency: str,
                 brief_source: str = "operator", confirmed: brief_v1.BriefV1 | None = None,
-                digest: str = "", google: Any = None) -> producer.Context:
+                digest: str = "", google: Any = None,
+                open_mode: bool | None = None) -> producer.Context:
     """The producer's context for one run (``adapter`` only for its Page id, its
     read-only targeting search and pixel check; ``google`` the Google Ads adapter, when
     configured)."""
@@ -291,7 +292,8 @@ def run_context(settings: Settings, conn: Any, muse: MuseClient,
         brief_v1=confirmed, brief_sha256=digest,
         page_id=getattr(adapter, "page_id", "") or MOCK_PAGE,
         search=getattr(adapter, "search_targeting", None), google=google,
-        pixel_check=getattr(adapter, "pixel_check", None))
+        pixel_check=getattr(adapter, "pixel_check", None),
+        open_weights=settings.open_weights if open_mode is None else open_mode)
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
@@ -316,6 +318,24 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return app.state.muse, app.state.open_weights
 
     app.state.clients = clients
+
+    def inbox_client() -> MuseClient:
+        """The client for customer text (comments, leads): Muse Spark Open in open-weights
+        mode (the data stays on open weights), the Model API otherwise."""
+        muse, open_weights = clients()
+        return open_weights if settings.open_weights else muse
+
+    def glimmer_client() -> Any:
+        """The Muse Glimmer pre-filter client, or ``None`` when ``STUDIO_GLIMMER`` is off."""
+        if not settings.glimmer:
+            return None
+        if getattr(app.state, "glimmer", None) is None:
+            from studio.muse.glimmer import GlimmerClient
+            app.state.glimmer = GlimmerClient.from_settings(settings, ledger)
+        return app.state.glimmer
+
+    app.state.inbox_client = inbox_client
+    app.state.glimmer_client = glimmer_client
     # action -> executor(verified, payload) -> result dict; runs after the approval commits
     app.state.executors = {}
 
@@ -338,13 +358,15 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return ""
 
     def worker(run_id: str, brief: str, brief_source: str = "operator",
-               confirmed: brief_v1.BriefV1 | None = None, digest: str = "") -> None:
+               confirmed: brief_v1.BriefV1 | None = None, digest: str = "",
+               open_mode: bool = False) -> None:
         try:
             muse, open_weights = clients()
             ctx = run_context(settings, conn, muse, open_weights,
                               getattr(app.state, "adapter", None), currency=account_currency(),
                               brief_source=brief_source, confirmed=confirmed, digest=digest,
-                              google=getattr(app.state, "google", None))
+                              google=getattr(app.state, "google", None),
+                              open_mode=open_mode)
             producer.run(ctx, brief, run_id=run_id)
             with conn.lock:
                 waiting = conn.execute("SELECT 1 FROM run_state WHERE run_id = ? AND "
@@ -358,6 +380,17 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             with app.state.run_lock:
                 app.state.active_run = None
 
+    def open_mode(body: Any) -> bool | JSONResponse:
+        """The run's open-weights mode: ``STUDIO_OPEN_WEIGHTS`` forces it on; otherwise the
+        brief's ``open_weights: true`` turns it on for this run. It needs Muse Spark Open."""
+        wanted = body.get("open_weights", False) if isinstance(body, dict) else False
+        if not isinstance(wanted, bool):
+            return JSONResponse({"error": "invalid_open_weights"}, 400)
+        on = settings.open_weights or wanted
+        if on and not clients()[1].available():
+            return JSONResponse({"error": "open_weights_unavailable"}, 503)
+        return on
+
     def confirm_and_start(body: dict[str, Any]) -> Response:
         """Confirm a drafted Brief v1 (every open question answered or struck, every field
         valid) and start its run; the ``brief.confirmed`` receipt, the brief row and the
@@ -370,6 +403,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse(exc.body, exc.status)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
+        mode = open_mode(body)
+        if isinstance(mode, JSONResponse):
+            return mode
         with app.state.run_lock:
             if app.state.active_run is not None:
                 return JSONResponse({"error": "run_in_progress",
@@ -383,7 +419,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse(exc.body, exc.status)
         thread = threading.Thread(target=worker, daemon=True, name=f"producer-{c.run_id}",
                                   args=(c.run_id, brief_v1.render(c.brief), c.source,
-                                        c.brief, c.digest))
+                                        c.brief, c.digest, mode))
         app.state.last_thread = thread
         thread.start()
         return JSONResponse({"run_id": c.run_id, "brief_sha256": c.digest, **c.counts}, 202)
@@ -472,6 +508,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 return JSONResponse({"error": "unknown_voice_brief"}, 409)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
+        mode = open_mode(body)
+        if isinstance(mode, JSONResponse):
+            return mode
         with app.state.run_lock:
             if app.state.active_run is not None:
                 return JSONResponse({"error": "run_in_progress",
@@ -489,7 +528,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
                          "VALUES (?, 'running', '{}', ?)", (run_id, time.time()))
         source = "transcript" if brief_id is not None else "operator"
-        thread = threading.Thread(target=worker, args=(run_id, brief, source), daemon=True,
+        thread = threading.Thread(target=worker, args=(run_id, brief, source, None, "", mode),
+                                  daemon=True,
                                   name=f"producer-{run_id}")
         app.state.last_thread = thread
         thread.start()

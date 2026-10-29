@@ -112,7 +112,20 @@ def _producer(client):
     return "transcript", None
 
 
+def _prescreen_reply():
+    return {"label": "injection", "injection": True, "pii": False, "spam": False,
+            "confidence": 0.9}
+
+
+def _glimmer(client):
+    from studio.muse import glimmer
+    g = glimmer.GlimmerClient(FAKE_KEY, BASE_URL, ledger=client.ledger)
+    glimmer.prescreen(g, CANARY, run_id="p7")
+    return "comment", None
+
+
 PATHS = {
+    "studio/muse/glimmer.py": (_glimmer, lambda: _chat(_prescreen_reply())),
     "studio/agents/copywriter.py": (_copywriter, lambda: _chat(_copy_reply())),
     "studio/agents/producer.py": (_producer, lambda: _chat(_plan_reply())),
     "studio/agents/community.py": (_community, lambda: _chat(_triage_reply())),

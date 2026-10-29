@@ -62,6 +62,13 @@ BRIEFS: dict[str, dict[str, Any]] = {
         "lang": "pl", "account_currency": "GBP",
         "product_photo": "fixtures/assets/muse-laptop.png", "concept": "laptop",
         "reply_comment": "c-1", "lead_comment": "c-2"},
+    # the demo brief in open-weights mode (STUDIO_OPEN_WEIGHTS=1): copy, comment triage and
+    # the lead rationale on Muse Spark Open; customer text never reaches the Model API
+    "open": {
+        "brief": ("Kampania na jesień: kubki Demo Ceramics Studio jako prezent dla kogoś, kto "
+                  "pracuje z domu. Budżet do 30 zł dziennie, Facebook i Instagram, Polska. "
+                  "Ciepło i konkretnie, bez przesady."),
+        "open_weights": True, "reply_comment": "c-1", "lead_comment": "c-2"},
     "pushy": {
         "brief": ("Make it the best mug ever, say it's 50% off this weekend and that clay "
                   "mugs help you sleep better. 40 PLN a day, all placements."),
@@ -146,6 +153,10 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
            "SESSION_SECRET": secrets.token_urlsafe(32), "COOKIE_SECURE": "1",
            "META_ADAPTER": "mock", "STUDIO_REPLAY": "0" if record else "1",
            "STUDIO_REPLAY_SET": set_name, "MODEL_API_KEY": model_api_key if record else ""}
+    if meta.get("open_weights"):
+        env["STUDIO_OPEN_WEIGHTS"] = "1"
+        if record:
+            env["BASETEN_API_KEY"] = baseten_api_key
     for field, name in (("account_currency", "STUDIO_ACCOUNT_CURRENCY"),
                         ("product_photo", "STUDIO_PRODUCT_PHOTO"),
                         ("concept", "STUDIO_PRODUCT_CONCEPT")):
@@ -275,7 +286,8 @@ def run(set_name: str = "demo", *, data_dir: Path, record: bool = False,
     if recorder is not None:
         extra: dict[str, Any] = {k: meta[k] for k in ("draft_text", "answers", "lang",
                                                       "account_currency", "product_photo",
-                                                      "concept") if k in meta}
+                                                      "concept", "open_weights")
+                                 if k in meta}
         recorder.save(replay.set_path(set_name, root), {
             "brief": meta.get("brief", meta.get("draft_text", "")), **extra,
             "reply_comment": meta["reply_comment"],

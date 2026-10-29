@@ -100,6 +100,9 @@ def leads_poll(env_file: Path) -> int:
 
     settings, conn, ledger, adapter = _studio(env_file)
     client = MuseClient.from_settings(settings, ledger) if settings.model_available else None
+    if client is not None and settings.open_weights:  # lead data stays on open weights
+        from studio.muse.openweights import OpenWeightsClient
+        client = OpenWeightsClient.from_settings(settings, ledger)
     out = leadads.poll(conn, ledger, adapter, client)
     if out["new"]:
         notifier = _notifier(settings, conn, ledger)

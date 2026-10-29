@@ -10,6 +10,11 @@ text holding 9+ digits (any script) within any 20 letters-and-digits characters 
 digit run", whatever it is), nor for
 customer-originated text (comments, leads, transcripts), and explains why in a reason that
 names only the kind of PII, never its value.
+
+The third tier, ``open``, is Muse Spark Open (open weights, served on Baseten here; the
+same weights can be self-hosted). It is chosen when asked for (``requested="open"``) and,
+in open-weights mode (``open_weights=True``), for every call: customer text, PII and long
+digit runs then stay on open weights and never reach the hosted Model API.
 """
 
 from __future__ import annotations
@@ -21,6 +26,8 @@ from typing import Any
 
 STANDARD_MODEL = "muse-spark-1.3"
 CONTRIBUTOR_MODEL = "muse-spark-1.3-contributor"
+OPEN_MODEL = "meta-models/muse-spark-open"
+TIERS = ("standard", "contributor", "open")
 CUSTOMER_SOURCES = frozenset({"comment", "lead", "transcript"})
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
@@ -225,10 +232,30 @@ def redact(text: str) -> str:
     return redact_digit_runs(text, "[digits]")
 
 
-def choose_tier(text: str, requested: str, *, source: str = "operator") -> tuple[str, str, str]:
-    """``(tier, reason, model_id)`` for a call carrying ``text``."""
-    if requested not in ("standard", "contributor"):
+def _open_reason(text: str, requested: str, source: str) -> str:
+    """Why an open-weights call is on open weights (the kind of data, never its value)."""
+    if source in CUSTOMER_SOURCES:
+        return f"customer text ({source}): kept on open weights"
+    match = contains_pii(text)
+    if match:
+        return f"pii detected ({match.kind}): kept on open weights"
+    if long_digit_run(text):
+        return "long digit run: kept on open weights"
+    if requested == "open":
+        return "open tier requested"
+    return "open-weights mode: Muse Spark Open"
+
+
+def choose_tier(text: str, requested: str, *, source: str = "operator",
+                open_weights: bool = False) -> tuple[str, str, str]:
+    """``(tier, reason, model_id)`` for a call carrying ``text``.
+
+    ``open_weights`` (open-weights mode) sends every call to the ``open`` tier, whatever
+    was requested; otherwise ``open`` is used only when requested."""
+    if requested not in TIERS:
         raise ValueError(f"unknown tier {requested!r}")
+    if open_weights or requested == "open":
+        return "open", _open_reason(text, requested, source), OPEN_MODEL
     if source in CUSTOMER_SOURCES:
         return "standard", f"customer text ({source}): contributor never used", STANDARD_MODEL
     if requested == "standard":

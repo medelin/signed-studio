@@ -99,7 +99,7 @@ def _features(lead: dict[str, Any], rs: RuleScore) -> str:
 
 
 def explain(client: MuseClient, lead: dict[str, Any], rs: RuleScore, *,
-            run_id: str) -> tuple[Score, MuseResult]:
+            run_id: str, open_weights: bool = False) -> tuple[Score, MuseResult]:
     """Persona, reasons and next action from Muse Spark; score and temp stay the rules'."""
     # contact data inside free text (a comment that quotes an e-mail) is redacted too
     free_text = redact("\n".join(
@@ -108,12 +108,14 @@ def explain(client: MuseClient, lead: dict[str, Any], rs: RuleScore, *,
     user = (_features(lead, rs) + "\n\nLead details:\n"
             + envelope.wrap(free_text or "(none)", "lead", max_chars=1500)
             + "\n\nExplain the score for the owner.")
-    tier, reason, model = choose_tier(user, "standard", source="lead")
+    tier, reason, model = choose_tier(user, "standard", source="lead",
+                                      open_weights=open_weights)
     raw, result = structured(
         client, model,
         [{"role": "system", "content": prompts.system(AGENT) + "\n\n" + envelope.SYSTEM_RULE},
          {"role": "user", "content": user}],
-        Score, tier=tier, tier_reason=reason, run_id=run_id, agent=AGENT, max_tokens=2000,
+        Score, tier=tier, tier_reason=reason, run_id=run_id, agent=AGENT,
+        max_tokens=8000 if tier == "open" else 2000,
         reasoning_effort="low", envelope_sources=["lead"],
     )
     reasons = [envelope.clean(r, max_chars=160) for r in raw.reasons[:4]]
@@ -137,16 +139,20 @@ def load(conn: sqlite3.Connection, lead_id: str) -> dict[str, Any] | None:
 
 
 def score_lead(conn: sqlite3.Connection, ledger: Ledger, client: MuseClient | None,
-               lead_id: str, now: float | None = None) -> dict[str, Any]:
-    """Rules → (optional) rationale → CRM card fields + a HOT task; receipts for each."""
+               lead_id: str, now: float | None = None, open_weights: bool = False
+               ) -> dict[str, Any]:
+    """Rules → (optional) rationale → CRM card fields + a HOT task; receipts for each.
+    ``open_weights``: the rationale runs on Muse Spark Open (``client`` is then the
+    open-weights client), so the lead's data stays on open weights."""
     lead = load(conn, lead_id)
     if lead is None:
         raise KeyError(lead_id)
     rs = rules(lead)
     run_id = run_id_for(lead_id)
+    open_weights = open_weights or bool(getattr(client, "open_weights", False))
     persona, reasons, next_action, model_receipt = "", list(rs.hits), "", ""
     if client is not None:
-        score, result = explain(client, lead, rs, run_id=run_id)
+        score, result = explain(client, lead, rs, run_id=run_id, open_weights=open_weights)
         persona, next_action, model_receipt = score.persona, score.next_action, result.receipt_id
         reasons = list(rs.hits) + score.reasons
     owner = OWNERS["business"] if rs.business else OWNERS["default"]

@@ -41,6 +41,34 @@ UNIT_PRICES: dict[str, float] = {
 }
 TIERS = frozenset({"standard", "contributor"})
 
+# Model family and weights of each model id (receipts name them, so every step shows which
+# family handled it): "hosted" = Meta Model API only, "open" = open weights anyone can run.
+_FAMILIES = (
+    ("meta-models/muse-spark-open", "muse-spark-open", "open"),
+    ("meta-models:muse-spark-open", "muse-spark-open", "open"),
+    ("meta-models/muse-glimmer", "muse-glimmer", "open"),
+    ("meta-models:muse-glimmer", "muse-glimmer", "open"),
+    ("muse-spark", "muse-spark", "hosted"),
+    ("muse-wonder", "muse-wonder", "hosted"),
+    ("muse-image", "muse-image", "hosted"),
+    ("muse-voice", "muse-voice", "hosted"),
+    ("sam-", "sam", "hosted"),
+)
+
+
+def model_family(model: str) -> tuple[str, str]:
+    """``(family, weights)`` of a model id, e.g. ``("muse-spark-open", "open")``."""
+    low = model.lower()
+    for prefix, family, weights in _FAMILIES:
+        if low.startswith(prefix):
+            return family, weights
+    return "unknown", "unknown"
+
+
+def family_details(model: str) -> dict[str, str]:
+    family, weights = model_family(model)
+    return {"model_family": family, "weights": weights}
+
 
 class MuseError(RuntimeError):
     def __init__(self, message: str, status: int = 0, code: str = "") -> None:
@@ -469,7 +497,8 @@ class MuseClient:
             self.ledger.append(run_id, agent=agent, kind="model_call", model=rid, **audit,
                                duration_ms=_ms(start), tokens_in=u.input_tokens,
                                tokens_out=u.output_tokens, cost_usd=round(charged, 8),
-                               details={"endpoint": endpoint, **failure.details, **basis})
+                               details={"endpoint": endpoint, **failure.details, **basis,
+                                        **family_details(model)})
             raise failure.error from None
         except BaseException as exc:
             # Unknown whether the request was billed: charge the estimate (conservative).
@@ -478,7 +507,7 @@ class MuseClient:
                                duration_ms=_ms(start), cost_usd=round(estimate, 8),
                                details={"endpoint": endpoint, "error": "aborted",
                                         "error_type": type(exc).__name__,
-                                        "cost_basis": "estimate"})
+                                        "cost_basis": "estimate", **family_details(model)})
             raise
         ms = _ms(start)
         self._settle(estimate, cost)
@@ -488,6 +517,7 @@ class MuseClient:
             "response_id": str(data.get("id", "")),
             "finish": parsed["finish"],
             "reasoning_tokens": usage.reasoning_tokens,
+            **family_details(used_model),
         }
         if parsed.get("units"):
             details["units"] = parsed["units"]
@@ -517,6 +547,7 @@ class MuseClient:
     provider = PROVIDER
     key_name = "MODEL_API_KEY"
     api_label = "Model API"
+    open_weights = False  # True for clients that serve open weights (tier "open")
 
     def _check(self, model: str, tier: str) -> None:
         check_tier(model, tier)

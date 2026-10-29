@@ -1,7 +1,10 @@
 """Copywriter: three ad copy variants for one plan angle (strict JSON ``CopyPack``).
 
 Runs on the Contributor tier when the input has no PII, otherwise on Standard; the choice
-and its reason are made in code (``pii.choose_tier``) and recorded in the receipt.
+and its reason are made in code (``pii.choose_tier``) and recorded in the receipt. In
+open-weights mode (``open_weights=True``) it runs on Muse Spark Open (tier ``open``) with the
+same prompt and the same strict ``CopyPack`` schema; ``client`` is then the open-weights
+client (a hosted client refuses the ``open`` tier before any request).
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ _PUNCT = frozenset(".,;:!?'\"-\u2013\u2014()/&%+@#*\u2026")
 _SPACES = frozenset("\u00a0\u202f")  # (narrow) no-break space, as in "89\u00a0zł"; NFKC → " "
 _ZWJ, _VS16 = "\u200d", "\ufe0f"
 SIGNED_FIELDS = ("headline", "primary_text", "description", "cta")
+OPEN_MAX_TOKENS = 12000
 
 
 # Emoji = explicit code points / ranges with emoji presentation (Unicode emoji-data),
@@ -158,6 +162,7 @@ def write(
     brief_source: str = "operator",
     max_tokens: int = 4000,
     facts: list[str] | None = None,
+    open_weights: bool = False,
 ) -> tuple[CopyPack, MuseResult]:
     """``brief_source="transcript"``: the brief is a voice transcript — enveloped, declared,
     and on Standard (``choose_tier(..., source="transcript")``). ``facts``: the confirmed
@@ -165,14 +170,17 @@ def write(
     transcript = bool(brief) and brief_source == "transcript"
     user = _user_message(angle, persona, brief, brief_source, facts)
     tier, reason, model = choose_tier(user, "contributor",
-                                      source="transcript" if transcript else "operator")
+                                      source="transcript" if transcript else "operator",
+                                      open_weights=open_weights)
     system = prompts.system(AGENT) + ("\n\n" + envelope.SYSTEM_RULE if transcript else "")
     pack, result = structured(
         client, model,
         [{"role": "system", "content": system},
          {"role": "user", "content": user}],
         CopyPack, tier=tier, tier_reason=reason, run_id=run_id, agent=AGENT,
-        max_tokens=max_tokens, reasoning_effort="minimal",
+        # Spark Open is a reasoning model: its reasoning counts inside max_tokens
+        max_tokens=max(max_tokens, OPEN_MAX_TOKENS) if tier == "open" else max_tokens,
+        reasoning_effort="low" if tier == "open" else "minimal",
         envelope_sources=["transcript"] if transcript else (),
     )
     return flag_unfilled_facts(pack), result

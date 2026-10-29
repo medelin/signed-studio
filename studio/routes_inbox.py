@@ -147,9 +147,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "not_found"}, 404)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
-        muse, _ = app.state.clients()
+        client = app.state.inbox_client()
         try:
-            t = community.triage(muse, row[0], run_id=community.run_id_for(comment_id))
+            t = community.triage(client, row[0], run_id=community.run_id_for(comment_id),
+                                 open_weights=settings.open_weights,
+                                 prescreen_client=app.state.glimmer_client())
         except (ReadOnlyMode, BudgetExceeded) as exc:
             return JSONResponse({"error": type(exc).__name__}, 503)
         except MuseError as exc:
@@ -232,7 +234,7 @@ def register_leads(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if t.triage.intent != "lead":
             return None
         lead_id = lead_scorer.lead_from_comment(conn, comment_id)
-        muse = app.state.muse
+        muse = app.state.open_weights if settings.open_weights else app.state.muse
         try:
             return lead_scorer.score_lead(conn, ledger, muse, lead_id)
         except (MuseError, ReadOnlyMode, BudgetExceeded) as exc:
@@ -264,7 +266,7 @@ def register_leads(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "not_found"}, 404)
         muse = None
         if app.state.muse is not None or settings.model_available:
-            muse, _ = app.state.clients()
+            muse = app.state.inbox_client()
         try:
             card = lead_scorer.score_lead(conn, ledger, muse, lead_id)
         except (ReadOnlyMode, BudgetExceeded) as exc:

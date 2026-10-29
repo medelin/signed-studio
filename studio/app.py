@@ -554,6 +554,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "login_enabled": settings.judge_login_enabled,
                 "read_only": settings.read_only,
                 "product_concept": settings.product_concept,
+                "open_weights_forced": settings.open_weights,
             },
         )
 

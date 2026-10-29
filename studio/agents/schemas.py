@@ -23,6 +23,7 @@ __all__ = [
     "Finding",
     "Kpi",
     "Plan",
+    "PreScreen",
     "Report",
     "Review",
     "Score",
@@ -153,6 +154,16 @@ class Triage(_Closed):
     confidence: float
 
 
+class PreScreen(_Closed):
+    """Muse Glimmer's pre-filter of one comment (``studio.muse.glimmer``)."""
+
+    label: Literal["clean", "spam", "injection", "pii", "abuse"]
+    injection: bool
+    pii: bool
+    spam: bool
+    confidence: float
+
+
 class Score(_Closed):
     score: int
     temp: Literal["HOT", "WARM", "COLD"]
@@ -181,4 +192,5 @@ class Report(_Closed):
         return self
 
 
-MODEL_OUTPUTS: tuple[type[BaseModel], ...] = (Plan, CopyPack, Review, Triage, Score, Report)
+MODEL_OUTPUTS: tuple[type[BaseModel], ...] = (Plan, CopyPack, Review, Triage, Score, Report,
+                                               PreScreen)

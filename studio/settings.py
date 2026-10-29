@@ -102,6 +102,14 @@ class Settings:
     model_api_key: str = field(default="", repr=False)
     model_api_base_url: str = "https://api.meta.ai/v1"
     baseten_api_key: str = field(default="", repr=False)
+    # open-weights mode (STUDIO_OPEN_WEIGHTS=1): copywriter, comment triage and lead
+    # rationale run on Muse Spark Open; customer text never reaches the hosted Model API
+    open_weights: bool = False
+    # Muse Glimmer comment pre-filter (STUDIO_GLIMMER=1): an OpenAI-compatible Glimmer host
+    glimmer: bool = False
+    glimmer_api_key: str = field(default="", repr=False)
+    glimmer_base_url: str = "https://api.together.xyz/v1"
+    glimmer_model: str = "meta-models/Muse-Glimmer-30B"
     meta_adapter: str = "mock"
     meta_access_token: str = field(default="", repr=False)
     meta_ad_account_id: str = field(default="", repr=False)
@@ -255,10 +263,32 @@ class Settings:
         except ValueError as exc:
             raise ConfigError(str(exc)) from None
         public_url = _public_url(e.get("STUDIO_PUBLIC_URL", ""))
+        replay = _bool(e, "STUDIO_REPLAY", False)
+        open_weights = _bool(e, "STUDIO_OPEN_WEIGHTS", False)
+        if open_weights and not e.get("BASETEN_API_KEY", "") and not replay:
+            raise ConfigError("STUDIO_OPEN_WEIGHTS=1 needs BASETEN_API_KEY (Muse Spark Open "
+                              "on Baseten serves the open-weights steps)")
+        glimmer = _bool(e, "STUDIO_GLIMMER", False)
+        glimmer_url = (e.get("GLIMMER_BASE_URL", "") or "https://api.together.xyz/v1").rstrip("/")
+        if not glimmer_url.startswith("https://"):
+            raise ConfigError("GLIMMER_BASE_URL must use https")
+        glimmer_model = e.get("GLIMMER_MODEL", "") or "meta-models/Muse-Glimmer-30B"
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,79}", glimmer_model):
+            raise ConfigError("GLIMMER_MODEL must be a model id like meta-models/Muse-Glimmer-30B")
+        if glimmer and not e.get("GLIMMER_API_KEY", "") and not replay:
+            raise ConfigError("STUDIO_GLIMMER=1 needs GLIMMER_API_KEY: Muse Glimmer is not on "
+                              "the Meta Model API or Baseten; use Together AI "
+                              "(meta-models/Muse-Glimmer-30B) or a self-hosted server "
+                              "(GLIMMER_BASE_URL)")
         return cls(
             model_api_key=e.get("MODEL_API_KEY", ""),
             model_api_base_url=base_url.rstrip("/"),
             baseten_api_key=e.get("BASETEN_API_KEY", ""),
+            open_weights=open_weights,
+            glimmer=glimmer,
+            glimmer_api_key=e.get("GLIMMER_API_KEY", ""),
+            glimmer_base_url=glimmer_url,
+            glimmer_model=glimmer_model,
             meta_adapter=adapter,
             meta_access_token=e.get("META_ACCESS_TOKEN", ""),
             meta_ad_account_id=e.get("META_AD_ACCOUNT_ID", ""),
@@ -273,7 +303,7 @@ class Settings:
             judge_password=judge_password,
             read_only=_bool(e, "STUDIO_READ_ONLY", False),
             daily_budget_usd=budget,
-            replay=_bool(e, "STUDIO_REPLAY", False),
+            replay=replay,
             replay_set=_replay_set(e.get("STUDIO_REPLAY_SET", "") or "demo"),
             trusted_proxies=frozenset(proxies),
             cookie_secure=_bool(e, "COOKIE_SECURE", True),

@@ -8,6 +8,12 @@
 - The model returns a strict ``Triage``. Code then enforces the rules the model cannot
   overrule: complaints and drafts quoting prices outside the approved price sheet, links
   or personal data need a human; a comment that looks like an injection is flagged.
+- Open-weights mode (``open_weights=True``): the same prompt and strict ``Triage`` run on
+  Muse Spark Open (tier ``open``, ``choose_tier(..., open_weights=True)``): the comment,
+  which may carry personal data, is processed only by open weights.
+- Optional Muse Glimmer pre-filter (``prescreen_client``): a small open-weight model
+  classifies the masked comment first (injection / PII / spam); ``apply_prescreen`` only
+  ever adds flags and raises the risk, and the main triage always runs.
 - The action set is a constant of this module (``ACTIONS``): the draft is stored
   automatically (local), ``reply.post`` and ``comment.hide`` exist only as pending approvals
   a human signs. Nothing in the triage can add, remove or trigger an action.
@@ -26,9 +32,9 @@ from typing import Any
 
 from studio import envelope
 from studio.agents import prompts
-from studio.agents.schemas import Triage
+from studio.agents.schemas import PreScreen, Triage
 from studio.approvals import TTL_S, Pending, transaction
-from studio.muse.client import MuseClient, MuseResult
+from studio.muse.client import MuseClient, MuseError, MuseResult, family_details
 from studio.muse.structured import structured
 from studio.pii import choose_tier, contains_pii, long_digit_run, redact
 from studio.receipts import Ledger, canonical, is_opaque, sha256_hex
@@ -62,6 +68,9 @@ class Triaged:
     flags: list[str] = field(default_factory=list)
     actions: tuple[str, ...] = ACTIONS
     result: MuseResult | None = None
+    # Muse Glimmer pre-filter: "off" (not configured) | "available" | "unavailable" | "failed"
+    prescreen_status: str = "off"
+    prescreen: dict[str, Any] | None = None
 
 
 def run_id_for(comment_id: str) -> str:
@@ -132,22 +141,74 @@ def enforce(triage: Triage, comment: str) -> tuple[Triage, list[str]]:
                              ), flags
 
 
+_ORDER = {"low": 0, "medium": 1, "high": 2}
+OPEN_MAX_TOKENS = 8000
+
+
+def prescreen_agrees(ps: PreScreen, triage: Triage, flags: list[str]) -> dict[str, bool]:
+    """Per question, does Glimmer's pre-screen agree with the main triage (model + code)?"""
+    return {"injection": ps.injection == ("injection_suspected" in flags),
+            "pii": ps.pii == ("pii_in_comment" in flags),
+            "spam": ps.spam == (triage.intent == "spam")}
+
+
+def apply_prescreen(triage: Triage, flags: list[str], ps: PreScreen
+                    ) -> tuple[Triage, list[str]]:
+    """Glimmer's pre-screen joins the triage; it can only make it stricter."""
+    flags = list(flags)
+    risk = triage.risk
+    human = triage.requires_human
+    for name, hit in (("injection", ps.injection or ps.label == "injection"),
+                      ("pii", ps.pii or ps.label == "pii"),
+                      ("spam", ps.spam or ps.label == "spam"),
+                      ("abuse", ps.label == "abuse")):
+        if hit:
+            flags.append(f"prescreen_{name}")
+            if name in ("injection", "abuse", "spam") and _ORDER[risk] < 1:
+                risk = "medium"
+            if name in ("injection", "abuse"):
+                human = True
+    return triage.model_copy(update={"risk": risk, "requires_human": human}), flags
+
+
 def triage(
-    client: MuseClient, comment: str, *, run_id: str, max_tokens: int = 2000
+    client: MuseClient, comment: str, *, run_id: str, max_tokens: int = 2000,
+    open_weights: bool = False, prescreen_client: Any = None,
 ) -> Triaged:
-    """One strict ``Triage`` for ``comment``; no tools, envelope declared, Standard tier."""
+    """One strict ``Triage`` for ``comment``; no tools, envelope declared, Standard tier
+    (``open`` in open-weights mode, where ``client`` is the open-weights client)."""
+    from studio.muse import glimmer
+
     comment = comment[:MAX_COMMENT]
+    open_weights = open_weights or bool(getattr(client, "open_weights", False))
+    ps: PreScreen | None = None
+    ps_status = "off"
+    if prescreen_client is not None:
+        try:
+            ps, _ = glimmer.prescreen(prescreen_client, comment, run_id=run_id)
+            ps_status = "available"
+        except glimmer.GlimmerUnavailable:
+            ps_status = "unavailable"
+        except MuseError:
+            ps_status = "failed"  # the failed call has its own receipt; triage goes on
     # Tier and flags are decided on the original; the model sees contact data masked.
-    tier, reason, model = choose_tier(comment, "standard", source="comment")
+    tier, reason, model = choose_tier(comment, "standard", source="comment",
+                                      open_weights=open_weights)
     raw, result = structured(
         client, model,
         [{"role": "system", "content": system_prompt()},
          {"role": "user", "content": _user_message(redact(comment))}],
         Triage, tier=tier, tier_reason=reason, run_id=run_id, agent=AGENT,
-        max_tokens=max_tokens, reasoning_effort="low", envelope_sources=["comment"],
+        max_tokens=max(max_tokens, OPEN_MAX_TOKENS) if tier == "open" else max_tokens,
+        reasoning_effort="low", envelope_sources=["comment"],
     )
     checked, flags = enforce(raw, comment)
-    return Triaged(checked, flags, ACTIONS, result)
+    summary = None
+    if ps is not None:
+        agrees = prescreen_agrees(ps, checked, flags)
+        checked, flags = apply_prescreen(checked, flags, ps)
+        summary = {**ps.model_dump(), "agrees": agrees}
+    return Triaged(checked, flags, ACTIONS, result, ps_status, summary)
 
 
 # -- storage and approvals ------------------------------------------------------------
@@ -169,7 +230,12 @@ def save(conn: sqlite3.Connection, ledger: Ledger, comment_id: str, t: Triaged) 
                   details={"tool": "draft", "status": "ok", "side_effects": "local",
                            "intent": tr.intent, "risk": tr.risk,
                            "requires_human": tr.requires_human, "flags": t.flags,
-                           "model_receipt": t.result.receipt_id if t.result else ""})
+                           "model_receipt": t.result.receipt_id if t.result else "",
+                           **(family_details(t.result.model) if t.result else {}),
+                           **({"prescreen": t.prescreen_status} if t.prescreen_status != "off"
+                              else {}),
+                           **({"prescreen_agrees": all(t.prescreen["agrees"].values())}
+                              if t.prescreen else {})})
 
 
 class InboxError(ValueError):

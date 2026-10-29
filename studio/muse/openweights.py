@@ -41,6 +41,7 @@ class OpenWeightsClient(MuseClient):
     provider = PROVIDER
     key_name = "BASETEN_API_KEY"
     api_label = "Baseten"
+    open_weights = True
 
     def __init__(
         self,

@@ -76,7 +76,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     def client() -> Any:
         if app.state.muse is not None or settings.model_available:
             try:
-                return app.state.clients()[0]
+                return app.state.inbox_client()
             except Exception:  # noqa: BLE001 - leads are scored by rules without a model
                 return None
         return None
