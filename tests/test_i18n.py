@@ -215,3 +215,22 @@ def test_polish_404_and_labels_around_demo_data(client, judge):
     inbox = visible(judge.get("/inbox?lang=pl").text)
     assert "ile kosztuje?" in inbox  # demo data stays as it is
     assert "· nowy" in inbox and "· new" not in inbox
+
+
+def test_every_pixel_check_code_has_a_line_in_both_languages():
+    src = "".join((UI.parent / "meta" / name).read_text()
+                  for name in ("pixel.py", "graph.py", "mock.py"))
+    codes = set(re.findall(r"""entry\(\s*["']([a-z0-9_]+)["']""", src))
+    assert {"pixel_not_found", "pixel_not_in_account", "landing_not_found"} <= codes
+    for code in codes:
+        assert "js.pixel_c_" + code in i18n.EN and "js.pixel_c_" + code in i18n.PL, code
+    for code in ("pixel_check_failed", "pixel_check_missing", "pixel_check_mismatch"):
+        assert "err." + code in i18n.EN, code
+
+
+def test_the_approval_view_has_the_pixel_check(client):
+    html = client.get("/studio?lang=pl").text
+    assert 'id="ap-pixel"' in html and 'id="ap-pixel-badge"' in html
+    assert i18n.PL["studio.ap.pixel"] in html
+    script = (UI / "static" / "app.js").read_text()
+    assert "showPixel(px)" in script and 'T("pixel_head"' in script
