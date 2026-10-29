@@ -160,6 +160,9 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.invalid_code": "The code is not correct, or it was used already.",
     "err.invalid_profile": "A profile field is not valid.",
     "err.demo_account": "The shared judge account cannot do this.",
+    "err.demo_live_write": "The shared judge account creates real campaigns on Meta, "
+                           "always paused. Turning one on, changing it or posting on the "
+                           "Page needs the owner's own account.",
     "err.no_such_account": "There is no such account.",
     "err.confirmation_mismatch": "The confirmation does not match your user name.",
     "err.two_factor_state": "Two-step sign-in changed meanwhile; reload the page.",
@@ -314,6 +317,9 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.invalid_code": "Kod jest niepoprawny albo został już użyty.",
     "err.invalid_profile": "Jedno z pól profilu jest niepoprawne.",
     "err.demo_account": "Wspólne konto jury nie może tego zrobić.",
+    "err.demo_live_write": "Wspólne konto jury tworzy w Mecie prawdziwe kampanie, zawsze "
+                           "wstrzymane. Włączenie, zmiana albo wpis na stronie wymagają "
+                           "własnego konta właściciela.",
     "err.no_such_account": "Nie ma takiego konta.",
     "err.confirmation_mismatch": "Potwierdzenie nie zgadza się z Twoją nazwą użytkownika.",
     "err.two_factor_state": "Logowanie dwuetapowe w międzyczasie się zmieniło; odśwież stronę.",

@@ -20,6 +20,7 @@
     <p class="lead">{{ t("account.lead", name=account.display_name or account.username) }}</p>
     {% if account.is_demo %}<p class="hint" id="demo-note">{{ t("account.demo_note") }}</p>{% endif %}
     <p class="status ok" id="account-status" role="status" aria-live="polite">{% if done %}{{ t("account.done." ~ done) }}{% endif %}</p>
+    <form method="post" action="/logout" class="inline" id="account-sign-out"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit">{{ t("auth.sign_out") }}</button></form>
   </div>
   <div class="il-place account-art">{{ people(["priya", "harjit"], t("account.art")) }}</div>
 </section>

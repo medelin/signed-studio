@@ -65,6 +65,18 @@ LOG = logging.getLogger("studio.runs")
 RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 APPROVER = re.compile(r"ed25519:[0-9a-f]{32}")
 SIGNATURE = re.compile(r"[0-9a-f]{128}")
+# What the shared judge account may not sign while the channel's adapter is real: anything
+# that spends (activate, budget/status change) or speaks on the Page. Creating a PAUSED
+# campaign stays open, so judges see real objects in Ads Manager that cost nothing.
+DEMO_LIVE_REFUSED = {"meta": frozenset({"campaign.activate", "campaign.update", "reply.post",
+                                        "comment.hide"}),
+                     "google": frozenset({"google.activate"})}
+
+
+def demo_refused(action: str, *, meta_adapter: str, google_adapter: str) -> bool:
+    """True when the judge account must not sign ``action`` on these adapters."""
+    return ((meta_adapter != "mock" and action in DEMO_LIVE_REFUSED["meta"])
+            or (google_adapter != "mock" and action in DEMO_LIVE_REFUSED["google"]))
 BRIEF_ID = re.compile(r"b_[0-9a-f]{16}")
 _CREATIVE_NAMES = ("feed_1x1", "feed_4x5", "story_9x16", *(f"card_{i}" for i in range(1, 11)))
 # every creative, its SAM mask overlay (``<name>_mask``), the cut-out and the video poster
@@ -797,9 +809,15 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 raise ValueError
         except (ValueError, KeyError, TypeError):
             return JSONResponse({"error": "invalid_signature_format"}, 400)
+        account_of = getattr(app.state.sessions, "account_of", None)
+        account = account_of(request.cookies.get("studio_session")) if account_of else None
         try:
             with db.transaction(conn):
                 pending = Pending.load(conn, approval_id)
+                if account is not None and account.is_demo and demo_refused(
+                        pending.action, meta_adapter=settings.meta_adapter,
+                        google_adapter=settings.google_adapter):
+                    raise _DemoRefused
                 row = conn.execute("SELECT payload FROM pending_payloads WHERE approval_id = ?",
                                    (approval_id,)).fetchone()
                 if row is None:
@@ -821,6 +839,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                              "WHERE run_id = ?", (time.time(), verified.run_id))
         except _NoPayload:
             return JSONResponse({"error": "not_found"}, 404)
+        except _DemoRefused:
+            return JSONResponse({"error": "demo_live_write"}, 403)
         except _PixelRefused as exc:
             return JSONResponse({"error": exc.code}, 409)
         except ApprovalError as exc:
@@ -874,6 +894,10 @@ def replay_clients(settings: Settings, ledger: Ledger, transport: Any = None,
 
 class _NoPayload(Exception):
     pass
+
+
+class _DemoRefused(Exception):
+    """The judge account signing a live write (``demo_refused``); nothing is consumed."""
 
 
 class _PixelRefused(Exception):

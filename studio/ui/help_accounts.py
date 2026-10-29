@@ -82,14 +82,20 @@ ACCOUNT_ENTRIES: tuple[tuple[str, str, str, dict[str, str], dict[str, str]], ...
                "(<code>JUDGE_PASSWORD</code>, applied at every start) and the account cannot "
                "be deleted. Everything else works: the profile, the sessions list and the "
                "data export. To try two-step sign-in or deletion, ask the operator for an "
-               "account of your own.",
+               "account of your own. When the studio is connected to a real Meta ad "
+               "account, the judge account creates real campaigns there, always paused, but "
+               "it cannot sign turning one on, changing one, or posting or hiding a comment "
+               "on the Page: no judge can spend money or speak for the Page.",
          "pl": "Wszyscy jurorzy dzielą jedno konto, więc telefon jednej osoby nie może stać "
                "się jedyną drogą wejścia dla pozostałych. Na koncie jury logowanie "
                "dwuetapowe pozostaje wyłączone i nie da się go włączyć ze strony, hasło "
                "ustawia operator (<code>JUDGE_PASSWORD</code>, stosowane przy każdym starcie), "
                "a konta nie da się usunąć. Reszta działa: profil, lista sesji i eksport "
                "danych. Aby wypróbować logowanie dwuetapowe albo usuwanie, poproś operatora "
-               "o własne konto."},
+               "o własne konto. Gdy studio jest połączone z prawdziwym kontem reklamowym "
+               "Mety, konto jury tworzy tam prawdziwe kampanie, zawsze wstrzymane, ale nie "
+               "może podpisać ich włączenia, zmiany ani wpisu czy ukrycia komentarza na "
+               "stronie: żaden juror nie wyda pieniędzy ani nie przemówi w imieniu strony."},
     ),
     (
         "notifications", "priya", "signed",

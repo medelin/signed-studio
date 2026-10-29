@@ -587,3 +587,12 @@ def test_new_challenges_after_too_many_wrong_codes_are_still_refused(app, client
         assert login(c).headers["location"] == "/login/2fa"
         r = second(c, code_at(secret, 1))
         assert r.status_code == 401 and i18n.EN["login.2fa_failed"] in r.text  # generic
+
+
+def test_the_account_page_has_its_own_sign_out_button(client):
+    login(client)
+    html = client.get("/account").text
+    form = html[html.index('id="account-sign-out"') - 80:]
+    assert 'action="/logout"' in form[:200] and 'name="csrf"' in form[:400]
+    client.post("/logout", data={"csrf": csrf(client)})
+    assert client.get("/account").status_code in (302, 303)
