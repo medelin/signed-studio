@@ -54,7 +54,7 @@ from studio.approvals import (
 )
 from studio.approvals import renew as renew_approval
 from studio.meta import pixel
-from studio.meta.adapter import MOCK_PAGE, AdapterError
+from studio.meta.adapter import MOCK_PAGE, AdapterError, NotApproved, delivery_of
 from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
@@ -66,12 +66,14 @@ LOG = logging.getLogger("studio.runs")
 RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 APPROVER = re.compile(r"ed25519:[0-9a-f]{32}")
 SIGNATURE = re.compile(r"[0-9a-f]{128}")
-# What the shared judge account may not sign while the channel's adapter is real: anything
-# that spends (activate, budget/status change) or speaks on the Page. Creating a PAUSED
-# campaign stays open, so judges see real objects in Ads Manager that cost nothing.
-DEMO_LIVE_REFUSED = {"meta": frozenset({"campaign.activate", "campaign.update", "reply.post",
-                                        "comment.hide"}),
-                     "google": frozenset({"google.activate"})}
+# What the shared judge account may sign while the channel's adapter is real: only creating
+# a PAUSED campaign, so judges see real objects in Ads Manager that cost nothing. Anything
+# else (activate, budget/status change, speaking on the Page, any action added later) is
+# refused by default.
+DEMO_LIVE_ALLOWED = frozenset({"campaign.create", "google.create"})
+# the kinds of ad whose destination the judge check can see (``adapter._link``): app
+# installs and events point outside the operator's landing host
+DEMO_CREATIVES = frozenset({"link", "message", "lead_form"})
 
 
 def demo_link_ok(link: Any, landing_url: str) -> bool:
@@ -89,8 +91,30 @@ def demo_link_ok(link: Any, landing_url: str) -> bool:
 
 def demo_refused(action: str, *, meta_adapter: str, google_adapter: str) -> bool:
     """True when the judge account must not sign ``action`` on these adapters."""
-    return ((meta_adapter != "mock" and action in DEMO_LIVE_REFUSED["meta"])
-            or (google_adapter != "mock" and action in DEMO_LIVE_REFUSED["google"]))
+    live = google_adapter != "mock" if action.startswith("google.") else meta_adapter != "mock"
+    return live and action not in DEMO_LIVE_ALLOWED
+
+
+def demo_destinations_ok(payload: Any, landing_url: str) -> bool:
+    """Every address a judge's live ``campaign.create`` would send (the ad's link, or the
+    lead form's privacy and follow-up pages) is on the operator's landing host."""
+    if not isinstance(payload, dict):
+        return False
+    try:
+        spec = delivery_of(payload)
+    except NotApproved:
+        return False
+    kind = spec.get("creative")
+    if kind not in DEMO_CREATIVES:
+        return False
+    urls: list[Any] = [] if kind == "lead_form" else [payload.get("link")]
+    form = payload.get("lead_form")
+    if kind == "lead_form" or form is not None:
+        form = form if isinstance(form, dict) else {}
+        policy = form.get("privacy_policy")
+        urls += [policy.get("url") if isinstance(policy, dict) else None,
+                 form.get("follow_up_action_url")]
+    return all(demo_link_ok(u, landing_url) for u in urls)
 BRIEF_ID = re.compile(r"b_[0-9a-f]{16}")
 _CREATIVE_NAMES = ("feed_1x1", "feed_4x5", "story_9x16", *(f"card_{i}" for i in range(1, 11)))
 # every creative, its SAM mask overlay (``<name>_mask``), the cut-out and the video poster
@@ -823,8 +847,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 raise ValueError
         except (ValueError, KeyError, TypeError):
             return JSONResponse({"error": "invalid_signature_format"}, 400)
-        account_of = getattr(app.state.sessions, "account_of", None)
-        account = account_of(request.cookies.get("studio_session")) if account_of else None
+        # the caller, from the same session write_guard just checked; on a live adapter an
+        # unresolved caller is refused (fail closed), never treated as the owner
+        live = settings.meta_adapter != "mock" or settings.google_adapter != "mock"
+        accounts = getattr(app.state, "accounts", None)
+        aid = accounts.session_account(guard) if accounts is not None else None
+        account = accounts.get(aid) if aid else None
+        if account is None and live:
+            return JSONResponse({"error": "login_required"}, 401)
         try:
             with db.transaction(conn):
                 pending = Pending.load(conn, approval_id)
@@ -838,8 +868,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                     raise _NoPayload
                 if (account is not None and account.is_demo and settings.meta_adapter != "mock"
                         and pending.action == "campaign.create"
-                        and not demo_link_ok(json.loads(row[0]).get("link"),
-                                             settings.landing_url)):
+                        and not demo_destinations_ok(json.loads(row[0]),
+                                                     settings.landing_url)):
                     raise _DemoLanding
                 if pending.action == "campaign.create":
                     # a failed pixel check cannot be signed (nothing is consumed)

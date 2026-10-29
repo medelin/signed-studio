@@ -12,7 +12,10 @@ from studio import db
 from studio.app import create_app
 from studio.approvals import Pending
 from studio.receipts import canonical
-from studio.routes_studio import demo_link_ok, demo_refused
+from studio import leadads
+from studio.meta import objectives
+from studio.meta.adapter import MOCK_PAGE
+from studio.routes_studio import demo_destinations_ok, demo_link_ok, demo_refused
 from tests.test_pixel_gate import RUN, _sign
 from tests.test_ui_studio import PASSWORD, csrf, login, register, settings
 
@@ -45,6 +48,8 @@ def _pending(app, action):
     ("google.create", "mock", "rest", False),
     ("google.activate", "mock", "rest", True),
     ("google.activate", "graph", "mock", False),
+    ("campaign.something_new", "graph", "mock", True),
+    ("google.something_new", "mock", "rest", True),
 ])
 def test_what_the_judge_account_may_sign(action, meta, google, refused):
     assert demo_refused(action, meta_adapter=meta, google_adapter=google) is refused
@@ -115,3 +120,29 @@ def test_judge_cannot_sign_a_live_campaign_aimed_elsewhere(tmp_path):
         _, r = _sign(c, key, approver, pending.id)
         assert r.status_code == 403 and r.json() == {"error": "demo_landing"}
         assert conn.execute("SELECT count(*) FROM nonces").fetchone()[0] == 0
+
+
+HOME = LIVE["META_LANDING_URL"]
+
+
+def _traffic(link):
+    return {"delivery": objectives.delivery("traffic", page_id=MOCK_PAGE), "link": link}
+
+
+def _form(privacy, follow_up):
+    spec = objectives.delivery("leads", "instant_form", page_id=MOCK_PAGE,
+                               promotion={"privacy_policy_url": privacy})
+    return {"delivery": spec, "lead_form": leadads.form_spec("form", spec["lead_fields"],
+                                                             privacy, follow_up)}
+
+
+@pytest.mark.parametrize("payload,ok", [
+    (_traffic(HOME + "try"), True),
+    (_traffic("https://evil.example/"), False),
+    ({"link": HOME}, False),  # no valid delivery block
+    (_form(HOME + "privacy", HOME), True),
+    (_form("https://evil.example/privacy", HOME), False),
+    (_form(HOME + "privacy", "https://evil.example/"), False),
+])
+def test_every_destination_of_a_judge_live_campaign_is_checked(payload, ok):
+    assert demo_destinations_ok(payload, HOME) is ok
