@@ -114,9 +114,12 @@ RULES: dict[str, Rule] = {r.id: r for r in (
          "The image prompt asked for no people; a person in the image is worth a look.",
          "Prompt obrazu prosił o brak osób; osoba na obrazie warta jest sprawdzenia."),
 )}
-# a finding whose rule the model did not name: shown, never blocking (no source to cite)
-UNMAPPED = Rule("UNMAPPED", {META: WARN, GOOGLE: WARN}, "",
-                "A reviewer note without a named rule.", "Uwaga recenzenta bez nazwanej zasady.")
+# a finding whose rule id is unknown or malformed: fail closed. It keeps the model's own
+# level (a block stays a block) and is labelled ``UNMAPPED``, so a model cannot make a
+# block non-blocking by naming no rule (or a wrong one).
+UNMAPPED = Rule("UNMAPPED", {META: BLOCK, GOOGLE: BLOCK}, "muse:unmapped-rule",
+                "A reviewer finding without a known rule; it keeps the reviewer's level.",
+                "Uwaga recenzenta bez znanej zasady; zachowuje poziom nadany przez recenzenta.")
 _URL = re.compile(r"https://[^\s,;)\"']+")
 
 

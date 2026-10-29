@@ -13,6 +13,7 @@ EN_RULES: dict[str, str] = {
     "js.source_link": "policy",
     "js.source_muse_grounding": "only what you confirmed",
     "js.source_muse_prompt": "image prompt",
+    "js.source_muse_unmapped": "no known rule; kept at the reviewer's level",
     # A2: what the copywriter left out, on the approval screen
     "studio.ap.left_out": "Left out to keep the ad within Meta's rules",
     "js.left_out_asked": "You asked: “{asked}”",
@@ -55,6 +56,7 @@ PL_RULES: dict[str, str] = {
     "js.source_link": "zasada",
     "js.source_muse_grounding": "tylko to, co potwierdziłeś",
     "js.source_muse_prompt": "prompt obrazu",
+    "js.source_muse_unmapped": "brak znanej zasady; poziom recenzenta",
     "studio.ap.left_out": "Pominięte, by reklama mieściła się w zasadach Meta",
     "js.left_out_asked": "Prosiłeś: „{asked}”",
     "js.left_out_instead": "Reklama mówi zamiast tego: „{instead}”",

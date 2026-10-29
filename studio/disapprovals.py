@@ -157,8 +157,32 @@ def _row(conn: sqlite3.Connection, did: str) -> dict[str, Any] | None:
     return out
 
 
-def listing(conn: sqlite3.Connection, lang: str = "en") -> list[dict[str, Any]]:
-    """Every disapproval, newest first, with its explanation (for the inbox)."""
+PUBLIC_FIELDS = ("id", "campaign_id", "rule", "status", "created_ts", "explain")
+
+
+def public_view(d: dict[str, Any]) -> dict[str, Any]:
+    """What a visitor without a session sees (like comments and leads): the rule, its
+    explanation and Meta's reason keys, every string redacted; never the proposal, the
+    approval id, the Graph ad id or the raw issues."""
+    from studio.receipts import redact
+
+    out = {k: d[k] for k in PUBLIC_FIELDS if k in d}
+    out["body"] = redact({"reasons": [{"key": r.get("key", ""), "text": r.get("text", ""),
+                                       "scope": r.get("scope", "")}
+                                      for r in (d.get("body") or {}).get("reasons") or []]})
+    out["proposal"], out["approval_id"] = {}, ""
+    return out
+
+
+def listing(conn: sqlite3.Connection, lang: str = "en",
+            full: bool = False) -> list[dict[str, Any]]:
+    """Every disapproval, newest first, with its explanation (for the inbox). Without
+    ``full`` (no session) each one is ``public_view``."""
+    rows = _listing(conn, lang)
+    return rows if full else [public_view(d) for d in rows]
+
+
+def _listing(conn: sqlite3.Connection, lang: str) -> list[dict[str, Any]]:
     with conn.lock:  # type: ignore[attr-defined]
         ids = [r[0] for r in conn.execute(
             "SELECT id FROM disapprovals ORDER BY created_ts DESC LIMIT 20").fetchall()]

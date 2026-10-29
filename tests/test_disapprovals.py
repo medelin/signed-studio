@@ -117,7 +117,7 @@ def test_an_insights_pull_detects_the_disapproved_ad_once(env):
     mock.disapprove(ad)
     assert measurement.pull_all(conn, ledger, mock, 50)["disapproved"] == 1
     assert "disapproved" not in measurement.pull_all(conn, ledger, mock, 50)
-    (d,) = disapprovals.listing(conn, "pl")
+    (d,) = disapprovals.listing(conn, "pl", full=True)
     assert d["rule"] == "P8" and d["status"] == "open"
     assert d["explain"]["sentence"].startswith("Meta odrzuca")
     (r,) = [x for x in ledger.receipts() if x.kind == "ad.review"]
@@ -131,7 +131,7 @@ def _proposed(env, verdict="OK"):
     conn, ledger, mock, tmp, ad, seen = env
     mock.disapprove(ad)
     measurement.pull_all(conn, ledger, mock, 50)
-    (d,) = disapprovals.listing(conn)
+    (d,) = disapprovals.listing(conn, full=True)
     findings = [{"rule": "P8", "severity": "block", "evidence": "still a health claim",
                  "source": ""}] if verdict == "BLOCK" else []
     out = disapprovals.propose(conn, ledger, FakeModel(ledger, verdict, findings), None,
@@ -162,7 +162,7 @@ def test_a_blocked_variant_is_not_proposed(env):
     conn, _, _, _, _, _ = env
     d, out = _proposed(env, verdict="BLOCK")
     assert out["status"] == "blocked" and "approval_id" not in out
-    assert disapprovals.listing(conn)[0]["status"] == "blocked"
+    assert disapprovals.listing(conn, full=True)[0]["status"] == "blocked"
     with conn.lock:
         assert conn.execute("SELECT count(*) FROM approvals WHERE action = "
                             "'campaign.update'").fetchone()[0] == 0
@@ -189,7 +189,7 @@ def test_signing_creates_a_paused_ad_and_leaves_the_disapproved_one(env):
     assert mock.objects[new_ad["creative_id"]]["message"] == NEW.primary_text
     assert mock.objects[ad] == old  # left as it is
     assert result["ad_id"] in c["more_ad_external_ids"]
-    assert disapprovals.listing(conn)[0]["status"] == "replaced"
+    assert disapprovals.listing(conn, full=True)[0]["status"] == "replaced"
     steps = [x.details["tool"] for x in ledger.receipts()
              if x.kind == "tool_call" and x.details.get("approval_id") == v.pending_id]
     assert steps == ["replace_image", "replace_creative", "replace_ad"]
@@ -315,3 +315,39 @@ def test_inbox_explains_the_disapproval_in_both_languages(tmp_path):
                       json={}).json()["error"] == "not_found"
         assert c.get("/api/disapprovals?lang=pl").json()["disapprovals"][0]["explain"][
             "rule"] == "P8"
+
+
+def test_a_visitor_sees_only_the_public_view(tmp_path):
+    """Like comments and leads: without a session no proposal, approval id, Graph ad id or
+    raw issues, and every string redacted (API and inbox HTML)."""
+    from fastapi.testclient import TestClient
+
+    from studio.app import create_app
+    from tests.test_ui_studio import login, settings
+
+    app = create_app(settings(tmp_path))
+    conn = app.state.conn
+    body = {"effective_status": "DISAPPROVED", "reasons": [
+        {"key": "Personal Health", "text": "write to owner@example.com", "scope": "global"}],
+        "issues": [{"error_code": "1815869", "error_summary": "s", "error_message": "m",
+                    "level": "AD"}]}
+    proposal = {"variant": {"headline": "SECRET-HEADLINE", "primary_text": "p"},
+                "verdict": "OK"}
+    with conn.lock, conn:
+        conn.execute("INSERT INTO disapprovals (id, campaign_id, ad_external_id, body, rule, "
+                     "status, approval_id, proposal, created_ts) VALUES ('dp_00000000000b', "
+                     "'cmp_x', '120000000000777', ?, 'P8', 'requested', 'APPROVAL-ID-X', ?, 1)",
+                     (json.dumps(body), json.dumps(proposal)))
+    with TestClient(app, base_url="https://testserver") as c:
+        (d,) = c.get("/api/disapprovals").json()["disapprovals"]
+        assert set(d) <= {*disapprovals.PUBLIC_FIELDS, "body", "proposal", "approval_id"}
+        assert d["proposal"] == {} and d["approval_id"] == "" and "issues" not in d["body"]
+        page = c.get("/inbox").text
+        for leak in ("SECRET-HEADLINE", "APPROVAL-ID-X", "120000000000777", "1815869",
+                     "owner@example.com"):
+            assert leak not in page and leak not in json.dumps(d)
+        assert "[email]" in d["body"]["reasons"][0]["text"]
+        login(c)
+        (full,) = c.get("/api/disapprovals").json()["disapprovals"]
+        assert full["approval_id"] == "APPROVAL-ID-X" and "SECRET-HEADLINE" in c.get(
+            "/inbox").text

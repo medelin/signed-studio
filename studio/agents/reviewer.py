@@ -258,14 +258,15 @@ def normalize(review: Review, channels: tuple[str, ...] = (rules.META,)) -> Revi
     """Code has the final say: rule ids mapped (``canonical_rules``), each level capped by
     the table for the channels the copy runs on and its source set from the table
     (``rules``); the verdict is the worst capped level (tips and notes never raise it).
-    A model verdict that names no finding at all is shown as WARN at most (no source)."""
+    A model verdict that names no finding at all is kept as the model gave it (fail
+    closed: an unexplained BLOCK still blocks)."""
     findings = [Finding(rule=f.rule, evidence=f.evidence,
                         severity=rules.level(f.rule, f.severity, channels),  # type: ignore[arg-type]
                         source=rules.source(f.rule, f.evidence, channels))
                 for f in canonical_rules(review).findings]
     verdict = rules.verdict(f.severity for f in findings)
-    if not findings and review.verdict != "OK":
-        verdict = "WARN"
+    if not findings:
+        verdict = review.verdict  # fail closed: never milder than an unexplained verdict
     return Review(verdict=verdict, findings=findings,  # type: ignore[arg-type]
                   summary=review.summary[:1000])
 

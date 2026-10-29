@@ -15,7 +15,7 @@ The models tag a level and a source too, but **code has the final say**: one tab
 (`studio/agents/rules.py`, `RULES`) gives each rule its highest level per channel and its
 source; `reviewer.normalize` caps every finding (the models', `policy_net`'s,
 `grounding_net`'s, F1's, SAM's) and derives the verdict from the capped levels. A model
-verdict that names no finding at all is shown as WARN at most (it has no source).
+verdict that names no finding at all is kept as given (fail closed).
 
 ## Levels by rule
 
@@ -34,7 +34,7 @@ verdict that names no finding at all is shown as WARN at most (it has no source)
 | F1 hard format limit / recommended length | block / **tip** | block / tip | the spec URL named in the finding |
 | S1 product fidelity (SAM) | block (product missing), warn (redrawn, cropped) | same | `muse:grounding` |
 | S2 people in the image | **tip** | tip | `muse:prompt` |
-| a finding without a known rule (`UNMAPPED`) | warn at most | warn | — |
+| a finding without a known rule (`UNMAPPED`) | the model's own level (fail closed: a block stays a block) | same | `muse:unmapped-rule` |
 
 Why P9 is a tip on Meta and not omitted: it is a Google Ads rule with a real history (two
 ads disapproved by Google, below), and the same copy can be exported to Google later; on a

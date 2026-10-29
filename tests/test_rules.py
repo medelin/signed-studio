@@ -27,7 +27,7 @@ def test_blocks_on_meta_cite_a_meta_page_or_the_grounding_rule():
 @pytest.mark.parametrize(("rule_id", "channels", "level"), [
     ("P9", META, "tip"), ("P9", BOTH, "block"), ("P5", META, "tip"), ("P5", BOTH, "tip"),
     ("P1", META, "block"), ("P10", META, "block"), ("S2", META, "tip"),
-    ("UNMAPPED", META, "warn"),
+    ("UNMAPPED", META, "block"),
 ])
 def test_caps(rule_id, channels, level):
     assert rules.level(rule_id, "block", channels) == level
@@ -66,9 +66,18 @@ def test_normalize_caps_model_findings_and_sets_sources():
     assert out.verdict == "BLOCK" and "support.google.com" in out.findings[0].source
 
 
-def test_a_model_verdict_without_findings_is_warn_at_most():
-    assert reviewer.normalize(_review("BLOCK")).verdict == "WARN"
+def test_a_model_verdict_without_findings_is_kept_fail_closed():
+    assert reviewer.normalize(_review("BLOCK")).verdict == "BLOCK"
     assert reviewer.normalize(_review("OK")).verdict == "OK"
+
+
+@pytest.mark.parametrize("rule_id", ["P99", "", "Meta health policy", "X1"])
+def test_an_unknown_rule_id_never_downgrades_a_block(rule_id):
+    out = reviewer.normalize(_review("BLOCK", (rule_id, "block")))
+    assert out.verdict == "BLOCK"
+    assert out.findings[0].rule == "UNMAPPED" and out.findings[0].severity == "block"
+    assert out.findings[0].source == "muse:unmapped-rule"
+    assert reviewer.normalize(_review("WARN", (rule_id, "warn"))).verdict == "WARN"
 
 
 def test_grounding_net_is_a_block_with_the_grounding_source():

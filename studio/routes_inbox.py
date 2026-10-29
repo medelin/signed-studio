@@ -89,7 +89,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "comments": list_comments(conn, logged_in), "adapter": settings.meta_adapter,
             # ads Meta disapproved (A7): Meta's reason explained, a compliant variant to sign
             "disapprovals": disapprovals.listing(
-                conn, getattr(request.state, "lang", "en") or "en"),
+                conn, getattr(request.state, "lang", "en") or "en", logged_in),
         })
 
     @app.get("/api/comments")

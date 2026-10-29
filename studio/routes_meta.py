@@ -139,7 +139,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     def disapprovals_list(request: Request) -> Response:
         """Ads Meta disapproved, with Meta's reasons and the rule explained (A7)."""
         lang = "pl" if request.query_params.get("lang") == "pl" else "en"
-        return JSONResponse({"disapprovals": disapprovals.listing(conn, lang)},
+        full = session_of(request) is not None  # a visitor gets the public view
+        return JSONResponse({"disapprovals": disapprovals.listing(conn, lang, full)},
                             headers={"Cache-Control": "no-store"})
 
     @app.post("/api/disapprovals/{did}/propose")

@@ -152,7 +152,8 @@ function renderImages(runId, creatives) {
 function sourceLink(source) {
   if (!source) return null;
   if (!/^https:\/\//.test(source)) {
-    const label = source === "muse:grounding" ? T("source_muse_grounding") : T("source_muse_prompt");
+    const label = source === "muse:grounding" ? T("source_muse_grounding")
+      : source === "muse:unmapped-rule" ? T("source_muse_unmapped") : T("source_muse_prompt");
     return el("span", "(" + label + ")", "hint");
   }
   const a = el("a", T("source_link"));
