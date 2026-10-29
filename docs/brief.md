@@ -64,6 +64,33 @@ Billing is `IMPRESSIONS` for every row; conversion rows (website leads, app, sal
 `attribution_spec` to 7-day click, 1-day view. Sources: the ODAX mapping table of the
 campaign reference and the lead ads guide (cited in the module).
 
+### Pixel check before signing
+
+Website leads and sales (every row whose ad set promotes a `pixel_id`) get a read-only
+check of the owner's pixel while the run builds the approval (`studio/meta/pixel.py`,
+`Adapter.pixel_check`): `GET /{pixel_id}?fields=id,name,last_fired_time,is_unavailable`,
+the pixel among `GET /act_{id}/adspixels?fields=id` (the pixels the ad account can use),
+`GET /{pixel_id}/stats?aggregation=event` for the last 7 days, and the pixel id in the
+landing page's HTML (`fbq('init', …)` or the `facebook.com/tr?id=…` image; fetched SSRF-safe,
+[SECURITY.md](SECURITY.md#landing-page-fetch-pixel-check)). The result is `ok`, `warn` or
+`fail` with one line per check:
+
+| Check | fail | warn |
+|---|---|---|
+| the pixel | does not exist, cannot be seen, unavailable, or could not be read | — |
+| the ad account | the pixel is not among its pixels | the list could not be read |
+| activity | — | no event in 7 days, never fired, the campaign's event not seen, stats unknown |
+| landing page | — | id not in the HTML (a tag manager may load it), page not fetched |
+
+The result is a `pixel.check` receipt (`side_effects: read`, codes and `result_sha256`;
+the pixel id by hash) and the payload's `pixel_check` block (with `verdict` for `status`),
+so the signature covers it and the approval screen shows a badge and every line. A
+`fail` cannot be signed (`409 pixel_check_failed`, nothing consumed) or executed
+(`media_buyer.create` refuses before any Meta call; also `pixel_check_missing` for a pixel
+objective without a check, `pixel_check_mismatch` for a check of another pixel). A `warn`
+is shown and signable. The check is not repeated at execution: the signed payload binds the
+result the person saw. Instant forms and objectives without a pixel skip it.
+
 The Pydantic models are strict (`extra="forbid"`, no type coercion) and are also the
 producer's strict JSON schema, so length limits live in `brief.problems` (field path →
 error code; the UI shows each code's message, in English or Polish, next to its field).
