@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ title }}{% endblock %}
+{% block content %}
+<article class="panel legal">
+  <h1>{{ title }}</h1>
+  {% for heading, paragraphs in sections %}
+  <h2>{{ heading }}</h2>
+  {% for para in paragraphs %}<p>{{ para }}</p>
+  {% endfor %}
+  {% endfor %}
+  <p class="hint"><time datetime="{{ updated }}">{{ updated }}</time></p>
+</article>
+{% endblock %}

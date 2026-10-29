@@ -17,7 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from studio.receipts import Ledger
 from studio.settings import Settings
-from studio.ui import cast, help_texts
+from studio.ui import cast, help_texts, legal_texts
 
 # Paths whose clients expect JSON, never an HTML page.
 _API_PREFIXES = ("/api/", "/assets/", "/static/")
@@ -58,6 +58,20 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2
             **base(request), "noindex": True, "scenes": cast.SCENES})
         response.headers["X-Robots-Tag"] = "noindex"
         return response
+
+    def legal_page(request: Request, name: str) -> Response:
+        title, sections = legal_texts.page(name, request.state.lang)
+        return templates.TemplateResponse(request, "legal.html", {
+            **base(request), "title": title, "sections": sections,
+            "updated": legal_texts.UPDATED})
+
+    @app.get("/privacy", response_class=HTMLResponse)
+    def privacy(request: Request) -> Response:
+        return legal_page(request, "privacy")
+
+    @app.get("/data-deletion", response_class=HTMLResponse)
+    def data_deletion(request: Request) -> Response:
+        return legal_page(request, "data-deletion")
 
     @app.exception_handler(StarletteHTTPException)
     async def not_found(request: Request, exc: StarletteHTTPException) -> Response:

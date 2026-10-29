@@ -40,6 +40,7 @@ FORM_TYPES = frozenset({"application/x-www-form-urlencoded", "multipart/form-dat
 FORM_CHECKED_IN_ROUTE = frozenset({"/login", "/logout", "/login/2fa"})
 FORM_CHECKED_PREFIXES = ("/account/",)  # studio.routes_account checks the csrf field
 PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favicon.ico",
+                          "/privacy", "/data-deletion",
                           "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys"})
 PUBLIC_PREFIXES = ("/static/",)
 JSON_PREFIXES = ("/api/", "/assets/")

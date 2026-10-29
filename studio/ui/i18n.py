@@ -44,7 +44,7 @@ EN: dict[str, str] = {
     "palette.graphite": "graphite", "palette.warm": "warm paper", "palette.green": "green",
     "palette.contrast": "high contrast", "theme.apply": "Apply",
     "foot.ledger": "Ledger", "foot.seq": "manifest seq", "foot.manifest": "manifest",
-    "foot.key": "ledger key",
+    "foot.key": "ledger key", "foot.privacy": "Privacy", "foot.deletion": "Data deletion",
     # common
     "common.receipt_cols.time": "time (UTC)", "common.receipt_cols.run": "run",
     "common.receipt_cols.agent": "agent", "common.receipt_cols.kind": "kind",
@@ -450,7 +450,8 @@ PL: dict[str, str] = {
     "palette.graphite": "grafit", "palette.warm": "ciepły papier", "palette.green": "zielony",
     "palette.contrast": "wysoki kontrast", "theme.apply": "Zastosuj",
     "foot.ledger": "Rejestr", "foot.seq": "manifest seq", "foot.manifest": "manifest",
-    "foot.key": "klucz rejestru",
+    "foot.key": "klucz rejestru", "foot.privacy": "Prywatność",
+    "foot.deletion": "Usuwanie danych",
     "common.receipt_cols.time": "czas (UTC)", "common.receipt_cols.run": "przebieg",
     "common.receipt_cols.agent": "agent", "common.receipt_cols.kind": "rodzaj",
     "common.receipt_cols.model": "dostawca · model", "common.receipt_cols.tier": "poziom",
