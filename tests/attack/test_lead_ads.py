@@ -14,7 +14,7 @@ from studio import db, leadads
 from studio.agents import lead_scorer, media_buyer
 from studio.app import create_app
 from studio.approvals import Keys
-from studio.meta import objectives
+from studio.meta import adapter, objectives
 from studio.meta.adapter import MOCK_PAGE, NotApproved
 from studio.meta.mock import MockAdapter
 from studio.receipts import verify
@@ -60,6 +60,16 @@ def test_form_spec_uses_the_owners_page_and_adds_nothing():
     assert set(form) == {"name", "questions", "privacy_policy", "follow_up_action_url"}
     with pytest.raises(ValueError):
         leadads.form_spec("x", ["EMAIL"], "", "https://shop.example/")
+
+
+@pytest.mark.parametrize(("lang", "locale"), [("pl", "PL_PL"), ("PL", "PL_PL"),
+                                              ("en", "EN_US"), ("polski", "PL_PL"), ("xx", None)])
+def test_form_speaks_the_ad_language(lang, locale):
+    form = leadads.form_spec("x", ["EMAIL"], "https://shop.example/legal/privacy/",
+                             "https://shop.example/", lang=lang)
+    assert form.get("locale") == locale
+    if locale is not None:
+        assert adapter.lead_form_of({"lead_form": form})["locale"] == locale
 
 
 def test_instant_form_campaign_then_poll_scores_each_lead_once(env, tmp_path):

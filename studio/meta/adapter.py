@@ -453,7 +453,7 @@ def lead_form_of(payload: Mapping[str, Any]) -> dict[str, Any]:
             for q in questions):
         raise NotApproved("instant-form questions must come from the brief's list")
     return {k: form[k] for k in ("name", "questions", "privacy_policy",
-                                 "follow_up_action_url") if k in form}
+                                 "follow_up_action_url", "locale") if k in form}
 
 
 def campaign_name(payload: Mapping[str, Any]) -> str:

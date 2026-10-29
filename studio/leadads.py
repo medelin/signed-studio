@@ -30,7 +30,7 @@ import sqlite3
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 from urllib.parse import urlsplit
 
 from studio import envelope
@@ -79,15 +79,30 @@ def link_text(url: str) -> str:
     return (str(parts.hostname or "") + parts.path).rstrip("/")[:70] or url[:70]
 
 
+# the brief's first language -> Meta's form locale (the form's own buttons and labels)
+FORM_LOCALES: Final = {"pl": "PL_PL", "en": "EN_US", "de": "DE_DE", "fr": "FR_FR",
+                       "es": "ES_ES", "it": "IT_IT", "nl": "NL_NL", "cs": "CS_CZ",
+                       "uk": "UK_UA", "pt": "PT_PT"}
+# a brief may name the language instead of giving its code
+LANGUAGE_NAMES: Final = {"polski": "pl", "polish": "pl", "english": "en", "angielski": "en",
+                         "deutsch": "de", "german": "de", "niemiecki": "de"}
+
+
 def form_spec(name: str, questions: list[str], privacy_url: str,
-              follow_up_url: str) -> dict[str, Any]:
-    """The ``leadgen_forms`` body for the signed payload (``lead_form``)."""
+              follow_up_url: str, *, lang: str = "") -> dict[str, Any]:
+    """The ``leadgen_forms`` body for the signed payload (``lead_form``); ``lang`` (the
+    ad's language) sets the form's locale, an unknown one leaves Meta's default."""
     if not privacy_url:
         raise ValueError("an instant form needs the owner's privacy-policy URL")
-    return {"name": name[:100],
+    form = {"name": name[:100],
             "questions": [{"type": q, "key": q.lower()} for q in questions],
             "privacy_policy": {"url": privacy_url, "link_text": link_text(privacy_url)},
             "follow_up_action_url": follow_up_url}
+    key = lang.strip().lower()
+    locale = FORM_LOCALES.get(LANGUAGE_NAMES.get(key, key[:2]))
+    if locale:
+        form["locale"] = locale
+    return form
 
 
 def run_id_for(form_id: str) -> str:

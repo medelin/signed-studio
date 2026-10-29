@@ -231,7 +231,8 @@ def campaign_payload(run: RunResult, variant_index: int,
         # the questions the owner chose and the owner's own privacy page (Meta requires it)
         payload["lead_form"] = leadads.form_spec(
             f"Muse Studio · {run.plan.angles[run.angle_index].name} · form",
-            spec["lead_fields"], brief.promotion.privacy_policy_url, link)
+            spec["lead_fields"], brief.promotion.privacy_policy_url, link,
+            lang=(brief.audience.languages or [""])[0])
     if brief is not None:
         # what the owner confirmed, by hash, plus the parts the campaign is built from
         payload.update({
