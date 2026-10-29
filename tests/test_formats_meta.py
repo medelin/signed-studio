@@ -54,6 +54,21 @@ def test_storyboard_falls_back_to_code_when_wonder_fails():
     assert model == "code" and shots == [("feed_1x1", 2), ("story_9x16", 2)]
 
 
+def test_storyboard_leaves_room_for_reasoning(monkeypatch):
+    # Wonder counts reasoning tokens against max_tokens: at 800 the live answer was cut
+    # off (finish=length) and every video fell back to the code order (2026-10-29)
+    seen = {}
+
+    def fake(client, model, messages, schema, **kw):
+        seen.update(kw)
+        return schema(shots=[{"image": "story_9x16", "seconds": 3}]), None
+
+    monkeypatch.setattr(video, "structured", fake)
+    shots, model = video.storyboard(object(), "Hi", ["story_9x16"], run_id="r")
+    assert model == video.MODEL and shots == [("story_9x16", 3)]
+    assert seen["max_tokens"] >= 2000 and seen["reasoning_effort"] == "minimal"
+
+
 def _ffmpeg():
     return shutil.which("ffmpeg") is not None
 

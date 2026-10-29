@@ -68,7 +68,7 @@ def storyboard(client: MuseClient, headline: str, images: Sequence[str], *,
              {"role": "user", "content": user}],
             Storyboard, tier="standard", tier_reason="video storyboard: placement names "
                                                      "and the headline, no personal data",
-            run_id=run_id, agent=AGENT, max_tokens=800)
+            run_id=run_id, agent=AGENT, max_tokens=2000, reasoning_effort="minimal")
         shots = [(s.image, max(SHOT_S[0], min(SHOT_S[1], s.seconds)))
                  for s in board.shots if s.image in names][:MAX_SHOTS]
         if shots:
