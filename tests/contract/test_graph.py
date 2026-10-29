@@ -250,6 +250,13 @@ def test_preview_accepts_only_meta_preview_iframes(body):
         from_graph_body(body)
 
 
+@pytest.mark.parametrize("host", ["www.facebook.com", "business.facebook.com"])
+def test_preview_accepts_both_meta_preview_hosts(host):
+    # Graph v25 answers with business.facebook.com for ads of a business portfolio.
+    src = f"https://{host}/ads/api/preview_iframe.php?d=AQKdemo&amp;t=x"
+    assert from_graph_body(f'<iframe src="{src}"></iframe>').src == src.replace("&amp;", "&")
+
+
 def test_adapter_repr_has_no_token():
     g = GraphAdapter(TOKEN, "100000000000001", "600000000000001")
     assert TOKEN not in repr(g) and g.account == "act_100000000000001"

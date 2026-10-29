@@ -79,7 +79,7 @@ MAX_KEYS_PER_SESSION = 5
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-    "connect-src 'self'; frame-src https://www.facebook.com; frame-ancestors 'none'; "
+    "connect-src 'self'; frame-src https://www.facebook.com https://business.facebook.com; frame-ancestors 'none'; "
     "base-uri 'none'; form-action 'self'"
 )
 
