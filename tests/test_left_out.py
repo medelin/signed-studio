@@ -41,7 +41,7 @@ def test_code_sets_rule_id_and_source_from_the_table():
         {"asked": "lowers blood pressure", "rule": "health", "source": "", "instead": ""}]))
     assert [x.rule for x in pack.left_out] == ["P1", "UNMAPPED"]
     assert pack.left_out[0].source == rules.RULES["P1"].source
-    assert pack.left_out[1].source == ""
+    assert pack.left_out[1].source == rules.UNMAPPED.source  # never the model's URL
 
 
 def test_the_signed_payload_carries_what_was_left_out():
