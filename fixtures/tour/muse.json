@@ -1,0 +1,1282 @@
+{
+ "_provenance": "recorded",
+ "schema": "tour/v1",
+ "set": "muse",
+ "recorded": "2026-10-28",
+ "lang": "pl",
+ "recorded_cost_usd": 0.164243,
+ "run_id": "run_ca8480c679b4305f",
+ "run_cost_usd": 0.106931,
+ "brief": {
+  "text": "Muse Studio Lite to darmowe narzędzie open source dla jednoosobowych firm. Z jednego briefu robi plan kampanii, 3 warianty tekstu, grafiki i 2 niezależne recenzje zgodności, a nic nie trafia do reklam bez twojego podpisu. Kod jest otwarty, na licencji Apache 2.0. Chcemy ruchu do piaskownicy na https://muse.udun.eu. Dla osób prowadzących jednoosobową działalność w Polsce, 25-55 lat. Budżet 6 GBP dziennie przez 7 dni, od 4 do 10 listopada 2026. Rzeczowo i spokojnie, bez obietnic zysku. Reklama po polsku. Nie wymieniajcie nazwy żadnej firmy.",
+  "draft_questions": [],
+  "resolutions": [],
+  "confirmed": {
+   "schema": "brief/v1",
+   "advertiser": {
+    "kind": "company",
+    "display_name": "Muse Studio Lite",
+    "countries": [
+     "PL"
+    ],
+    "landing_url": "https://muse.udun.eu"
+   },
+   "confirmed_facts": [
+    "Muse Studio Lite to darmowe narzędzie open source dla jednoosobowych firm.",
+    "Z jednego briefu robi plan kampanii, 3 warianty tekstu, grafiki i 2 niezależne recenzje zgodności.",
+    "Nic nie trafia do reklam bez twojego podpisu.",
+    "Kod jest otwarty, na licencji Apache 2.0."
+   ],
+   "offer": {
+    "product": "Muse Studio Lite",
+    "offer": "darmowe narzędzie open source do wypróbowania w piaskownicy",
+    "valid_until": "",
+    "reasons_to_believe": [
+     {
+      "text": "Z jednego briefu robi plan kampanii, 3 warianty tekstu, grafiki i 2 niezależne recenzje zgodności.",
+      "facts": [
+       1
+      ]
+     },
+     {
+      "text": "Nic nie trafia do reklam bez twojego podpisu.",
+      "facts": [
+       2
+      ]
+     },
+     {
+      "text": "Kod jest otwarty, na licencji Apache 2.0.",
+      "facts": [
+       3
+      ]
+     }
+    ]
+   },
+   "objective": {
+    "goal": "traffic",
+    "kpi": "ruch do piaskownicy na https://muse.udun.eu",
+    "sub": ""
+   },
+   "audience": {
+    "locations": [
+     "Polska"
+    ],
+    "age_min": 25,
+    "age_max": 55,
+    "languages": [
+     "pl"
+    ],
+    "insight": {
+     "who": "osoby prowadzące jednoosobową działalność w Polsce",
+     "belief": "",
+     "barrier": "",
+     "trigger": ""
+    },
+    "advantage_audience": true,
+    "genders": [],
+    "interests": [],
+    "excluded_interests": [],
+    "excluded_countries": [],
+    "custom_audience_ids": [],
+    "excluded_custom_audience_ids": [],
+    "lookalike_source_id": "",
+    "lookalike_percent": 1
+   },
+   "proposition": "Muse Studio Lite z jednego briefu przygotowuje plan kampanii, teksty, grafiki i dwie recenzje zgodności, które czekają na twój podpis.",
+   "tone_brand": {
+    "tone": [
+     "rzeczowo",
+     "spokojnie"
+    ],
+    "colours": [],
+    "donts": [
+     "bez obietnic zysku",
+     "Nie wymieniajcie nazwy żadnej firmy."
+    ]
+   },
+   "mandatories": {
+    "disclaimers": [],
+    "banned_claims": [
+     "obietnice zysku"
+    ],
+    "dates": []
+   },
+   "budget": {
+    "kind": "daily",
+    "amount": 6.0,
+    "currency": "GBP",
+    "start": "2026-11-04",
+    "end": "2026-11-10"
+   },
+   "placements": {
+    "automatic": true,
+    "deliverables": [
+     "feed_1x1",
+     "story_9x16"
+    ],
+    "carousel_cards": 0,
+    "video": false,
+    "copy_variants": 1
+   },
+   "assets": [],
+   "open_questions": [],
+   "promotion": {
+    "pixel_id": "",
+    "custom_event_type": "",
+    "application_id": "",
+    "object_store_url": "",
+    "event_id": "",
+    "product_catalog_id": "",
+    "product_set_id": "",
+    "privacy_policy_url": "",
+    "lead_fields": []
+   },
+   "channels": {
+    "google_search": false,
+    "google_daily_budget": 0.0
+   }
+  }
+ },
+ "plan": {
+  "audience": "Polska, 25-55 lat, język polski, osoby prowadzące jednoosobową działalność",
+  "angles": [
+   {
+    "name": "Zestaw z jednego briefu",
+    "hook": "Muse Studio Lite z jednego briefu przygotowuje plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności.",
+    "persona": "osoba prowadząca jednoosobową działalność w Polsce, szuka spokojnego uporządkowania działań"
+   },
+   {
+    "name": "Decyzja czeka na podpis",
+    "hook": "Muse Studio Lite: nic nie trafia do reklam bez twojego podpisu, sprawdź w piaskownicy.",
+    "persona": "osoba prowadząca jednoosobową działalność w Polsce, chce sama zatwierdzać materiały"
+   },
+   {
+    "name": "Otwarte narzędzie do próby",
+    "hook": "Muse Studio Lite to darmowe narzędzie open source na licencji Apache 2.0 do wypróbowania w piaskownicy.",
+    "persona": "osoba prowadząca jednoosobową działalność w Polsce, ciekawa darmowego narzędzia open source"
+   }
+  ],
+  "budget_daily": 6,
+  "placements": [
+   "feed_1x1",
+   "story_9x16"
+  ],
+  "tasks": [
+   "Opowiedz po polsku rzeczowo i spokojnie o planie z jednego briefu, bez obietnic zysku",
+   "Kieruj ruch do piaskownicy https://muse.udun.eu dla PL 25-55",
+   "Pokaż w feed_1x1 i story_9x16 teksty, grafiki i dwie recenzje czekające na podpis",
+   "Nie wymieniaj nazwy żadnej firmy, mów tylko o Muse Studio Lite jako darmowym narzędziu open source"
+  ]
+ },
+ "angle_index": 0,
+ "copy": {
+  "variants": [
+   {
+    "primary_text": "Z jednego briefu: plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności.",
+    "headline": "Jeden brief. Spokojny plan",
+    "description": "Plan, teksty i grafiki w jednym",
+    "cta": "LEARN_MORE"
+   },
+   {
+    "primary_text": "Darmowe narzędzie open source dla jednoosobowych firm. Nic nie trafia do reklam bez podpisu.",
+    "headline": "Teksty, grafiki, recenzje",
+    "description": "Kod otwarty, Apache 2.0",
+    "cta": "LEARN_MORE"
+   },
+   {
+    "primary_text": "Plan kampanii, 3 warianty tekstu, grafiki i 2 niezależne recenzje zgodności. Kod: Apache 2.0.",
+    "headline": "Czekają na twój podpis",
+    "description": "Wypróbuj w piaskownicy",
+    "cta": "LEARN_MORE"
+   }
+  ],
+  "risks": [
+   "P5 Brand name - nazwa Muse Studio Lite pominięta w kopii zgodnie z wymogiem briefu 'Nie wymieniajcie nazwy żadnej firmy'; recenzent może oznaczyć brak nazwy reklamodawcy",
+   "P3 Unrealistic promises - brak obietnic zysku; kopia ogranicza się do potwierdzonych funkcji z faktów 2-4",
+   "P1 Personal attributes - kopia nie stwierdza ani nie sugeruje cech osobistych odbiorcy"
+  ],
+  "unfilled_facts": 0
+ },
+ "images": [
+  {
+   "placement": "feed_1x1",
+   "width": 1600,
+   "height": 1600,
+   "sha256": "e64b5121f2a1b3609d6b2d8cdd80212531a99955840482645caf8ffc447a4e6a",
+   "blob": "324162357b3554699511a8eb908f0c1b.png"
+  },
+  {
+   "placement": "story_9x16",
+   "width": 1152,
+   "height": 2048,
+   "sha256": "57c684349272a56c87dcd99f718d72ec029431fc64904b8f461acbc5f45ab77d",
+   "blob": "9ac3574125dd16910fa40c87495579a5.png"
+  }
+ ],
+ "review": {
+  "verdict": "WARN",
+  "primary_verdict": "WARN",
+  "second_opinion": "available",
+  "disagreements": [
+   "feed_1x1: verdict: Muse Spark WARN vs Spark Open OK",
+   "feed_1x1: P5: flagged by Muse Spark only",
+   "story_9x16: P5: flagged by Spark Open only"
+  ],
+  "formats": [
+   {
+    "placement": "feed_1x1",
+    "sha256": "e64b5121f2a1b3609d6b2d8cdd80212531a99955840482645caf8ffc447a4e6a",
+    "verdict": "WARN",
+    "second_opinion": "available",
+    "disagreements": [
+     "verdict: Muse Spark WARN vs Spark Open OK",
+     "P5: flagged by Muse Spark only"
+    ],
+    "primary": {
+     "verdict": "WARN",
+     "findings": [
+      {
+       "rule": "P5",
+       "evidence": "Primary text 'Z jednego briefu: plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności.', Headline 'Jeden brief. Spokojny plan', Description 'Plan, teksty i grafiki w jednym' and image text 'Jeden brief. Spokojny plan' contain no brand name; required advertiser name 'Muse Studio Lite' is absent.",
+       "severity": "warn"
+      }
+     ],
+     "summary": "Copy claims match brief facts 2; no P1-P4, P6-P9 or P10 banned-claim issues found. Only issue is missing required brand name Muse Studio Lite in copy and image."
+    },
+    "second": {
+     "verdict": "OK",
+     "findings": [],
+     "summary": "Primary text claim 'Z jednego briefu: plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności' is directly supported by confirmed fact #2. Headline and image text 'Jeden brief. Spokojny plan' aligns with proposition. No price, guarantee, availability or profit promises present; no banned claim 'obietnice zysku'. No P1-P9 violations detected."
+    }
+   },
+   {
+    "placement": "story_9x16",
+    "sha256": "57c684349272a56c87dcd99f718d72ec029431fc64904b8f461acbc5f45ab77d",
+    "verdict": "WARN",
+    "second_opinion": "available",
+    "disagreements": [
+     "P5: flagged by Spark Open only"
+    ],
+    "primary": {
+     "verdict": "WARN",
+     "findings": [
+      {
+       "rule": "F1",
+       "evidence": "Instagram Reels: primary_text is 83 characters, recommended length 44 — shown as 'Z jednego briefu: plan kampanii, 3 warianty '… (https://www.facebook.com/business/ads-guide/update/image/instagram-reels, retrieved 2026-10-28)",
+       "severity": "warn"
+      }
+     ],
+     "summary": "Ad copy and image match confirmed Brief v1 facts (plan, 3 text variants, graphics, 2 reviews from one brief) with no price, guarantee, profit promise or prohibited content. No P1-P9 violations found."
+    },
+    "second": {
+     "verdict": "WARN",
+     "findings": [
+      {
+       "rule": "P5",
+       "evidence": "Primary text: \"Z jednego briefu: plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności.\" Headline: \"Jeden brief. Spokojny plan\" Description: \"Plan, teksty i grafiki w jednym\" Image text: \"Jeden brief. Spokojny plan\" - brak jakiejkolwiek wzmianki o reklamodawcy \"Muse Studio Lite\" wymaganym w brief_facts; no occurrence of full brand name in copy or image",
+       "severity": "warn"
+      },
+      {
+       "rule": "F1",
+       "evidence": "Instagram Reels: primary_text is 83 characters, recommended length 44 — shown as 'Z jednego briefu: plan kampanii, 3 warianty '… (https://www.facebook.com/business/ads-guide/update/image/instagram-reels, retrieved 2026-10-28)",
+       "severity": "warn"
+      }
+     ],
+     "summary": "P10 grounding OK: claim 'plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności z jednego briefu' is fully supported by confirmed fact #2 and proposition; no banned profit promises detected. P1-P4, P6-P9 no violations. P5 WARN: advertiser name Muse Studio Lite required by brief_facts does not appear in copy or image."
+    }
+   }
+  ],
+  "variant_index": 0
+ },
+ "producer_summary": "Approval is pending for the Muse Studio Lite sandbox traffic campaign in the studio and nothing was published. Reviewers returned WARN for missing brand name (P5) and long Reels text (F1) but did not block the variant.",
+ "approval": {
+  "fields": {
+   "action": "campaign.create",
+   "item_id": "cmp_94119838d97eebca",
+   "content_sha256": "3d0ff2ec5716eafae2f87fb601ca0089ecec69db201a232f130d0366aec4fb53",
+   "chain_head": "173c03af6524c34bd584189fb8801c75842bd5d803c134cceb803f3da868d030",
+   "approver": "ed25519:851d810c6056bd36d9c72ac86431365b",
+   "nonce": "n_f6d139bdafe7d1813fee0ce9ab502df7",
+   "ts": 1793274852,
+   "brief_sha256": "605f9a8fdf7a1fc371c3df18c8443066bf88f4ac8435581b4b0d34554c9c57b2",
+   "spec_sha256": "1518edb66a861e6980272ca454e4a31a4aaf4c8726e05b68bece494a4b44f960"
+  },
+  "content": {
+   "action": "campaign.create",
+   "ad": {
+    "cta": "LEARN_MORE",
+    "description": "Plan, teksty i grafiki w jednym",
+    "headline": "Jeden brief. Spokojny plan",
+    "primary_text": "Z jednego briefu: plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności."
+   },
+   "audience": "Polska, 25-55 lat, język polski, osoby prowadzące jednoosobową działalność",
+   "audience_resolution": {
+    "excluded_interests": [],
+    "interests": [],
+    "locales": [
+     {
+      "hint": "pl",
+      "key": 7538,
+      "name": "Pol"
+     }
+    ],
+    "unresolved": []
+   },
+   "brief": {
+    "automatic_placements": true,
+    "budget": {
+     "amount": 6.0,
+     "currency": "GBP",
+     "end": "2026-11-10",
+     "kind": "daily",
+     "start": "2026-11-04"
+    },
+    "facts": 4,
+    "goal": "traffic",
+    "kpi": "ruch do piaskownicy na https://muse.udun.eu",
+    "schema": "brief/v1",
+    "sub": "link_clicks"
+   },
+   "brief_sha256": "605f9a8fdf7a1fc371c3df18c8443066bf88f4ac8435581b4b0d34554c9c57b2",
+   "campaign": {
+    "angle": "Zestaw z jednego briefu",
+    "currency": "GBP",
+    "daily_budget_minor": 600,
+    "objective": "OUTCOME_TRAFFIC",
+    "status": "PAUSED"
+   },
+   "delivery": {
+    "billing_event": "IMPRESSIONS",
+    "creative": "link",
+    "cta": "",
+    "destination_type": "WEBSITE",
+    "dynamic_creative": false,
+    "goal": "traffic",
+    "objective": "OUTCOME_TRAFFIC",
+    "optimization_goal": "LINK_CLICKS",
+    "promoted_object": {},
+    "result": "link_click",
+    "sub": "link_clicks"
+   },
+   "images": [
+    {
+     "placement": "feed_1x1",
+     "sha256": "e64b5121f2a1b3609d6b2d8cdd80212531a99955840482645caf8ffc447a4e6a"
+    },
+    {
+     "placement": "story_9x16",
+     "sha256": "57c684349272a56c87dcd99f718d72ec029431fc64904b8f461acbc5f45ab77d"
+    }
+   ],
+   "link": "https://muse.udun.eu",
+   "review": {
+    "disagreements": [
+     "feed_1x1: verdict: Muse Spark WARN vs Spark Open OK",
+     "feed_1x1: P5: flagged by Muse Spark only",
+     "story_9x16: P5: flagged by Spark Open only"
+    ],
+    "formats": [
+     {
+      "placement": "feed_1x1",
+      "sha256": "e64b5121f2a1b3609d6b2d8cdd80212531a99955840482645caf8ffc447a4e6a",
+      "verdict": "WARN"
+     },
+     {
+      "placement": "story_9x16",
+      "sha256": "57c684349272a56c87dcd99f718d72ec029431fc64904b8f461acbc5f45ab77d",
+      "verdict": "WARN"
+     }
+    ],
+    "second_opinion": "available",
+    "verdict": "WARN"
+   },
+   "risks": [
+    "P5 Brand name - nazwa Muse Studio Lite pominięta w kopii zgodnie z wymogiem briefu 'Nie wymieniajcie nazwy żadnej firmy'; recenzent może oznaczyć brak nazwy reklamodawcy",
+    "P3 Unrealistic promises - brak obietnic zysku; kopia ogranicza się do potwierdzonych funkcji z faktów 2-4",
+    "P1 Personal attributes - kopia nie stwierdza ani nie sugeruje cech osobistych odbiorcy"
+   ],
+   "run_id": "run_ca8480c679b4305f",
+   "targeting": {
+    "age_max": 65,
+    "age_min": 25,
+    "age_range": [
+     25,
+     55
+    ],
+    "geo_locations": {
+     "countries": [
+      "PL"
+     ]
+    },
+    "locales": [
+     7538
+    ],
+    "targeting_automation": {
+     "advantage_audience": 1
+    }
+   }
+  },
+  "content_sha256": "3d0ff2ec5716eafae2f87fb601ca0089ecec69db201a232f130d0366aec4fb53",
+  "expires_ts": 1793275752
+ },
+ "receipts": [
+  {
+   "agent": "producer",
+   "cached_tokens": 0,
+   "cost_usd": 0.017167,
+   "details": {
+    "endpoint": "chat.completions",
+    "finish": "stop",
+    "reasoning_tokens": 2580,
+    "response_id": "chatcmpl-01a1821c-0034-740e-8af2-817f6901390f"
+   },
+   "duration_ms": 6,
+   "envelope": false,
+   "hash": "33d093417006ba54cab42c5b402974f5d46f48051918dfbbca038f7adbd7dafa",
+   "id": "14387dca6578488d888ca6cf7055b795",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "9ac5d7086786c9a066493183141d45668d2797ec2f5ff297ce580991dfc65d95",
+   "prev": "0000000000000000000000000000000000000000000000000000000000000000",
+   "prompt_sha256": "480d0f50562426b184828b02b6158fa6330f93668e4670fefb75e377a7fdfe3e",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "1dd050b2108659e110eec36fea3013a5f5e986bfc4d0df841345eb873f561e4bb0ca667a2dd0789bec26c61e23be226406cd91823f685870eba7c384200add0f",
+   "tier": "standard",
+   "tier_reason": "brief draft from the owner's text",
+   "tokens_in": 2381,
+   "tokens_out": 3339,
+   "ts": 1793274839.9794946
+  },
+  {
+   "agent": "owner",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "answered": 0,
+    "brief_sha256": "605f9a8fdf7a1fc371c3df18c8443066bf88f4ac8435581b4b0d34554c9c57b2",
+    "facts": 4,
+    "open_questions": 0,
+    "schema": "brief/v1",
+    "struck": 0,
+    "voice": ""
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "2c7e067deef83ad226852ed4bab69e3e137a5d204d29cc63b0edbae384f42693",
+   "id": "8f49e77911a44ad187c105364e69011f",
+   "input_sha256": [],
+   "kind": "brief.confirmed",
+   "model": "",
+   "output_sha256": "605f9a8fdf7a1fc371c3df18c8443066bf88f4ac8435581b4b0d34554c9c57b2",
+   "prev": "33d093417006ba54cab42c5b402974f5d46f48051918dfbbca038f7adbd7dafa",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "7aa5c0098a9fac3e29b7026ee573adf2a69ddacc0c85f4797d3da2c145e08bdc0eb2318fdc26b35b3ac33cb2faa60345376d445ceb5813266487534956aebe0e",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274839.995139
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 0,
+   "cost_usd": 0.0108195,
+   "details": {
+    "endpoint": "chat.completions",
+    "finish": "stop",
+    "reasoning_tokens": 1806,
+    "response_id": "chatcmpl-01a1821c-2563-75af-b58a-c663160869aa"
+   },
+   "duration_ms": 3,
+   "envelope": false,
+   "hash": "d4b559eccfb1006fe35388d39eeef53420c6bb07b8ecec2d29e14c410fed6ffc",
+   "id": "708abc79dc2c4741ab953c551ebafac8",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "0cfad2e6105720b0a4e67965a8e134c819ca66d872a16fd0187fcf3ac6f76881",
+   "prev": "2c7e067deef83ad226852ed4bab69e3e137a5d204d29cc63b0edbae384f42693",
+   "prompt_sha256": "10b3c4353218472073197f11b1e4671ceeef83b08e229505d0ba45c21c2331cd",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "880e46e7ded96624a6c5ae77e4a62338a637ffe15f9a4c3aa21d8d14ff722eb412cf6ada8df4fef8923e589be870c78f4d73950053be71e3a53871334eb3480a",
+   "tier": "standard",
+   "tier_reason": "producer plan from the operator's brief",
+   "tokens_in": 1332,
+   "tokens_out": 2154,
+   "ts": 1793274840.0135481
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 113,
+   "cost_usd": 0.00451445,
+   "details": {
+    "endpoint": "responses",
+    "finish": "completed",
+    "reasoning_tokens": 329,
+    "response_id": "resp_6ae1d1f77fe2b21b308a4955",
+    "tool_calls": [
+     "run_copywriter"
+    ]
+   },
+   "duration_ms": 4,
+   "envelope": false,
+   "hash": "0c15f946b769b0a51c38fcd4895ab03025ed51ff00f7bd35fd3ce66e21b77d60",
+   "id": "dd6c053599ac4ff0a8615a59940e2d63",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "1155379b01bc01304f082ef28239818f13d16d846d8c7e1d7e7b53384970ff7c",
+   "prev": "d4b559eccfb1006fe35388d39eeef53420c6bb07b8ecec2d29e14c410fed6ffc",
+   "prompt_sha256": "8e7853ecd35e018c69e14927e688b506bd488f683d27ac6ac0b95d2a30a687d8",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "e4043ae95f3dd400985b88bf071520c21dac3a2222f288e4042b39b9112b326ce79e0204d97a93d302b6ed5f62dd2c47f011fdf00ea33a672110a781abdd6d0c",
+   "tier": "standard",
+   "tier_reason": "producer loop",
+   "tokens_in": 2266,
+   "tokens_out": 425,
+   "ts": 1793274840.0383658
+  },
+  {
+   "agent": "copywriter",
+   "cached_tokens": 0,
+   "cost_usd": 0.00478625,
+   "details": {
+    "endpoint": "chat.completions",
+    "finish": "stop",
+    "reasoning_tokens": 344,
+    "response_id": "chatcmpl-01a1821c-4434-70e5-ba64-0eb44e2f22e4"
+   },
+   "duration_ms": 3,
+   "envelope": false,
+   "hash": "21507898e2924a50034695d8f145fb76c209ac7127c780cb463c9799d3ab8327",
+   "id": "96838217541e4551831336d6a754d8f3",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "c8aaf369dee5dce6dcd5cf7dd00c69838c3d4106b0f0d8323edc512283b0598a",
+   "prev": "0c15f946b769b0a51c38fcd4895ab03025ed51ff00f7bd35fd3ce66e21b77d60",
+   "prompt_sha256": "3820e09a85c52ea29b0acd169118f15df1d13f0175b070d83c3d9bdc01f0e4c4",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "c2e3385409592fd8931c7142ed049390ada786de7162e7828743e5ef7ffcc60af4dd7da50f0d9f99289d6ce85d7b9d9a2b5fdb611c39be2d8cdc37eadb8d1602",
+   "tier": "standard",
+   "tier_reason": "long digit run",
+   "tokens_in": 1398,
+   "tokens_out": 715,
+   "ts": 1793274840.050117
+  },
+  {
+   "agent": "dispatcher",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "call_id_sha256": "b69b5f25d99a12c550cc3cb6d508772a1845d14dbde4531ebd2ad94983b0cb59",
+    "side_effects": "none",
+    "skill_side_effects": "none",
+    "status": "ok",
+    "tool": "run_copywriter"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "e8323ec8addc07f40bec6adf0426a3bd5933d2ad9285b7f88521cbf9b33462a7",
+   "id": "07ca0d84288f438c9d7a8ae969cbec3a",
+   "input_sha256": [
+    "933f9d088a2d09587ef008f4ef74e8b278e8f1eb77848792689ed29d8c1bd241"
+   ],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "99f66b63738329dbbdc4bfd6a9ad6383156d27cf2eb250a20898d0ae2be6935e",
+   "prev": "21507898e2924a50034695d8f145fb76c209ac7127c780cb463c9799d3ab8327",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "394e35c017bb7b59f12b1f651ae3670fc3e0d335e2b1afa297e6bc8d2b3c74f7dce68c2c928d791528e1cb75680071694525bf9d181e14b0fa904c5bd2569006",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274840.052774
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 113,
+   "cost_usd": 0.00375595,
+   "details": {
+    "endpoint": "responses",
+    "finish": "completed",
+    "reasoning_tokens": 45,
+    "response_id": "resp_6ae1d2008b7a57b26f33480e",
+    "tool_calls": [
+     "run_art_director"
+    ]
+   },
+   "duration_ms": 2,
+   "envelope": false,
+   "hash": "a37cc1dd6946ae8b84f7a86d9b7ea974c944567014c8dc6ab91e1bf0b47f6c3b",
+   "id": "5473df32dc554ccea19b418bb62110fc",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "2319499549080107367eebca49e1e2f3ee97625097c14d0137d27a6bbb04fcec",
+   "prev": "e8323ec8addc07f40bec6adf0426a3bd5933d2ad9285b7f88521cbf9b33462a7",
+   "prompt_sha256": "6ec0ece862eac8a5caa9dba2af58f2a7693081410bcba49626f60147246a6e04",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "664e9f8ec7e7547aa49a9cb250ee6f79377f60c4937e530e4bedb8abfd527db7a0daf3b2389c875cbe0e5684c4d47e138e5b8169113adb369f4cb74b85f22605",
+   "tier": "standard",
+   "tier_reason": "producer loop",
+   "tokens_in": 2669,
+   "tokens_out": 128,
+   "ts": 1793274840.05767
+  },
+  {
+   "agent": "art_director",
+   "cached_tokens": 0,
+   "cost_usd": 0.0025,
+   "details": {
+    "endpoint": "responses.stream",
+    "finish": "completed",
+    "reasoning_tokens": 0,
+    "response_id": "resp_6ae1d20817ea87e126e94f3b",
+    "units": 1
+   },
+   "duration_ms": 12,
+   "envelope": false,
+   "hash": "755e230fde8414c5ca9e162e6720c79f268c5c53a50f1f57424abe0691f9ca60",
+   "id": "7ee9cfe943b048b881c0d652cc06ed41",
+   "input_sha256": [
+    "82fd0ef8f0663025de75de568742374cb6894bacedd043361320aa63af6480ef"
+   ],
+   "kind": "model_call",
+   "model": "sam-3.1",
+   "output_sha256": "1e2b038180eb8f2036266719a267078b870b4aa42b8320b7d6522a4e84aa9373",
+   "prev": "a37cc1dd6946ae8b84f7a86d9b7ea974c944567014c8dc6ab91e1bf0b47f6c3b",
+   "prompt_sha256": "5c6c4a6b8fba231c88264b5c36d0bbcf79e5e30c35644043e26129f07ffe9729",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "8b1103721f8ed28eba44042e0e9649721bc233876bf3c83f8c47254deae0c7868b8824e776a97bf04de4c9d8ea594d4e3a0570c779dba2ae8ea22240c32ecb00",
+   "tier": "standard",
+   "tier_reason": "segmentation of the operator's product photo",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274840.0762076
+  },
+  {
+   "agent": "art_director",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "box": [
+     45,
+     128,
+     1355,
+     881
+    ],
+    "foreground_pixels": 737714,
+    "mask_px": [
+     1024,
+     589
+    ],
+    "matches": 1,
+    "model_receipt": "7ee9cfe943b048b881c0d652cc06ed41",
+    "tool": "sam.cutout"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "6a9f0f391033a8783df59c7f7bc95ece211b7b076a80ae195d7a0dd5a2e39cc7",
+   "id": "5ea1348e2e2c4d4b9b1f895d2e08a172",
+   "input_sha256": [
+    "82fd0ef8f0663025de75de568742374cb6894bacedd043361320aa63af6480ef"
+   ],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "eb14dd822d22cfda66dec6d93a96c006857200ace2f43319a596589fb7073c3f",
+   "prev": "755e230fde8414c5ca9e162e6720c79f268c5c53a50f1f57424abe0691f9ca60",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "94f70c355f7b9699803e64403ef98f6e8177f5b7fad949084bef0fb031d174656014a4b10b03161919f075c53fe5f5f7171cc64f053ad9319f8ce59962add40f",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274849.6185749
+  },
+  {
+   "agent": "art_director",
+   "cached_tokens": 625,
+   "cost_usd": 0.00011545,
+   "details": {
+    "endpoint": "chat.completions",
+    "finish": "stop",
+    "reasoning_tokens": 429,
+    "response_id": "chatcmpl-01a1821c-b89d-75fd-a0f0-9047620f9a62"
+   },
+   "duration_ms": 1,
+   "envelope": false,
+   "hash": "570125028878bd868df22ad1c6df9ebd6783c49490f5ed0f274842485c98a443",
+   "id": "a6eaccbdeed546c0b2430bee71ceb41f",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3-contributor",
+   "output_sha256": "9296f12bdf2aef4bf662faac7595a4a8ee1ca85d3427b6ec6b851febba8a7ea2",
+   "prev": "6a9f0f391033a8783df59c7f7bc95ece211b7b076a80ae195d7a0dd5a2e39cc7",
+   "prompt_sha256": "d6bd7392f0b68b0ed0427e48a18d234d52d69b4eb8566f923f360b074c9d9c46",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "11366eb9b4f0be3a6e55ebbc990d3c8f90baf8330dc5cb3c50805f03b188548a33616baad3508033671048aa1bc1c3cc7cb4d65909e4bec8dcd7e42580529a0b",
+   "tier": "contributor",
+   "tier_reason": "no pii detected: public copy on contributor",
+   "tokens_in": 671,
+   "tokens_out": 548,
+   "ts": 1793274849.694025
+  },
+  {
+   "agent": "art_director",
+   "cached_tokens": 17088,
+   "cost_usd": 0.01,
+   "details": {
+    "endpoint": "responses",
+    "finish": "completed",
+    "reasoning_tokens": 516,
+    "response_id": "resp_6ae1d22e91fa281dc11a4bcc",
+    "units": 1
+   },
+   "duration_ms": 125,
+   "envelope": false,
+   "hash": "b5c9cc48a878979f66e63560ddb7cbe6feea3d0a0e018295e4e44e66b3bff7f5",
+   "id": "9ecc35f675034cc6a8d8b995ab196176",
+   "input_sha256": [
+    "0012b55ff4b90df8700d6f61be86d879671f8e6268ac440d6d6ff497ecf4a8d2"
+   ],
+   "kind": "model_call",
+   "model": "muse-image-1.0",
+   "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "prev": "570125028878bd868df22ad1c6df9ebd6783c49490f5ed0f274842485c98a443",
+   "prompt_sha256": "f2d072dad336db29dcc05375ed684d0210c26948481403e93e76eefbce4c7670",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "c2521af86472409f6180b35a8a119088bd6cbea2d391d18759d031444014bebded68b34a974a769708fff1103ed8ee81549d0cf845dda68af11b96d03572fd09",
+   "tier": "standard",
+   "tier_reason": "",
+   "tokens_in": 21846,
+   "tokens_out": 1909,
+   "ts": 1793274849.8209157
+  },
+  {
+   "agent": "art_director",
+   "cached_tokens": 0,
+   "cost_usd": 0.01,
+   "details": {
+    "endpoint": "images.edits",
+    "finish": "completed",
+    "reasoning_tokens": 0,
+    "response_id": "",
+    "units": 1
+   },
+   "duration_ms": 102,
+   "envelope": false,
+   "hash": "1a13c22c2ae3a30b94cf14f89714bf8beae56efe70b9ead5e930338d125e4413",
+   "id": "1ebda1bbe2084665aedc2d11fdca3add",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-image-1.0",
+   "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+   "prev": "b5c9cc48a878979f66e63560ddb7cbe6feea3d0a0e018295e4e44e66b3bff7f5",
+   "prompt_sha256": "f57b829ba1fae5e65cb46cd9a3b7cbac5f4e75890145467629b89619b0894794",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "33c149b0fe9ffca2456228fbc5d537b42faad6b065bf290d4e5d3801d316c5b81dad174ed2079d70a994e25825ee72b74c3f777d49e09897ac2f01ece792e20d",
+   "tier": "standard",
+   "tier_reason": "",
+   "tokens_in": 14713,
+   "tokens_out": 962,
+   "ts": 1793274849.9427736
+  },
+  {
+   "agent": "dispatcher",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "call_id_sha256": "409891ba4f917f9148a387953f3c92abcb52f7f0496dc9e2a2d9af5b348eff86",
+    "side_effects": "local",
+    "skill_side_effects": "local",
+    "status": "ok",
+    "tool": "run_art_director"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "e73341e31c5eca965ce44473749fe84cb7b0d842289b4b434fe05f919146c50c",
+   "id": "69ae2da155d94144b62cb113317ddf5a",
+   "input_sha256": [
+    "9e7fe7ba6fbe9c960686d70a70abc1b8b2a891f9747816737a90cd0efec222fe"
+   ],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "f4b54b8280779fe35c2d9d8fac524676db011bb31b53d5fc1f82dcfdd47b9f50",
+   "prev": "1a13c22c2ae3a30b94cf14f89714bf8beae56efe70b9ead5e930338d125e4413",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "ab6395b8038bd51244d5c8f98253c0e1f5e18a0183e9995e4a762a01837ff329293edb3214c2a660e8fac50b176bf2429ffdbe703f9cc0f806dce375b5b5bf0b",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274849.9471424
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 2545,
+   "cost_usd": 0.00123625,
+   "details": {
+    "endpoint": "responses",
+    "finish": "completed",
+    "reasoning_tokens": 44,
+    "response_id": "resp_6ae1d24017036ae4b66d4246",
+    "tool_calls": [
+     "run_reviewers"
+    ]
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "c3bfe44155a90b8649c5b914143f97ccf0f3b3e1712b65b335ea79c09664e703",
+   "id": "6007ecd0c5354938aafd7950931df51e",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "60885f10ed95cf3dbbc7e070e483d715c83337d2d1557ab6f9a3f4fd2b56d4b7",
+   "prev": "e73341e31c5eca965ce44473749fe84cb7b0d842289b4b434fe05f919146c50c",
+   "prompt_sha256": "81104f36e06299104942d018c757be34fad8aaf473eb6a8855e668eb1de5ac54",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "8950f65ea859c61a67b83f1390d27c57432924b35e2b2cb8da34dfb7dc185c8d274b227f9f15736380d5e077259b0a0c2900ce652e2f45b30f80b14c765ddf09",
+   "tier": "standard",
+   "tier_reason": "producer loop",
+   "tokens_in": 2824,
+   "tokens_out": 119,
+   "ts": 1793274849.948509
+  },
+  {
+   "agent": "reviewer",
+   "cached_tokens": 0,
+   "cost_usd": 0.0092215,
+   "details": {
+    "endpoint": "chat.completions",
+    "envelope_sources": [
+     "ad_copy",
+     "brief_facts"
+    ],
+    "finish": "stop",
+    "reasoning_tokens": 1212,
+    "response_id": "chatcmpl-01a1821d-86cd-73cd-824b-ef1fc2de9275"
+   },
+   "duration_ms": 4,
+   "envelope": true,
+   "hash": "6c2782711f2626719ba742a103876268f0e298fefd0d3e490edafc1f22824254",
+   "id": "da7baa925acb479981ed6d8489dc8f5c",
+   "input_sha256": [
+    "13a33b8b820f8cfed3a8241728c420e63c9f271b00b8b14a52133a2fc3b64105"
+   ],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "bf069eea151ba734c2c0c54b267a10c793531e54f87f3f41f9fe9266b4b66cf3",
+   "prev": "c3bfe44155a90b8649c5b914143f97ccf0f3b3e1712b65b335ea79c09664e703",
+   "prompt_sha256": "50faef62c61ebbd21320655f91b7af3b665991ae675300a0f76f4c071f3abf55",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "55af6f2ca261cb2a52ad733989c6ebb33d0ab9d5b899e629991f0c7ebe563ced15cd5924f9fa27a842dd479a2c878b75e0f678823a6cb313db95b52014834507",
+   "tier": "standard",
+   "tier_reason": "compliance review of the final creative (vision)",
+   "tokens_in": 2675,
+   "tokens_out": 1383,
+   "ts": 1793274850.1402397
+  },
+  {
+   "agent": "reviewer_open",
+   "cached_tokens": 0,
+   "cost_usd": 0.007343,
+   "details": {
+    "cost_basis": "baseten_price",
+    "endpoint": "chat.completions",
+    "envelope_sources": [
+     "ad_copy",
+     "brief_facts"
+    ],
+    "finish": "stop",
+    "reasoning_tokens": 811,
+    "response_id": "chatcmpl-21673fd86ed84cdf959f3e8e0429a91d"
+   },
+   "duration_ms": 5,
+   "envelope": true,
+   "hash": "708f94bfbeba3643f98daae41219a59732bd67f885644856e2072abbdde2c9a3",
+   "id": "a710379e35f94a4fa54dd23286e67ec5",
+   "input_sha256": [
+    "13a33b8b820f8cfed3a8241728c420e63c9f271b00b8b14a52133a2fc3b64105"
+   ],
+   "kind": "model_call",
+   "model": "meta-models:muse-spark-open",
+   "output_sha256": "2708d1d6a98575d06906830a0b7ce90ab62c5e7d275cfd1e2bb291ff984a6cdb",
+   "prev": "6c2782711f2626719ba742a103876268f0e298fefd0d3e490edafc1f22824254",
+   "prompt_sha256": "0df8b9be26f35b97393997fbd61f50a2bae8494610aad1ddc13d09f70f090ecb",
+   "provider": "baseten-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "5bb3ddaf400978a6939210128f8b2cf9b2b41a84811985045ff1f88ed13026fabc239fbd299a438b585d0c47953cef64dc85b5da51224f02ccf84ed31a6b5b02",
+   "tier": "open",
+   "tier_reason": "open-weights second opinion on the same creative",
+   "tokens_in": 2692,
+   "tokens_out": 936,
+   "ts": 1793274850.3259964
+  },
+  {
+   "agent": "reviewer",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "disagreements": 2,
+    "format": [],
+    "grounding": [],
+    "policy_net": [],
+    "rules": [
+     "P5"
+    ],
+    "second_opinion": "available",
+    "verdict": "WARN"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "43e407e65124e4f62d29d98ab3ea0df1597584793dc05b7a8f911d6c2163b994",
+   "id": "a75da540bac74a97a3b6a3895544593c",
+   "input_sha256": [
+    "e64b5121f2a1b3609d6b2d8cdd80212531a99955840482645caf8ffc447a4e6a"
+   ],
+   "kind": "review",
+   "model": "",
+   "output_sha256": "28750604a1baa843946fef619959d16106294dd96436468b41752a0ed9441d7d",
+   "prev": "708f94bfbeba3643f98daae41219a59732bd67f885644856e2072abbdde2c9a3",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "03d3ba00fd714c91c635c8f6cc26e08bca340784b546fa09b26eb6f1450624955d69d688fcf9a012e6c0b20918a710c217f4eff68b68015a017920908c67e90e",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274850.3296022
+  },
+  {
+   "agent": "reviewer",
+   "cached_tokens": 0,
+   "cost_usd": 0.008745,
+   "details": {
+    "endpoint": "chat.completions",
+    "envelope_sources": [
+     "ad_copy",
+     "brief_facts"
+    ],
+    "finish": "stop",
+    "reasoning_tokens": 1378,
+    "response_id": "chatcmpl-01a1821d-cb29-74cf-b775-ada5af09d713"
+   },
+   "duration_ms": 3,
+   "envelope": true,
+   "hash": "c70f51535c0187b5344744c9c8def1f619fcdaa02340112fc236d88946294830",
+   "id": "460ca8722ac64effb8e6e5e431d5da16",
+   "input_sha256": [
+    "03f5c0aae279099b948e7a328bade0b03ba27bce48f784e36155884873c1da82"
+   ],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "fb00e29c2c99e63271365ff17eb00e56ee34f091d5df529eac43054024e69d4b",
+   "prev": "43e407e65124e4f62d29d98ab3ea0df1597584793dc05b7a8f911d6c2163b994",
+   "prompt_sha256": "a6ecd94d1162e711443e14e114b106283dcf1d8786e20e31192ee86049e002c6",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "ffcfc5d1140c8285c6d3786d410c96b7889509b90e909d225826e5bbcb8753d718ebd93b4dfec0856a57bcb9e42bbde01a118603bb626acc192417f9ccb9ff07",
+   "tier": "standard",
+   "tier_reason": "compliance review of the final creative (vision)",
+   "tokens_in": 2083,
+   "tokens_out": 1445,
+   "ts": 1793274850.4542167
+  },
+  {
+   "agent": "reviewer_open",
+   "cached_tokens": 896,
+   "cost_usd": 0.00672665,
+   "details": {
+    "cost_basis": "baseten_price",
+    "endpoint": "chat.completions",
+    "envelope_sources": [
+     "ad_copy",
+     "brief_facts"
+    ],
+    "finish": "stop",
+    "reasoning_tokens": 940,
+    "response_id": "chatcmpl-4013623011f04e7492c93d0b9e8d7ca1"
+   },
+   "duration_ms": 3,
+   "envelope": true,
+   "hash": "4867700626dc42331d78944efd710c6d7f6e64a4170548dc87bbf686d9f23aee",
+   "id": "73de98b53582467ca2a901653597f8c9",
+   "input_sha256": [
+    "03f5c0aae279099b948e7a328bade0b03ba27bce48f784e36155884873c1da82"
+   ],
+   "kind": "model_call",
+   "model": "meta-models:muse-spark-open",
+   "output_sha256": "18eadfc00219ccd80143a4386e0fc1bb2d5d432d96da28271881e7925dbee444",
+   "prev": "c70f51535c0187b5344744c9c8def1f619fcdaa02340112fc236d88946294830",
+   "prompt_sha256": "dab781e0a437794088fb7446a533b866915f78b89ff8ca02d23943fda5aeb545",
+   "provider": "baseten-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "50b4fb66d189d2471762f332313c82b1fbbe69cd23ea6acd8943312c69f757a6b23cd2ee22279052cfbfd64805eb12e7ca4021496efab4845b611652a1f4180e",
+   "tier": "open",
+   "tier_reason": "open-weights second opinion on the same creative",
+   "tokens_in": 2100,
+   "tokens_out": 1197,
+   "ts": 1793274850.578756
+  },
+  {
+   "agent": "reviewer",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "disagreements": 1,
+    "format": [
+     "warn"
+    ],
+    "grounding": [],
+    "policy_net": [],
+    "rules": [
+     "F1"
+    ],
+    "second_opinion": "available",
+    "verdict": "WARN"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "7153aa3a55ba79a8db4dca49252092b7c0b3564a7acee47714d1cbeaec4794ec",
+   "id": "f3603cba6a2143cf8b568916ca6d191a",
+   "input_sha256": [
+    "57c684349272a56c87dcd99f718d72ec029431fc64904b8f461acbc5f45ab77d"
+   ],
+   "kind": "review",
+   "model": "",
+   "output_sha256": "e37f8d2ff2af35d408fd6f6fa02e155d2d5f12fa21f42639c120eae34e981919",
+   "prev": "4867700626dc42331d78944efd710c6d7f6e64a4170548dc87bbf686d9f23aee",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "dd65abb943c4ccb268c2ba5b948f9003c9326d2e44f982af2273654683c86da1445db3aec9859f232fde3adee7465a50f5dbd98293b587e0501ba36fe8d6ab05",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274850.5812602
+  },
+  {
+   "agent": "dispatcher",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "call_id_sha256": "e766cd3127821722bb7168e650818e6eb72abdeb11b0378eedff87db26fca0ea",
+    "side_effects": "none",
+    "skill_side_effects": "none",
+    "status": "ok",
+    "tool": "run_reviewers"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "a1ec85e8350a1679c3660f391b2145db7fd42d5801768de29c187b4eb9b28f10",
+   "id": "4131c181d44548719799d0cc1bd883d5",
+   "input_sha256": [
+    "e6d858d9a8db11424e7b49f2e62f50d4668093c8c90afe693380320e48dd1d65"
+   ],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "dc3e0d6ff8ac6cc24d03ec9ad5a884c417bfbfd63a03bf59f3a74b17e05b4c3f",
+   "prev": "7153aa3a55ba79a8db4dca49252092b7c0b3564a7acee47714d1cbeaec4794ec",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "cac76df6373dc34730c8e51c28c9db3eadacdd579d841a277ebf0aee01d63de26d9b18c97dc3a1f9c061d2eff54d914e3aa006cfe79e9ea3249dac65c965320e",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274850.5817695
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "endpoint": "responses",
+    "error_status": 503,
+    "error_type": "server_error"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "203c4327292afdce750fe96cef6eb777f492fb322d618f3ece52e511ee25e7c7",
+   "id": "1ef85e808ab64ab698ca18a5b4b359ca",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "",
+   "prev": "a1ec85e8350a1679c3660f391b2145db7fd42d5801768de29c187b4eb9b28f10",
+   "prompt_sha256": "74520d68c33b4d55298f6a9f86a489f62877e7635d9fa054f473483884a76473",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "5cedb43acfe44f8a339b630a0ebc601f5713fe65c350412031b25dec474fe804e8c183658c82957e62083890b99d16b965e9ebd3738b73c5b2c8aa1ce4a7ca03",
+   "tier": "standard",
+   "tier_reason": "producer loop",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274850.5831523
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 113,
+   "cost_usd": 0.0077497,
+   "details": {
+    "endpoint": "responses",
+    "finish": "completed",
+    "reasoning_tokens": 736,
+    "response_id": "resp_6ae1d28402476f5f8d304282",
+    "tool_calls": [
+     "request_approval"
+    ]
+   },
+   "duration_ms": 2,
+   "envelope": false,
+   "hash": "36ca74223dd8f67c447054ec4c280a618911939d49627151f2c9ff15b6014065",
+   "id": "39fc387940c14b0289a14615147b1142",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "a207213d9098e3c3f4b6d7bbcf395ce143845aff1cd971e28329cc0eb8807035",
+   "prev": "203c4327292afdce750fe96cef6eb777f492fb322d618f3ece52e511ee25e7c7",
+   "prompt_sha256": "74520d68c33b4d55298f6a9f86a489f62877e7635d9fa054f473483884a76473",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "8406e76f3f8ca10485ec7b4f15547b13d5f554c74ee5519fc7db59d2a7393f187cd3f7a1698b4858899b0a6bcfcd60d228921d5e809a4c15f714cb59214eca01",
+   "tier": "standard",
+   "tier_reason": "producer loop",
+   "tokens_in": 3212,
+   "tokens_out": 908,
+   "ts": 1793274852.5878813
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "interests": 0,
+    "locales": 1,
+    "searches": 1,
+    "side_effects": "read",
+    "status": "ok",
+    "tool": "targeting.search",
+    "unresolved": 0
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "173c03af6524c34bd584189fb8801c75842bd5d803c134cceb803f3da868d030",
+   "id": "8681e5dc73ef44ecb4c55f07debe62d9",
+   "input_sha256": [],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "",
+   "prev": "36ca74223dd8f67c447054ec4c280a618911939d49627151f2c9ff15b6014065",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "a70e6ec8dcc80d80a7c1a802923bfcb1b314bf2a610efd416110c512bb4dd04553893744c4f2a076fac0836e8243013819de5c136e231ad3ba78d4b7be00ff02",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274852.5939257
+  },
+  {
+   "agent": "dispatcher",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "call_id_sha256": "8288787b8ec6f46e7aded6cd0cc4d0cd1c3c617dbb9a8c561c3bc383236cf597",
+    "side_effects": "local",
+    "skill_side_effects": "local",
+    "status": "ok",
+    "tool": "request_approval"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "3386df6bfb241523a017106d71299edbc8229477df0379a8fb35040a3d29fe98",
+   "id": "b3150d2325bf49cbbb0776034242bdb8",
+   "input_sha256": [
+    "dff6e39f26330785f129e51624e722ec19fe2c1cae245580bf5c91dc3b18de29"
+   ],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "61fc756ffc217c3e71369ec8386b44347549ad573b17895266cbd76b71e5b9f5",
+   "prev": "173c03af6524c34bd584189fb8801c75842bd5d803c134cceb803f3da868d030",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "ef58a1c5031b0f6825ed3ef79ab59bfe2bddb03c097e17ddca77546191d2eea9ae6d061fcf0447cec98745687a5762654dd595ad2f4486897b6c70905d6ec502",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793274852.599488
+  },
+  {
+   "agent": "producer",
+   "cached_tokens": 3185,
+   "cost_usd": 0.00225025,
+   "details": {
+    "endpoint": "responses",
+    "finish": "completed",
+    "reasoning_tokens": 284,
+    "response_id": "resp_6ae1d2905e7125f282044edc"
+   },
+   "duration_ms": 2,
+   "envelope": false,
+   "hash": "3cfce3c8bb628bfb11f75d1c98fa6470329321619e169627f9fb1362920f47bc",
+   "id": "dbfa21225f5b44e297fe108da8516eaa",
+   "input_sha256": [],
+   "kind": "model_call",
+   "model": "muse-spark-1.3",
+   "output_sha256": "91982d4f769279d81ae4fbb1c58be63befe6cd2a6b07eafd6669748f799cfe4e",
+   "prev": "3386df6bfb241523a017106d71299edbc8229477df0379a8fb35040a3d29fe98",
+   "prompt_sha256": "1f28bb725dac61583561361b3ba163c46bfd7d0af33619efdd125a045b437283",
+   "provider": "meta-model-api-replay",
+   "run_id": "run_ca8480c679b4305f",
+   "sig": "578830c34807c77ac66ea1c78cfc450e0e2947b24356b6e10599bfc0db525c972b9cd2bca2fd00b25cb77300691f8f10e91a1019c11af94babe8ecd566a7c101",
+   "tier": "standard",
+   "tier_reason": "producer loop",
+   "tokens_in": 3447,
+   "tokens_out": 340,
+   "ts": 1793274852.6058853
+  }
+ ],
+ "manifest": {
+  "epoch": "ed25519:f89738c89aaf26981cdb91c1f3303a51",
+  "runs": {
+   "run_ca8480c679b4305f": {
+    "count": 26,
+    "head": "3cfce3c8bb628bfb11f75d1c98fa6470329321619e169627f9fb1362920f47bc"
+   }
+  },
+  "seq": 26,
+  "sig": "21c580ca2bb7fb33bc23ef41f58b988e91469aef217e1af172b46cc490c50f51a724869b9391adb153858bf17a333263d6b430331787c29f04092078d5304b02",
+  "ts": 1793274852.6553397
+ },
+ "ledger_key": "00a04be72c02190cdba1c3b609595f21d50be3daa1dbb08d9e91081a1fc28bfd",
+ "epoch": "ed25519:f89738c89aaf26981cdb91c1f3303a51"
+}

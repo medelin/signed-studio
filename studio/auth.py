@@ -3,7 +3,8 @@
 - ``STUDIO_REQUIRE_LOGIN=1`` (default with ``STUDIO_SANDBOX=1``): every page and API needs a
   judge session except ``/login``, ``/healthz``, static assets and the public verification
   material ``studio verify --server`` fetches (``/api/ledger-key``, ``/api/ledger-manifest``,
-  ``/api/approver-keys``). Unauthenticated page requests are redirected to
+  ``/api/approver-keys``) and the recorded tour (``/try``, ``/pl/try``, ``/try/data.json``,
+  ``/try/img/``). Unauthenticated page requests are redirected to
   ``/login?next=<same-site path>``; API and asset requests get 401 JSON.
 - State-changing requests from a browser must be same-origin by Fetch Metadata
   (``Sec-Fetch-Site``); the existing ``Origin`` check in the routes stays.
@@ -41,8 +42,9 @@ FORM_CHECKED_IN_ROUTE = frozenset({"/login", "/logout", "/login/2fa"})
 FORM_CHECKED_PREFIXES = ("/account/",)  # studio.routes_account checks the csrf field
 PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favicon.ico",
                           "/privacy", "/data-deletion",
-                          "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys"})
-PUBLIC_PREFIXES = ("/static/",)
+                          "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys",
+                          "/try", "/pl/try", "/try/data.json"})  # the recorded tour
+PUBLIC_PREFIXES = ("/static/", "/try/img/")
 JSON_PREFIXES = ("/api/", "/assets/")
 
 

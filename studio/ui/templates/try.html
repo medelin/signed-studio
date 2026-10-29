@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% set b = tour.brief.confirmed %}
+{% set ap = tour.approval %}
+{% set c = ap.content %}
+{% set steps = ("brief", "facts", "plan", "copy", "images", "review", "approval", "receipts") %}
+{% block title %}{{ t("try.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.try") }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/tour.css">
+<div class="tour" id="tour" data-total="{{ steps | length }}">
+<section class="tour-head" aria-labelledby="tour-h">
+  <p class="hud-label">{{ t("try.kicker") }}</p>
+  <h1 id="tour-h">{{ t("try.title") }}</h1>
+  <p class="tour-notice" role="note"><strong>{{ t("try.notice") }}</strong> {{ t("try.notice_more") }}</p>
+  <p class="lead">{{ t("try.lead", date=tour.recorded) }}</p>
+  {% if tour.lang != page_lang %}<p class="hint">{{ t("try.recorded_lang") }}</p>{% endif %}
+  <p class="tour-cta">
+    {% if logged_in %}<a class="tour-button" href="/studio">{{ t("nav.studio") }}</a>
+    {% elif login_enabled %}<a class="tour-button" href="/login?next=/studio">{{ t("try.cta_judges") }}</a>{% endif %}
+    <a class="tour-button secondary" href="{{ repo_url }}" rel="noopener">{{ t("try.cta_code") }}</a>
+    <a href="{{ other_href }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ lang_names[other_lang] }}</a>
+  </p>
+</section>
+
+<nav class="tour-controls" aria-label="{{ t('try.controls') }}">
+  <div class="tour-buttons" hidden>
+    <button type="button" id="tour-play" aria-pressed="false">{{ t("try.play") }}</button>
+    <button type="button" class="secondary" id="tour-all">{{ t("try.show_all") }}</button>
+    <button type="button" class="secondary" id="tour-restart">{{ t("try.restart") }}</button>
+    <span class="hint" id="tour-pos" aria-live="polite">{{ t("try.step_of", n=1, total=steps | length) }}</span>
+  </div>
+  <ol class="tour-nav" aria-label="{{ t('try.steps') }}">
+  {% for s in steps %}<li><a href="#tour-{{ s }}" data-step="{{ loop.index }}"><span class="tour-n">{{ loop.index }}</span> {{ t("try.s." ~ s) }}</a></li>
+  {% endfor %}</ol>
+</nav>
+
+<ol class="tour-steps">
+<li class="tour-step" id="tour-brief" data-step="1">
+  <section class="panel" aria-labelledby="tour-brief-h">
+    <h2 id="tour-brief-h">{{ t("try.brief.h") }}</h2>
+    <p class="hint">{{ t("try.brief.p") }}</p>
+    <blockquote class="tour-quote" lang="{{ tour.lang }}">{{ tour.brief.text }}</blockquote>
+  </section>
+</li>
+
+<li class="tour-step" id="tour-facts" data-step="2">
+  <section class="panel" aria-labelledby="tour-facts-h">
+    <h2 id="tour-facts-h">{{ t("try.facts.h") }}</h2>
+    <p class="hint">{{ t("try.facts.p") }}</p>
+    <div class="tour-cols">
+      <div>
+        <h3>{{ t("try.facts.confirmed") }}</h3>
+        <ol class="tour-facts" lang="{{ tour.lang }}">{% for f in b.confirmed_facts %}<li>{{ f }}</li>{% endfor %}</ol>
+        <h3>{{ t("try.facts.questions") }}</h3>
+        {% if tour.brief.draft_questions %}
+        <ul lang="{{ tour.lang }}">{% for q in tour.brief.draft_questions %}<li>{{ q.question }} <span class="hint">({{ tour.brief.resolutions[loop.index0].action }})</span></li>{% endfor %}</ul>
+        {% else %}<p>{{ t("try.facts.no_questions") }}</p>{% endif %}
+      </div>
+      <dl class="tour-dl">
+        <dt>{{ t("try.facts.proposition") }}</dt><dd lang="{{ tour.lang }}">{{ b.proposition }}</dd>
+        <dt>{{ t("try.facts.budget") }}</dt><dd>{{ t("try.facts.budget_v", amount="%g" | format(b.budget.amount), currency=b.budget.currency, start=b.budget.start, end=b.budget.end) }}</dd>
+        <dt>{{ t("try.facts.banned") }}</dt><dd lang="{{ tour.lang }}">{{ b.mandatories.banned_claims | join(" · ") or "—" }}</dd>
+        <dt>{{ t("try.facts.tone") }}</dt><dd lang="{{ tour.lang }}">{{ b.tone_brand.tone | join(", ") or "—" }}</dd>
+        <dt>{{ t("try.facts.hash") }}</dt><dd><code class="tour-hash">{{ ap.fields.brief_sha256 }}</code></dd>
+      </dl>
+    </div>
+  </section>
+</li>
+
+<li class="tour-step" id="tour-plan" data-step="3">
+  <section class="panel" aria-labelledby="tour-plan-h">
+    <h2 id="tour-plan-h">{{ t("try.plan.h") }}</h2>
+    <p class="hint">{{ t("try.plan.p") }}</p>
+    <dl class="tour-dl">
+      <dt>{{ t("try.plan.audience") }}</dt><dd lang="{{ tour.lang }}">{{ tour.plan.audience }}</dd>
+      <dt>{{ t("try.plan.placements") }}</dt><dd>{% for p in tour.plan.placements %}<code>{{ p }}</code>{% if not loop.last %} · {% endif %}{% endfor %}</dd>
+    </dl>
+    <h3>{{ t("try.plan.angles") }}</h3>
+    <ol class="tour-cards" lang="{{ tour.lang }}">
+    {% for a in tour.plan.angles %}
+      <li class="tour-card{% if loop.index0 == tour.angle_index %} chosen{% endif %}">
+        <strong>{{ a.name }}</strong>{% if loop.index0 == tour.angle_index %} <span class="badge">{{ t("try.plan.chosen") }}</span>{% endif %}
+        <p>{{ a.hook }}</p>
+        <p class="hint">{{ a.persona }}</p>
+      </li>
+    {% endfor %}
+    </ol>
+    <h3>{{ t("try.plan.tasks") }}</h3>
+    <ul lang="{{ tour.lang }}">{% for x in tour.plan.tasks %}<li>{{ x }}</li>{% endfor %}</ul>
+  </section>
+</li>
+
+<li class="tour-step" id="tour-copy" data-step="4">
+  <section class="panel" aria-labelledby="tour-copy-h">
+    <h2 id="tour-copy-h">{{ t("try.copy.h") }}</h2>
+    <p class="hint">{{ t("try.copy.p") }}</p>
+    <ol class="tour-cards" lang="{{ tour.lang }}">
+    {% for v in tour["copy"].variants %}
+      <li class="tour-card ad{% if loop.index0 == variant %} chosen{% endif %}">
+        <p class="hud-label" lang="{{ page_lang }}">{{ t("try.copy.variant", n=loop.index) }}{% if loop.index0 == variant %} · {{ t("try.copy.reviewed") }}{% endif %}</p>
+        <p>{{ v.primary_text }}</p>
+        <p class="tour-headline">{{ v.headline }}</p>
+        <p class="hint">{{ v.description }} · <code>{{ v.cta }}</code></p>
+      </li>
+    {% endfor %}
+    </ol>
+    {% if tour["copy"].risks %}
+    <h3>{{ t("try.copy.risks") }}</h3>
+    <ul lang="{{ tour.lang }}">{% for r in tour["copy"].risks %}<li>{{ r }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+</li>
+
+<li class="tour-step" id="tour-images" data-step="5">
+  <section class="panel" aria-labelledby="tour-images-h">
+    <h2 id="tour-images-h">{{ t("try.images.h") }}</h2>
+    <p class="hint">{{ t("try.images.p") }}</p>
+    <div class="tour-images">
+    {% for im in tour.images %}
+      <figure class="tour-figure {{ 'tall' if im.height > im.width else 'square' }}">
+        <img src="/try/img/{{ im.blob }}" alt="{{ t('try.images.alt', placement=im.placement) }}" width="{{ im.width }}" height="{{ im.height }}" loading="lazy" decoding="async">
+        <figcaption><code>{{ im.placement }}</code> · {{ t("try.images.size", w=im.width, h=im.height) }}<br><code class="tour-hash" title="sha256">{{ im.sha256[:16] }}…</code></figcaption>
+      </figure>
+    {% endfor %}
+    </div>
+  </section>
+</li>
+
+<li class="tour-step" id="tour-review" data-step="6">
+  <section class="panel" aria-labelledby="tour-review-h">
+    <h2 id="tour-review-h">{{ t("try.review.h") }}</h2>
+    <p class="hint">{{ t("try.review.p") }}</p>
+    <p>{{ t("try.review.verdict") }}: <span class="tour-verdict v-{{ tour.review.verdict | lower }}">{{ tour.review.verdict }}</span></p>
+    {% for f in tour.review.formats %}
+    <h3><code>{{ f.placement }}</code> <span class="tour-verdict v-{{ f.verdict | lower }}">{{ f.verdict }}</span></h3>
+    <div class="tour-cols">
+    {% for who, key in (("primary", "try.review.primary"), ("second", "try.review.second")) %}
+      {% set r = f[who] %}
+      <div class="tour-card">
+        <p class="hud-label">{{ t(key) }}</p>
+        <p><span class="tour-verdict v-{{ r.verdict | lower }}">{{ r.verdict }}</span></p>
+        {% if r.findings %}<ul>{% for x in r.findings %}<li><code>{{ x.rule }}</code> <span class="hint">{{ x.severity }}</span> — {{ x.evidence }}</li>{% endfor %}</ul>
+        {% else %}<p>{{ t("try.review.no_findings") }}</p>{% endif %}
+        <p class="hint">{{ r.summary }}</p>
+      </div>
+    {% endfor %}
+    </div>
+    {% endfor %}
+    {% if tour.review.disagreements %}
+    <h3>{{ t("try.review.disagreements") }}</h3>
+    <ul class="tour-disagree">{% for d in tour.review.disagreements %}<li>{{ d }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+</li>
+
+<li class="tour-step" id="tour-approval" data-step="7">
+  <section class="panel tour-approval" aria-labelledby="tour-approval-h">
+    <h2 id="tour-approval-h">{{ t("try.approval.h") }}</h2>
+    <p class="hint">{{ t("try.approval.p") }}</p>
+    <dl class="tour-dl">
+      <dt>{{ t("try.approval.action") }}</dt><dd><code>{{ ap.fields.action }}</code> <span class="badge warn">{{ t("try.approval.unsigned") }}</span></dd>
+      <dt>{{ t("try.approval.campaign") }}</dt><dd>{{ t("try.approval.campaign_v", objective=c.campaign.objective, status=c.campaign.status) }}</dd>
+      <dt>{{ t("try.approval.budget") }}</dt><dd>{{ "%.2f" | format(c.campaign.daily_budget_minor / 100) }} {{ c.campaign.currency }}</dd>
+      <dt>{{ t("try.approval.dates") }}</dt><dd>{{ c.brief.budget.start }} – {{ c.brief.budget.end }}</dd>
+      <dt>{{ t("try.approval.ad") }}</dt><dd lang="{{ tour.lang }}"><strong>{{ c.ad.headline }}</strong> — {{ c.ad.primary_text }}</dd>
+      <dt>{{ t("try.approval.content") }}</dt><dd><code class="tour-hash">{{ ap.fields.content_sha256 }}</code></dd>
+      <dt>{{ t("try.approval.brief") }}</dt><dd><code class="tour-hash">{{ ap.fields.brief_sha256 }}</code></dd>
+      <dt>{{ t("try.approval.spec") }}</dt><dd><code class="tour-hash">{{ ap.fields.spec_sha256 }}</code></dd>
+      <dt>{{ t("try.approval.head") }}</dt><dd><code class="tour-hash">{{ ap.fields.chain_head }}</code></dd>
+    </dl>
+    <details>
+      <summary>{{ t("try.approval.message") }}</summary>
+      <pre class="tour-pre">{{ approval_message }}</pre>
+    </details>
+  </section>
+</li>
+
+<li class="tour-step" id="tour-receipts" data-step="8">
+  <section class="panel" aria-labelledby="tour-receipts-h">
+    <h2 id="tour-receipts-h">{{ t("try.receipts.h") }}</h2>
+    <p class="hint">{{ t("try.receipts.p") }}</p>
+    <p>{{ t("try.receipts.count", n=tour.receipts | length, cost="%.4f" | format(tour.run_cost_usd)) }}</p>
+    <p class="hint">{{ t("try.receipts.key") }}: <code class="tour-hash">{{ tour.ledger_key }}</code></p>
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="tour-receipts-h">
+    <table class="receipts tour-receipts">
+      <thead><tr><th>{{ t("try.receipts.cols") }}</th>{% for col in ("agent", "kind", "model", "cost", "hash") %}<th>{{ t("common.receipt_cols." ~ col) }}</th>{% endfor %}<th><span class="sr-only">OK</span></th></tr></thead>
+      <tbody>
+      {% for r in tour.receipts %}
+        <tr data-i="{{ loop.index0 }}">
+          <td>{{ loop.index }}</td>
+          <td>{{ r.agent }}</td>
+          <td><span class="kind {{ r.kind }}">{{ r.kind }}</span></td>
+          <td>{{ r.model or "—" }}</td>
+          <td class="tour-cost">${{ "%.5f" | format(r.cost_usd) }}</td>
+          <td><code title="{{ r.hash }}">{{ r.hash[:12] }}</code></td>
+          <td class="tour-mark" aria-live="off"></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <div class="tour-verify">
+      <h3>{{ t("try.verify.h") }}</h3>
+      <p class="hint">{{ t("try.verify.p") }}</p>
+      <noscript><p>{{ t("try.verify.nojs") }}</p></noscript>
+      <p class="inline" id="tour-verify-buttons" hidden>
+        <button type="button" id="tour-verify">{{ t("try.verify.run") }}</button>
+        <button type="button" class="secondary" id="tour-tamper" disabled>{{ t("try.verify.tamper") }}</button>
+      </p>
+      <p class="status" id="tour-verdict" role="status"></p>
+      <ul class="tour-checks" id="tour-checks"></ul>
+      <p class="hint">{{ t("try.verify.cli") }} · <a href="/try/data.json">/try/data.json</a></p>
+    </div>
+  </section>
+</li>
+</ol>
+
+<section class="tour-end" aria-labelledby="tour-end-h">
+  <h2 id="tour-end-h">{{ t("try.end.h") }}</h2>
+  <p>{{ t("try.end.p") }}</p>
+  <p class="tour-cta">
+    {% if logged_in %}<a class="tour-button" href="/studio">{{ t("nav.studio") }}</a>
+    {% elif login_enabled %}<a class="tour-button" href="/login?next=/studio">{{ t("try.cta_judges") }}</a>{% endif %}
+    <a class="tour-button secondary" href="{{ repo_url }}" rel="noopener">{{ t("try.cta_code") }}</a>
+  </p>
+</section>
+</div>
+<script src="/static/tour.js" defer></script>
+{% endblock %}
