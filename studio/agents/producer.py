@@ -15,7 +15,10 @@ Brief v1 (``studio.brief``): ``draft_brief`` turns the owner's free text or edit
 transcript into a draft whose gaps are open ``[FACT]`` questions. A run made from the
 confirmed brief (``Context.brief_v1``) plans from it, takes the owner's budget and
 placements over the model's, gives the copywriter and the reviewers only its confirmed
-facts, and binds ``brief_sha256`` into the approval.
+facts, and binds ``brief_sha256`` into the approval. When the brief's objective promotes a
+pixel (website leads or sales), ``check_pixel`` runs the adapter's read-only pixel check
+before the approval is requested; the result goes into the signed payload
+(``pixel_check``) and the run state, so the person sees it before signing.
 """
 
 from __future__ import annotations
@@ -44,7 +47,7 @@ from studio.agents.dispatcher import (
 )
 from studio.agents.schemas import CopyPack, CreativeSet, Plan
 from studio.approvals import Pending, confirmed_brief, transaction
-from studio.meta import audience, objectives
+from studio.meta import audience, objectives, pixel
 from studio.meta.adapter import MOCK_PAGE
 from studio.meta.currency import to_minor
 from studio.muse.client import MuseClient, MuseError, ToolCall
@@ -89,6 +92,9 @@ class Context:
     search: audience.Search | None = None
     # the Google Ads adapter (None: Google Search is not offered to this run)
     google: Any = None
+    # the Meta adapter's read-only pixel check (``Adapter.pixel_check``); None: a pixel
+    # objective gets a failed "pixel_unverified" result, which cannot be signed
+    pixel_check: Callable[..., dict[str, Any]] | None = None
 
 
 def _limit(ctx: Context) -> int:
@@ -123,6 +129,7 @@ class RunResult:
     pending_id: str = ""
     google_pending_id: str = ""  # the Google Search approval, when the brief chose it
     google_error: str = ""  # why there is none (the Meta approval is unaffected)
+    pixel_check: dict[str, Any] | None = None  # the pixel check (pixel objectives only)
     angle_index: int = 0  # the plan angle the current copy was written for
     steps: int = 0
     cost_usd: float = 0.0
@@ -136,6 +143,7 @@ class RunResult:
             "creatives": self.creatives.model_dump() if self.creatives else None,
             "review": self.review, "pending_id": self.pending_id,
             "google_pending_id": self.google_pending_id, "google_error": self.google_error,
+            "pixel_check": self.pixel_check,
             "angle_index": self.angle_index, "steps": self.steps,
             "cost_usd": round(self.cost_usd, 6), "summary": self.summary,
             "reasoning": self.reasoning[-5:],
@@ -160,7 +168,8 @@ def campaign_payload(run: RunResult, variant_index: int,
                      currency: str = "PLN",
                      brief: brief_v1.BriefV1 | None = None,
                      page_id: str = MOCK_PAGE,
-                     resolved: audience.Resolved | None = None) -> dict[str, Any]:
+                     resolved: audience.Resolved | None = None,
+                     pixel_check: dict[str, Any] | None = None) -> dict[str, Any]:
     """The exact content a ``campaign.create`` approval authorises (built by code). A
     daily budget above the activation ceiling is refused here, before anyone signs a
     campaign that could never be activated. ``delivery`` is the objective mapping
@@ -169,7 +178,9 @@ def campaign_payload(run: RunResult, variant_index: int,
     With a confirmed ``brief`` the payload also carries its ``brief_sha256``, objective,
     budget and the brief's targeting: Advantage+ audience unless the owner turned it off,
     the hints ``resolved`` to Meta ids (``audience``, shown before signing), exclusions,
-    the owner's custom audiences and, from the owner's source audience, a lookalike."""
+    the owner's custom audiences and, from the owner's source audience, a lookalike.
+    ``pixel_check`` (``check_pixel``) is signed with the rest: ``pixel.gate`` refuses a
+    pixel objective without a passing check of its own pixel."""
     assert run.plan and run.copy and run.creatives and run.review
     if run.plan.budget_daily > ceiling:
         raise ToolError(f"daily budget {run.plan.budget_daily} {currency} is above the "
@@ -213,6 +224,8 @@ def campaign_payload(run: RunResult, variant_index: int,
         payload["format"] = {"cards": list(cards), "video": {
             "sha256": clip.sha256, "seconds": clip.seconds, "poster": clip.poster,
             "storyboard": clip.storyboard} if clip else None}
+    if pixel_check is not None:
+        payload["pixel_check"] = pixel.signed(pixel_check)
     if spec["creative"] == "lead_form":
         assert brief is not None  # an instant form exists only for a confirmed brief
         # the questions the owner chose and the owner's own privacy page (Meta requires it)
@@ -299,6 +312,40 @@ def resolve_audience(ctx: Context, run_id: str,
             res.excluded_interests), "locales": len(res.locales),
         "unresolved": len(res.unresolved)})
     return res
+
+
+def check_pixel(ctx: Context, run_id: str, brief: brief_v1.BriefV1,
+                link: str) -> dict[str, Any] | None:
+    """The read-only pixel check for a brief whose objective promotes a pixel (website
+    leads, sales); None for every other objective (an instant form, traffic …), which
+    skips it entirely. One ``pixel.check`` receipt (``side_effects: read``) carries the
+    status, the check codes and the result's hash; the pixel id is kept by hash only."""
+    try:
+        r = objectives.row(brief.objective.goal, brief.objective.sub)
+    except objectives.DeliveryError:
+        return None  # campaign_payload refuses the objective itself
+    if "pixel_id" not in r.promoted:
+        return None
+    pid = brief.promotion.pixel_id
+    event = brief.promotion.custom_event_type or r.event
+    status = "ok"
+    if ctx.pixel_check is None:
+        result = pixel.unverified(pid, "no_adapter", link)
+        status = "unavailable"
+    else:
+        try:
+            result = ctx.pixel_check(pid, link, event_type=event)
+        except Exception as exc:  # noqa: BLE001 - an adapter bug must not pass the gate
+            result = pixel.unverified(pid, getattr(exc, "code", "") or type(exc).__name__,
+                                      link)
+            status = getattr(exc, "code", "") or type(exc).__name__
+    ctx.client.ledger.append(run_id, agent=AGENT, kind="tool_call", details={
+        "tool": pixel.TOOL, "status": status, "side_effects": "read",
+        "pixel_sha256": sha256_hex(pid), "pixel_status": result["status"],
+        "checks": [f"{c['code']}:{c['level']}" for c in result["checks"]],
+        "events_7d": (result.get("events_7d") or {}).get("total"),
+        "result_sha256": sha256_hex(canonical(result))})
+    return result
 
 
 def ab_variants(ctx: Context, run: RunResult, chosen: int) -> list[int]:
@@ -553,10 +600,11 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         resolved = None
         if ctx.brief_v1 is not None:
             resolved = resolve_audience(ctx, run.run_id, ctx.brief_v1)
+            run.pixel_check = check_pixel(ctx, run.run_id, ctx.brief_v1, link)
         payload = campaign_payload(run, index, link, ceiling=ctx.max_daily_budget,
                                    currency=ctx.currency,
                                    brief=ctx.brief_v1, page_id=ctx.page_id,
-                                   resolved=resolved)
+                                   resolved=resolved, pixel_check=run.pixel_check)
         item_id = opaque_id("cmp_")
         pending = Pending.create("campaign.create", item_id, payload,
                                  ledger=ctx.client.ledger, run_id=run.run_id,
@@ -570,8 +618,14 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
         run.pending_id = pending.id
         request_google(ctx, run, [index, *ab], link)
         emit("approval")
-        return {"pending_id": pending.id, "content_sha256": pending.content_sha256,
-                "note": "the human must sign this in the studio; nothing was sent"}
+        out = {"pending_id": pending.id, "content_sha256": pending.content_sha256,
+               "note": "the human must sign this in the studio; nothing was sent"}
+        if run.pixel_check is not None:
+            out["pixel_check"] = run.pixel_check["status"]
+            if run.pixel_check["status"] == pixel.FAIL:
+                out["note"] = ("the pixel check failed: this approval cannot be signed "
+                               "until the owner fixes the pixel and runs again")
+        return out
 
     return {"run_copywriter": run_copywriter, "run_art_director": run_art_director,
             "run_reviewers": run_reviewers, "request_approval": request_approval}

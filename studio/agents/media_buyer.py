@@ -3,7 +3,9 @@
 - ``create``: on a consumed ``campaign.create`` approval → upload the approved hero image →
   campaign → ad set → (the instant form, for an instant-form lead objective) → creative →
   ad, all PAUSED → preview. The objective mapping is the signed ``delivery`` block, and
-  its hash must be the approval's ``spec_sha256``. One ``tool_call`` receipt per
+  its hash must be the approval's ``spec_sha256``. A pixel objective needs a passing
+  pixel check of its own pixel in the signed payload (``pixel.gate``; the signed result is
+  trusted, the check is not repeated), or nothing is created. One ``tool_call`` receipt per
   adapter call and one ``external_write`` receipt (``approval_id``, ``action``,
   ``item_id``, content hash) for the approved write, so ``studio verify`` links it to the
   signature. The receipt and the ``campaigns`` row are written before the preview; a
@@ -34,6 +36,7 @@ from typing import Any
 
 from studio import executor, leadads
 from studio.approvals import Pending, Verified, confirmed_brief, transaction
+from studio.meta import pixel
 from studio.meta.adapter import (
     ACTIVATION_KEYS,
     ACTIVATION_ORDER,
@@ -92,6 +95,11 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         executor.finish(conn, v, "failed", {"error": "spec_changed"})
         raise BuyError("the delivery block is not the signed one", "spec_changed")
     assert isinstance(spec, dict)
+    refused = pixel.gate(payload)
+    if refused:
+        # a missing, failed or foreign pixel check: nothing is posted to Meta
+        executor.finish(conn, v, "failed", {"error": refused})
+        raise BuyError("the pixel check does not allow this campaign", refused)
     spec_details = {"spec_sha256": spec_hash, "objective": spec["objective"]}
     created: dict[str, str] = {}
 

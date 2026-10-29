@@ -86,6 +86,20 @@ Page, and store it once; it cannot write to Meta or approve anything. The route 
 the login gate like every other, so it answers only where `STUDIO_REQUIRE_LOGIN` is off
 (the operator's machine); the sandbox never receives Meta events.
 
+## Landing-page fetch (pixel check)
+
+The pixel check (`studio/meta/pixel.py`) is the only place the studio fetches a URL the
+owner typed (`advertiser.landing_url`), so the fetch is built against SSRF: https on port
+443 only, no userinfo; the host is resolved and refused unless every address is public
+(no private, loopback, link-local, CGNAT `100.64.0.0/10`, multicast, reserved or
+unspecified address, v4 or v6, including IPv4 embedded in mapped, 6to4 or Teredo
+addresses); the request goes to the vetted address itself, with the host name as `Host`
+and TLS SNI (certificate checked for that name), so a second DNS answer cannot move it. At
+most 3 redirects, each re-checked the same way; 10 s deadline, 2 MB cap, a fresh client
+per hop (no cookies), no proxy from the environment, a plain user agent. The fetched HTML is
+only searched for the pixel id and never stored, rendered or passed to a model. With an
+injected Graph transport (tests, replay) nothing is fetched at all.
+
 ## Residual risks
 
 - **TOFU in `studio verify --server`.** Without a pinned key, `--server` trusts the key and

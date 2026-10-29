@@ -23,6 +23,7 @@ from studio.ui.i18n_google import EN_GOOGLE, PL_GOOGLE
 from studio.ui.i18n_mcp import EN_MCP, PL_MCP
 from studio.ui.i18n_meta import EN_META, PL_META
 from studio.ui.i18n_notify import EN_NOTIFY, PL_NOTIFY
+from studio.ui.i18n_pixel import EN_PIXEL, PL_PIXEL
 
 LANGS = ("en", "pl")
 DEFAULT = "en"
@@ -1203,6 +1204,8 @@ EN.update(EN_GOOGLE)
 PL.update(PL_GOOGLE)
 EN.update(EN_MCP)
 PL.update(PL_MCP)
+EN.update(EN_PIXEL)
+PL.update(PL_PIXEL)
 
 CATALOGS = {"en": EN, "pl": PL}
 

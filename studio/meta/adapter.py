@@ -130,6 +130,11 @@ class Adapter(Protocol):
     def account_info(self) -> dict[str, str]:
         """The ad account's ``currency`` and ``timezone_name`` (budgets are in it)."""
 
+    def pixel_check(self, pixel_id: str, landing_url: str, *,
+                    event_type: str = "") -> dict[str, Any]:
+        """Read-only check of the advertiser's pixel before signing (``pixel.result``:
+        ``status`` ok/warn/fail, per-check entries, ``last_fired_time``, ``events_7d``)."""
+
     def upload_image(self, png: bytes, payload: Mapping[str, Any],
                      approval: Verified) -> str: ...
 

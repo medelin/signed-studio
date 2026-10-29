@@ -269,6 +269,30 @@ $("google-activate").addEventListener("click", async () => {
 
 let currentPayload = null;
 
+// The signed pixel check (website leads and sales): a badge and one line per check. A
+// failed check cannot be signed (the server refuses it too: pixel_check_failed).
+const PIXEL_BADGE = { ok: ["OK", "pixel_ok"], warn: ["WARN", "pixel_warn"], fail: ["BLOCK", "pixel_fail"] };
+
+function showPixel(px) {
+  const list = $("ap-pixel");
+  const badge = $("ap-pixel-badge");
+  list.replaceChildren();
+  badge.replaceChildren();
+  if (!px) return;
+  const [cls, key] = PIXEL_BADGE[px.verdict] || PIXEL_BADGE.fail;
+  badge.append(el("span", T(key), "verdict " + cls));
+  const events = px.events_7d ? px.events_7d.total : T("pixel_unknown");
+  list.append(el("li", T("pixel_head", { id: px.pixel_id, fired: px.last_fired_time || T("pixel_never"), events })));
+  for (const c of px.checks || []) {
+    const key = "pixel_c_" + c.code;  // a code without a line shows its English detail
+    const line = T(key);
+    const mark = { ok: "OK", warn: "WARN", fail: "BLOCK" }[c.level] || "BLOCK";
+    const li = el("li");
+    li.append(el("span", mark, "verdict " + mark), " ", line === key ? c.detail : line);
+    list.append(li);
+  }
+}
+
 async function showApproval(pendingId) {
   const panel = $("approve-panel");
   panel.hidden = false;
@@ -307,12 +331,17 @@ async function showApproval(pendingId) {
       if (data.content.lookalike) list.append(el("li", T("aud_lookalike", { id: data.content.lookalike.origin_audience_id, pct: Math.round(data.content.lookalike.lookalike_spec.ratio * 100) })));
     }
     $("ap-audience-dt").hidden = $("ap-audience-dd").hidden = !res;
+    const px = data.content.pixel_check;
+    showPixel(px);
+    $("ap-pixel-dt").hidden = $("ap-pixel-dd").hidden = !px;
     $("ap-key").textContent = Signer.approver();
     $("ap-exp").textContent = new Date(data.expires_ts * 1000).toLocaleTimeString();
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);
     $("ap-message").textContent = atob(data.message_b64);
-    $("approve-button").disabled = data.status !== "pending";
-    status("approve-status", data.status === "pending" ? T("ready") : T("already", { status: data.status }));
+    const pixelFailed = !!px && px.verdict !== "ok" && px.verdict !== "warn";
+    $("approve-button").disabled = data.status !== "pending" || pixelFailed;
+    if (pixelFailed && data.status === "pending") status("approve-status", T("pixel_fail"), true);
+    else status("approve-status", data.status === "pending" ? T("ready") : T("already", { status: data.status }));
   } catch (e) {
     status("approve-status", e.message, true);
   }

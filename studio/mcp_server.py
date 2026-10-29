@@ -90,13 +90,15 @@ def actor(client_name: str) -> str:
 
 class _ReadOnlyMeta:
     """The only Meta surface the MCP server holds: what a run needs before an approval
-    (the ad account's currency, the Page id, the read-only targeting search). It has no
+    (the ad account's currency, the Page id, the read-only targeting search and pixel
+    check). It has no
     upload, create, activate or update method, so nothing reached from a tool can write."""
 
     def __init__(self, inner: Any) -> None:
         self.name = inner.name
         self.page_id = getattr(inner, "page_id", "")
         self.search_targeting = getattr(inner, "search_targeting", None)
+        self.pixel_check = getattr(inner, "pixel_check", None)
         self._account_info: Callable[[], dict[str, str]] = inner.account_info
 
     def account_info(self) -> dict[str, str]:

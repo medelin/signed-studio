@@ -9,7 +9,7 @@ import pytest
 from studio import db
 from studio.agents import media_buyer
 from studio.approvals import Keys
-from studio.meta import objectives
+from studio.meta import objectives, pixel
 from studio.meta.adapter import MOCK_PAGE, NotApproved, spec_sha256
 from studio.meta.mock import MockAdapter
 from studio.receipts import verify
@@ -37,12 +37,20 @@ def _spec(goal, sub):
     return objectives.delivery(goal, sub, page_id=MOCK_PAGE, promotion=IDS)
 
 
+def _with_pixel_check(p, spec):
+    """Website leads and sales: a passing pixel check is signed with the payload."""
+    if pixel.pixel_of(spec):
+        p["pixel_check"] = pixel.signed(MockAdapter().pixel_check(pixel.pixel_of(spec),
+                                                                  p["link"]))
+
+
 @pytest.mark.parametrize("key", ROWS, ids=lambda k: ":".join(k))
 def test_every_objective_is_created_paused_from_the_signed_delivery(env, key):
     conn, ledger, mock, data = env
     spec = _spec(*key)
     p = payload(delivery=spec, campaign={**payload()["campaign"],
                                          "objective": spec["objective"]})
+    _with_pixel_check(p, spec)
     v = approve(conn, ledger, "campaign.create", "cmp_" + key[1][:6] + "1", p, RUN)
     assert v.spec_sha256 == spec_sha256(spec)
     out = media_buyer.create(conn, ledger, mock, v, p, data)
@@ -89,6 +97,7 @@ def test_a_signed_but_invalid_mapping_calls_nothing(env, edit):
     spec = _spec("sales", "website")
     edit(spec)
     p = payload(delivery=spec)
+    _with_pixel_check(p, spec)  # the mapping alone is what is refused
     v = approve(conn, ledger, "campaign.create", "cmp_bad_spec", p, RUN)  # even if signed
     with pytest.raises(NotApproved):
         media_buyer.create(conn, ledger, mock, v, p, data)
