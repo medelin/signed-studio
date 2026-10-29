@@ -42,10 +42,11 @@ Meta-only campaign the owner sees it, with its Google source, and it never block
 Channels come from the confirmed brief (`channels.google_search` adds `google`).
 
 Levels were applied to the recorded replay sets by re-deriving every verdict from the
-recorded findings. Changed outcomes (docs/eval.md seeded set): `p5-abbrev` WARN → OK and
-`p5-meta` BLOCK → OK (P5 is a tip; a misleading affiliation with Meta is now listed under
-P3 in the checklist), `p6-fake-ui` stays flagged (block). The P9 set is scored as copy that
-also runs on Google Search (5/5 blocked).
+recorded findings. The two seeded ads whose outcome changed were re-recorded live with the
+updated checklist (docs/eval.md): `p5-meta` (an ad implying Meta's endorsement) is a P3
+**block** with the Meta source, as before; `p5-abbrev` (the brand abbreviated) is **OK** with
+a P5 tip — brand-name-only findings are tips on Meta. `p6-fake-ui` stays a block. The P9 set
+is scored as copy that also runs on Google Search (5/5 blocked).
 
 Every creative is checked three ways before a human can sign it:
 
