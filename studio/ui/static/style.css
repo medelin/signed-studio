@@ -21,6 +21,13 @@ a:hover { text-decoration-thickness: 2px; }
 .top a:not(.brand) { font: 600 .78rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .12em; text-decoration: none; color: var(--ink-2); padding: .2rem 0; }
 .top a:not(.brand):hover, .top a[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--signal); }
 .tag { color: var(--muted); font-size: .85rem; }
+/* phones: fields never push the page wider than the screen; nav links are tap-sized */
+fieldset { min-width: 0; }
+input, select, textarea { max-width: 100%; }
+@media (max-width: 760px) {
+  .top { padding: .6rem 1rem; }
+  .top a:not(.brand) { display: inline-block; padding: .7rem .1rem; }
+}
 .badge {
   display: inline-block; padding: 0 .45rem; margin: 0 .25rem .25rem 0;
   font: 600 .72rem/1.6 var(--font-mono); text-transform: uppercase; letter-spacing: .08em;
@@ -59,8 +66,8 @@ table.receipts tbody tr:hover { background: var(--soft); }
   border: 1px solid var(--rule-soft); padding: .9rem 1.1rem; margin: 0 0 1rem; background: var(--bg-raised);
   clip-path: polygon(0 0, calc(100% - var(--chamfer)) 0, 100% var(--chamfer), 100% 100%, 0 100%);
 }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1rem; }
-.stack { display: grid; gap: .4rem; max-width: 760px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 1rem; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: .4rem; max-width: 760px; }
 .inline { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .5rem; }
 label { font-weight: 600; }
 input, textarea, select {
@@ -81,7 +88,7 @@ button:disabled { background: var(--down); color: var(--bg); cursor: not-allowed
 button.secondary { background: var(--ink-2); color: var(--bg); }
 button.copy-json { padding: .25rem .6rem; font-size: .72rem; }
 .hint { color: var(--muted); font-size: .9rem; }
-.status { min-height: 1.4em; margin: 0; }
+.status { min-height: 1.4em; margin: 0; overflow-wrap: anywhere; }
 .status.error { color: var(--signal); font-weight: 600; }
 .cards { display: grid; gap: .5rem; }
 .card { border: 1px solid var(--rule-soft); padding: .5rem .7rem; background: var(--bg); }
@@ -90,17 +97,20 @@ button.copy-json { padding: .25rem .6rem; font-size: .72rem; }
 .carousel { display: flex; gap: .75rem; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: .5rem; }
 .carousel figure { margin: 0; scroll-snap-align: start; flex: 0 0 auto; }
 .carousel img { height: 320px; width: auto; border: 1px solid var(--rule-soft); display: block; }
+@media (max-width: 760px) { .carousel img { height: auto; max-height: 320px; max-width: 78vw; } }
 .carousel figcaption { font-size: .85rem; color: var(--muted); }
 .verdict { font: 700 .78rem/1.6 var(--font-mono); padding: 0 .45rem; border: 1px solid; }
 .verdict.OK { background: var(--ok-soft); border-color: var(--ok); color: var(--ink); }
 .verdict.WARN { background: var(--partial-soft); border-color: var(--partial); color: var(--ink); }
 .verdict.BLOCK { background: var(--signal-soft); border-color: var(--signal); color: var(--ink); }
 .disagree { color: var(--ink); background: var(--partial-soft); padding: 0 .25rem; }
-.kv { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; }
+.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .2rem 1rem; }
+@media (max-width: 520px) { .kv { grid-template-columns: minmax(0, 1fr); } .kv dd { margin-bottom: .35rem; } }
 .kv dt { font: 600 .72rem/1.6 var(--font-mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
-.kv dd { margin: 0; overflow-wrap: anywhere; }
+.kv dd { margin: 0; overflow-wrap: anywhere; min-width: 0; }
+.kv code { overflow-wrap: anywhere; word-break: break-all; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--soft); padding: .5rem; font-size: .8rem; border-left: 2px solid var(--rule); }
-.wrap { overflow-wrap: anywhere; }
+.wrap, #review { overflow-wrap: anywhere; }
 .small { font-size: 1rem; margin: 0 0 .25rem; }
 blockquote { margin: .25rem 0 .5rem; padding: .25rem .75rem; border-left: 3px solid var(--rule); overflow-wrap: anywhere; }
 .risk-high { background: var(--signal-soft); border-color: var(--signal); color: var(--ink); }

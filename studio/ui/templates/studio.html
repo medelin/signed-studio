@@ -397,11 +397,13 @@
 
 <section class="panel" aria-labelledby="ticker-h">
   <h2 id="ticker-h">{{ t("studio.ticker") }}</h2>
+  <div class="table-scroll" role="region" aria-labelledby="ticker-h" tabindex="0">
   <table class="receipts">
     <caption class="hint">{{ t("studio.ticker_caption") }}</caption>
     <thead><tr><th scope="col">{{ t("common.receipt_cols.agent") }}</th><th scope="col">{{ t("common.receipt_cols.kind") }}</th><th scope="col">{{ t("studio.col.model_tool") }}</th><th scope="col">{{ t("common.receipt_cols.tokens") }}</th><th scope="col">{{ t("common.receipt_cols.cost") }}</th><th scope="col">{{ t("common.receipt_cols.hash") }}</th></tr></thead>
     <tbody id="ticker" aria-live="polite" aria-relevant="additions"></tbody>
   </table>
+  </div>
   <p class="hint">{{ t("studio.total") }} <span id="total-cost" class="counter-text">$0.00000</span><span class="counter cost" id="cost-counter" aria-hidden="true"></span>
     · <span class="counter tokens" id="tokens-counter" data-unit="{{ t('js.tokens_unit') }}" aria-hidden="true"></span> · <a href="/api/receipts.jsonl">receipts.jsonl</a></p>
 </section>
