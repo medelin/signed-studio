@@ -129,3 +129,11 @@ table.receipts tr.receipt-json td { padding: 0 .5rem .2rem; white-space: normal;
 table.receipts tr.receipt-json summary { cursor: pointer; color: var(--muted); font: .75rem/1.6 var(--font-mono); }
 table.receipts tr.receipt-json pre { margin: .25rem 0 .5rem; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; }
 table.receipts tbody tr:has(+ tr.receipt-json) td { border-bottom: 0; }
+/* A2: what the copy left out to stay within Meta's rules (approval screen); A7: a disapproved ad */
+.left-out, .disapproved { display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; margin: .5rem 0 .75rem; padding: .5rem .75rem; border-left: 3px solid var(--rule); background: var(--soft); overflow-wrap: anywhere; min-width: 0; }
+.left-out h3, .disapproved h3 { margin: 0; font-size: 1rem; }
+.left-out-item, .left-out-notes, .left-out-overrule { margin: 0 0 .4rem; min-width: 0; }
+.left-out-item p, .disapproved p { margin: .1rem 0; }
+.left-out-asked { font-weight: 600; }
+.finding { overflow-wrap: anywhere; }
+.finding-tip { color: var(--muted, inherit); }

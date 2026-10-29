@@ -62,7 +62,9 @@ from studio import (
     routes_report,
     routes_studio,
     routes_try,
+    routes_whatsapp,
     sandbox,
+    whatsapp,
 )
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
@@ -414,7 +416,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.conn = conn
     app.state.ledger = ledger
     app.state.limiter = LoginLimiter()
-    app.state.notifier = notify.Notifier(conn, ledger, settings.mail, settings.public_url)
+    app.state.whatsapp = (whatsapp.Client(settings.whatsapp, ledger)
+                          if settings.whatsapp.enabled else None)
+    app.state.notifier = notify.Notifier(
+        conn, ledger, settings.mail, settings.public_url,
+        whatsapp=whatsapp.Channel(conn, app.state.whatsapp) if app.state.whatsapp else None)
     app.state.sessions = Sessions(settings.session_secret)
     routes_account.install(app, settings, conn)  # accounts, judge demo account, 2FA state
     templates = Jinja2Templates(directory=str(UI / "templates"))
@@ -472,6 +478,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_try.register(app, settings, templates, session_of)
     routes_onboarding.register(app, settings, ledger, templates, session_of, COOKIE)
     routes_account.register(app, settings, ledger, conn, templates, session_of)
+    routes_whatsapp.register(app, settings, ledger, conn, session_of)
 
     # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
     # each runs only for a consumed, signed approval (studio.executor.authorize).

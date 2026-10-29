@@ -35,11 +35,12 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from studio import leadads
+from studio import disapprovals, leadads
 from studio.agents import media_buyer
 from studio.google import store as google_store
 from studio.meta import measurement, objectives
 from studio.meta.adapter import AdapterError
+from studio.muse.client import MuseError
 from studio.receipts import Ledger
 from studio.settings import Settings
 
@@ -47,6 +48,7 @@ Guard = Callable[[Request], "JSONResponse | str"]
 LOG = logging.getLogger("studio.meta")
 CHALLENGE = re.compile(r"\d{1,64}")
 REC_ID = re.compile(r"rc_[0-9a-f]{12}")
+DISAPPROVAL_ID = re.compile(r"dp_[0-9a-f]{12}")
 
 
 def form_globals() -> dict[str, Any]:
@@ -83,8 +85,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     def updated(verified: Any, payload: dict[str, Any]) -> dict[str, Any]:
         result = media_buyer.update(conn, ledger, app.state.adapter, verified, payload,
-                                    settings.max_daily_budget)
-        if (payload.get("change") or {}).get("kind") != "budget":
+                                    settings.max_daily_budget, settings.data_dir)
+        if (payload.get("change") or {}).get("kind") == "status":
             app.state.notifier.event("campaign_paused")  # a signed pause
         return result
 
@@ -132,6 +134,35 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": exc.code}, 404 if exc.code == "not_found" else 409)
         return JSONResponse({"approval_id": pending.id, "content": payload,
                              "content_sha256": pending.content_sha256}, 201)
+
+    @app.get("/api/disapprovals")
+    def disapprovals_list(request: Request) -> Response:
+        """Ads Meta disapproved, with Meta's reasons and the rule explained (A7)."""
+        lang = "pl" if request.query_params.get("lang") == "pl" else "en"
+        full = session_of(request) is not None  # a visitor gets the public view
+        return JSONResponse({"disapprovals": disapprovals.listing(conn, lang, full)},
+                            headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/disapprovals/{did}/propose")
+    async def disapproval_propose(did: str, request: Request) -> Response:
+        """One compliant variant, re-checked by both reviewers, as a pending
+        ``campaign.update`` (``replace_creative``); nothing changes on Meta until the owner
+        signs it."""
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        if not DISAPPROVAL_ID.fullmatch(did):
+            return JSONResponse({"error": "not_found"}, 404)
+        muse, open_weights = app.state.clients()
+        try:
+            out = await run_in_threadpool(disapprovals.propose, conn, ledger, muse,
+                                          open_weights, did, settings.data_dir)
+        except disapprovals.DisapprovalError as exc:
+            return JSONResponse({"error": exc.code},
+                                404 if exc.code == "not_found" else 409)
+        except MuseError as exc:
+            return JSONResponse({"error": "model_error", "code": exc.code}, 502)
+        return JSONResponse(out, 201 if out["status"] == "requested" else 200)
 
     @app.post("/api/leadforms/poll")
     async def poll_leads(request: Request) -> Response:

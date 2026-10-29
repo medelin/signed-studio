@@ -26,7 +26,17 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_private_key,
 )
 
-from studio import accounts, api_tokens, approvals, executor, leadads, notify, store
+from studio import (
+    accounts,
+    api_tokens,
+    approvals,
+    disapprovals,
+    executor,
+    leadads,
+    notify,
+    store,
+    whatsapp,
+)
 from studio.approvals import transaction
 from studio.google import store as google_store
 from studio.meta import measurement
@@ -154,6 +164,10 @@ MIGRATIONS: dict[str, dict[str, str]] = {
     "accounts": {  # notification categories the owner can switch off (security cannot be)
         "notify_campaigns": "INTEGER NOT NULL DEFAULT 1",
         "notify_leads": "INTEGER NOT NULL DEFAULT 1",
+        # WhatsApp (studio.whatsapp): the owner's number in E.164 and the opt-in
+        "whatsapp_number": "TEXT NOT NULL DEFAULT ''",
+        "notify_whatsapp": "INTEGER NOT NULL DEFAULT 0",
+        "whatsapp_verified_ts": "REAL NOT NULL DEFAULT 0",  # 0 = pending (not proven)
     },
     "approvals": {"brief_sha256": "TEXT NOT NULL DEFAULT ''",
                   "superseded_by": "TEXT NOT NULL DEFAULT ''",
@@ -163,6 +177,8 @@ MIGRATIONS: dict[str, dict[str, str]] = {
         "draft": "TEXT NOT NULL DEFAULT ''",  # Brief v1 as drafted (JSON)
         "brief_v1": "TEXT NOT NULL DEFAULT ''",  # Brief v1 as confirmed (JSON)
         "brief_sha256": "TEXT NOT NULL DEFAULT ''",
+        "channel": "TEXT NOT NULL DEFAULT ''",  # 'whatsapp' for a brief sent from WhatsApp
+        "account_id": "TEXT NOT NULL DEFAULT ''",  # who sent it (WhatsApp briefs)
     },
     "campaigns": {
         "adset_external_id": "TEXT NOT NULL DEFAULT ''",
@@ -219,7 +235,9 @@ def init(conn: sqlite3.Connection) -> None:
         _migrate(conn)
     leadads.ensure_schema(conn)
     notify.ensure_schema(conn)
+    whatsapp.ensure_schema(conn)
     measurement.ensure_schema(conn)
+    disapprovals.ensure_schema(conn)
     google_store.ensure_schema(conn)
     api_tokens.ensure_schema(conn)  # assistants: personal access tokens, API-drafted briefs
 

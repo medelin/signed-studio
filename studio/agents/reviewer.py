@@ -12,6 +12,12 @@ statements and rule P10 (``prompts/_grounding.md``) in the user message, and cod
 ``grounding_net``: a number the owner never confirmed, or a claim the brief bans, is a
 P10 block.
 
+Every finding's level (block / warn / tip) and source come from one table in code
+(``rules.RULES``), by rule and by the channels the copy will run on: the models tag a
+level and a source, ``normalize`` caps the level and sets the source, and the verdict is
+derived from the capped findings (a tip never raises it). P9 is a Google Ads policy: a
+block only when the brief also runs on Google Search, a tip on Meta.
+
 Rules S1 (product fidelity) and S2 (no people) are code too, from SAM 3.1 on each
 generated image (``sam_findings``): the product missing is a block; a silhouette that
 does not match the cut-out, a product that is too small, too large or cut by an edge, or
@@ -30,7 +36,7 @@ from PIL import Image
 
 from studio import brief as brief_v1
 from studio import envelope
-from studio.agents import formats, prompts
+from studio.agents import formats, prompts, rules
 from studio.agents.schemas import CopyVariant, Finding, Review, SamCheck
 from studio.muse import openweights
 from studio.muse.client import MuseClient, MuseError
@@ -44,7 +50,6 @@ MODEL = "muse-spark-1.3"
 MAX_SIDE = 1024  # reviewers see a downscaled copy: enough for policy, fewer image tokens
 _RANK = {"OK": 0, "WARN": 1, "BLOCK": 2}
 RANK = _RANK
-_SEVERITY_FLOOR = {"info": "OK", "warn": "WARN", "block": "BLOCK"}
 _RULE = re.compile(r"\b[PFS]\d+\b")
 SAM_RULE = "S1"  # product fidelity (SAM 3.1 on the generated image)
 PEOPLE_RULE = "S2"  # no people (the placement prompt forbids them)
@@ -83,16 +88,19 @@ def _fold(text: str) -> str:
     return "".join(c for c in text if not unicodedata.combining(c)).lower()
 
 
-def policy_net(copy: CopyVariant) -> list[Finding]:
-    """P9 findings the code is sure of (one per matched phrase, at most three)."""
+def policy_net(copy: CopyVariant, channels: tuple[str, ...] = (rules.META,)) -> list[Finding]:
+    """P9 findings the code is sure of (one per matched phrase, at most three): a block
+    when the copy runs on Google, a tip with the Google source on Meta (``rules``)."""
     text = _fold(" | ".join((copy.headline, copy.primary_text, copy.description)))
     hits: list[str] = []
     for pattern in _P9:
         for m in pattern.finditer(text):
             if m.group() not in hits:
                 hits.append(m.group())
-    return [Finding(rule="P9", severity="block",
-                    evidence=f"code check: matched {h[:80]!r} ({P9_POLICIES})")
+    level = rules.level("P9", "block", channels)
+    return [Finding(rule="P9", severity=level,  # type: ignore[arg-type]
+                    evidence=f"code check: matched {h[:80]!r} ({P9_POLICIES})",
+                    source=rules.source("P9"))
             for h in hits[:3]]
 
 
@@ -103,11 +111,11 @@ def grounding_net(copy: CopyVariant, brief: brief_v1.BriefV1 | None) -> list[Fin
         return []
     text = " | ".join((copy.headline, copy.primary_text, copy.description))
     corpus = brief_v1.grounding_corpus(brief)
-    out = [Finding(rule=prompts.GROUNDING_RULE, severity="block",
+    out = [Finding(rule=prompts.GROUNDING_RULE, severity="block", source=rules.GROUNDING,
                    evidence=f"code check: the number {n!r} is not in the owner's confirmed "
                             "facts")
            for n in brief_v1.ungrounded_numbers(text, corpus)[:3]]
-    out += [Finding(rule=prompts.GROUNDING_RULE, severity="block",
+    out += [Finding(rule=prompts.GROUNDING_RULE, severity="block", source=rules.GROUNDING,
                     evidence=f"code check: banned by the brief: {b[:80]!r}")
             for b in brief_v1.banned_hits(text, brief)[:3]]
     return out
@@ -117,14 +125,15 @@ def format_check(placement: str, ad: CopyVariant | dict[str, Any],
                  image_png: bytes | None = None) -> list[Finding]:
     """Rule F1, deterministic, before the model reviewers: the platform's own limits for
     this placement (``formats.PLATFORMS``). Hard limits are ``block``, recommended lengths
-    ``warn`` with the truncation point."""
+    a ``tip`` with the truncation point (Meta's own recommendation, ``rules``)."""
     fields = ad.model_dump() if isinstance(ad, CopyVariant) else dict(ad)
     size = None
     if image_png is not None:
         im = Image.open(io.BytesIO(image_png))
         size = im.size
     return [Finding.model_validate({"rule": formats.RULE, "evidence": f.evidence[:500],
-                                    "severity": f.severity})
+                                    "severity": rules.level(formats.RULE, f.severity),
+                                    "source": rules.source(formats.RULE, f.evidence)})
             for f in formats.check(placement, fields, size)]
 
 
@@ -185,21 +194,26 @@ def sam_findings(placement: str, check: SamCheck | None) -> list[Finding]:
     return out
 
 
-def with_findings(review: Review, extra: list[Finding]) -> Review:
+def with_findings(review: Review, extra: list[Finding],
+                  channels: tuple[str, ...] = (rules.META,)) -> Review:
     if not extra:
         return review
     return normalize(Review(verdict=review.verdict, findings=[*review.findings, *extra],
-                            summary=review.summary))
+                            summary=review.summary), channels)
 
 
-def with_policy_net(review: Review, copy: CopyVariant) -> Review:
+def with_policy_net(review: Review, copy: CopyVariant,
+                    channels: tuple[str, ...] = (rules.META,)) -> Review:
     """The model's review plus the code's P9 findings (unless the model already cited
-    P9 at block); the verdict is raised accordingly."""
-    net = policy_net(copy)
-    if not net or any(f.rule == "P9" and f.severity == "block" for f in review.findings):
-        return review
+    P9 at the level the table allows here, so a weaker model finding never switches the
+    code check off); levels and verdict follow the table (``rules``)."""
+    net = policy_net(copy, channels)
+    capped = normalize(review, channels)
+    top = rules.cap("P9", channels)
+    if not net or any(f.rule == "P9" and f.severity == top for f in capped.findings):
+        return capped
     return normalize(Review(verdict=review.verdict, findings=[*review.findings, *net],
-                            summary=review.summary))
+                            summary=review.summary), channels)
 
 
 @dataclass(frozen=True)
@@ -229,22 +243,35 @@ def downscale(png: bytes, max_side: int = MAX_SIDE) -> bytes:
     return out.getvalue()
 
 
-def normalize(review: Review) -> Review:
-    """Rule ids mapped onto the checklist (``"P4 Price"`` → ``P4``, unknown → ``UNMAPPED``);
-    the verdict is never milder than the worst finding's severity."""
+def canonical_rules(review: Review) -> Review:
+    """Rule ids mapped onto the checklist (``"P4 Price"`` → ``P4``, unknown →
+    ``UNMAPPED``); levels and verdict as the model gave them."""
     valid = set(prompts.policy_rule_ids()) | {formats.RULE, prompts.GROUNDING_RULE,
                                               *SAM_RULES}
     findings = []
     for f in review.findings:
         m = _RULE.search(f.rule)
         rule = m.group() if m and m.group() in valid else "UNMAPPED"
-        findings.append(Finding(rule=rule, evidence=f.evidence[:500], severity=f.severity))
-    verdict = review.verdict
-    for f in findings:
-        floor = _SEVERITY_FLOOR[f.severity]
-        if _RANK[floor] > _RANK[verdict]:
-            verdict = floor  # type: ignore[assignment]
-    return Review(verdict=verdict, findings=findings, summary=review.summary[:1000])
+        findings.append(Finding(rule=rule, evidence=f.evidence[:500], severity=f.severity,
+                                source=f.source[:300]))
+    return Review(verdict=review.verdict, findings=findings, summary=review.summary[:1000])
+
+
+def normalize(review: Review, channels: tuple[str, ...] = (rules.META,)) -> Review:
+    """Code has the final say: rule ids mapped (``canonical_rules``), each level capped by
+    the table for the channels the copy runs on and its source set from the table
+    (``rules``); the verdict is the worst capped level (tips and notes never raise it).
+    A model verdict that names no finding at all is kept as the model gave it (fail
+    closed: an unexplained BLOCK still blocks)."""
+    findings = [Finding(rule=f.rule, evidence=f.evidence,
+                        severity=rules.level(f.rule, f.severity, channels),  # type: ignore[arg-type]
+                        source=rules.source(f.rule, f.evidence, channels))
+                for f in canonical_rules(review).findings]
+    verdict = rules.verdict(f.severity for f in findings)
+    if not findings:
+        verdict = review.verdict  # fail closed: never milder than an unexplained verdict
+    return Review(verdict=verdict, findings=findings,  # type: ignore[arg-type]
+                  summary=review.summary[:1000])
 
 
 def _facts_block(brief: brief_v1.BriefV1) -> str:
@@ -280,16 +307,17 @@ def _messages(image_png: bytes, copy: CopyVariant,
     ]
 
 
-def _parse(text: str, finish: str) -> Review:
+def _parse(text: str, finish: str, channels: tuple[str, ...] = (rules.META,)) -> Review:
     try:
-        return normalize(Review.model_validate_json(text))
+        return normalize(Review.model_validate_json(text), channels)
     except ValueError:
         raise StructuredOutputError(f"reviewer output is not a Review (finish={finish})",
                                     code="invalid_output") from None
 
 
 def review(client: MuseClient, image_png: bytes, copy: CopyVariant, *, run_id: str,
-           brief: brief_v1.BriefV1 | None = None) -> Review:
+           brief: brief_v1.BriefV1 | None = None,
+           channels: tuple[str, ...] = (rules.META,)) -> Review:
     """Compliance review on Muse Spark 1.3 vision (Standard tier: final creative)."""
     result = client.chat(
         MODEL, _messages(downscale(image_png), copy, brief), run_id=run_id, agent=AGENT,
@@ -297,12 +325,12 @@ def review(client: MuseClient, image_png: bytes, copy: CopyVariant, *, run_id: s
         tier="standard", tier_reason="compliance review of the final creative (vision)",
         envelope_sources=_sources(brief),
     )
-    return _parse(result.text, result.finish)
+    return _parse(result.text, result.finish, channels)
 
 
 def second_opinion(
     client: openweights.OpenWeightsClient, image_png: bytes, copy: CopyVariant, *, run_id: str,
-    brief: brief_v1.BriefV1 | None = None,
+    brief: brief_v1.BriefV1 | None = None, channels: tuple[str, ...] = (rules.META,),
 ) -> Review:
     """Same review on open weights (Baseten). ``OpenWeightsUnavailable`` without a key."""
     if not client.available():
@@ -315,7 +343,7 @@ def second_opinion(
         tier_reason="open-weights second opinion on the same creative",
         envelope_sources=_sources(brief),
     )
-    return _parse(result.text, result.finish)
+    return _parse(result.text, result.finish, channels)
 
 
 def reconcile(a: Review, b: Review | None, status: str = "available") -> Reconciled:
@@ -326,8 +354,8 @@ def reconcile(a: Review, b: Review | None, status: str = "available") -> Reconci
     disagreements = []
     if a.verdict != b.verdict:
         disagreements.append(f"verdict: Muse Spark {a.verdict} vs Spark Open {b.verdict}")
-    rules_a = {f.rule for f in a.findings if f.severity != "info"}
-    rules_b = {f.rule for f in b.findings if f.severity != "info"}
+    rules_a = {f.rule for f in a.findings if f.severity not in ("info", "tip")}
+    rules_b = {f.rule for f in b.findings if f.severity not in ("info", "tip")}
     for rule in sorted(rules_a - rules_b):
         disagreements.append(f"{rule}: flagged by Muse Spark only")
     for rule in sorted(rules_b - rules_a):
@@ -345,24 +373,28 @@ def run(
     placement: str | None = None,
     brief: brief_v1.BriefV1 | None = None,
     sam_check: SamCheck | None = None,
+    channels: tuple[str, ...] = (rules.META,),
 ) -> Reconciled:
     """Both reviews, reconciled, plus one ``review`` receipt with the outcome. With a
     ``placement`` the format check (F1) runs first and its findings join both reviews;
     with a confirmed ``brief`` the grounding check (P10) joins them too, and with a
-    ``sam_check`` the SAM findings (S1/S2)."""
+    ``sam_check`` the SAM findings (S1/S2). ``channels``: where the copy runs (``meta``,
+    plus ``google`` when the brief chose Google Search), for the levels of ``rules``."""
     sam_found = sam_findings(placement or "", sam_check)
     fmt = (format_check(placement, copy, image_png) if placement else []) + \
         grounding_net(copy, brief) + sam_found
     primary = with_findings(
-        with_policy_net(review(client, image_png, copy, run_id=run_id, brief=brief), copy),
-        fmt)
+        with_policy_net(review(client, image_png, copy, run_id=run_id, brief=brief,
+                               channels=channels), copy, channels),
+        fmt, channels)
     second: Review | None = None
     status = "unavailable"
     if open_client is not None and open_client.available():
         try:
             second = with_findings(with_policy_net(
-                second_opinion(open_client, image_png, copy, run_id=run_id, brief=brief),
-                copy), fmt)
+                second_opinion(open_client, image_png, copy, run_id=run_id, brief=brief,
+                               channels=channels),
+                copy, channels), fmt, channels)
             status = "available"
         except MuseError:
             status = "failed"  # the failed call has its own receipt; the primary stands
@@ -374,6 +406,7 @@ def run(
                  "disagreements": len(result.disagreements),
                  "rules": sorted({f.rule for f in primary.findings}),
                  "policy_net": sorted({f.rule for f in policy_net(copy)}),
+                 "channels": list(channels),
                  "format": [f.severity for f in fmt if f.rule == formats.RULE],
                  **({"sam": {"status": sam_check.status,
                              "findings": [f"{f.rule}:{f.severity}" for f in sam_found]}}
@@ -394,6 +427,7 @@ def run_formats(
     run_id: str,
     brief: brief_v1.BriefV1 | None = None,
     sam_checks: dict[str, SamCheck | None] | None = None,
+    channels: tuple[str, ...] = (rules.META,),
 ) -> dict[str, Any]:
     """Review each ``(placement, sha256, png)``; the combined verdict is the worst one.
     ``sam_checks`` (by placement) add rules S1/S2.
@@ -405,7 +439,8 @@ def run_formats(
     formats = []
     for placement, digest, png in images:
         result = run(client, open_client, png, copy, run_id=run_id, placement=placement,
-                     brief=brief, sam_check=(sam_checks or {}).get(placement))
+                     brief=brief, sam_check=(sam_checks or {}).get(placement),
+                     channels=channels)
         formats.append({"placement": placement, "sha256": digest, **result.as_dict()})
     statuses = {f["second_opinion"] for f in formats}
     second = ("available" if statuses == {"available"}

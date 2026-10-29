@@ -451,7 +451,7 @@ def account_posts(app):
 def test_every_account_form_needs_the_csrf_field(app, client):
     login(client)
     paths = account_posts(app)
-    assert len(paths) == 13  # incl. /account/tokens/create and /revoke
+    assert len(paths) == 14  # + /account/whatsapp/code, /account/tokens/create, /revoke
     for path in paths:
         assert client.post(path, data={"password": PASSWORD}).status_code == 403, path
         r = client.post(path, data={"password": PASSWORD, "csrf": "x" * 43})

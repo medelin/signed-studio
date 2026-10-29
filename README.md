@@ -23,6 +23,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - **No login:** a recorded run replayed and verifiable in your browser at https://muse.udun.eu/try
 - **How it works in 1 minute:** https://muse.udun.eu/start
 - **From your own assistant:** make a token on `/account#assistants`, then `claude mcp add --transport http muse https://muse.udun.eu/mcp --header "Authorization: Bearer …"` (or the HTTPS API, `/api/v1/openapi.json`); it drafts and runs, a human still signs every send ([docs/assistants.md](docs/assistants.md)).
+- **WhatsApp:** notices (approval waiting → link to sign in the browser, new leads, ad disapproved) and voice-note briefs that become a Brief v1 draft; links only, nothing signed or run from WhatsApp ([docs/whatsapp.md](docs/whatsapp.md)).
 - **3-minute video:** <!-- VIDEO_URL -->
 - **Built during the event:** first commit 2026-10-27; solo.
 

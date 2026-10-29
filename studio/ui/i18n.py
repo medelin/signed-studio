@@ -27,7 +27,9 @@ from studio.ui.i18n_notify import EN_NOTIFY, PL_NOTIFY
 from studio.ui.i18n_onboarding import EN_ONBOARDING, PL_ONBOARDING
 from studio.ui.i18n_open import EN_OPEN, PL_OPEN
 from studio.ui.i18n_pixel import EN_PIXEL, PL_PIXEL
+from studio.ui.i18n_rules import EN_RULES, PL_RULES
 from studio.ui.i18n_tour import EN_TOUR, PL_TOUR
+from studio.ui.i18n_whatsapp import EN_WHATSAPP, PL_WHATSAPP
 
 LANGS = ("en", "pl")
 DEFAULT = "en"
@@ -354,6 +356,7 @@ EN: dict[str, str] = {
     "enum.insights.live": "live",
     "enum.insights.synthetic": "synthetic",
     "enum.severity.info": "info",
+    "enum.severity.tip": "tip",
     "enum.severity.warn": "warning",
     "enum.severity.block": "blocker",
     "enum.cta.LEARN_MORE": "Learn more",
@@ -790,6 +793,7 @@ PL: dict[str, str] = {
     "enum.insights.live": "na żywo",
     "enum.insights.synthetic": "syntetyczne",
     "enum.severity.info": "informacja",
+    "enum.severity.tip": "wskazówka",
     "enum.severity.warn": "ostrzeżenie",
     "enum.severity.block": "blokada",
     "enum.cta.LEARN_MORE": "Dowiedz się więcej",
@@ -1251,6 +1255,8 @@ EN.update(EN_MCP)
 PL.update(PL_MCP)
 EN.update(EN_PIXEL)
 PL.update(PL_PIXEL)
+EN.update(EN_RULES)
+PL.update(PL_RULES)
 EN.update(EN_TOUR)
 PL.update(PL_TOUR)
 EN.update(EN_OPEN)
@@ -1259,6 +1265,8 @@ EN.update(EN_ONBOARDING)
 PL.update(PL_ONBOARDING)
 EN.update(EN_ASSISTANTS)
 PL.update(PL_ASSISTANTS)
+EN.update(EN_WHATSAPP)
+PL.update(PL_WHATSAPP)
 
 CATALOGS = {"en": EN, "pl": PL}
 

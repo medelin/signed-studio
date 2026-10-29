@@ -79,9 +79,12 @@ def test_format_findings_join_the_review_and_its_receipt():
     client = _Ok()
     out = reviewer.run(client, None, placement_png("feed_1x1"), copy, run_id="run_f",
                        placement="feed_1x1")
-    assert out.verdict == "WARN" and [f.rule for f in out.primary.findings] == ["F1"]
+    # a recommended length is Meta's own advice: a tip with the spec URL, never a WARN
+    assert out.verdict == "OK" and [f.rule for f in out.primary.findings] == ["F1"]
+    tip = out.primary.findings[0]
+    assert tip.severity == "tip" and tip.source.startswith("https://www.facebook.com/business/")
     r = client.ledger.receipts("run_f")[-1]
-    assert r.details["format"] == ["warn"] and r.details["rules"] == ["F1"]
+    assert r.details["format"] == ["tip"] and r.details["rules"] == ["F1"]
     wrong = reviewer.run(client, None, placement_png("feed_1x1"), copy, run_id="run_g",
                          placement="story_9x16")
     assert wrong.verdict == "BLOCK"  # a square image is not a 9:16 story

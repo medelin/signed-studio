@@ -22,6 +22,7 @@ __all__ = [
     "CreativeSet",
     "Finding",
     "Kpi",
+    "LeftOut",
     "Plan",
     "PreScreen",
     "Report",
@@ -35,7 +36,8 @@ __all__ = [
 Placement = Literal["feed_1x1", "feed_4x5", "story_9x16"]
 Cta = Literal["LEARN_MORE", "SHOP_NOW", "SIGN_UP", "CONTACT_US", "BOOK_NOW", "GET_OFFER"]
 Verdict = Literal["OK", "WARN", "BLOCK"]
-Severity = Literal["info", "warn", "block"]
+# the level of a finding (``rules``): block / warn / tip, or info for a code note
+Severity = Literal["info", "tip", "warn", "block"]
 
 PLACEMENT_SIZES: dict[str, str] = {
     "feed_1x1": "1024x1024",
@@ -84,9 +86,24 @@ class CopyVariant(_Closed):
     cta: Cta
 
 
+class LeftOut(_Closed):
+    """One thing the owner asked for that the copy dropped or rephrased to stay within the
+    platform's rules (shown on the approval screen; the owner can overrule it in the
+    brief). ``rule`` is a checklist id; code sets the rule's sentence and its source from
+    ``rules.RULES``."""
+
+    asked: str  # the owner's words
+    rule: str  # P1 … P9
+    source: str  # the policy page (code overrides it from the table)
+    instead: str  # the compliant phrasing the copy uses
+
+
 class CopyPack(_Closed):
     variants: list[CopyVariant]
     risks: list[str]
+    # Required in the strict schema the model gets; the default covers recordings made
+    # before the field existed (their free-text ``risks`` are shown as plain lines).
+    left_out: list[LeftOut] = Field(default_factory=list)
     # How many [FACT] placeholders the copy still holds. Required in the strict schema the
     # model gets; the default only covers recordings made before the field existed. The
     # copywriter raises it to its own count, so it is never lower than what code finds.
@@ -157,7 +174,10 @@ class CreativeSet(_Closed):
 class Finding(_Closed):
     rule: str
     evidence: str
-    severity: Severity
+    severity: Severity  # the level; code caps it by rule and channel (``rules.apply``)
+    # the Meta policy or spec URL (``muse:grounding`` for P10/S1); set by code from
+    # ``rules.RULES``. The default covers recordings made before the field existed.
+    source: str = ""
 
 
 class Review(_Closed):

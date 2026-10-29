@@ -21,7 +21,11 @@ def test_reviewer_metrics_from_the_recorded_reviews():
     assert m["n_bad"] == 20 and m["n_clean"] == 5
     assert m["p9_n"] == 5 and m["p9_final_blocked"] == 5
     assert m["clean_blocked"] == 0
-    assert m["final_flagged"] >= m["model_flagged"]
+    # code has the final say (``rules``): only the brand-name ads (P5) drop below the
+    # model's flag, because on Meta the Page name shows on every ad (a tip)
+    dropped = [r for r in m["rows"] if r["model_verdict"] != "OK" and r["final_verdict"] == "OK"]
+    assert {r["expect"] for r in dropped} <= {"P5"}
+    assert m["final_flagged"] >= m["model_flagged"] - len(dropped)
 
 
 def test_eval_report_states_the_headline_numbers():

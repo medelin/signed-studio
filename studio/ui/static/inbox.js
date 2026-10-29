@@ -53,6 +53,31 @@
     }
   }
 
+  // A7: Meta disapproved an ad. "Propose" asks for one compliant variant (copywriter +
+  // both reviewers) and a pending replacement; "sign" signs exactly that payload.
+  for (const card of document.querySelectorAll(".disapproved")) {
+    const st = card.querySelector(".status");
+    for (const btn of card.querySelectorAll("button[data-dp]")) {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          if (btn.dataset.dp === "sign") {
+            await signPending(card, btn.dataset.approval, T("dp_sign_label"));
+            return;
+          }
+          say(st, T("dp_proposing"));
+          const r = await Signer.postJSON("/api/disapprovals/" + encodeURIComponent(card.dataset.id) + "/propose", {});
+          if (!r.ok) throw new Error(T("dp_failed", { error: E(r.data, r.status) }));
+          if (r.data.status === "blocked") { say(st, T("dp_blocked"), true); btn.disabled = false; return; }
+          location.reload();
+        } catch (e) {
+          say(st, e.message, true);
+          btn.disabled = false;
+        }
+      });
+    }
+  }
+
   const sim = document.getElementById("simulate-form");
   if (sim) {
     sim.addEventListener("submit", async (ev) => {

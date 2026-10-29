@@ -194,6 +194,22 @@ class Adapter(Protocol):
     def pause(self, payload: Mapping[str, Any], approval: Verified) -> None:
         """``POST /{campaign_id} status=PAUSED`` from a signed ``campaign.update``."""
 
+    def ad_review(self, ad_id: str) -> dict[str, Any]:
+        """Read-only: ``GET /{ad_id}?fields=effective_status,ad_review_feedback,
+        issues_info``, parsed by ``review_of``."""
+
+    def upload_replacement_image(self, png: bytes, payload: Mapping[str, Any],
+                                 approval: Verified) -> str:
+        """``POST /act_{id}/adimages`` with the image a signed replacement names."""
+
+    def create_replacement_creative(self, image_hash: str, payload: Mapping[str, Any],
+                                    approval: Verified) -> str:
+        """``POST /act_{id}/adcreatives`` with the replacement's signed copy."""
+
+    def create_replacement_ad(self, creative_id: str, payload: Mapping[str, Any],
+                              approval: Verified) -> str:
+        """``POST /act_{id}/ads`` under the signed ad set, ``status=PAUSED``."""
+
 
 def activation_levels(payload: Mapping[str, Any]) -> list[str]:
     """``ad``, then every further ad the signed payload names (``ad_2`` …), then the ad
@@ -237,6 +253,69 @@ def update_of(payload: Mapping[str, Any], kind: str) -> tuple[str, Any]:
     if not isinstance(target, str) or not target:
         raise NotApproved("the signed update names no object")
     return target, value
+
+
+REPLACE: Final = "replace_creative"
+# kinds of creative a replacement can rebuild from the signed payload (a catalog template
+# or a dynamic-creative ad is changed in Ads Manager, not here)
+REPLACEABLE: Final = frozenset({"link", "lead_form", "message", "app", "event"})
+REVIEW_FIELDS: Final = "effective_status,ad_review_feedback,issues_info"
+DISAPPROVED: Final = "DISAPPROVED"
+
+
+def replacement_of(payload: Mapping[str, Any], page_id: str | None = None
+                   ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """``(creative payload, delivery)`` of a signed ``campaign.update`` that replaces a
+    disapproved ad's creative: a new creative from the signed ``ad`` copy and image, and a
+    new ad, PAUSED, under the signed ad set. The disapproved ad is not touched."""
+    change = payload.get("change")
+    if not isinstance(change, Mapping) or change.get("kind") != REPLACE:
+        raise NotApproved("the signed update is not a creative replacement")
+    if not isinstance(payload.get("adset_external_id"), str) or not payload[
+            "adset_external_id"]:
+        raise NotApproved("the signed replacement names no ad set")
+    ad = payload.get("ad")
+    image = payload.get("image")
+    if not isinstance(ad, Mapping) or not all(isinstance(ad.get(k), str) for k in (
+            "primary_text", "headline", "description", "cta")):
+        raise NotApproved("the signed replacement has no ad copy")
+    if not isinstance(image, Mapping) or not isinstance(image.get("sha256"), str):
+        raise NotApproved("the signed replacement has no approved image")
+    spec = delivery_of(payload, page_id)
+    if spec.get("creative", "link") not in REPLACEABLE:
+        raise NotApproved("this kind of ad cannot be replaced here")
+    creative = {"campaign": dict(payload.get("campaign") or {}), "ad": dict(ad),
+                "link": str(payload.get("link", ""))}
+    return creative, spec
+
+
+def review_of(body: Mapping[str, Any]) -> dict[str, Any]:
+    """An ad's review state from ``GET /{ad_id}?fields=effective_status,
+    ad_review_feedback,issues_info`` (Marketing API Ad reference; ``ad_review_feedback``
+    is the AdgroupReviewFeedback object: ``global`` maps a reason to its description for
+    all platforms, ``placement_specific`` the same per platform, e.g. ``facebook``;
+    ``issues_info`` lists delivery issues with ``error_code``, ``error_summary``,
+    ``error_message``, ``level``). Text is cut; unknown shapes are ignored."""
+    status = body.get("effective_status")
+    reasons: list[dict[str, str]] = []
+    feedback = body.get("ad_review_feedback")
+    if isinstance(feedback, Mapping):
+        for scope, value in [("global", feedback.get("global")),
+                             *(((f"placement:{k}", v) for k, v in
+                                (feedback.get("placement_specific") or {}).items())
+                               if isinstance(feedback.get("placement_specific"), Mapping)
+                               else [])]:
+            if isinstance(value, Mapping):
+                for key, text in list(value.items())[:10]:
+                    reasons.append({"key": str(key)[:120], "text": str(text)[:600],
+                                    "scope": str(scope)[:40]})
+    issues = []
+    for item in body.get("issues_info") or []:
+        if isinstance(item, Mapping):
+            issues.append({k: str(item.get(k, ""))[:400] for k in (
+                "error_code", "error_summary", "error_message", "level")})
+    return {"effective_status": str(status or "")[:40], "reasons": reasons[:20],
+            "issues": issues[:10]}
 
 
 def delivery_of(payload: Mapping[str, Any], page_id: str | None = None) -> dict[str, Any]:

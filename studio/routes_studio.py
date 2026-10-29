@@ -196,23 +196,34 @@ def store_draft(conn: Any, text: str, draft: brief_v1.BriefV1, run_id: str,
     return brief_id
 
 
+def owns(channel: str, account_id: str, owner: str | None) -> bool:
+    """A brief row's owner check: a WhatsApp brief only for the account it was sent for
+    (a verified number's account); other briefs are the studio's, as before."""
+    if channel != "whatsapp":
+        return True
+    return bool(owner) and bool(account_id) and secrets.compare_digest(account_id, owner or "")
+
+
 def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
                        currency: Callable[[], str],
                        google_currency: Callable[[], str | None] = lambda: None,
-                       untrusted: bool = False) -> Confirmation:
+                       untrusted: bool = False, owner: str | None = None) -> Confirmation:
     """Every check the UI's confirmation makes, in its order: a known unconfirmed draft,
     a valid Brief v1, one resolution per open question, every field valid in the ad
     account's currency (and the Google Ads account's when the brief chose Google Search).
     ``Refused`` (400/409/422/502) otherwise. ``untrusted`` runs the
-    brief as customer-grade text (as a voice transcript) whatever its row says."""
+    brief as customer-grade text (as a voice transcript) whatever its row says. A brief
+    sent from WhatsApp belongs to one account: only ``owner`` = that account may confirm
+    it (anyone else is told it does not exist)."""
     brief_id = body.get("brief_id")
     if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
         raise Refused(400, {"error": "invalid_brief_id"})
     with conn.lock:
-        row = conn.execute("SELECT source, run_id, draft_run_id FROM briefs WHERE id = ?",
-                           (brief_id,)).fetchone()
-    if row is None or not row[2] or row[1]:
+        row = conn.execute("SELECT source, run_id, draft_run_id, channel, account_id FROM "
+                           "briefs WHERE id = ?", (brief_id,)).fetchone()
+    if row is None or not row[2] or row[1] or not owns(row[3], row[4], owner):
         raise Refused(409, {"error": "unknown_draft"})
+    untrusted = untrusted or row[3] == "whatsapp"  # sent from a phone: customer-grade text
     try:
         draft = brief_v1.BriefV1.model_validate(body["brief_v1"])
     except ValidationError as exc:
@@ -310,6 +321,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     def logged_in(request: Request) -> bool:
         return app.state.sessions.check(request.cookies.get("studio_session")) is not None
 
+    def owner_of(request: Request) -> str | None:
+        """The signed-in account's id (None for a visitor)."""
+        account_of = getattr(app.state.sessions, "account_of", None)
+        account = account_of(request.cookies.get("studio_session")) if account_of else None
+        return account.id if account is not None else None
+
     def clients() -> tuple[MuseClient, OpenWeightsClient]:
         if settings.replay and app.state.muse is None:
             app.state.muse, app.state.open_weights = replay_clients(settings, ledger)
@@ -318,6 +335,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if app.state.open_weights is None:
             app.state.open_weights = OpenWeightsClient.from_settings(settings, ledger)
         return app.state.muse, app.state.open_weights
+
+    app.state.clients = clients  # the disapproval flow (routes_meta) uses the same clients
 
     app.state.clients = clients
 
@@ -393,8 +412,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "open_weights_unavailable"}, 503)
         return on
 
-    def confirm_and_start(body: dict[str, Any], *, agent: str = "owner",
-                          untrusted: bool = False) -> Response:
+    def confirm_and_start(body: dict[str, Any], owner: str | None = None, *,
+                          agent: str = "owner", untrusted: bool = False) -> Response:
         """Confirm a drafted Brief v1 (every open question answered or struck, every field
         valid) and start its run; the ``brief.confirmed`` receipt, the brief row and the
         run state commit together. ``agent``/``untrusted``: the assistants API
@@ -403,7 +422,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             c = check_confirmation(conn, body, ceiling=settings.max_daily_budget,
                                    currency=account_currency,
                                    google_currency=google_account_currency,
-                                   untrusted=untrusted)
+                                   untrusted=untrusted, owner=owner)
         except Refused as exc:
             return JSONResponse(exc.body, exc.status)
         if app.state.muse is None and not settings.model_available:
@@ -454,9 +473,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
                 return JSONResponse({"error": "invalid_brief_id"}, 400)
             with conn.lock:
-                row = conn.execute("SELECT source, run_id FROM briefs WHERE id = ?",
-                                   (brief_id,)).fetchone()
-            if row is None or row[0] != "voice" or row[1]:
+                row = conn.execute("SELECT source, run_id, channel, account_id FROM briefs "
+                                   "WHERE id = ?", (brief_id,)).fetchone()
+            if row is None or row[0] != "voice" or row[1] or \
+                    not owns(row[2], row[3], owner_of(request)):
                 return JSONResponse({"error": "unknown_voice_brief"}, 409)
             source = "transcript"
         if app.state.muse is None and not settings.model_available:
@@ -484,6 +504,36 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "google_currency": draft_google_currency(),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 
+    @app.get("/api/briefs/{brief_id}")
+    def stored_draft(brief_id: str, request: Request) -> Response:
+        """A stored, unconfirmed Brief v1 draft (one sent from WhatsApp opens this way:
+        ``/studio?brief=<id>``), in the shape ``POST /api/briefs/draft`` answers."""
+        owner = owner_of(request)
+        if not logged_in(request) or owner is None:
+            return JSONResponse({"error": "login_required"}, 401)
+        if not BRIEF_ID.fullmatch(brief_id):
+            return JSONResponse({"error": "not_found"}, 404)
+        with conn.lock:
+            row = conn.execute("SELECT draft, draft_run_id, run_id, source, channel, "
+                               "account_id FROM briefs WHERE id = ?", (brief_id,)).fetchone()
+        # only a draft stored for this account (a WhatsApp brief); never another's
+        if row is None or not row[0] or row[2] or row[4] != "whatsapp" or \
+                not owns(row[4], row[5], owner):
+            return JSONResponse({"error": "not_found"}, 404)
+        stored = {k: v for k, v in json.loads(row[0]).items() if k != "schema"}
+        draft = brief_v1.BriefV1.model_validate(stored)
+        source = "transcript" if row[3] == "voice" or row[4] == "whatsapp" else "operator"
+        return JSONResponse({
+            "brief_id": brief_id, "draft_run_id": row[1], "source": source,
+            "channel": row[4], "brief": draft.model_dump(mode="json"),
+            "problems": brief_v1.problems(draft, confirmed=False,
+                                          ceiling_daily=settings.max_daily_budget,
+                                          currency=account_currency()),
+            "ceiling": settings.max_daily_budget, "currency": account_currency(),
+            "google_currency": draft_google_currency(),
+            "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(row[1])), 6)},
+            headers={"Cache-Control": "no-store"})
+
     @app.post("/api/runs")
     async def start_run(request: Request) -> Response:
         guard = write_guard(request)
@@ -497,7 +547,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 raise ValueError
         except (ValueError, KeyError, TypeError):
             if isinstance(body, dict) and "brief_v1" in body:
-                return await run_in_threadpool(confirm_and_start, body)
+                return await run_in_threadpool(confirm_and_start, body, owner_of(request))
             return JSONResponse({"error": "invalid_brief"}, 400)
         brief = brief.strip()
         if len(brief) > producer.MAX_BRIEF:
@@ -509,9 +559,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             if not isinstance(brief_id, str) or not BRIEF_ID.fullmatch(brief_id):
                 return JSONResponse({"error": "invalid_brief_id"}, 400)
             with conn.lock:
-                row = conn.execute("SELECT source, run_id FROM briefs WHERE id = ?",
-                                   (brief_id,)).fetchone()
-            if row is None or row[0] != "voice" or row[1]:
+                row = conn.execute("SELECT source, run_id, channel, account_id FROM briefs "
+                                   "WHERE id = ?", (brief_id,)).fetchone()
+            if row is None or row[0] != "voice" or row[1] or \
+                    not owns(row[2], row[3], owner_of(request)):
                 return JSONResponse({"error": "unknown_voice_brief"}, 409)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
