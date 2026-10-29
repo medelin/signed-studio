@@ -118,6 +118,16 @@ EN: dict[str, str] = {
     "studio.copy": "3 · Copy variants", "studio.no_copy": "No copy yet.",
     "studio.images": "4 · Creatives (SAM 3.1 cut-out → Muse Image)",
     "studio.no_images": "No images yet.",
+    "studio.loop": "Reviewer → rewrite loop",
+    "loop.mark_blocked": "BLOCK ({rules}) → rewrite",
+    "loop.mark_rewrite": "rewrite after BLOCK",
+    "loop.mark_after": "second review: {verdict}",
+    "js.loop_banner": "Reviewers BLOCKED variant {n} (rule {rules}) → copywriter rewrote → "
+                      "{verdict}",
+    "js.loop_banner_wait": "Reviewers BLOCKED variant {n} (rule {rules}) → copywriter rewrote → "
+                           "second review pending",
+    "js.loop_before": "Blocked version", "js.loop_after": "Rewritten version",
+    "js.loop_finding": "{rule}: {evidence}",
     "studio.reviews": "5 · Reviews", "studio.no_review": "No review yet.",
     "studio.approve": "6 · Approve and sign",
     "studio.approve_lead": "You sign the exact bytes below with a key that never leaves this "
@@ -535,6 +545,16 @@ PL: dict[str, str] = {
     "studio.copy": "3 · Warianty tekstu", "studio.no_copy": "Nie ma jeszcze tekstów.",
     "studio.images": "4 · Kreacje (wycięcie SAM 3.1 → Muse Image)",
     "studio.no_images": "Nie ma jeszcze obrazów.",
+    "studio.loop": "Pętla recenzent → przepisanie",
+    "loop.mark_blocked": "BLOCK ({rules}) → przepisanie",
+    "loop.mark_rewrite": "przepisanie po BLOCK",
+    "loop.mark_after": "druga recenzja: {verdict}",
+    "js.loop_banner": "Recenzenci ZABLOKOWALI wariant {n} (reguła {rules}) → copywriter "
+                      "przepisał → {verdict}",
+    "js.loop_banner_wait": "Recenzenci ZABLOKOWALI wariant {n} (reguła {rules}) → copywriter "
+                           "przepisał → druga recenzja w toku",
+    "js.loop_before": "Wersja zablokowana", "js.loop_after": "Wersja przepisana",
+    "js.loop_finding": "{rule}: {evidence}",
     "studio.reviews": "5 · Recenzje", "studio.no_review": "Nie ma jeszcze recenzji.",
     "studio.approve": "6 · Zatwierdź i podpisz",
     "studio.approve_lead": "Podpisujesz dokładnie te bajty kluczem, który nigdy nie opuszcza "

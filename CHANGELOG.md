@@ -30,6 +30,13 @@
 - UI: each image gets a "Show SAM mask" toggle (`aria-pressed`) over a server-made RGBA overlay `<placement>_mask.png` (product blue, people red, ≤ 512 px, stretched to the image, never wider than it) and a line with the numbers; EN and PL.
 - 9:16 story: the headline was tiny under a large empty top band. The story prompt now asks for letters about 6 % of the image height spanning 70–85 % of the width, at most two lines, just below the top 14 % (Stories UI), bottom 20 % free of text, product framed large; the feed and card prompts are unchanged.
 - The `demo` replay set is re-recorded with the check; the other sets replay unchanged and show "not recorded". Tests: `tests/test_sam_check.py` (metric, findings by case, area bounds per placement, normalisation, receipt, the recorded SAM stream end to end, degraded paths, replay route, story prompt, i18n parity, overlay CSS); cassette tests that predate the check mark it unrecorded.
+## 2026-10-29 — the reviewer → rewrite loop, visible
+
+- The loop is now code, not only a line in the producer prompt: after a BLOCK review `run_copywriter` sends the blocking findings (rule and evidence, both reviewers, every format and A/B variant) to the copywriter (`REWRITE_RULE`: no blocked claim, not even reworded), keeps the blocked variant and records `rewrites[]` in the run state (`variant_index`, `findings`, `before`, `after`, `after_verdict`). One rewrite per run (`producer.MAX_REWRITES`); a second is refused. `producer.md` tells the producer to rewrite once, then art director and reviewers again.
+- Studio screen: a "Reviewer → rewrite loop" panel (banner "Reviewers BLOCKED variant 1 (rule P8) → copywriter rewrote → WARN", the findings, blocked text struck through beside the rewrite; one column at 320 px). Receipts page: badges on the BLOCK review, the rewriting copywriter call and the second review (`routes_receipts.loop_marks`). EN and PL.
+- No `block` replay set: the live copywriter never produced a copy the reviewers blocked (7 full recordings and 6 copywriter probes with owner-confirmed health, weight, guaranteed-profit claims, mandatory disclaimers, propositions; it drops every such claim and lists it under `risks`). A seeded recording was built and removed. Tests use fakes (`tests/test_rewrite_loop.py`).
+- Live spend on the attempts: about $1.25.
+
 
 ## 2026-10-29 — pixel check before signing
 

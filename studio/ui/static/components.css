@@ -247,3 +247,10 @@ button.danger { background: var(--signal); color: var(--signal-ink); }
 .delete-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem); gap: 1.25rem; align-items: start; }
 .delete-body figure { margin: 0; }
 @media (max-width: 760px) { .account-head, .delete-body { grid-template-columns: 1fr; } .account-art { max-width: 14rem; } }
+
+/* reviewer -> rewrite loop: old text struck through, new text beside it (stacked on a phone) */
+.loop-banner { font-weight: 600; overflow-wrap: anywhere; }
+.loop-findings { overflow-wrap: anywhere; }
+.loop-pair { display: flex; flex-wrap: wrap; gap: var(--space-3, 12px); }
+.loop-pair .loop-card { flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.loop-old .struck { text-decoration: line-through; opacity: .7; }

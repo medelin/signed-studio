@@ -64,6 +64,8 @@ MAX_BRIEF_V1 = 8000  # a rendered Brief v1 (``brief.render``)
 MAX_CALLS_PER_TURN = 4
 # Per-run caps on the expensive tools (each art director call is a SAM + 3 image series,
 # each review is one or two vision calls per format).
+# the pass after a BLOCK is one rewrite (``MAX_REWRITES``), then a second look
+MAX_REWRITES = 1
 TOOL_LIMITS = {"run_art_director": 2, "run_reviewers": 2}
 
 
@@ -139,6 +141,9 @@ class RunResult:
     summary: str = ""
     reasoning: list[str] = field(default_factory=list)
     open_weights: bool = False  # the run's copywriter ran on Muse Spark Open
+    # the BLOCK -> rewrite loop: one entry per rewrite (what was blocked and why, the
+    # blocked variant, the rewritten one and the verdict of the second review)
+    rewrites: list[dict[str, Any]] = field(default_factory=list)
 
     def state(self) -> dict[str, Any]:
         return {
@@ -151,6 +156,7 @@ class RunResult:
             "angle_index": self.angle_index, "steps": self.steps,
             "cost_usd": round(self.cost_usd, 6), "summary": self.summary,
             "reasoning": self.reasoning[-5:], "open_weights": self.open_weights,
+            "rewrites": self.rewrites,
         }
 
 
@@ -465,6 +471,22 @@ def _headline_key(text: str) -> str:
     return "".join(ch for ch in text.casefold() if ch.isalnum())
 
 
+def blocking_findings(review: dict[str, Any]) -> list[dict[str, str]]:
+    """The ``block`` findings of a review (both reviewers, every format, every A/B
+    variant), one per rule and evidence."""
+    out: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for part in [review, *review.get("ab", [])]:
+        for fmt in part.get("formats", []):
+            for who in ("primary", "second"):
+                for f in (fmt.get(who) or {}).get("findings", []):
+                    key = (f["rule"], f["evidence"])
+                    if f["severity"] == "block" and key not in seen:
+                        seen.add(key)
+                        out.append({"rule": f["rule"], "evidence": f["evidence"]})
+    return out
+
+
 def _handlers(ctx: Context, run: RunResult, brief: str,
               max_cost_usd: float = MAX_COST_USD) -> dict[str, Any]:
     def emit(kind: str, **data: Any) -> None:
@@ -480,6 +502,18 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
 
     def run_copywriter(args: CopywriterArgs) -> dict[str, Any]:
         assert run.plan
+        # a BLOCK review is the only reason to write copy again: the findings go to the
+        # copywriter and the blocked variant is kept for the studio to show
+        blocked: list[dict[str, str]] = []
+        before: dict[str, Any] | None = None
+        before_index = 0
+        if run.review is not None and run.review["verdict"] == "BLOCK" and run.copy:
+            blocked = blocking_findings(run.review)
+            before_index = run.review["variant_index"]
+            before = run.copy.variants[before_index].model_dump()
+            if blocked and len(run.rewrites) >= MAX_REWRITES:
+                raise ToolError("the copy was already rewritten once after a BLOCK; "
+                                "do not request approval, report what the reviewers found")
         new_content()
         if not 0 <= args.angle_index < len(run.plan.angles):
             raise ToolError("angle_index must be 0, 1 or 2")
@@ -489,8 +523,12 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
             writer, angle, angle.persona, run_id=run.run_id, brief=brief,
             brief_source=ctx.brief_source,
             facts=ctx.brief_v1.confirmed_facts if ctx.brief_v1 is not None else None,
-            open_weights=ctx.open_weights)
+            open_weights=ctx.open_weights,
+            blocked=blocked or None)
         run.angle_index = args.angle_index
+        if before is not None and blocked:
+            run.rewrites.append({"variant_index": before_index, "findings": blocked,
+                                 "before": before, "after": None, "after_verdict": ""})
         emit("copy")
         return {"variants": [v.model_dump() for v in run.copy.variants],
                 "risks": run.copy.risks}
@@ -561,6 +599,9 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                       "ab": ab, "variant_index": args.variant_index,
                       "binding": review_binding(run, args.variant_index,
                                                 [x["variant_index"] for x in ab])}
+        if run.rewrites and not run.rewrites[-1]["after_verdict"]:
+            run.rewrites[-1].update(after=run.copy.variants[args.variant_index].model_dump(),
+                                    after_verdict=worst)
         emit("review")
         return {"verdict": result["verdict"], "second_opinion": result["second_opinion"],
                 "disagreements": result["disagreements"],

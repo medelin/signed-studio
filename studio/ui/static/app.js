@@ -190,6 +190,37 @@ function renderReview(review) {
   }
 }
 
+// The reviewer -> rewrite loop: what was blocked and why, the old text struck through, the
+// rewritten text and the verdict of the second review.
+function loopVariant(title, v, struck) {
+  const card = el("article", null, "card loop-card" + (struck ? " loop-old" : " loop-new"));
+  card.append(el("h4", title));
+  const body = el("div", null, struck ? "struck" : "");
+  body.append(el("p", v.headline, "loop-headline"), el("p", v.primary_text), el("p", v.description, "hint"));
+  card.append(body);
+  return card;
+}
+
+function renderLoop(rewrites) {
+  const panel = $("loop-panel");
+  const box = $("loop");
+  panel.hidden = !(rewrites && rewrites.length);
+  box.replaceChildren();
+  for (const rw of rewrites || []) {
+    const rules = [...new Set(rw.findings.map((f) => f.rule))].join(", ");
+    const args = { n: rw.variant_index + 1, rules: rules, verdict: rw.after_verdict };
+    const banner = el("p", T(rw.after_verdict ? "loop_banner" : "loop_banner_wait", args), "loop-banner");
+    box.append(banner);
+    const ul = el("ul", null, "loop-findings");
+    for (const f of rw.findings) ul.append(el("li", T("loop_finding", { rule: f.rule, evidence: f.evidence })));
+    box.append(ul);
+    const pair = el("div", null, "loop-pair");
+    pair.append(loopVariant(T("loop_before"), rw.before, true));
+    if (rw.after) pair.append(loopVariant(T("loop_after"), rw.after, false));
+    box.append(pair);
+  }
+}
+
 function addReceipt(r) {
   const tr = el("tr");
   const what = r.tool ? r.tool + (r.status ? " · " + r.status : "") : (r.model || "—");
@@ -211,6 +242,7 @@ function renderState(runId, st, state) {
   renderCopy(state.copy, state.review ? state.review.variant_index : -1);
   renderImages(runId, state.creatives);
   renderReview(state.review);
+  renderLoop(state.rewrites);
   if (state.pending_id && state.pending_id !== shownPending && st === "awaiting_approval") {
     shownPending = state.pending_id;
     showApproval(state.pending_id);
