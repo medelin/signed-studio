@@ -7,6 +7,9 @@
    (``store=true``: its response id anchors the series); every further placement is an
    ``/images/edits`` call given the cut-out *and* the first image, so the product, palette
    and light stay the same across 1:1, 4:5 and 9:16.
+4. ``sam.check`` runs SAM 3.1 on every image it drew (product and ``person``): area,
+   edges and the silhouette IoU against the cut-out, plus a mask overlay PNG; the
+   reviewer turns them into rules S1 (product fidelity) and S2 (no people).
 
 Optional formats from a confirmed Brief v1: ``carousel_cards`` (2-10) more renders as the
 cards of a carousel ad (``card_1`` …, each an ``/images/edits`` call with the cut-out and
@@ -27,9 +30,15 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict
 
 from studio.agents import prompts, video
-from studio.agents.schemas import PLACEMENT_SIZES, CreativeImage, CreativeSet, VideoClip
+from studio.agents.schemas import (
+    PLACEMENT_SIZES,
+    CreativeImage,
+    CreativeSet,
+    SamCheck,
+    VideoClip,
+)
 from studio.muse import image, sam
-from studio.muse.client import MuseClient
+from studio.muse.client import MuseClient, MuseError
 from studio.muse.structured import structured
 from studio.pii import choose_tier
 from studio.receipts import is_opaque, sha256_hex
@@ -43,6 +52,16 @@ IMAGE_COST_USD = 0.01  # Muse Image price per generated image (see muse.image)
 RESPONSES_SIZES = frozenset({"1024x1024"})
 CARD_SIZE = "1024x1024"
 CARD_PX = 1080  # the carousel guide's recommended card size
+# A 9:16 story is seen full-screen on a phone: a "small" headline came out unreadable
+# under a large empty top band. Size and place it for a phone, clear of the Stories UI
+# (top 14 % and bottom 20 % of the frame), and fill the frame with the scene.
+STORY_TEXT = ("large and bold enough to read on a phone at arm's length: letters about "
+              "6 % of the image height (about 110 px of 1920), the line spanning 70-85 % of "
+              "the width, at most two lines, in the upper third just below the top 14 % of "
+              "the frame and above the product. Keep the bottom 20 % free of text. Frame "
+              "the product large in the middle of the image so there is no empty band at "
+              "the top. ")
+SAM_CHECK_USD = sam.CALLS_PER_CHECK * 0.0025  # product + person, $2.50 per 1k images
 
 
 def card_prompt(scene: str, headline: str, i: int, n: int) -> str:
@@ -111,8 +130,9 @@ def placement_prompt(scene: str, headline: str, placement: str, first: bool) -> 
         keep += (" The second image is the first ad of this series: match its scene, "
                  "palette, light and typography, recomposed for this format.")
     return (f"{keep}\nScene: {scene}\nFormat: {placement} ({PLACEMENT_SIZES[placement]}). "
-            f'Text in the image: only the headline "{headline}", small, with clear margins. '
-            "No other words, brand names or logos. No people, no faces.")
+            f'Text in the image: only the headline "{headline}", '
+            + (STORY_TEXT if placement == "story_9x16" else "small, with clear margins. ")
+            + "No other words, brand names or logos. No people, no faces.")
 
 
 def run(
@@ -170,6 +190,9 @@ def run(
             placement=placement, size=size, path=str(path.relative_to(data_dir)),
             sha256=sha256_hex(out.png), width=out.width, height=out.height,
             response_id=out.result.response_id,
+            sam_check=sam_check(client, out.png, cut.crop_png, concept, placement=placement,
+                                out_dir=out_dir, data_dir=data_dir, run_id=run_id,
+                                can_spend=can_spend),
         ))
     assert first_png is not None
     cards: list[str] = []
@@ -188,7 +211,10 @@ def run(
         images.append(CreativeImage(
             placement=name, size=f"{CARD_PX}x{CARD_PX}", path=str(path.relative_to(data_dir)),
             sha256=sha256_hex(png), width=CARD_PX, height=CARD_PX,
-            response_id=out.result.response_id))
+            response_id=out.result.response_id,
+            sam_check=sam_check(client, png, cut.crop_png, concept, placement=name,
+                                out_dir=out_dir, data_dir=data_dir, run_id=run_id,
+                                can_spend=can_spend)))
     clip = None
     if with_video:
         clip = _video(client, headline, images, out_dir, data_dir, run_id)
@@ -199,6 +225,41 @@ def run(
         prompts=used_prompts, response_ids=[im.response_id for im in images],
         cards=cards, video=clip[0] if clip else None,
     )
+
+
+def sam_check(
+    client: MuseClient, png: bytes, cutout_png: bytes, concept: str, *, placement: str,
+    out_dir: Path, data_dir: Path, run_id: str,
+    can_spend: Callable[[float], bool] | None = None,
+) -> SamCheck:
+    """SAM 3.1 on a generated image (``sam.check``); the mask overlay goes next to it as
+    ``<placement>_mask.png``. Never fails the run: a set recorded before the check is
+    ``not_recorded``, the run budget ``skipped``, a SAM error ``failed`` (the reviewer
+    turns each into a finding)."""
+    status, error = "", ""
+    if sam.CHECK_TOOL in getattr(client, "unrecorded", frozenset()):
+        status = "not_recorded"
+    elif can_spend is not None and not can_spend(SAM_CHECK_USD):
+        status = "skipped"
+    else:
+        try:
+            found = sam.check(client, png, cutout_png, concept, run_id=run_id,
+                              placement=placement, agent=AGENT)
+        except (MuseError, ValueError) as exc:  # ValueError: an image the API cannot take
+            status, error = "failed", getattr(exc, "code", "") or type(exc).__name__
+        else:
+            path = out_dir / f"{placement}_mask.png"
+            path.write_bytes(found.overlay_png)
+            return SamCheck(status="ok", matches=found.matches, area=found.area,
+                            box=list(found.box), edges=found.edges, iou=found.iou,
+                            mirrored=found.mirrored, people=found.people,
+                            people_area=found.people_area,
+                            overlay=str(path.relative_to(data_dir)),
+                            overlay_sha256=sha256_hex(found.overlay_png),
+                            receipt_id=found.receipt_id)
+    sam.check_not_run(client, png, run_id=run_id, placement=placement, status=status,
+                      agent=AGENT, error=error)
+    return SamCheck(status=status, error=error)  # type: ignore[arg-type]
 
 
 def _video(client: MuseClient, headline: str, images: list[CreativeImage], out_dir: Path,

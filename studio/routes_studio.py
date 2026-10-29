@@ -66,8 +66,10 @@ RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,40}")
 APPROVER = re.compile(r"ed25519:[0-9a-f]{32}")
 SIGNATURE = re.compile(r"[0-9a-f]{128}")
 BRIEF_ID = re.compile(r"b_[0-9a-f]{16}")
-ASSET_NAMES = frozenset({"feed_1x1", "feed_4x5", "story_9x16", "cutout", "video_9x16",
-                         *(f"card_{i}" for i in range(1, 11))})
+_CREATIVE_NAMES = ("feed_1x1", "feed_4x5", "story_9x16", *(f"card_{i}" for i in range(1, 11)))
+# every creative, its SAM mask overlay (``<name>_mask``), the cut-out and the video poster
+ASSET_NAMES = frozenset({*_CREATIVE_NAMES, *(f"{n}_mask" for n in _CREATIVE_NAMES),
+                         "cutout", "video_9x16"})
 VOICE_TYPES = frozenset({"audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", "audio/wave",
                          "audio/mp4", "audio/mpeg", "audio/aac"})
 SSE_POLL_S = 0.5
@@ -800,8 +802,14 @@ def replay_clients(settings: Settings, ledger: Ledger, transport: Any = None,
     muse = MuseClient("replay", settings.model_api_base_url, ledger=ledger, budget=None,
                       read_only=settings.read_only, transport=tr)
     muse.provider = f"{MuseClient.provider}-replay"
+    data = replay.load_set(settings.replay_set, root)
+    # a set recorded before the SAM check of the generated images has no answers for
+    # it: the check is then "not recorded" instead of a replay miss
+    from studio.muse import sam
+    if not replay.has_purpose(data, sam.CHECK_TOOL):
+        muse.unrecorded = frozenset({sam.CHECK_TOOL})
     has_open = any("baseten" in str(i.get("route", ""))
-                   for i in replay.load_set(settings.replay_set, root).get("interactions", []))
+                   for i in data.get("interactions", []))
     ow = OpenWeightsClient("replay" if has_open else "", ledger=ledger,
                            read_only=settings.read_only, transport=tr)
     ow.provider = f"{OpenWeightsClient.provider}-replay"

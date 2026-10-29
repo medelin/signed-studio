@@ -19,6 +19,7 @@ def flow(tmp_path_factory):
     data_dir = tmp_path_factory.mktemp("data")
     ledger = Ledger()
     client = MuseClient(FAKE_KEY, ledger=ledger, budget=Budget(1.0))
+    client.unrecorded = frozenset({"sam.check"})  # cassette recorded before sam.check
     with respx.mock() as router:
         sent = mount(router, "image_series", BASE_URL)
         cs = art_director.run(client, PHOTO, "A Mug for Slow Mornings", run_id="run-art",
@@ -67,6 +68,7 @@ def test_three_images_cost_three_cents(flow):
 
 def test_unknown_placement_refused(tmp_path):
     client = MuseClient(FAKE_KEY, ledger=Ledger())
+    client.unrecorded = frozenset({"sam.check"})  # cassette recorded before sam.check
     with pytest.raises(ValueError):
         art_director.run(client, PHOTO, "x", run_id="r", concept="mug", data_dir=tmp_path,
                          placements=("billboard",))

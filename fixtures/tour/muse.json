@@ -5,7 +5,7 @@
  "recorded": "2026-10-28",
  "lang": "pl",
  "recorded_cost_usd": 0.164243,
- "run_id": "run_ca8480c679b4305f",
+ "run_id": "run_200453082171bf85",
  "run_cost_usd": 0.106931,
  "brief": {
   "text": "Muse Studio Lite to darmowe narzędzie open source dla jednoosobowych firm. Z jednego briefu robi plan kampanii, 3 warianty tekstu, grafiki i 2 niezależne recenzje zgodności, a nic nie trafia do reklam bez twojego podpisu. Kod jest otwarty, na licencji Apache 2.0. Chcemy ruchu do piaskownicy na https://muse.udun.eu. Dla osób prowadzących jednoosobową działalność w Polsce, 25-55 lat. Budżet 6 GBP dziennie przez 7 dni, od 4 do 10 listopada 2026. Rzeczowo i spokojnie, bez obietnic zysku. Reklama po polsku. Nie wymieniajcie nazwy żadnej firmy.",
@@ -239,13 +239,24 @@
        "rule": "P5",
        "evidence": "Primary text 'Z jednego briefu: plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności.', Headline 'Jeden brief. Spokojny plan', Description 'Plan, teksty i grafiki w jednym' and image text 'Jeden brief. Spokojny plan' contain no brand name; required advertiser name 'Muse Studio Lite' is absent.",
        "severity": "warn"
+      },
+      {
+       "rule": "S1",
+       "evidence": "code check (SAM 3.1): not recorded in this replay set",
+       "severity": "info"
       }
      ],
      "summary": "Copy claims match brief facts 2; no P1-P4, P6-P9 or P10 banned-claim issues found. Only issue is missing required brand name Muse Studio Lite in copy and image."
     },
     "second": {
      "verdict": "OK",
-     "findings": [],
+     "findings": [
+      {
+       "rule": "S1",
+       "evidence": "code check (SAM 3.1): not recorded in this replay set",
+       "severity": "info"
+      }
+     ],
      "summary": "Primary text claim 'Z jednego briefu: plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności' is directly supported by confirmed fact #2. Headline and image text 'Jeden brief. Spokojny plan' aligns with proposition. No price, guarantee, availability or profit promises present; no banned claim 'obietnice zysku'. No P1-P9 violations detected."
     }
    },
@@ -264,6 +275,11 @@
        "rule": "F1",
        "evidence": "Instagram Reels: primary_text is 83 characters, recommended length 44 — shown as 'Z jednego briefu: plan kampanii, 3 warianty '… (https://www.facebook.com/business/ads-guide/update/image/instagram-reels, retrieved 2026-10-28)",
        "severity": "warn"
+      },
+      {
+       "rule": "S1",
+       "evidence": "code check (SAM 3.1): not recorded in this replay set",
+       "severity": "info"
       }
      ],
      "summary": "Ad copy and image match confirmed Brief v1 facts (plan, 3 text variants, graphics, 2 reviews from one brief) with no price, guarantee, profit promise or prohibited content. No P1-P9 violations found."
@@ -280,6 +296,11 @@
        "rule": "F1",
        "evidence": "Instagram Reels: primary_text is 83 characters, recommended length 44 — shown as 'Z jednego briefu: plan kampanii, 3 warianty '… (https://www.facebook.com/business/ads-guide/update/image/instagram-reels, retrieved 2026-10-28)",
        "severity": "warn"
+      },
+      {
+       "rule": "S1",
+       "evidence": "code check (SAM 3.1): not recorded in this replay set",
+       "severity": "info"
       }
      ],
      "summary": "P10 grounding OK: claim 'plan kampanii, 3 warianty tekstu, grafiki i 2 recenzje zgodności z jednego briefu' is fully supported by confirmed fact #2 and proposition; no banned profit promises detected. P1-P4, P6-P9 no violations. P5 WARN: advertiser name Muse Studio Lite required by brief_facts does not appear in copy or image."
@@ -292,12 +313,12 @@
  "approval": {
   "fields": {
    "action": "campaign.create",
-   "item_id": "cmp_94119838d97eebca",
-   "content_sha256": "3d0ff2ec5716eafae2f87fb601ca0089ecec69db201a232f130d0366aec4fb53",
-   "chain_head": "173c03af6524c34bd584189fb8801c75842bd5d803c134cceb803f3da868d030",
-   "approver": "ed25519:851d810c6056bd36d9c72ac86431365b",
-   "nonce": "n_f6d139bdafe7d1813fee0ce9ab502df7",
-   "ts": 1793274852,
+   "item_id": "cmp_e0d7a97b228e37f7",
+   "content_sha256": "09f87db91da41623c12635769e5048a901d2fab2696560750fce8b8cc19f463a",
+   "chain_head": "a57af6a4f8409e2fb56ab35c20b56b92b2dcc3a9dc03313b970050099fe1128f",
+   "approver": "ed25519:2fbfb6dc26f3cbcc37556acd82d2ba62",
+   "nonce": "n_f02cfce16bf59be200fd491c2bb1f100",
+   "ts": 1793275803,
    "brief_sha256": "605f9a8fdf7a1fc371c3df18c8443066bf88f4ac8435581b4b0d34554c9c57b2",
    "spec_sha256": "1518edb66a861e6980272ca454e4a31a4aaf4c8726e05b68bece494a4b44f960"
   },
@@ -395,7 +416,7 @@
     "P3 Unrealistic promises - brak obietnic zysku; kopia ogranicza się do potwierdzonych funkcji z faktów 2-4",
     "P1 Personal attributes - kopia nie stwierdza ani nie sugeruje cech osobistych odbiorcy"
    ],
-   "run_id": "run_ca8480c679b4305f",
+   "run_id": "run_200453082171bf85",
    "targeting": {
     "age_max": 65,
     "age_min": 25,
@@ -416,8 +437,8 @@
     }
    }
   },
-  "content_sha256": "3d0ff2ec5716eafae2f87fb601ca0089ecec69db201a232f130d0366aec4fb53",
-  "expires_ts": 1793275752
+  "content_sha256": "09f87db91da41623c12635769e5048a901d2fab2696560750fce8b8cc19f463a",
+  "expires_ts": 1793276703
  },
  "receipts": [
   {
@@ -427,13 +448,15 @@
    "details": {
     "endpoint": "chat.completions",
     "finish": "stop",
+    "model_family": "muse-spark",
     "reasoning_tokens": 2580,
-    "response_id": "chatcmpl-01a1821c-0034-740e-8af2-817f6901390f"
+    "response_id": "chatcmpl-01a1821c-0034-740e-8af2-817f6901390f",
+    "weights": "hosted"
    },
-   "duration_ms": 6,
+   "duration_ms": 1,
    "envelope": false,
-   "hash": "33d093417006ba54cab42c5b402974f5d46f48051918dfbbca038f7adbd7dafa",
-   "id": "14387dca6578488d888ca6cf7055b795",
+   "hash": "65eeac54f3a09eb6d118888c63ab67f8ba437f61dec0335eab132b13c8560c24",
+   "id": "80b32cf4525f453cad047ba286c56d81",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
@@ -441,13 +464,13 @@
    "prev": "0000000000000000000000000000000000000000000000000000000000000000",
    "prompt_sha256": "480d0f50562426b184828b02b6158fa6330f93668e4670fefb75e377a7fdfe3e",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "1dd050b2108659e110eec36fea3013a5f5e986bfc4d0df841345eb873f561e4bb0ca667a2dd0789bec26c61e23be226406cd91823f685870eba7c384200add0f",
+   "run_id": "run_200453082171bf85",
+   "sig": "35cfad83fe3a346a16ac5e6078013a7530d253351068ac699068f760c5763d942fdf65b40cc24462bf2994e4afd2688122412ca9e8a6bc558e6d21851055920e",
    "tier": "standard",
    "tier_reason": "brief draft from the owner's text",
    "tokens_in": 2381,
    "tokens_out": 3339,
-   "ts": 1793274839.9794946
+   "ts": 1793275794.0883904
   },
   {
    "agent": "owner",
@@ -464,22 +487,22 @@
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "2c7e067deef83ad226852ed4bab69e3e137a5d204d29cc63b0edbae384f42693",
-   "id": "8f49e77911a44ad187c105364e69011f",
+   "hash": "b5371e8d62ad28bc7d275faa9e4831516763674c2d1ea963deb8f259ae10ee89",
+   "id": "ce3f6aef105b44d284e5439bdc148b09",
    "input_sha256": [],
    "kind": "brief.confirmed",
    "model": "",
    "output_sha256": "605f9a8fdf7a1fc371c3df18c8443066bf88f4ac8435581b4b0d34554c9c57b2",
-   "prev": "33d093417006ba54cab42c5b402974f5d46f48051918dfbbca038f7adbd7dafa",
+   "prev": "65eeac54f3a09eb6d118888c63ab67f8ba437f61dec0335eab132b13c8560c24",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "7aa5c0098a9fac3e29b7026ee573adf2a69ddacc0c85f4797d3da2c145e08bdc0eb2318fdc26b35b3ac33cb2faa60345376d445ceb5813266487534956aebe0e",
+   "run_id": "run_200453082171bf85",
+   "sig": "7df12351d4ba063a3ae876db7710ade350476416533c0e6728810f81bd5d5a3145e00a159bf34dcb7acdee739b52c47a03ec111d8e10cd6df4c011f4557c530b",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274839.995139
+   "ts": 1793275794.0935957
   },
   {
    "agent": "producer",
@@ -488,27 +511,29 @@
    "details": {
     "endpoint": "chat.completions",
     "finish": "stop",
+    "model_family": "muse-spark",
     "reasoning_tokens": 1806,
-    "response_id": "chatcmpl-01a1821c-2563-75af-b58a-c663160869aa"
+    "response_id": "chatcmpl-01a1821c-2563-75af-b58a-c663160869aa",
+    "weights": "hosted"
    },
-   "duration_ms": 3,
+   "duration_ms": 1,
    "envelope": false,
-   "hash": "d4b559eccfb1006fe35388d39eeef53420c6bb07b8ecec2d29e14c410fed6ffc",
-   "id": "708abc79dc2c4741ab953c551ebafac8",
+   "hash": "c9430374b34d507e1a0159bd9bcbfe0263fa82c2487e2949c08a5d7b65bfb7f8",
+   "id": "80b1274f05f44adead133e5f18ac0457",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "0cfad2e6105720b0a4e67965a8e134c819ca66d872a16fd0187fcf3ac6f76881",
-   "prev": "2c7e067deef83ad226852ed4bab69e3e137a5d204d29cc63b0edbae384f42693",
+   "prev": "b5371e8d62ad28bc7d275faa9e4831516763674c2d1ea963deb8f259ae10ee89",
    "prompt_sha256": "10b3c4353218472073197f11b1e4671ceeef83b08e229505d0ba45c21c2331cd",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "880e46e7ded96624a6c5ae77e4a62338a637ffe15f9a4c3aa21d8d14ff722eb412cf6ada8df4fef8923e589be870c78f4d73950053be71e3a53871334eb3480a",
+   "run_id": "run_200453082171bf85",
+   "sig": "26f7c5a40ca34d29959ef85f012e96d453901f97ba73fb20914e35d6d2f2e683a4f68b8620ee542cf43fabaed735d9c66ebf08bf7eaac24bb7cef178e005f10b",
    "tier": "standard",
    "tier_reason": "producer plan from the operator's brief",
    "tokens_in": 1332,
    "tokens_out": 2154,
-   "ts": 1793274840.0135481
+   "ts": 1793275794.099242
   },
   {
    "agent": "producer",
@@ -517,30 +542,32 @@
    "details": {
     "endpoint": "responses",
     "finish": "completed",
+    "model_family": "muse-spark",
     "reasoning_tokens": 329,
     "response_id": "resp_6ae1d1f77fe2b21b308a4955",
     "tool_calls": [
      "run_copywriter"
-    ]
+    ],
+    "weights": "hosted"
    },
-   "duration_ms": 4,
+   "duration_ms": 1,
    "envelope": false,
-   "hash": "0c15f946b769b0a51c38fcd4895ab03025ed51ff00f7bd35fd3ce66e21b77d60",
-   "id": "dd6c053599ac4ff0a8615a59940e2d63",
+   "hash": "f0da6a78c457e6e7bde82e2c7bc0668c5f6f729a86e4b4f0b7045e1396c318d1",
+   "id": "1bc5cad94e144935bffa8b04096b5f46",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "1155379b01bc01304f082ef28239818f13d16d846d8c7e1d7e7b53384970ff7c",
-   "prev": "d4b559eccfb1006fe35388d39eeef53420c6bb07b8ecec2d29e14c410fed6ffc",
+   "prev": "c9430374b34d507e1a0159bd9bcbfe0263fa82c2487e2949c08a5d7b65bfb7f8",
    "prompt_sha256": "8e7853ecd35e018c69e14927e688b506bd488f683d27ac6ac0b95d2a30a687d8",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "e4043ae95f3dd400985b88bf071520c21dac3a2222f288e4042b39b9112b326ce79e0204d97a93d302b6ed5f62dd2c47f011fdf00ea33a672110a781abdd6d0c",
+   "run_id": "run_200453082171bf85",
+   "sig": "ce8ad5c935f7d96fbc50a4a3a125182d269aeff40543d940bc37418ab414a121c4b7b5dcd78e42f8f0bbcb92c7622524c978673ce3f5480ff5dbfecaa2647700",
    "tier": "standard",
    "tier_reason": "producer loop",
    "tokens_in": 2266,
    "tokens_out": 425,
-   "ts": 1793274840.0383658
+   "ts": 1793275794.1089454
   },
   {
    "agent": "copywriter",
@@ -549,27 +576,29 @@
    "details": {
     "endpoint": "chat.completions",
     "finish": "stop",
+    "model_family": "muse-spark",
     "reasoning_tokens": 344,
-    "response_id": "chatcmpl-01a1821c-4434-70e5-ba64-0eb44e2f22e4"
+    "response_id": "chatcmpl-01a1821c-4434-70e5-ba64-0eb44e2f22e4",
+    "weights": "hosted"
    },
-   "duration_ms": 3,
+   "duration_ms": 1,
    "envelope": false,
-   "hash": "21507898e2924a50034695d8f145fb76c209ac7127c780cb463c9799d3ab8327",
-   "id": "96838217541e4551831336d6a754d8f3",
+   "hash": "1bc02c0fcfdd69a67c3f87bb683f3a2b581766e817a48e0c563a5aabe02eb04a",
+   "id": "7c36b5e6b41f4be88978c7f17cc93927",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "c8aaf369dee5dce6dcd5cf7dd00c69838c3d4106b0f0d8323edc512283b0598a",
-   "prev": "0c15f946b769b0a51c38fcd4895ab03025ed51ff00f7bd35fd3ce66e21b77d60",
+   "prev": "f0da6a78c457e6e7bde82e2c7bc0668c5f6f729a86e4b4f0b7045e1396c318d1",
    "prompt_sha256": "3820e09a85c52ea29b0acd169118f15df1d13f0175b070d83c3d9bdc01f0e4c4",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "c2e3385409592fd8931c7142ed049390ada786de7162e7828743e5ef7ffcc60af4dd7da50f0d9f99289d6ce85d7b9d9a2b5fdb611c39be2d8cdc37eadb8d1602",
+   "run_id": "run_200453082171bf85",
+   "sig": "a4917e965e0f6c6d552cc4c7fa9b329535c6f02eedda7f61e3212f216fa46f8e3d84ca00b6bc64a0254119741c7f83a114f3915b23f672eaff522305e3044d0d",
    "tier": "standard",
    "tier_reason": "long digit run",
    "tokens_in": 1398,
    "tokens_out": 715,
-   "ts": 1793274840.050117
+   "ts": 1793275794.1138687
   },
   {
    "agent": "dispatcher",
@@ -584,24 +613,24 @@
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "e8323ec8addc07f40bec6adf0426a3bd5933d2ad9285b7f88521cbf9b33462a7",
-   "id": "07ca0d84288f438c9d7a8ae969cbec3a",
+   "hash": "451087a97e4e6f4865075035481c50267313ddf53a701b958ff05932f408b8e6",
+   "id": "4967be0c024649199b8737289dd5e140",
    "input_sha256": [
     "933f9d088a2d09587ef008f4ef74e8b278e8f1eb77848792689ed29d8c1bd241"
    ],
    "kind": "tool_call",
    "model": "",
    "output_sha256": "99f66b63738329dbbdc4bfd6a9ad6383156d27cf2eb250a20898d0ae2be6935e",
-   "prev": "21507898e2924a50034695d8f145fb76c209ac7127c780cb463c9799d3ab8327",
+   "prev": "1bc02c0fcfdd69a67c3f87bb683f3a2b581766e817a48e0c563a5aabe02eb04a",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "394e35c017bb7b59f12b1f651ae3670fc3e0d335e2b1afa297e6bc8d2b3c74f7dce68c2c928d791528e1cb75680071694525bf9d181e14b0fa904c5bd2569006",
+   "run_id": "run_200453082171bf85",
+   "sig": "d2e14d41783e529f4a6d368f8e6363e031bb46278c7680f4c289b211934f9314f90fedcf0d2c373069c302f491001fd16d485a563261799977fdf7096c6f2208",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274840.052774
+   "ts": 1793275794.1150172
   },
   {
    "agent": "producer",
@@ -610,30 +639,32 @@
    "details": {
     "endpoint": "responses",
     "finish": "completed",
+    "model_family": "muse-spark",
     "reasoning_tokens": 45,
     "response_id": "resp_6ae1d2008b7a57b26f33480e",
     "tool_calls": [
      "run_art_director"
-    ]
+    ],
+    "weights": "hosted"
    },
-   "duration_ms": 2,
+   "duration_ms": 0,
    "envelope": false,
-   "hash": "a37cc1dd6946ae8b84f7a86d9b7ea974c944567014c8dc6ab91e1bf0b47f6c3b",
-   "id": "5473df32dc554ccea19b418bb62110fc",
+   "hash": "a273d5a6cb1fecc74f67c76f6e17007d0fc674e950086a9999177085e899386e",
+   "id": "9186018481e14054923af80ef08499a8",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "2319499549080107367eebca49e1e2f3ee97625097c14d0137d27a6bbb04fcec",
-   "prev": "e8323ec8addc07f40bec6adf0426a3bd5933d2ad9285b7f88521cbf9b33462a7",
+   "prev": "451087a97e4e6f4865075035481c50267313ddf53a701b958ff05932f408b8e6",
    "prompt_sha256": "6ec0ece862eac8a5caa9dba2af58f2a7693081410bcba49626f60147246a6e04",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "664e9f8ec7e7547aa49a9cb250ee6f79377f60c4937e530e4bedb8abfd527db7a0daf3b2389c875cbe0e5684c4d47e138e5b8169113adb369f4cb74b85f22605",
+   "run_id": "run_200453082171bf85",
+   "sig": "ab4f08b07ea87d48e2bc8724b72aa3f693c751f22ce93f1dded2dc7c9b28eaeb0e29871d824f68cc00e4699c865c73a7aad95d8ad7e58538e989d4c61e4c5002",
    "tier": "standard",
    "tier_reason": "producer loop",
    "tokens_in": 2669,
    "tokens_out": 128,
-   "ts": 1793274840.05767
+   "ts": 1793275794.1169136
   },
   {
    "agent": "art_director",
@@ -642,30 +673,32 @@
    "details": {
     "endpoint": "responses.stream",
     "finish": "completed",
+    "model_family": "sam",
     "reasoning_tokens": 0,
     "response_id": "resp_6ae1d20817ea87e126e94f3b",
-    "units": 1
+    "units": 1,
+    "weights": "hosted"
    },
-   "duration_ms": 12,
+   "duration_ms": 5,
    "envelope": false,
-   "hash": "755e230fde8414c5ca9e162e6720c79f268c5c53a50f1f57424abe0691f9ca60",
-   "id": "7ee9cfe943b048b881c0d652cc06ed41",
+   "hash": "b1a0437a115296233ce73b43f5b1685f707089b95055d47f99d12f1fd95bff34",
+   "id": "32ef554af575481b917aa19f7af8ba51",
    "input_sha256": [
     "82fd0ef8f0663025de75de568742374cb6894bacedd043361320aa63af6480ef"
    ],
    "kind": "model_call",
    "model": "sam-3.1",
    "output_sha256": "1e2b038180eb8f2036266719a267078b870b4aa42b8320b7d6522a4e84aa9373",
-   "prev": "a37cc1dd6946ae8b84f7a86d9b7ea974c944567014c8dc6ab91e1bf0b47f6c3b",
+   "prev": "a273d5a6cb1fecc74f67c76f6e17007d0fc674e950086a9999177085e899386e",
    "prompt_sha256": "5c6c4a6b8fba231c88264b5c36d0bbcf79e5e30c35644043e26129f07ffe9729",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "8b1103721f8ed28eba44042e0e9649721bc233876bf3c83f8c47254deae0c7868b8824e776a97bf04de4c9d8ea594d4e3a0570c779dba2ae8ea22240c32ecb00",
+   "run_id": "run_200453082171bf85",
+   "sig": "bdc40751b52cc227cbb9b7047aa6e8d3d5a5083381c072f5f615c4f5c5d7925effecb95c108ae2fa656d0e00dafb320c375f3d1d1bd27341dc81fdb3fe270409",
    "tier": "standard",
    "tier_reason": "segmentation of the operator's product photo",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274840.0762076
+   "ts": 1793275794.1237288
   },
   {
    "agent": "art_director",
@@ -684,29 +717,29 @@
      589
     ],
     "matches": 1,
-    "model_receipt": "7ee9cfe943b048b881c0d652cc06ed41",
+    "model_receipt": "32ef554af575481b917aa19f7af8ba51",
     "tool": "sam.cutout"
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "6a9f0f391033a8783df59c7f7bc95ece211b7b076a80ae195d7a0dd5a2e39cc7",
-   "id": "5ea1348e2e2c4d4b9b1f895d2e08a172",
+   "hash": "6d5f5d5a71d78b0c044333670a783ea4aa04fa2a728d99b1240f00e14b8527e2",
+   "id": "8deffc73a24f490da76f2b9133bc107e",
    "input_sha256": [
     "82fd0ef8f0663025de75de568742374cb6894bacedd043361320aa63af6480ef"
    ],
    "kind": "tool_call",
    "model": "",
    "output_sha256": "eb14dd822d22cfda66dec6d93a96c006857200ace2f43319a596589fb7073c3f",
-   "prev": "755e230fde8414c5ca9e162e6720c79f268c5c53a50f1f57424abe0691f9ca60",
+   "prev": "b1a0437a115296233ce73b43f5b1685f707089b95055d47f99d12f1fd95bff34",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "94f70c355f7b9699803e64403ef98f6e8177f5b7fad949084bef0fb031d174656014a4b10b03161919f075c53fe5f5f7171cc64f053ad9319f8ce59962add40f",
+   "run_id": "run_200453082171bf85",
+   "sig": "6a16b2c7e4937c606420d2c6c888954c4280d49b1e10d79680c52c8b15fcec75449ff229b02079862701c5250e974172254b047f7bc87ceba6b665f671debf0f",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274849.6185749
+   "ts": 1793275800.930521
   },
   {
    "agent": "art_director",
@@ -715,27 +748,29 @@
    "details": {
     "endpoint": "chat.completions",
     "finish": "stop",
+    "model_family": "muse-spark",
     "reasoning_tokens": 429,
-    "response_id": "chatcmpl-01a1821c-b89d-75fd-a0f0-9047620f9a62"
+    "response_id": "chatcmpl-01a1821c-b89d-75fd-a0f0-9047620f9a62",
+    "weights": "hosted"
    },
-   "duration_ms": 1,
+   "duration_ms": 0,
    "envelope": false,
-   "hash": "570125028878bd868df22ad1c6df9ebd6783c49490f5ed0f274842485c98a443",
-   "id": "a6eaccbdeed546c0b2430bee71ceb41f",
+   "hash": "680949032436e9f0274532c58d5511f486053bd7057f85970c5b6769bc2c9676",
+   "id": "6883618b15b74def9086636ad89e0233",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3-contributor",
    "output_sha256": "9296f12bdf2aef4bf662faac7595a4a8ee1ca85d3427b6ec6b851febba8a7ea2",
-   "prev": "6a9f0f391033a8783df59c7f7bc95ece211b7b076a80ae195d7a0dd5a2e39cc7",
+   "prev": "6d5f5d5a71d78b0c044333670a783ea4aa04fa2a728d99b1240f00e14b8527e2",
    "prompt_sha256": "d6bd7392f0b68b0ed0427e48a18d234d52d69b4eb8566f923f360b074c9d9c46",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "11366eb9b4f0be3a6e55ebbc990d3c8f90baf8330dc5cb3c50805f03b188548a33616baad3508033671048aa1bc1c3cc7cb4d65909e4bec8dcd7e42580529a0b",
+   "run_id": "run_200453082171bf85",
+   "sig": "20bc2cc974e3bac56e4e893c13a4cbc877eedfd66aaa3094428bf38b1257d39720a18504b03dab340ba06624a70de208098048dc54b3fbf1f510e482cfea3d09",
    "tier": "contributor",
    "tier_reason": "no pii detected: public copy on contributor",
    "tokens_in": 671,
    "tokens_out": 548,
-   "ts": 1793274849.694025
+   "ts": 1793275800.9595256
   },
   {
    "agent": "art_director",
@@ -744,30 +779,63 @@
    "details": {
     "endpoint": "responses",
     "finish": "completed",
+    "model_family": "muse-image",
     "reasoning_tokens": 516,
     "response_id": "resp_6ae1d22e91fa281dc11a4bcc",
-    "units": 1
+    "units": 1,
+    "weights": "hosted"
    },
-   "duration_ms": 125,
+   "duration_ms": 129,
    "envelope": false,
-   "hash": "b5c9cc48a878979f66e63560ddb7cbe6feea3d0a0e018295e4e44e66b3bff7f5",
-   "id": "9ecc35f675034cc6a8d8b995ab196176",
+   "hash": "2cce68725e06bd0ab692fa50ad7529f70a2e6cdf48981a2bfda79b4a58905f41",
+   "id": "cae17b5a13824e5fae4620e653a6ce59",
    "input_sha256": [
     "0012b55ff4b90df8700d6f61be86d879671f8e6268ac440d6d6ff497ecf4a8d2"
    ],
    "kind": "model_call",
    "model": "muse-image-1.0",
    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-   "prev": "570125028878bd868df22ad1c6df9ebd6783c49490f5ed0f274842485c98a443",
+   "prev": "680949032436e9f0274532c58d5511f486053bd7057f85970c5b6769bc2c9676",
    "prompt_sha256": "f2d072dad336db29dcc05375ed684d0210c26948481403e93e76eefbce4c7670",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "c2521af86472409f6180b35a8a119088bd6cbea2d391d18759d031444014bebded68b34a974a769708fff1103ed8ee81549d0cf845dda68af11b96d03572fd09",
+   "run_id": "run_200453082171bf85",
+   "sig": "0a79743afb233139fb2ae21a86fb682ecaebe0d80cb41e0c4a077effd5708e7955be7c64cbc785b8b8d46fcd475225f03580997311e04395d757cf4c073a3303",
    "tier": "standard",
    "tier_reason": "",
    "tokens_in": 21846,
    "tokens_out": 1909,
-   "ts": 1793274849.8209157
+   "ts": 1793275801.089667
+  },
+  {
+   "agent": "art_director",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "placement": "feed_1x1",
+    "side_effects": "read",
+    "status": "not_recorded",
+    "tool": "sam.check"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "9579133636f38de14dcd42a01573640c0d19f19bd5701110f1af77216a345ad5",
+   "id": "9765ea1c827e43228c85e634c8516edf",
+   "input_sha256": [
+    "e64b5121f2a1b3609d6b2d8cdd80212531a99955840482645caf8ffc447a4e6a"
+   ],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "",
+   "prev": "2cce68725e06bd0ab692fa50ad7529f70a2e6cdf48981a2bfda79b4a58905f41",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_200453082171bf85",
+   "sig": "8c94afaf42deb87b104700dcd69b2c762103e87fe10d7a5ffed7087d032f97ed29ac4e3ce5974c39410b88352824fcb5a05757baa0b167c919c8f2da186c8701",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793275801.0968072
   },
   {
    "agent": "art_director",
@@ -776,28 +844,61 @@
    "details": {
     "endpoint": "images.edits",
     "finish": "completed",
+    "model_family": "muse-image",
     "reasoning_tokens": 0,
     "response_id": "",
-    "units": 1
+    "units": 1,
+    "weights": "hosted"
    },
-   "duration_ms": 102,
+   "duration_ms": 115,
    "envelope": false,
-   "hash": "1a13c22c2ae3a30b94cf14f89714bf8beae56efe70b9ead5e930338d125e4413",
-   "id": "1ebda1bbe2084665aedc2d11fdca3add",
+   "hash": "5d89081ea27a07c8cb0415d7ed7108142c3e2306e015ca1daa0b0b9a84311a76",
+   "id": "f7a49d3f0fb043dab2a0def1af84f9c5",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-image-1.0",
    "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-   "prev": "b5c9cc48a878979f66e63560ddb7cbe6feea3d0a0e018295e4e44e66b3bff7f5",
-   "prompt_sha256": "f57b829ba1fae5e65cb46cd9a3b7cbac5f4e75890145467629b89619b0894794",
+   "prev": "9579133636f38de14dcd42a01573640c0d19f19bd5701110f1af77216a345ad5",
+   "prompt_sha256": "84b5494ab7bdf0a98d9f57629f3e2f81845fee6c91c2676b00d8e0530f1507d7",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "33c149b0fe9ffca2456228fbc5d537b42faad6b065bf290d4e5d3801d316c5b81dad174ed2079d70a994e25825ee72b74c3f777d49e09897ac2f01ece792e20d",
+   "run_id": "run_200453082171bf85",
+   "sig": "cd7f728db2291e87f86483d101d096ca456d1a3fc3f32c524e01119aff9faaf0ea2209e931041d62141f5d4830c9a129a958cd2ddf0fb22a90aac4dbc0278b08",
    "tier": "standard",
    "tier_reason": "",
    "tokens_in": 14713,
    "tokens_out": 962,
-   "ts": 1793274849.9427736
+   "ts": 1793275801.2308793
+  },
+  {
+   "agent": "art_director",
+   "cached_tokens": 0,
+   "cost_usd": 0.0,
+   "details": {
+    "placement": "story_9x16",
+    "side_effects": "read",
+    "status": "not_recorded",
+    "tool": "sam.check"
+   },
+   "duration_ms": 0,
+   "envelope": false,
+   "hash": "a5738f1c3e387f9b8223bee2d8b127ef3179a20fd48734538ecc874f3d19e7a7",
+   "id": "2af2e5800ad84f83abff042cc0ca776e",
+   "input_sha256": [
+    "57c684349272a56c87dcd99f718d72ec029431fc64904b8f461acbc5f45ab77d"
+   ],
+   "kind": "tool_call",
+   "model": "",
+   "output_sha256": "",
+   "prev": "5d89081ea27a07c8cb0415d7ed7108142c3e2306e015ca1daa0b0b9a84311a76",
+   "prompt_sha256": "",
+   "provider": "",
+   "run_id": "run_200453082171bf85",
+   "sig": "5278117d5b5fb83f829821da96299dfc45d2aecd5692e418a70a0820b2380408c6b4b0c7404793b78c153a2e1d99f507838bfe5480c23d49c1f2c4d0101ae20f",
+   "tier": "",
+   "tier_reason": "",
+   "tokens_in": 0,
+   "tokens_out": 0,
+   "ts": 1793275801.236016
   },
   {
    "agent": "dispatcher",
@@ -812,24 +913,24 @@
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "e73341e31c5eca965ce44473749fe84cb7b0d842289b4b434fe05f919146c50c",
-   "id": "69ae2da155d94144b62cb113317ddf5a",
+   "hash": "c793ecef14d202ef05c2488980649bf04a62c8aa432e3860455685d0b74440e3",
+   "id": "a9b3d83654a548d287fbe96889f23d23",
    "input_sha256": [
     "9e7fe7ba6fbe9c960686d70a70abc1b8b2a891f9747816737a90cd0efec222fe"
    ],
    "kind": "tool_call",
    "model": "",
    "output_sha256": "f4b54b8280779fe35c2d9d8fac524676db011bb31b53d5fc1f82dcfdd47b9f50",
-   "prev": "1a13c22c2ae3a30b94cf14f89714bf8beae56efe70b9ead5e930338d125e4413",
+   "prev": "a5738f1c3e387f9b8223bee2d8b127ef3179a20fd48734538ecc874f3d19e7a7",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "ab6395b8038bd51244d5c8f98253c0e1f5e18a0183e9995e4a762a01837ff329293edb3214c2a660e8fac50b176bf2429ffdbe703f9cc0f806dce375b5b5bf0b",
+   "run_id": "run_200453082171bf85",
+   "sig": "a6ece8d888449fa3d8e6e0e1ee149aa161b80df28eb15f5b29b1dcca1ba05527ee5da487182bae37baa3d53f30b93d8063baa198df0d729ad1174adcfe7f8d0f",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274849.9471424
+   "ts": 1793275801.236723
   },
   {
    "agent": "producer",
@@ -838,30 +939,32 @@
    "details": {
     "endpoint": "responses",
     "finish": "completed",
+    "model_family": "muse-spark",
     "reasoning_tokens": 44,
     "response_id": "resp_6ae1d24017036ae4b66d4246",
     "tool_calls": [
      "run_reviewers"
-    ]
+    ],
+    "weights": "hosted"
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "c3bfe44155a90b8649c5b914143f97ccf0f3b3e1712b65b335ea79c09664e703",
-   "id": "6007ecd0c5354938aafd7950931df51e",
+   "hash": "9158708ae6a2eff6c9a0601d195474637af4d71ca367d0fe5c342cc08116edf3",
+   "id": "6172851093c148f7ba0ee753aa4c9ef9",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "60885f10ed95cf3dbbc7e070e483d715c83337d2d1557ab6f9a3f4fd2b56d4b7",
-   "prev": "e73341e31c5eca965ce44473749fe84cb7b0d842289b4b434fe05f919146c50c",
+   "prev": "c793ecef14d202ef05c2488980649bf04a62c8aa432e3860455685d0b74440e3",
    "prompt_sha256": "81104f36e06299104942d018c757be34fad8aaf473eb6a8855e668eb1de5ac54",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "8950f65ea859c61a67b83f1390d27c57432924b35e2b2cb8da34dfb7dc185c8d274b227f9f15736380d5e077259b0a0c2900ce652e2f45b30f80b14c765ddf09",
+   "run_id": "run_200453082171bf85",
+   "sig": "b836f7b66ae2d8ed728538afeccdedefb37514eed9efc32e90d859563c2a7fcf01931990447252fad710a4938e1b32362fdab708a1e5f25a0aba8781989f640d",
    "tier": "standard",
    "tier_reason": "producer loop",
    "tokens_in": 2824,
    "tokens_out": 119,
-   "ts": 1793274849.948509
+   "ts": 1793275801.2382433
   },
   {
    "agent": "reviewer",
@@ -874,29 +977,31 @@
      "brief_facts"
     ],
     "finish": "stop",
+    "model_family": "muse-spark",
     "reasoning_tokens": 1212,
-    "response_id": "chatcmpl-01a1821d-86cd-73cd-824b-ef1fc2de9275"
+    "response_id": "chatcmpl-01a1821d-86cd-73cd-824b-ef1fc2de9275",
+    "weights": "hosted"
    },
-   "duration_ms": 4,
+   "duration_ms": 5,
    "envelope": true,
-   "hash": "6c2782711f2626719ba742a103876268f0e298fefd0d3e490edafc1f22824254",
-   "id": "da7baa925acb479981ed6d8489dc8f5c",
+   "hash": "0c6cd1c88de17154f2260ea599f8917aa29d37ff2bc85ce1e9a1fc29b60a18aa",
+   "id": "762153c4e00e4c27af6939e02e273f2a",
    "input_sha256": [
     "13a33b8b820f8cfed3a8241728c420e63c9f271b00b8b14a52133a2fc3b64105"
    ],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "bf069eea151ba734c2c0c54b267a10c793531e54f87f3f41f9fe9266b4b66cf3",
-   "prev": "c3bfe44155a90b8649c5b914143f97ccf0f3b3e1712b65b335ea79c09664e703",
+   "prev": "9158708ae6a2eff6c9a0601d195474637af4d71ca367d0fe5c342cc08116edf3",
    "prompt_sha256": "50faef62c61ebbd21320655f91b7af3b665991ae675300a0f76f4c071f3abf55",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "55af6f2ca261cb2a52ad733989c6ebb33d0ab9d5b899e629991f0c7ebe563ced15cd5924f9fa27a842dd479a2c878b75e0f678823a6cb313db95b52014834507",
+   "run_id": "run_200453082171bf85",
+   "sig": "ba05eddcd1a21852dfa3fddb6b88fefbdde4927520e172d8820128ae68ba4bd8141fb2f6929ba64704d23d4edc927effd61f990310065eceb9397d2803e0ca0a",
    "tier": "standard",
    "tier_reason": "compliance review of the final creative (vision)",
    "tokens_in": 2675,
    "tokens_out": 1383,
-   "ts": 1793274850.1402397
+   "ts": 1793275801.455216
   },
   {
    "agent": "reviewer_open",
@@ -910,29 +1015,31 @@
      "brief_facts"
     ],
     "finish": "stop",
+    "model_family": "muse-spark-open",
     "reasoning_tokens": 811,
-    "response_id": "chatcmpl-21673fd86ed84cdf959f3e8e0429a91d"
+    "response_id": "chatcmpl-21673fd86ed84cdf959f3e8e0429a91d",
+    "weights": "open"
    },
    "duration_ms": 5,
    "envelope": true,
-   "hash": "708f94bfbeba3643f98daae41219a59732bd67f885644856e2072abbdde2c9a3",
-   "id": "a710379e35f94a4fa54dd23286e67ec5",
+   "hash": "3e3115448810801a46e370940e1a7f3ef5ac53d38931fc95f0f8a21de72d4185",
+   "id": "81c915b9d734448799869aca0f38aa92",
    "input_sha256": [
     "13a33b8b820f8cfed3a8241728c420e63c9f271b00b8b14a52133a2fc3b64105"
    ],
    "kind": "model_call",
    "model": "meta-models:muse-spark-open",
    "output_sha256": "2708d1d6a98575d06906830a0b7ce90ab62c5e7d275cfd1e2bb291ff984a6cdb",
-   "prev": "6c2782711f2626719ba742a103876268f0e298fefd0d3e490edafc1f22824254",
+   "prev": "0c6cd1c88de17154f2260ea599f8917aa29d37ff2bc85ce1e9a1fc29b60a18aa",
    "prompt_sha256": "0df8b9be26f35b97393997fbd61f50a2bae8494610aad1ddc13d09f70f090ecb",
    "provider": "baseten-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "5bb3ddaf400978a6939210128f8b2cf9b2b41a84811985045ff1f88ed13026fabc239fbd299a438b585d0c47953cef64dc85b5da51224f02ccf84ed31a6b5b02",
+   "run_id": "run_200453082171bf85",
+   "sig": "3e20eccef49f9bcb4fe881a53eb42c0a472a3d7661517197055226d351d08ff1e155364d2188a882c58c1bdc749454ddb94446870422f0e6165e04acccf00c09",
    "tier": "open",
    "tier_reason": "open-weights second opinion on the same creative",
    "tokens_in": 2692,
    "tokens_out": 936,
-   "ts": 1793274850.3259964
+   "ts": 1793275801.6641746
   },
   {
    "agent": "reviewer",
@@ -944,31 +1051,38 @@
     "grounding": [],
     "policy_net": [],
     "rules": [
-     "P5"
+     "P5",
+     "S1"
     ],
+    "sam": {
+     "findings": [
+      "S1:info"
+     ],
+     "status": "not_recorded"
+    },
     "second_opinion": "available",
     "verdict": "WARN"
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "43e407e65124e4f62d29d98ab3ea0df1597584793dc05b7a8f911d6c2163b994",
-   "id": "a75da540bac74a97a3b6a3895544593c",
+   "hash": "bccf231d184c57055790e44587645c5c0b0e433e93b3bfbf025498ee30705344",
+   "id": "7015f53973384f55bd57387dce2b1da2",
    "input_sha256": [
     "e64b5121f2a1b3609d6b2d8cdd80212531a99955840482645caf8ffc447a4e6a"
    ],
    "kind": "review",
    "model": "",
-   "output_sha256": "28750604a1baa843946fef619959d16106294dd96436468b41752a0ed9441d7d",
-   "prev": "708f94bfbeba3643f98daae41219a59732bd67f885644856e2072abbdde2c9a3",
+   "output_sha256": "d63715e710d7060a9cc0bba7737d16ebe65489365e65c137c2058f6936a518cd",
+   "prev": "3e3115448810801a46e370940e1a7f3ef5ac53d38931fc95f0f8a21de72d4185",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "03d3ba00fd714c91c635c8f6cc26e08bca340784b546fa09b26eb6f1450624955d69d688fcf9a012e6c0b20918a710c217f4eff68b68015a017920908c67e90e",
+   "run_id": "run_200453082171bf85",
+   "sig": "cc7b5433cf0a980b3afd1914663314adfc59be833ab7bbf75b47d005f6b6855b3dc708c3ad0a55fb117f7d760d39efac43300bfcb0a73b29a9a4ee504adedf09",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274850.3296022
+   "ts": 1793275801.6678598
   },
   {
    "agent": "reviewer",
@@ -981,29 +1095,31 @@
      "brief_facts"
     ],
     "finish": "stop",
+    "model_family": "muse-spark",
     "reasoning_tokens": 1378,
-    "response_id": "chatcmpl-01a1821d-cb29-74cf-b775-ada5af09d713"
+    "response_id": "chatcmpl-01a1821d-cb29-74cf-b775-ada5af09d713",
+    "weights": "hosted"
    },
    "duration_ms": 3,
    "envelope": true,
-   "hash": "c70f51535c0187b5344744c9c8def1f619fcdaa02340112fc236d88946294830",
-   "id": "460ca8722ac64effb8e6e5e431d5da16",
+   "hash": "78d8ba47656dc3ecda396fbd5f5929767316ab261562d19020c3b7fb445406ec",
+   "id": "9ddd0f40d5c840349d39f6c841e91c3a",
    "input_sha256": [
     "03f5c0aae279099b948e7a328bade0b03ba27bce48f784e36155884873c1da82"
    ],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "fb00e29c2c99e63271365ff17eb00e56ee34f091d5df529eac43054024e69d4b",
-   "prev": "43e407e65124e4f62d29d98ab3ea0df1597584793dc05b7a8f911d6c2163b994",
+   "prev": "bccf231d184c57055790e44587645c5c0b0e433e93b3bfbf025498ee30705344",
    "prompt_sha256": "a6ecd94d1162e711443e14e114b106283dcf1d8786e20e31192ee86049e002c6",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "ffcfc5d1140c8285c6d3786d410c96b7889509b90e909d225826e5bbcb8753d718ebd93b4dfec0856a57bcb9e42bbde01a118603bb626acc192417f9ccb9ff07",
+   "run_id": "run_200453082171bf85",
+   "sig": "033458d099ddcdaa32c5c79480f62b3374a23fc1370bd53230304223871805e2ab4757b453080a44106eeffc03708ff680476fc6b4bc6a521762d861be418d00",
    "tier": "standard",
    "tier_reason": "compliance review of the final creative (vision)",
    "tokens_in": 2083,
    "tokens_out": 1445,
-   "ts": 1793274850.4542167
+   "ts": 1793275801.7975037
   },
   {
    "agent": "reviewer_open",
@@ -1017,29 +1133,31 @@
      "brief_facts"
     ],
     "finish": "stop",
+    "model_family": "muse-spark-open",
     "reasoning_tokens": 940,
-    "response_id": "chatcmpl-4013623011f04e7492c93d0b9e8d7ca1"
+    "response_id": "chatcmpl-4013623011f04e7492c93d0b9e8d7ca1",
+    "weights": "open"
    },
    "duration_ms": 3,
    "envelope": true,
-   "hash": "4867700626dc42331d78944efd710c6d7f6e64a4170548dc87bbf686d9f23aee",
-   "id": "73de98b53582467ca2a901653597f8c9",
+   "hash": "a5d0ac56db39920266de7f57515ebb5a4eed1d2523a4a083c153875e244e1fee",
+   "id": "e20c43e9367343a589c78ee019894ad3",
    "input_sha256": [
     "03f5c0aae279099b948e7a328bade0b03ba27bce48f784e36155884873c1da82"
    ],
    "kind": "model_call",
    "model": "meta-models:muse-spark-open",
    "output_sha256": "18eadfc00219ccd80143a4386e0fc1bb2d5d432d96da28271881e7925dbee444",
-   "prev": "c70f51535c0187b5344744c9c8def1f619fcdaa02340112fc236d88946294830",
+   "prev": "78d8ba47656dc3ecda396fbd5f5929767316ab261562d19020c3b7fb445406ec",
    "prompt_sha256": "dab781e0a437794088fb7446a533b866915f78b89ff8ca02d23943fda5aeb545",
    "provider": "baseten-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "50b4fb66d189d2471762f332313c82b1fbbe69cd23ea6acd8943312c69f757a6b23cd2ee22279052cfbfd64805eb12e7ca4021496efab4845b611652a1f4180e",
+   "run_id": "run_200453082171bf85",
+   "sig": "df397a5ae7e641964caaf9e93d4b4e11403e6910bf18ad775102ba455297096e7b2032c21726d634830119dc7061d75cca5a352a992765138db37bb7bb8f5b06",
    "tier": "open",
    "tier_reason": "open-weights second opinion on the same creative",
    "tokens_in": 2100,
    "tokens_out": 1197,
-   "ts": 1793274850.578756
+   "ts": 1793275801.9307954
   },
   {
    "agent": "reviewer",
@@ -1053,31 +1171,38 @@
     "grounding": [],
     "policy_net": [],
     "rules": [
-     "F1"
+     "F1",
+     "S1"
     ],
+    "sam": {
+     "findings": [
+      "S1:info"
+     ],
+     "status": "not_recorded"
+    },
     "second_opinion": "available",
     "verdict": "WARN"
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "7153aa3a55ba79a8db4dca49252092b7c0b3564a7acee47714d1cbeaec4794ec",
-   "id": "f3603cba6a2143cf8b568916ca6d191a",
+   "hash": "292cc10ea294c49da6bdfcc8d7e2cc72c1fa380e75ad3725c60bb097d7aab9d3",
+   "id": "b68c066146c54ac7a67fbb73fc13e162",
    "input_sha256": [
     "57c684349272a56c87dcd99f718d72ec029431fc64904b8f461acbc5f45ab77d"
    ],
    "kind": "review",
    "model": "",
-   "output_sha256": "e37f8d2ff2af35d408fd6f6fa02e155d2d5f12fa21f42639c120eae34e981919",
-   "prev": "4867700626dc42331d78944efd710c6d7f6e64a4170548dc87bbf686d9f23aee",
+   "output_sha256": "52b25d83a5f1f7dd0655d0745376f0d414687ee865f4c143af7551d024dce445",
+   "prev": "a5d0ac56db39920266de7f57515ebb5a4eed1d2523a4a083c153875e244e1fee",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "dd65abb943c4ccb268c2ba5b948f9003c9326d2e44f982af2273654683c86da1445db3aec9859f232fde3adee7465a50f5dbd98293b587e0501ba36fe8d6ab05",
+   "run_id": "run_200453082171bf85",
+   "sig": "1fdcf09751d7c23b0d167cc442eb409b20911f56ba5fe099670aa7d62d7f410ec728278dda0c99dd86c9db1ae5af114c610a5fdd3e3ce52feed635ca10f5e70a",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274850.5812602
+   "ts": 1793275801.9336107
   },
   {
    "agent": "dispatcher",
@@ -1092,24 +1217,24 @@
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "a1ec85e8350a1679c3660f391b2145db7fd42d5801768de29c187b4eb9b28f10",
-   "id": "4131c181d44548719799d0cc1bd883d5",
+   "hash": "49837c50c4b67c3ca0038be677071acd86e33a4019d8cc801363f47821a8286c",
+   "id": "a3fa7de443144938801195d5fe212276",
    "input_sha256": [
     "e6d858d9a8db11424e7b49f2e62f50d4668093c8c90afe693380320e48dd1d65"
    ],
    "kind": "tool_call",
    "model": "",
-   "output_sha256": "dc3e0d6ff8ac6cc24d03ec9ad5a884c417bfbfd63a03bf59f3a74b17e05b4c3f",
-   "prev": "7153aa3a55ba79a8db4dca49252092b7c0b3564a7acee47714d1cbeaec4794ec",
+   "output_sha256": "781d5a841a3f591fb9eb781c99607504369c553893ee04d6d797eae345872f5b",
+   "prev": "292cc10ea294c49da6bdfcc8d7e2cc72c1fa380e75ad3725c60bb097d7aab9d3",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "cac76df6373dc34730c8e51c28c9db3eadacdd579d841a277ebf0aee01d63de26d9b18c97dc3a1f9c061d2eff54d914e3aa006cfe79e9ea3249dac65c965320e",
+   "run_id": "run_200453082171bf85",
+   "sig": "3ea473b84daf55757f881567cec6bfca08fface9b8686b3cf28b1c3590bcd96869f7a5261e2eb6cf7532fa0211ab4708cdc417e0cff18b37e00cdcf965760b08",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274850.5817695
+   "ts": 1793275801.9342153
   },
   {
    "agent": "producer",
@@ -1118,26 +1243,28 @@
    "details": {
     "endpoint": "responses",
     "error_status": 503,
-    "error_type": "server_error"
+    "error_type": "server_error",
+    "model_family": "muse-spark",
+    "weights": "hosted"
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "203c4327292afdce750fe96cef6eb777f492fb322d618f3ece52e511ee25e7c7",
-   "id": "1ef85e808ab64ab698ca18a5b4b359ca",
+   "hash": "6406f7ceb198f4b96f1914b1e177386ac31fd567466c5737c818c764de7a2f6e",
+   "id": "7cbe0bfde2274eceae37d8dc3481c180",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "",
-   "prev": "a1ec85e8350a1679c3660f391b2145db7fd42d5801768de29c187b4eb9b28f10",
-   "prompt_sha256": "74520d68c33b4d55298f6a9f86a489f62877e7635d9fa054f473483884a76473",
+   "prev": "49837c50c4b67c3ca0038be677071acd86e33a4019d8cc801363f47821a8286c",
+   "prompt_sha256": "3e2a4be6741196240aa172aa7d6ceff0d76cf45262d9303e61dd0be1dc50af77",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "5cedb43acfe44f8a339b630a0ebc601f5713fe65c350412031b25dec474fe804e8c183658c82957e62083890b99d16b965e9ebd3738b73c5b2c8aa1ce4a7ca03",
+   "run_id": "run_200453082171bf85",
+   "sig": "7c9ce27c35654d8ca8db7a34e7d3c893a06f71d51aad23d6fc8820a403c663faf8879906217b005fcef26cba13d8dc166585d45118fe742c2062f30e80d76c0d",
    "tier": "standard",
    "tier_reason": "producer loop",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274850.5831523
+   "ts": 1793275801.9359295
   },
   {
    "agent": "producer",
@@ -1146,30 +1273,32 @@
    "details": {
     "endpoint": "responses",
     "finish": "completed",
+    "model_family": "muse-spark",
     "reasoning_tokens": 736,
     "response_id": "resp_6ae1d28402476f5f8d304282",
     "tool_calls": [
      "request_approval"
-    ]
+    ],
+    "weights": "hosted"
    },
-   "duration_ms": 2,
+   "duration_ms": 3,
    "envelope": false,
-   "hash": "36ca74223dd8f67c447054ec4c280a618911939d49627151f2c9ff15b6014065",
-   "id": "39fc387940c14b0289a14615147b1142",
+   "hash": "b420848cf7136b5418888dc39667d36bbbff0ea456f850447b10e9eb7b76b6a0",
+   "id": "41ae73faea5f456bb597bb7d2e64fc17",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "a207213d9098e3c3f4b6d7bbcf395ce143845aff1cd971e28329cc0eb8807035",
-   "prev": "203c4327292afdce750fe96cef6eb777f492fb322d618f3ece52e511ee25e7c7",
-   "prompt_sha256": "74520d68c33b4d55298f6a9f86a489f62877e7635d9fa054f473483884a76473",
+   "prev": "6406f7ceb198f4b96f1914b1e177386ac31fd567466c5737c818c764de7a2f6e",
+   "prompt_sha256": "3e2a4be6741196240aa172aa7d6ceff0d76cf45262d9303e61dd0be1dc50af77",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "8406e76f3f8ca10485ec7b4f15547b13d5f554c74ee5519fc7db59d2a7393f187cd3f7a1698b4858899b0a6bcfcd60d228921d5e809a4c15f714cb59214eca01",
+   "run_id": "run_200453082171bf85",
+   "sig": "79afc06ffccfd0a4a035fb22e6020b977de284eb9b738079f77fa1c1fd832c6b545fa1c2692d4fd4de2205f66b23ba70722ae247f1338893dde0624c9f1e2802",
    "tier": "standard",
    "tier_reason": "producer loop",
    "tokens_in": 3212,
    "tokens_out": 908,
-   "ts": 1793274852.5878813
+   "ts": 1793275803.9451687
   },
   {
    "agent": "producer",
@@ -1186,22 +1315,22 @@
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "173c03af6524c34bd584189fb8801c75842bd5d803c134cceb803f3da868d030",
-   "id": "8681e5dc73ef44ecb4c55f07debe62d9",
+   "hash": "a57af6a4f8409e2fb56ab35c20b56b92b2dcc3a9dc03313b970050099fe1128f",
+   "id": "39af3cf50b664fa5b3ae07329614203e",
    "input_sha256": [],
    "kind": "tool_call",
    "model": "",
    "output_sha256": "",
-   "prev": "36ca74223dd8f67c447054ec4c280a618911939d49627151f2c9ff15b6014065",
+   "prev": "b420848cf7136b5418888dc39667d36bbbff0ea456f850447b10e9eb7b76b6a0",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "a70e6ec8dcc80d80a7c1a802923bfcb1b314bf2a610efd416110c512bb4dd04553893744c4f2a076fac0836e8243013819de5c136e231ad3ba78d4b7be00ff02",
+   "run_id": "run_200453082171bf85",
+   "sig": "67c71398b3ed8cb65e484ce47b6e5dc6825403e3bb88c8c3269a673ac5ecdcddd2e8ac15a84230e3dbdf49f509c90d34e0aba08729518ce564fb491ae352080f",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274852.5939257
+   "ts": 1793275803.9518435
   },
   {
    "agent": "dispatcher",
@@ -1216,24 +1345,24 @@
    },
    "duration_ms": 0,
    "envelope": false,
-   "hash": "3386df6bfb241523a017106d71299edbc8229477df0379a8fb35040a3d29fe98",
-   "id": "b3150d2325bf49cbbb0776034242bdb8",
+   "hash": "58c156b469e8da8a9429b7ce4e4fb5afb9ee92a96b4e8dd4c14ccd8e91fc8007",
+   "id": "4db0253ca95f45e19b8eda459e78e899",
    "input_sha256": [
     "dff6e39f26330785f129e51624e722ec19fe2c1cae245580bf5c91dc3b18de29"
    ],
    "kind": "tool_call",
    "model": "",
-   "output_sha256": "61fc756ffc217c3e71369ec8386b44347549ad573b17895266cbd76b71e5b9f5",
-   "prev": "173c03af6524c34bd584189fb8801c75842bd5d803c134cceb803f3da868d030",
+   "output_sha256": "f181194df5249e1359bb8b3384d2a285e809f3e8b37a9c61c29da27e86669e71",
+   "prev": "a57af6a4f8409e2fb56ab35c20b56b92b2dcc3a9dc03313b970050099fe1128f",
    "prompt_sha256": "",
    "provider": "",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "ef58a1c5031b0f6825ed3ef79ab59bfe2bddb03c097e17ddca77546191d2eea9ae6d061fcf0447cec98745687a5762654dd595ad2f4486897b6c70905d6ec502",
+   "run_id": "run_200453082171bf85",
+   "sig": "9d3c4e5cd7c5e6ca49e6336a085ae2662537769e5f64383db09210647b682f419092dd905666c8597865a096bf1ef1c81c2b0fc709b299b972ef92a13c79ef0f",
    "tier": "",
    "tier_reason": "",
    "tokens_in": 0,
    "tokens_out": 0,
-   "ts": 1793274852.599488
+   "ts": 1793275803.9573627
   },
   {
    "agent": "producer",
@@ -1242,41 +1371,43 @@
    "details": {
     "endpoint": "responses",
     "finish": "completed",
+    "model_family": "muse-spark",
     "reasoning_tokens": 284,
-    "response_id": "resp_6ae1d2905e7125f282044edc"
+    "response_id": "resp_6ae1d2905e7125f282044edc",
+    "weights": "hosted"
    },
-   "duration_ms": 2,
+   "duration_ms": 1,
    "envelope": false,
-   "hash": "3cfce3c8bb628bfb11f75d1c98fa6470329321619e169627f9fb1362920f47bc",
-   "id": "dbfa21225f5b44e297fe108da8516eaa",
+   "hash": "00220e5292dc40dc326cb366753b48a5b7f69561fe3eff325f6157cbed05799f",
+   "id": "129bff1ca81549a78accd422dcb4b8b7",
    "input_sha256": [],
    "kind": "model_call",
    "model": "muse-spark-1.3",
    "output_sha256": "91982d4f769279d81ae4fbb1c58be63befe6cd2a6b07eafd6669748f799cfe4e",
-   "prev": "3386df6bfb241523a017106d71299edbc8229477df0379a8fb35040a3d29fe98",
-   "prompt_sha256": "1f28bb725dac61583561361b3ba163c46bfd7d0af33619efdd125a045b437283",
+   "prev": "58c156b469e8da8a9429b7ce4e4fb5afb9ee92a96b4e8dd4c14ccd8e91fc8007",
+   "prompt_sha256": "c055b0c2b73d677ab15259493fe8e2c537969c3869d26a73156dec75c1e33d98",
    "provider": "meta-model-api-replay",
-   "run_id": "run_ca8480c679b4305f",
-   "sig": "578830c34807c77ac66ea1c78cfc450e0e2947b24356b6e10599bfc0db525c972b9cd2bca2fd00b25cb77300691f8f10e91a1019c11af94babe8ecd566a7c101",
+   "run_id": "run_200453082171bf85",
+   "sig": "4696968252edbba1f3f468ed820c11cbd8c9cab17eb3a2798d2af1f21523300f352a5a7790026ac9a4a93ec1560e9dab44bed34ad5a99c274ca3def153e0ea09",
    "tier": "standard",
    "tier_reason": "producer loop",
    "tokens_in": 3447,
    "tokens_out": 340,
-   "ts": 1793274852.6058853
+   "ts": 1793275803.963328
   }
  ],
  "manifest": {
-  "epoch": "ed25519:f89738c89aaf26981cdb91c1f3303a51",
+  "epoch": "ed25519:039672ced116d4c75a48f7e29b374576",
   "runs": {
-   "run_ca8480c679b4305f": {
-    "count": 26,
-    "head": "3cfce3c8bb628bfb11f75d1c98fa6470329321619e169627f9fb1362920f47bc"
+   "run_200453082171bf85": {
+    "count": 28,
+    "head": "00220e5292dc40dc326cb366753b48a5b7f69561fe3eff325f6157cbed05799f"
    }
   },
-  "seq": 26,
-  "sig": "21c580ca2bb7fb33bc23ef41f58b988e91469aef217e1af172b46cc490c50f51a724869b9391adb153858bf17a333263d6b430331787c29f04092078d5304b02",
-  "ts": 1793274852.6553397
+  "seq": 28,
+  "sig": "bf9e271f4f30ac63cfaab025d82a679cefa550048990572b7825056c2f15200affc7060a025ea53e672de917112af8b88720e02c0b54dd051673d738bcf1c500",
+  "ts": 1793275804.0301747
  },
- "ledger_key": "00a04be72c02190cdba1c3b609595f21d50be3daa1dbb08d9e91081a1fc28bfd",
- "epoch": "ed25519:f89738c89aaf26981cdb91c1f3303a51"
+ "ledger_key": "dbc7030158d76e171183a17894357d7fad07632ec4049b6b50309014a9e21bd3",
+ "epoch": "ed25519:039672ced116d4c75a48f7e29b374576"
 }

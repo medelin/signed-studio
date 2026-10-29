@@ -62,7 +62,7 @@ rule P9).
 brief (typed, or spoken and edited) → **Producer** drafts a Brief v1 → the owner answers
 or strikes every [FACT] question and confirms (a `brief.confirmed` receipt) → **Producer** plan → **Copywriter** three variants →
 **Art director** SAM 3.1 cut-out + three Muse Image placements → **Reviewers** (Spark vision
-+ Spark Open second opinion + P9 and P10 code checks) → **human signature** → **Media buyer** (code)
++ Spark Open second opinion + P9, P10 and SAM S1/S2 code checks) → **human signature** → **Media buyer** (code)
 creates the campaign PAUSED → **Community** drafts a reply to a comment → signature → reply
 → **Lead scorer** card → **Analyst** report → `studio verify` on the exported log.
 
@@ -86,7 +86,7 @@ replays that flow headless. `make test` runs the suite offline, `make eval` rege
 | `muse-spark-1.3` | Producer, compliance reviewer (vision), community triage, lead rationale, analyst | Responses API with function tools, `parallel_tool_calls`, `reasoning.summary`, `previous_response_id`; strict JSON schemas; images in user messages; the analyst reads the whole ledger (long context) plus an Ads Manager screenshot |
 | `muse-spark-1.3-contributor` | Copywriter and image-prompt writer | chosen by code only when the input has no personal data (`pii.choose_tier`); the reason is in every receipt |
 | `muse-image-1.0` | Art director | first placement as a Responses turn with the cut-out, the others (and up to 10 carousel cards) via `/images/edits` with the cut-out and the first image, so the series matches |
-| `sam-3.1` | Art director | product cut-out from the photo: streamed transport, batch parse (`meta_sam_parser`) |
+| `sam-3.1` | Art director | product cut-out from the photo, then a fidelity check of every generated image (product + `person`: silhouette IoU, area, edges → rules S1/S2): streamed transport, batch parse (`meta_sam_parser`) |
 | `muse-voice-transcribe-1.0` | Voice brief, dictation into any Brief v1 field and [FACT] answers | `POST /asr/transcribe`, `ENDPOINTING`, `languageBias` from the page language (`pl` or `en`), turns with timestamps |
 | `meta-models/muse-spark-open` | Second-opinion reviewer (open weights, on Baseten) | same `Review` schema, different weights; BLOCK from either side wins; disagreements shown before signing |
 | `muse-wonder-1.0` | Art director, optional video placement | strict-JSON storyboard: which reviewed image comes when and for how long; code cuts the 9:16 MP4 with ffmpeg (Wonder reads images and writes text, it does not render video); code orders the shots if the call fails |

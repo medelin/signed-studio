@@ -85,7 +85,8 @@ def test_art_director_renders_cards_and_the_video(tmp_path, monkeypatch):
     monkeypatch.setattr(video, "storyboard", lambda *a, **k: ([("story_9x16", 1),
                                                                ("card_1", 1)], "code"))
     ledger = Ledger()
-    out = art_director.run(types.SimpleNamespace(ledger=ledger), _png(80, 80), "Mugs",
+    client = types.SimpleNamespace(ledger=ledger, unrecorded=frozenset({"sam.check"}))
+    out = art_director.run(client, _png(80, 80), "Mugs",
                            run_id="run_v", concept="mug", data_dir=tmp_path,
                            placements=("feed_1x1", "story_9x16"), carousel_cards=3,
                            with_video=True)

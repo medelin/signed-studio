@@ -79,6 +79,17 @@ function renderCopy(copy, reviewedIndex) {
   if (copy.risks.length) box.append(el("p", T("risks", { list: copy.risks.join("; ") }), "hint"));
 }
 
+function samLine(check) {
+  if (check.status === "not_recorded") return T("sam_not_recorded");
+  if (check.status === "skipped") return T("sam_skipped");
+  if (check.status === "failed") return T("sam_failed", { error: check.error || "-" });
+  if (!check.matches || check.iou === null || check.iou === undefined) return T("sam_missing");
+  let line = T("sam_ok", { iou: Number(check.iou).toFixed(2), area: (100 * check.area).toFixed(1) });
+  if (check.edges && check.edges.length) line += T("sam_edges", { edges: check.edges.join(", ") });
+  if (check.people) line += T("sam_people", { n: check.people });
+  return line;
+}
+
 function renderImages(runId, creatives) {
   const box = $("images");
   if (!creatives) return;
@@ -97,7 +108,30 @@ function renderImages(runId, creatives) {
     img.src = "/assets/" + runId + "/" + im.placement + ".png";
     img.alt = T("creative_alt", { placement: im.placement, w: im.width, h: im.height });
     img.loading = "lazy";
-    fig.append(img, el("figcaption", im.placement + " · " + im.width + "×" + im.height + " · sha256 " + im.sha256.slice(0, 12)));
+    const caption = el("figcaption", im.placement + " · " + im.width + "×" + im.height + " · sha256 " + im.sha256.slice(0, 12));
+    const check = im.sam_check;
+    if (check && check.status === "ok" && check.overlay) {
+      // SAM mask overlay (an RGBA PNG made by the server), hidden until toggled
+      const frame = el("div", null, "mask-frame");
+      const mask = el("img", null, "mask-overlay");
+      mask.src = "/assets/" + runId + "/" + im.placement + "_mask.png";
+      mask.alt = T("sam_overlay_alt", { placement: im.placement });
+      mask.loading = "lazy";
+      mask.hidden = true;
+      frame.append(img, mask);
+      const toggle = el("button", T("sam_show"), "mask-toggle");
+      toggle.type = "button";
+      toggle.setAttribute("aria-pressed", "false");
+      toggle.addEventListener("click", () => {
+        mask.hidden = !mask.hidden;
+        toggle.setAttribute("aria-pressed", String(!mask.hidden));
+        toggle.textContent = T(mask.hidden ? "sam_show" : "sam_hide");
+      });
+      fig.append(frame, caption, el("p", samLine(check), "hint sam-line"), toggle);
+    } else {
+      fig.append(img, caption);
+      if (check) fig.append(el("p", samLine(check), "hint sam-line"));
+    }
     box.append(fig);
   }
   if (creatives.video) {
