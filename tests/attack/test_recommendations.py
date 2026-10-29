@@ -11,7 +11,7 @@ from studio.agents import media_buyer
 from studio.app import create_app
 from studio.approvals import Keys
 from studio.executor import ExecutionRefused
-from studio.meta import measurement, objectives
+from studio.meta import measurement, objectives, pixel
 from studio.meta.adapter import MOCK_PAGE, NotApproved, PausedOnly
 from studio.meta.mock import MockAdapter
 from studio.receipts import verify
@@ -43,7 +43,9 @@ def env(tmp_path):
     ledger.append(RUN, agent="producer", kind="model_call")
     mock = MockAdapter()
     p = payload(delivery=objectives.delivery("sales", page_id=MOCK_PAGE,
-                                             promotion={"pixel_id": "700000000000001"}))
+                                             promotion={"pixel_id": "700000000000001"}),
+                pixel_check=pixel.signed(MockAdapter().pixel_check("700000000000001",
+                                                          "https://example.com/")))
     v = approve(conn, ledger, "campaign.create", "cmp_ms1", p, RUN)
     media_buyer.create(conn, ledger, mock, v, p, tmp_path)
     return conn, ledger, mock, tmp_path

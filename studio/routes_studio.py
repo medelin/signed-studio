@@ -15,7 +15,9 @@
   the browser signs, plus the human-readable content those bytes commit to (by hash).
 - ``POST /api/approvals/{id}`` (session, same-origin, writable) verifies the signature and
   consumes the nonce with ``verify_and_consume(session_id=...)`` inside one ``BEGIN
-  IMMEDIATE`` transaction, together with the approval receipt and the run's status.
+  IMMEDIATE`` transaction, together with the approval receipt and the run's status. A
+  ``campaign.create`` whose signed payload fails ``pixel.gate`` (a pixel objective with a
+  failed, missing or foreign pixel check) is refused with 409 before the nonce is touched.
 """
 
 from __future__ import annotations
@@ -50,6 +52,7 @@ from studio.approvals import (
     verify_and_consume,
 )
 from studio.approvals import renew as renew_approval
+from studio.meta import pixel
 from studio.meta.adapter import MOCK_PAGE, AdapterError
 from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
@@ -276,8 +279,9 @@ def run_context(settings: Settings, conn: Any, muse: MuseClient,
                 open_weights: OpenWeightsClient | None, adapter: Any, *, currency: str,
                 brief_source: str = "operator", confirmed: brief_v1.BriefV1 | None = None,
                 digest: str = "", google: Any = None) -> producer.Context:
-    """The producer's context for one run (``adapter`` only for its Page id and its
-    read-only targeting search; ``google`` the Google Ads adapter, when configured)."""
+    """The producer's context for one run (``adapter`` only for its Page id, its
+    read-only targeting search and pixel check; ``google`` the Google Ads adapter, when
+    configured)."""
     return producer.Context(
         client=muse, open_client=open_weights, conn=conn,
         photo_png=settings.product_photo.read_bytes(),
@@ -286,7 +290,8 @@ def run_context(settings: Settings, conn: Any, muse: MuseClient,
         max_daily_budget=settings.max_daily_budget, currency=currency,
         brief_v1=confirmed, brief_sha256=digest,
         page_id=getattr(adapter, "page_id", "") or MOCK_PAGE,
-        search=getattr(adapter, "search_targeting", None), google=google)
+        search=getattr(adapter, "search_targeting", None), google=google,
+        pixel_check=getattr(adapter, "pixel_check", None))
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
@@ -701,6 +706,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                    (approval_id,)).fetchone()
                 if row is None:
                     raise _NoPayload
+                if pending.action == "campaign.create":
+                    # a failed pixel check cannot be signed (nothing is consumed)
+                    refused = pixel.gate(json.loads(row[0]))
+                    if refused:
+                        raise _PixelRefused(refused)
                 approval = Approval(
                     pending_id=pending.id, action=pending.action, item_id=pending.item_id,
                     content_sha256=pending.content_sha256, chain_head=pending.chain_head,
@@ -713,6 +723,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                              "WHERE run_id = ?", (time.time(), verified.run_id))
         except _NoPayload:
             return JSONResponse({"error": "not_found"}, 404)
+        except _PixelRefused as exc:
+            return JSONResponse({"error": exc.code}, 409)
         except ApprovalError as exc:
             return JSONResponse({"error": exc.code}, exc.status)
         receipt = next(r for r in reversed(ledger.receipts(verified.run_id))
@@ -758,6 +770,14 @@ def replay_clients(settings: Settings, ledger: Ledger, transport: Any = None,
 
 class _NoPayload(Exception):
     pass
+
+
+class _PixelRefused(Exception):
+    """A ``campaign.create`` whose signed payload fails ``pixel.gate``."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
 
 
 class _Taken(Exception):
