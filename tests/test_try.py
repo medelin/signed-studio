@@ -147,12 +147,17 @@ def test_the_tour_is_the_recorded_set(data):
     recorded = [a for a in answers if "verdict" in a]
     for f in data["review"]["formats"]:
         for who in ("primary", "second"):
-            # the recorded answer, plus findings of the studio's own format rules (F1)
+            # the recorded answer, plus findings of the studio's own format rules (F1);
+            # levels and sources are re-derived by code from the rules table
             shown = f[who]
+            seen = [(x["rule"], x["evidence"]) for x in shown["findings"]]
             assert any(a.get("summary") == shown["summary"]
-                       and all(x in shown["findings"] for x in a.get("findings") or [])
+                       and all((x["rule"], x["evidence"]) in seen
+                               for x in a.get("findings") or [])
                        for a in recorded), (f["placement"], who)
-    assert data["review"]["disagreements"]
+            assert all(x["source"] for x in shown["findings"])
+    # the recorded P5 disagreement is a tip on Meta now: tips are not disagreements
+    assert data["review"]["verdict"] == "OK" and data["review"]["disagreements"] == []
     # the images are the set's own outputs: the full-size hash is the recorded blob's
     for im in data["images"]:
         assert im["blob"] in tour.image_names(data["set"])

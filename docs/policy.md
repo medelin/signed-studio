@@ -1,5 +1,52 @@
 # Review policy
 
+**Muse explains Meta's rules, it does not invent new ones** ([scenarios.md](scenarios.md)).
+Every finding carries a **source** (the Meta policy page or format specification it stands
+on, a Google Ads policy for copy that also runs on Google, or `muse:grounding` for the
+anti-invention rules) and a **level**:
+
+- **block** only where the platform would reject the ad or flag the account;
+- **warn** where it would show the ad worse;
+- **tip** for best practice, including Meta's own recommended lengths. A tip never makes
+  the verdict WARN or BLOCK;
+- **info** is a note from a code check (no issue).
+
+The models tag a level and a source too, but **code has the final say**: one table
+(`studio/agents/rules.py`, `RULES`) gives each rule its highest level per channel and its
+source; `reviewer.normalize` caps every finding (the models', `policy_net`'s,
+`grounding_net`'s, F1's, SAM's) and derives the verdict from the capped levels. A model
+verdict that names no finding at all is shown as WARN at most (it has no source).
+
+## Levels by rule
+
+| Rule | On Meta | When the copy also runs on Google Search | Source |
+|---|---|---|---|
+| P1 personal attributes | block | block | https://transparency.meta.com/policies/ad-standards/objectionable-content/privacy-violations-personal-attributes/ |
+| P2 before/after, body image | block | block | https://transparency.meta.com/policies/ad-standards/restricted-goods-services/health-wellness |
+| P3 unrealistic promises, misleading affiliation | block | block | https://transparency.meta.com/policies/ad-standards/fraud-scams/unacceptable-business-practices/ |
+| P4 price and offer accuracy | block | block | same |
+| P5 brand name | **tip** (the Page name shows on every ad) | tip | https://www.facebook.com/business/ads-guide/update/image/facebook-feed |
+| P6 image text, fake buttons | block (a fake control), the model may give less | block | https://transparency.meta.com/policies/ad-standards/deceptive-content/non-existent-functionality/ |
+| P7 prohibited or sensitive content | block | block | https://transparency.meta.com/policies/ad-standards/ |
+| P8 regulated claims | block | block | https://transparency.meta.com/policies/ad-standards/restricted-goods-services/health-wellness |
+| P9 official services, absolute tax/legal promises | **tip**, with its Google source | **block** | https://support.google.com/adspolicy/answer/13156083 |
+| P10 grounding in the confirmed brief | block | block | `muse:grounding` |
+| F1 hard format limit / recommended length | block / **tip** | block / tip | the spec URL named in the finding |
+| S1 product fidelity (SAM) | block (product missing), warn (redrawn, cropped) | same | `muse:grounding` |
+| S2 people in the image | **tip** | tip | `muse:prompt` |
+| a finding without a known rule (`UNMAPPED`) | warn at most | warn | — |
+
+Why P9 is a tip on Meta and not omitted: it is a Google Ads rule with a real history (two
+ads disapproved by Google, below), and the same copy can be exported to Google later; on a
+Meta-only campaign the owner sees it, with its Google source, and it never blocks.
+Channels come from the confirmed brief (`channels.google_search` adds `google`).
+
+Levels were applied to the recorded replay sets by re-deriving every verdict from the
+recorded findings. Changed outcomes (docs/eval.md seeded set): `p5-abbrev` WARN → OK and
+`p5-meta` BLOCK → OK (P5 is a tip; a misleading affiliation with Meta is now listed under
+P3 in the checklist), `p6-fake-ui` stays flagged (block). The P9 set is scored as copy that
+also runs on Google Search (5/5 blocked).
+
 Every creative is checked three ways before a human can sign it:
 
 1. **Code checks, before any model.** Rule **F1** (format limits, below) and the **P9** phrase
@@ -16,7 +63,7 @@ Every creative is checked three ways before a human can sign it:
 P1 personal attributes · P2 before/after and body image · P3 unrealistic promises · P4 price
 and offer accuracy · P5 brand name · P6 image text, fake buttons or UI · P7 prohibited or
 sensitive content · P8 regulated claims · **P9 official services and absolute tax/legal
-promises** — the advertiser must not claim to register companies or provide government
+promises** (a Google Ads rule: block on Google, tip on Meta) — the advertiser must not claim to register companies or provide government
 documents/official services ("register your company", "załóż spółkę"), nor promise absolute
 tax or legal outcomes ("no ZUS obligation", "pay no tax"); Google Ads policies "Government
 documents and official services" and "Exaggerated or inaccurate claims".
@@ -67,7 +114,8 @@ A recommendation can never activate anything: activation stays its own signed
 
 `studio/agents/formats.py`, `reviewer.format_check(placement, ad)`. A platform's **hard**
 limit (the field or upload is refused) is a **BLOCK**; a **recommended** length (the text is
-cut off or performs worse) is a **WARN** that names the truncation point. Only **Meta** is
+cut off or performs worse) is Meta's own recommendation, so it is a **tip** that names the
+truncation point and links the spec (it never raises the verdict). Only **Meta** is
 wired to publishing; the **Google Ads** and **TikTok** rules check copy variants exported for
 those platforms. All sources official, retrieved **2026-10-28**.
 

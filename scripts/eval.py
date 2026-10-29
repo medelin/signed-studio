@@ -599,7 +599,10 @@ def reviewer_metrics() -> dict[str, Any] | None:
     for r in data["reviews"]:
         model = Review.model_validate({"verdict": r["verdict"], "findings": r["findings"],
                                        "summary": ""})
-        merged = reviewer.with_policy_net(model, CopyVariant(**ads[r["id"]]["copy"]))
+        # the seeded set is the Google-rejected ads: judged as copy that also runs on
+        # Google Search, where P9 is a block (on Meta alone P9 is a tip, ``rules``)
+        merged = reviewer.with_policy_net(model, CopyVariant(**ads[r["id"]]["copy"]),
+                                          ("meta", "google"))
         rules = sorted({f.rule for f in model.findings})
         rows.append({"id": r["id"], "expect": r["expect"], "model_verdict": r["verdict"],
                      "model_rules": rules, "final_verdict": merged.verdict,
