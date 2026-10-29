@@ -160,6 +160,8 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.invalid_code": "The code is not correct, or it was used already.",
     "err.invalid_profile": "A profile field is not valid.",
     "err.demo_account": "The shared judge account cannot do this.",
+    "err.demo_landing": "On the shared judge account a real campaign links only to "
+                        "the studio's own landing page; set that page in the brief.",
     "err.demo_live_write": "The shared judge account creates real campaigns on Meta, "
                            "always paused. Turning one on, changing it or posting on the "
                            "Page needs the owner's own account.",
@@ -317,6 +319,8 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.invalid_code": "Kod jest niepoprawny albo został już użyty.",
     "err.invalid_profile": "Jedno z pól profilu jest niepoprawne.",
     "err.demo_account": "Wspólne konto jury nie może tego zrobić.",
+    "err.demo_landing": "Na wspólnym koncie jury prawdziwa kampania może prowadzić "
+                        "tylko na stronę studia; ustaw ją w briefie.",
     "err.demo_live_write": "Wspólne konto jury tworzy w Mecie prawdziwe kampanie, zawsze "
                            "wstrzymane. Włączenie, zmiana albo wpis na stronie wymagają "
                            "własnego konta właściciela.",

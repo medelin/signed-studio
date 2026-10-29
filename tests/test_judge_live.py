@@ -12,7 +12,7 @@ from studio import db
 from studio.app import create_app
 from studio.approvals import Pending
 from studio.receipts import canonical
-from studio.routes_studio import demo_refused
+from studio.routes_studio import demo_link_ok, demo_refused
 from tests.test_pixel_gate import RUN, _sign
 from tests.test_ui_studio import PASSWORD, csrf, login, register, settings
 
@@ -82,3 +82,36 @@ def test_the_owner_account_signs_the_same_activation(tmp_path):
         _, r = _sign(c, key, approver, aid)
         assert r.status_code == 200, r.text
         assert ran == ["campaign.activate"]
+
+
+@pytest.mark.parametrize("link,ok", [
+    ("https://muse.example/", True),
+    ("https://muse.example/try?utm=judge", True),
+    ("https://evil.example/", False),
+    ("http://muse.example/", False),
+    ("https://muse.example.evil.example/", False),
+    ("https://user@muse.example/", False),
+    ("https://muse.example:8443/", False),
+    (None, False),
+])
+def test_a_judge_live_campaign_links_only_to_the_landing_host(link, ok):
+    assert demo_link_ok(link, LIVE["META_LANDING_URL"]) is ok
+
+
+def test_judge_cannot_sign_a_live_campaign_aimed_elsewhere(tmp_path):
+    app = create_app(settings(tmp_path, **LIVE))
+    with TestClient(app, base_url="https://testserver") as c:
+        login(c)
+        key, approver = register(c)
+        conn, ledger = app.state.conn, app.state.ledger
+        ledger.append(RUN, agent="producer", kind="model_call")
+        p = {"action": "campaign.create", "run_id": RUN, "link": "https://evil.example/"}
+        pending = Pending.create("campaign.create", "cmp_j2", p, ledger=ledger, run_id=RUN)
+        with db.transaction(conn):
+            pending.save(conn)
+            conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, "
+                         "created_ts) VALUES (?, ?, ?, ?)",
+                         (pending.id, RUN, canonical(p).decode(), time.time()))
+        _, r = _sign(c, key, approver, pending.id)
+        assert r.status_code == 403 and r.json() == {"error": "demo_landing"}
+        assert conn.execute("SELECT count(*) FROM nonces").fetchone()[0] == 0

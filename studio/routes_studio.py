@@ -36,6 +36,7 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from functools import partial
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
@@ -71,6 +72,19 @@ SIGNATURE = re.compile(r"[0-9a-f]{128}")
 DEMO_LIVE_REFUSED = {"meta": frozenset({"campaign.activate", "campaign.update", "reply.post",
                                         "comment.hide"}),
                      "google": frozenset({"google.activate"})}
+
+
+def demo_link_ok(link: Any, landing_url: str) -> bool:
+    """A judge's live campaign may only send people to the operator's landing host
+    (``META_LANDING_URL``): a shared public account must not aim a real ad elsewhere."""
+    if not isinstance(link, str):
+        return False
+    try:
+        got, want = urlsplit(link), urlsplit(landing_url)
+    except ValueError:
+        return False
+    return got.scheme == "https" and bool(got.hostname) and got.hostname == want.hostname \
+        and got.port == want.port and "@" not in got.netloc
 
 
 def demo_refused(action: str, *, meta_adapter: str, google_adapter: str) -> bool:
@@ -822,6 +836,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                    (approval_id,)).fetchone()
                 if row is None:
                     raise _NoPayload
+                if (account is not None and account.is_demo and settings.meta_adapter != "mock"
+                        and pending.action == "campaign.create"
+                        and not demo_link_ok(json.loads(row[0]).get("link"),
+                                             settings.landing_url)):
+                    raise _DemoLanding
                 if pending.action == "campaign.create":
                     # a failed pixel check cannot be signed (nothing is consumed)
                     refused = pixel.gate(json.loads(row[0]))
@@ -841,6 +860,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "not_found"}, 404)
         except _DemoRefused:
             return JSONResponse({"error": "demo_live_write"}, 403)
+        except _DemoLanding:
+            return JSONResponse({"error": "demo_landing"}, 403)
         except _PixelRefused as exc:
             return JSONResponse({"error": exc.code}, 409)
         except ApprovalError as exc:
@@ -898,6 +919,11 @@ class _NoPayload(Exception):
 
 class _DemoRefused(Exception):
     """The judge account signing a live write (``demo_refused``); nothing is consumed."""
+
+
+class _DemoLanding(Exception):
+    """The judge account's live ``campaign.create`` pointing away from the operator's
+    landing host (``demo_link_ok``); nothing is consumed."""
 
 
 class _PixelRefused(Exception):
