@@ -41,7 +41,7 @@ def test_architecture_has_a_diagram():
 def test_demo_script_opens_with_what_was_built_and_has_the_p9_beat():
     text = (ROOT / "docs" / "demo-script.md").read_text()
     first = next(line for line in text.splitlines() if line.startswith("**First line"))
-    assert "This week I built" in first
+    assert "from scratch" in first
     assert "P9" in text and "15-second" in text
 
 
