@@ -25,6 +25,7 @@ from studio.ui.i18n_meta import EN_META, PL_META
 from studio.ui.i18n_notify import EN_NOTIFY, PL_NOTIFY
 from studio.ui.i18n_open import EN_OPEN, PL_OPEN
 from studio.ui.i18n_pixel import EN_PIXEL, PL_PIXEL
+from studio.ui.i18n_rules import EN_RULES, PL_RULES
 from studio.ui.i18n_tour import EN_TOUR, PL_TOUR
 
 LANGS = ("en", "pl")
@@ -352,6 +353,7 @@ EN: dict[str, str] = {
     "enum.insights.live": "live",
     "enum.insights.synthetic": "synthetic",
     "enum.severity.info": "info",
+    "enum.severity.tip": "tip",
     "enum.severity.warn": "warning",
     "enum.severity.block": "blocker",
     "enum.cta.LEARN_MORE": "Learn more",
@@ -788,6 +790,7 @@ PL: dict[str, str] = {
     "enum.insights.live": "na żywo",
     "enum.insights.synthetic": "syntetyczne",
     "enum.severity.info": "informacja",
+    "enum.severity.tip": "wskazówka",
     "enum.severity.warn": "ostrzeżenie",
     "enum.severity.block": "blokada",
     "enum.cta.LEARN_MORE": "Dowiedz się więcej",
@@ -1249,6 +1252,8 @@ EN.update(EN_MCP)
 PL.update(PL_MCP)
 EN.update(EN_PIXEL)
 PL.update(PL_PIXEL)
+EN.update(EN_RULES)
+PL.update(PL_RULES)
 EN.update(EN_TOUR)
 PL.update(PL_TOUR)
 EN.update(EN_OPEN)
