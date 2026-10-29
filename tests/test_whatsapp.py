@@ -3,6 +3,7 @@ senders, a voice note → transcript → Brief v1 draft → one reply, template 
 notifications next to e-mail, receipts without phone numbers, the account's number."""
 
 import json
+import re
 import secrets
 import time
 
@@ -31,6 +32,15 @@ WA_ENV = {"STUDIO_WHATSAPP": "mock", "META_APP_SECRET": SECRET,
           "STUDIO_PUBLIC_URL": "https://muse.example.test"}
 
 
+def link(app, account_id, number, *, on=True):
+    """Claim a number and prove it (the code sent from that number), as an owner does."""
+    whatsapp.set_preferences(app.state.conn, account_id, number=number, on=on)
+    code = whatsapp.issue_code(app.state.conn, account_id)
+    got = whatsapp.verify_code(app.state.conn, number[1:], f"my code {code}")
+    assert got is not None and got.account_id == account_id
+    return got
+
+
 def make(tmp_path, **extra):
     env = {"STUDIO_DATA_DIR": str(tmp_path / "var"), "JUDGE_PASSWORD": JUDGE,
            "SESSION_SECRET": secrets.token_urlsafe(32), "STUDIO_REQUIRE_LOGIN": "1",
@@ -39,7 +49,7 @@ def make(tmp_path, **extra):
     app.state.accounts.create("ola", PASSWORD, display_name="Ola")
     ola = app.state.accounts.by_username("ola")
     app.state.accounts.update_profile(ola.id, {"lang": "pl"})
-    whatsapp.set_preferences(app.state.conn, ola.id, number=NUMBER, on=True)
+    link(app, ola.id, NUMBER)
     chats = []
 
     def handler(request):
@@ -456,21 +466,31 @@ def test_account_page_stores_a_valid_number_and_refuses_an_invalid_one(app, clie
              whatsapp_number="600 111", whatsapp="1")
     assert r.status_code == 422
     ola = app.state.accounts.by_username("ola")
-    assert whatsapp.preferences(app.state.conn, ola.id) == {"number": NUMBER, "on": True}
+    assert whatsapp.preferences(app.state.conn, ola.id) == {"number": NUMBER, "on": True,
+                                                           "verified": True}
     r = post(client, "/account/notifications", campaigns="1", leads="1",
              whatsapp_number="+44 20 7946 0958", whatsapp="1")
-    assert r.status_code == 303
+    # a new number is pending: the page shows a one-time code to send from it
+    assert r.status_code == 200 and i18n.PL["account.whatsapp.pending"] in r.text
+    code = re.search(r"MUSE-[0-9]{6}", r.text).group(0)
     assert whatsapp.preferences(app.state.conn, ola.id) == {"number": "+442079460958",
-                                                           "on": True}
+                                                           "on": True, "verified": False}
+    with app.state.conn.lock:  # hashed at rest
+        stored = app.state.conn.execute("SELECT code_sha256 FROM whatsapp_codes").fetchall()
+    assert len(stored) == 1 and code not in stored[0][0]
+    r = post(client, "/account/whatsapp/code")
+    assert r.status_code == 200 and re.search(r"MUSE-[0-9]{6}", r.text)
     assert post(client, "/account/notifications", whatsapp_number="").status_code == 303
-    assert whatsapp.preferences(app.state.conn, ola.id) == {"number": "", "on": False}
+    assert whatsapp.preferences(app.state.conn, ola.id) == {"number": "", "on": False,
+                                                           "verified": False}
     assert post(client, "/account/notifications", whatsapp="1").status_code == 422
 
 
 def test_deleting_the_account_erases_the_number(app):
     ola = app.state.accounts.by_username("ola")
     app.state.accounts.delete(ola.id, confirm="ola", password=PASSWORD)
-    assert whatsapp.preferences(app.state.conn, ola.id) == {"number": "", "on": False}
+    assert whatsapp.preferences(app.state.conn, ola.id) == {"number": "", "on": False,
+                                                           "verified": False}
     assert whatsapp.account_by_sender(app.state.conn, SENDER) is None
 
 
@@ -480,3 +500,128 @@ def test_i18n_keys_in_both_languages():
     for key in EN_WHATSAPP:
         assert i18n.placeholders(EN_WHATSAPP[key]) == i18n.placeholders(PL_WHATSAPP[key])
         assert i18n.EN[key] == EN_WHATSAPP[key] and i18n.PL[key] == PL_WHATSAPP[key]
+
+
+# -- attacks: another account's brief, a number nobody proved ------------------------------
+
+
+def second_account(app, name="bob"):
+    app.state.accounts.create(name, PASSWORD, display_name=name.title())
+    return app.state.accounts.by_username(name)
+
+
+def whatsapp_brief(app, client, transcribed):
+    assert deliver(client, event(text(OWNER, mid="wamid.own1"))).json()["queued"] == 1
+    sent(app)
+    with app.state.conn.lock:
+        return app.state.conn.execute(
+            "SELECT id FROM briefs WHERE channel = 'whatsapp'").fetchone()[0]
+
+
+def test_another_account_cannot_read_or_confirm_a_whatsapp_brief(app, client, transcribed):
+    brief_id = whatsapp_brief(app, client, transcribed)
+    second_account(app)
+    assert login(client, user="bob").status_code == 303
+    assert client.get(f"/api/briefs/{brief_id}").status_code == 404
+    d = draft_json()
+    r = client.post("/api/runs", json={"brief_id": brief_id, "brief_v1": d,
+                                       "resolutions": [{"action": "strike"}]})
+    assert r.status_code == 409 and r.json()["error"] == "unknown_draft"
+    r = client.post("/api/briefs/draft", json={"text": "x", "brief_id": brief_id})
+    assert r.status_code in (409, 503)
+    # the owner still can
+    client.post("/logout", data={"csrf": client.cookies.get("studio_csrf")}, headers=HTML)
+    client.cookies.clear()
+    assert login(client).status_code == 303
+    assert client.get(f"/api/briefs/{brief_id}").status_code == 200
+
+
+def test_the_judge_demo_account_cannot_read_a_whatsapp_brief(app, client, transcribed):
+    brief_id = whatsapp_brief(app, client, transcribed)
+    assert login(client, user="judge", password=JUDGE).status_code == 303
+    assert client.get(f"/api/briefs/{brief_id}").status_code == 404
+
+
+def test_claim_without_proof_gets_no_notifications_and_no_intake(app, client, transcribed):
+    bob = second_account(app)
+    other = "+48600999888"
+    whatsapp.set_preferences(app.state.conn, bob.id, number=other, on=True)
+    assert whatsapp.preferences(app.state.conn, bob.id)["verified"] is False
+    assert whatsapp.account_by_sender(app.state.conn, other[1:]) is None
+    app.state.notifier.event("lead_new", count=1)
+    assert [s["payload"]["to"] for s in sent(app)] == [SENDER]  # only the verified one
+    assert deliver(client, event(text("hej", mid="wamid.p1", sender=other[1:])
+                                 )).json()["queued"] == 0
+    assert transcribed == []
+    [r] = [r for r in wa_receipts(app) if r.details["tool"] == "whatsapp.inbound"]
+    assert r.details["status"] == "ignored_unknown_sender"
+
+
+def test_a_number_already_claimed_by_someone_else_cannot_be_taken_without_proof(app, client):
+    bob = second_account(app)
+    # bob claims ola's verified number: ola keeps it, bob stays pending
+    whatsapp.set_preferences(app.state.conn, bob.id, number=NUMBER, on=True)
+    assert whatsapp.account_by_sender(app.state.conn, SENDER).account_id == \
+        app.state.accounts.by_username("ola").id
+    code = whatsapp.issue_code(app.state.conn, bob.id)
+    # the code sent from a different number proves nothing
+    assert deliver(client, event(text(code, mid="wamid.v1", sender="48600999888"))
+                   ).json()["queued"] == 0
+    assert whatsapp.preferences(app.state.conn, bob.id)["verified"] is False
+    statuses = [r.details["status"] for r in wa_receipts(app)]
+    assert statuses == ["verification_failed"]
+    assert sent(app) == []  # no reply to a failed proof
+
+
+def test_expired_or_wrong_code_fails(app):
+    bob = second_account(app)
+    whatsapp.set_preferences(app.state.conn, bob.id, number="+48600999888", on=True)
+    code = whatsapp.issue_code(app.state.conn, bob.id, now=time.time() - 16 * 60)
+    assert whatsapp.verify_code(app.state.conn, "48600999888", code) is None
+    code = whatsapp.issue_code(app.state.conn, bob.id)
+    wrong = f"MUSE-{(int(code[5:]) + 1) % 10**6:06d}"
+    assert whatsapp.verify_code(app.state.conn, "48600999888", wrong) is None
+    assert whatsapp.verify_code(app.state.conn, "48600999888", code) is not None
+    assert whatsapp.verify_code(app.state.conn, "48600999888", code) is None  # one use
+
+
+def test_proof_moves_a_number_and_clears_the_old_link(app, client):
+    ola = app.state.accounts.by_username("ola")
+    bob = second_account(app)
+    whatsapp.set_preferences(app.state.conn, bob.id, number=NUMBER, on=True)
+    code = whatsapp.issue_code(app.state.conn, bob.id)
+    assert deliver(client, event(text(f"kod: {code}", mid="wamid.v2"))
+                   ).json()["queued"] == 0
+    [reply] = sent(app)
+    assert reply["payload"]["type"] == "text" and reply["payload"]["to"] == SENDER
+    assert whatsapp.account_by_sender(app.state.conn, SENDER).account_id == bob.id
+    assert whatsapp.preferences(app.state.conn, ola.id) == {"number": "", "on": False,
+                                                           "verified": False}
+    got = {(r.details["status"], r.details["account"]) for r in wa_receipts(app)
+           if r.details["tool"] == "whatsapp.inbound"}
+    assert got == {("verified", bob.id), ("unlinked", ola.id)}
+
+
+def test_one_account_per_verified_number_in_the_database(app):
+    import sqlite3
+    bob = second_account(app)
+    with pytest.raises(sqlite3.IntegrityError), app.state.conn.lock:
+        app.state.conn.execute("UPDATE accounts SET whatsapp_number = ?, "
+                               "whatsapp_verified_ts = 1 WHERE id = ?", (NUMBER, bob.id))
+
+
+def test_mcp_cannot_read_another_accounts_whatsapp_brief(app, client, transcribed):
+    from studio import mcp_server, routes_studio
+    brief_id = whatsapp_brief(app, client, transcribed)
+    bob = second_account(app)
+    assert not routes_studio.owns("whatsapp", app.state.accounts.by_username("ola").id, bob.id)
+    assert routes_studio.owns("whatsapp", bob.id, bob.id)
+    assert not routes_studio.owns("whatsapp", "", None)
+    assert routes_studio.owns("", "", None)
+
+    class S:
+        conn = app.state.conn
+        account_id = bob.id
+    with pytest.raises(mcp_server.McpRefused):
+        mcp_server.read_brief(S, "agent", brief_id)
+    assert brief_id not in json.dumps(mcp_server.list_briefs(S, "agent"))

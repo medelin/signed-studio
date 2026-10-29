@@ -264,7 +264,8 @@ def list_briefs(s: StudioMcp, agent: str, limit: int = 20) -> dict[str, Any]:
     with s.conn.lock:
         rows = s.conn.execute(
             "SELECT id, run_id, source, created_ts, draft_run_id, draft != '', brief_sha256 "
-            "FROM briefs ORDER BY created_ts DESC LIMIT ?", (limit,)).fetchall()
+            "FROM briefs WHERE channel != 'whatsapp' OR account_id = ? "  # another's: hidden
+            "ORDER BY created_ts DESC LIMIT ?", (s.account_id, limit)).fetchall()
     return {"briefs": [{
         "brief_id": r[0], "run_id": r[1], "source": r[2], "created_ts": r[3],
         "draft_run_id": r[4],
@@ -275,8 +276,9 @@ def list_briefs(s: StudioMcp, agent: str, limit: int = 20) -> dict[str, Any]:
 def read_brief(s: StudioMcp, agent: str, brief_id: str) -> dict[str, Any]:
     with s.conn.lock:
         row = s.conn.execute("SELECT id, run_id, source, text, draft, brief_v1, brief_sha256, "
-                             "draft_run_id FROM briefs WHERE id = ?", (brief_id,)).fetchone()
-    if row is None:
+                             "draft_run_id, channel, account_id FROM briefs WHERE id = ?",
+                             (brief_id,)).fetchone()
+    if row is None or not routes_studio.owns(row[8], row[9], s.account_id):
         raise McpRefused("not_found")
     out: dict[str, Any] = {"brief_id": row[0], "run_id": row[1], "source": row[2],
                            "text": row[3], "draft_run_id": row[7], "brief_sha256": row[6]}
@@ -368,15 +370,16 @@ def run_pipeline(s: StudioMcp, agent: str, brief_id: str, resolutions: list[dict
     plan, copy, images, reviews, and a pending approval that only a human can sign."""
     if brief is None:
         with s.conn.lock:
-            row = s.conn.execute("SELECT draft FROM briefs WHERE id = ?",
+            row = s.conn.execute("SELECT draft, channel, account_id FROM briefs WHERE id = ?",
                                  (brief_id,)).fetchone()
-        if row is None or not row[0]:
+        if row is None or not row[0] or not routes_studio.owns(row[1], row[2], s.account_id):
             raise McpRefused("unknown_draft")
         brief = {k: v for k, v in json.loads(row[0]).items() if k != "schema"}
     body = {"brief_id": brief_id, "brief_v1": brief, "resolutions": resolutions}
     c = routes_studio.check_confirmation(s.conn, body, ceiling=s.settings.max_daily_budget,
                                          currency=s.currency,
-                                         google_currency=s.google_currency, untrusted=True)
+                                         google_currency=s.google_currency, untrusted=True,
+                                         owner=s.account_id)
     if not s._run_lock.acquire(blocking=False):
         raise McpRefused("run_in_progress")
     try:

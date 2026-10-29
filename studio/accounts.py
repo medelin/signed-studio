@@ -933,10 +933,11 @@ class Accounts:
                   "theme = '', palette = '', advertiser_type = 'person', legal_name = '', "
                   "country = '', tax_id = '', totp_secret = '', totp_pending = '', "
                   "totp_last_step = 0, credential_gen = credential_gen + 1, "
-                  "whatsapp_number = '', notify_whatsapp = 0, "
+                  "whatsapp_number = '', notify_whatsapp = 0, whatsapp_verified_ts = 0, "
                   "updated_ts = ?, deleted_ts = ? WHERE id = ?",
                   (now, now, account_id))
         c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (account_id,))
+        c.execute("DELETE FROM whatsapp_codes WHERE account_id = ?", (account_id,))
         c.execute("UPDATE account_sessions SET user_agent = '', last_seen_ts = created_ts "
                   "WHERE account_id = ?", (account_id,))
 
@@ -983,9 +984,10 @@ class Accounts:
 
     def _whatsapp(self, account_id: str) -> dict[str, Any]:
         with self._read() as c:
-            row = c.execute("SELECT whatsapp_number, notify_whatsapp FROM accounts "
-                            "WHERE id = ?", (account_id,)).fetchone()
-        return {"number": row[0] if row else "", "notifications": bool(row[1]) if row else False}
+            row = c.execute("SELECT whatsapp_number, notify_whatsapp, whatsapp_verified_ts "
+                            "FROM accounts WHERE id = ?", (account_id,)).fetchone()
+        return {"number": row[0] if row else "", "notifications": bool(row[1]) if row else False,
+                "verified_ts": row[2] if row else 0}
 
 
 def _clean_profile(fields: Mapping[str, str]) -> dict[str, str]:

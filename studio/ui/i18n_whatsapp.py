@@ -19,6 +19,18 @@ EN_WHATSAPP: dict[str, str] = {
     "account.whatsapp.invalid": "Enter the number in international format, starting with + "
                                 "and the country code (e.g. +48 600 000 000); it is needed "
                                 "to turn WhatsApp on.",
+    "account.whatsapp.verified": "Verified: notices go to this number and voice notes "
+                                 "from it become brief drafts.",
+    "account.whatsapp.pending": "Not verified yet: nothing is sent to this number and "
+                                "nothing from it is processed until you send the code from "
+                                "it.",
+    "account.whatsapp.send_code": "To prove the number is yours, send this code from that "
+                                  "WhatsApp to the Muse Studio Lite number within {minutes} "
+                                  "minutes:",
+    "account.whatsapp.studio_number": "Muse Studio Lite on WhatsApp:",
+    "account.whatsapp.new_code": "Get a new code",
+    "whatsapp.reply.verified": "Muse Studio Lite: this number is now linked to your "
+                               "account. Open {link}",
     "whatsapp.reply.ready": "Brief ready: {facts} facts, {questions} questions — open "
                             "{link}",
     "whatsapp.reply.failed": "Muse Studio Lite could not make a brief from this message "
@@ -40,6 +52,18 @@ PL_WHATSAPP: dict[str, str] = {
     "account.whatsapp.invalid": "Podaj numer w formacie międzynarodowym, zaczynając od + i "
                                 "kodu kraju (np. +48 600 000 000); jest potrzebny, by "
                                 "włączyć WhatsAppa.",
+    "account.whatsapp.verified": "Zweryfikowany: powiadomienia idą na ten numer, a "
+                                 "notatki głosowe z niego stają się szkicami briefu.",
+    "account.whatsapp.pending": "Jeszcze niezweryfikowany: nic nie jest wysyłane na ten "
+                                "numer ani nic z niego nie jest przetwarzane, dopóki nie "
+                                "wyślesz z niego kodu.",
+    "account.whatsapp.send_code": "Aby potwierdzić, że numer jest Twój, wyślij ten kod z "
+                                  "tego WhatsAppa na numer Muse Studio Lite w ciągu "
+                                  "{minutes} minut:",
+    "account.whatsapp.studio_number": "Muse Studio Lite na WhatsAppie:",
+    "account.whatsapp.new_code": "Wygeneruj nowy kod",
+    "whatsapp.reply.verified": "Muse Studio Lite: ten numer jest teraz połączony z Twoim "
+                               "kontem. Otwórz {link}",
     "whatsapp.reply.ready": "Brief gotowy — fakty: {facts}, pytania: {questions}. Otwórz: "
                             "{link}",
     "whatsapp.reply.failed": "Muse Studio Lite nie zrobiło briefu z tej wiadomości ({code}). "
