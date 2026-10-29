@@ -22,6 +22,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - **Try it:** https://muse.udun.eu, login `judge`; the password is in the submission form, not in this repo.
 - **No login:** a recorded run replayed and verifiable in your browser at https://muse.udun.eu/try
 - **How it works in 1 minute:** https://muse.udun.eu/start
+- **WhatsApp:** notices (approval waiting → link to sign in the browser, new leads, ad disapproved) and voice-note briefs that become a Brief v1 draft; links only, nothing signed or run from WhatsApp ([docs/whatsapp.md](docs/whatsapp.md)).
 - **3-minute video:** <!-- VIDEO_URL -->
 - **Built during the event:** first commit 2026-10-27; solo.
 

@@ -27,6 +27,7 @@ from studio.ui.i18n_onboarding import EN_ONBOARDING, PL_ONBOARDING
 from studio.ui.i18n_open import EN_OPEN, PL_OPEN
 from studio.ui.i18n_pixel import EN_PIXEL, PL_PIXEL
 from studio.ui.i18n_tour import EN_TOUR, PL_TOUR
+from studio.ui.i18n_whatsapp import EN_WHATSAPP, PL_WHATSAPP
 
 LANGS = ("en", "pl")
 DEFAULT = "en"
@@ -1256,6 +1257,8 @@ EN.update(EN_OPEN)
 PL.update(PL_OPEN)
 EN.update(EN_ONBOARDING)
 PL.update(PL_ONBOARDING)
+EN.update(EN_WHATSAPP)
+PL.update(PL_WHATSAPP)
 
 CATALOGS = {"en": EN, "pl": PL}
 

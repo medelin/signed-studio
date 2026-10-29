@@ -187,6 +187,16 @@
         <label class="choice"><input type="checkbox" checked disabled> {{ t("account.notify.security") }}</label>
       </div>
     </fieldset>
+    <fieldset>
+      <legend>{{ t("account.whatsapp.legend") }}</legend>
+      <p class="hint" id="wa-hint">{{ t("account.whatsapp.hint") }}{% if not whatsapp_enabled %} {{ t("account.whatsapp.off") }}{% endif %}</p>
+      {{ error_of("notifications", "wa-error") }}
+      <label for="wa-number">{{ t("account.whatsapp.number") }}</label>
+      <input id="wa-number" name="whatsapp_number" type="tel" inputmode="tel" autocomplete="tel" maxlength="32" placeholder="+48 600 000 000" value="{{ whatsapp_prefs.number }}"{{ invalid("notifications", "wa-error", extra="wa-hint") }}>
+      <div class="choices">
+        <label class="choice"><input type="checkbox" name="whatsapp" value="1"{% if whatsapp_prefs.on %} checked{% endif %}> {{ t("account.whatsapp.on") }}</label>
+      </div>
+    </fieldset>
     <p><button type="submit">{{ t("account.notify.save") }}</button></p>
   </form>
   {% endif %}

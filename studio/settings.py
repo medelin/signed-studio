@@ -22,6 +22,7 @@ from typing import Protocol
 from urllib.parse import urlsplit
 
 from studio.notify import MailConfig
+from studio.whatsapp import WhatsAppConfig
 
 MIN_SECRET_LEN = 32
 MIN_SECRET_DISTINCT = 12
@@ -148,6 +149,8 @@ class Settings:
     # e-mail notifications (studio.notify): off unless a transport is configured
     mail: MailConfig = field(default_factory=MailConfig)
     public_url: str = ""  # base of the links in notification mails
+    # WhatsApp Cloud API (studio.whatsapp): off unless STUDIO_WHATSAPP is set
+    whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
     # Google Ads (a second, minimal channel): mock unless GOOGLE_ADS_ADAPTER=rest
     google_adapter: str = "mock"
     google_client_id: str = field(default="", repr=False)
@@ -263,6 +266,10 @@ class Settings:
         except ValueError as exc:
             raise ConfigError(str(exc)) from None
         public_url = _public_url(e.get("STUDIO_PUBLIC_URL", ""))
+        try:
+            whatsapp = WhatsAppConfig.from_env(e)
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from None
         replay = _bool(e, "STUDIO_REPLAY", False)
         open_weights = _bool(e, "STUDIO_OPEN_WEIGHTS", False)
         if open_weights and not e.get("BASETEN_API_KEY", "") and not replay:
@@ -318,6 +325,7 @@ class Settings:
             landing_url=landing,
             mail=mail,
             public_url=public_url,
+            whatsapp=whatsapp,
             google_adapter=google,
             google_client_id=e.get("GOOGLE_ADS_CLIENT_ID", ""),
             google_client_secret=e.get("GOOGLE_ADS_CLIENT_SECRET", ""),

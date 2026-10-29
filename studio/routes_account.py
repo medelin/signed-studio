@@ -21,7 +21,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from studio import accounts, auth, db, notify, prefs
+from studio import accounts, auth, db, notify, prefs, whatsapp
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
 from studio.receipts import Ledger
 from studio.settings import Settings
@@ -143,6 +143,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "advertiser_types": accounts.ADVERTISER_TYPES, "sections": SECTIONS,
             "min_password": accounts.MIN_PASSWORD_LEN,
             "notify_prefs": notify.preferences(conn, account.id),
+            "whatsapp_prefs": whatsapp.preferences(conn, account.id),
+            "whatsapp_enabled": settings.whatsapp.enabled,
         }, status_code=status, headers=NO_STORE)
         return response
 
@@ -341,6 +343,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         _, account, fields = got
         if account.is_demo:  # the shared demo account never sends mail
             return JSONResponse({"error": "demo_account"}, 403)
+        try:  # the number first: an invalid one changes nothing
+            whatsapp.set_preferences(conn, account.id, number=fields.get("whatsapp_number", ""),
+                                     on="whatsapp" in fields)
+        except ValueError:
+            sid, _, _ = got
+            return page(request, sid, account, status=422,
+                        errors={"notifications": ("account.whatsapp.invalid", "")})
         notify.set_preferences(conn, account.id, campaigns="campaigns" in fields,
                                leads="leads" in fields)
         return done("notify")

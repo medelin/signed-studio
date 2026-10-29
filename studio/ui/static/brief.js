@@ -455,8 +455,14 @@
       return;
     }
     Studio.clearVoiceBrief();
-    if (r.data.source === "transcript") dictated = true;
-    draft = r.data;
+    showDraft(r.data);
+  });
+
+  // A draft made elsewhere (a voice note sent on WhatsApp): /studio?brief=<id> opens it
+  // here, at the same step as a draft made on this page.
+  function showDraft(data) {
+    if (data.source === "transcript") dictated = true;
+    draft = data;
     clearErrors();
     v1.querySelectorAll("input, textarea, select, button").forEach((n) => { n.disabled = false; });
     fill(draft.brief);
@@ -468,7 +474,16 @@
     say(msg);
     if (n) setStep(3, false);
     $("bv-h").focus();
-  });
+  }
+  const stored = new URLSearchParams(location.search).get("brief");
+  if (stored && /^b_[0-9a-f]{16}$/.test(stored)) {
+    fetch("/api/briefs/" + stored, { credentials: "same-origin" }).then(async (r) => {
+      let data = {};
+      try { data = await r.json(); } catch (_) { /* empty */ }
+      if (!r.ok) { status("run-status", T("brief_draft_failed", { error: E(data, r.status) }), true); return; }
+      showDraft(data);
+    });
+  }
 
   v1.addEventListener("submit", async (ev) => {
     ev.preventDefault();

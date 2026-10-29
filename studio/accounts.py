@@ -933,6 +933,7 @@ class Accounts:
                   "theme = '', palette = '', advertiser_type = 'person', legal_name = '', "
                   "country = '', tax_id = '', totp_secret = '', totp_pending = '', "
                   "totp_last_step = 0, credential_gen = credential_gen + 1, "
+                  "whatsapp_number = '', notify_whatsapp = 0, "
                   "updated_ts = ?, deleted_ts = ? WHERE id = ?",
                   (now, now, account_id))
         c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (account_id,))
@@ -977,7 +978,14 @@ class Accounts:
                           "current": s.current}
                          for s in self.sessions(account_id, current_sid)],
             "approvals": signed,
+            "whatsapp": self._whatsapp(account_id),
         }
+
+    def _whatsapp(self, account_id: str) -> dict[str, Any]:
+        with self._read() as c:
+            row = c.execute("SELECT whatsapp_number, notify_whatsapp FROM accounts "
+                            "WHERE id = ?", (account_id,)).fetchone()
+        return {"number": row[0] if row else "", "notifications": bool(row[1]) if row else False}
 
 
 def _clean_profile(fields: Mapping[str, str]) -> dict[str, str]:
