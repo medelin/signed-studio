@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}{{ t("start.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.start") }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/onboarding.css">
+<div class="ob" id="ob" data-total="{{ steps | length }}">
+<section class="ob-head" aria-labelledby="ob-h">
+  <p class="hud-label">{{ t("start.kicker") }}</p>
+  <h1 id="ob-h">{{ t("start.title") }}</h1>
+  <p class="lead">{{ t("start.lead") }}</p>
+  <p><a href="{{ other_href }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ lang_names[other_lang] }}</a></p>
+</section>
+
+<div class="ob-player">
+  <div class="ob-progress" aria-hidden="true"><span class="ob-bar"></span></div>
+  <ol class="ob-steps" id="ob-steps">
+  {% for n in steps %}
+  {% set k = "start.s" ~ n %}
+    <li class="ob-step" id="ob-step-{{ n }}" data-step="{{ n }}" aria-labelledby="ob-step-{{ n }}-h">
+      <figure class="ob-figure">{{ onboarding_art(n, t(k ~ ".art")) }}</figure>
+      <div class="ob-text">
+        <p class="hud-label ob-count">{{ t("start.step_of", n=n, total=steps | length) }}</p>
+        <h2 id="ob-step-{{ n }}-h">{{ t(k ~ ".h") }}</h2>
+        <p>{{ t(k ~ ".p") }}</p>
+        <p class="ob-see"><span class="ob-see-label">{{ t("start.see") }}</span> {{ t(k ~ ".see") }}</p>
+      </div>
+    </li>
+  {% endfor %}
+  </ol>
+  <div class="ob-controls" role="group" aria-label="{{ t('start.controls') }}" hidden>
+    <button type="button" class="secondary ob-prev" id="ob-prev" aria-label="{{ t('start.prev') }}" aria-controls="ob-steps"><span aria-hidden="true">←</span></button>
+    <button type="button" class="ob-play" id="ob-play" aria-controls="ob-steps">{{ t("start.pause") }}</button>
+    <button type="button" class="secondary ob-next" id="ob-next" aria-label="{{ t('start.next') }}" aria-controls="ob-steps"><span aria-hidden="true">→</span></button>
+    <div class="ob-dots" role="group" aria-label="{{ t('start.dots') }}">
+    {% for n in steps %}<button type="button" class="ob-dot" data-step="{{ n }}" aria-label="{{ t('start.dot', n=n, title=t('start.s' ~ n ~ '.h')) }}" aria-controls="ob-step-{{ n }}"></button>{% endfor %}
+    </div>
+    <span class="hint ob-pos" id="ob-pos" aria-live="polite"></span>
+  </div>
+</div>
+
+<section class="ob-end panel" aria-labelledby="ob-end-h">
+  <h2 id="ob-end-h">{{ t("start.end.h") }}</h2>
+  <p>{{ t("start.end.p") }}</p>
+  <p class="ob-cta">
+    <a class="ob-button" href="{{ t('start.cta_try_href') }}">{{ t("start.cta_try") }}</a>
+    {% if logged_in %}<a class="ob-button secondary" href="/studio">{{ t("start.cta_studio") }}</a>
+    {% elif login_enabled %}<a class="ob-button secondary" href="/login?next=/studio">{{ t("start.cta_sign_in") }}</a>{% endif %}
+  </p>
+</section>
+</div>
+<script src="/static/onboarding.js" defer></script>
+{% endblock %}

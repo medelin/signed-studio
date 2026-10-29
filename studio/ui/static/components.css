@@ -247,3 +247,22 @@ button.danger { background: var(--signal); color: var(--signal-ink); }
 .delete-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem); gap: 1.25rem; align-items: start; }
 .delete-body figure { margin: 0; }
 @media (max-width: 760px) { .account-head, .delete-body { grid-template-columns: 1fr; } .account-art { max-width: 14rem; } }
+
+/* onboarding entry points (/, /login) and the first-visit banner on /studio; the /start
+   page itself is in onboarding.css */
+.ob-button {
+  display: inline-block; padding: .65rem 1.1rem; text-decoration: none;
+  font: 600 .85rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: .08em;
+  background: var(--signal); color: var(--signal-ink);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+.ob-button:hover { filter: brightness(1.08); }
+.ob-button.secondary { background: var(--ink-2); color: var(--bg); }
+.ob-entry { margin: .75rem 0; }
+.ob-banner {
+  display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between;
+  border: 1px solid var(--signal); background: var(--signal-soft); color: var(--ink);
+  padding: .55rem .8rem; margin: 0 0 1rem;
+}
+.ob-banner p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.ob-banner-link { font-weight: 600; }

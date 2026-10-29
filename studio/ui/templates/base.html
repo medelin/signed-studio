@@ -23,6 +23,7 @@
     {% for href, key in (("/studio", "nav.studio"), ("/inbox", "nav.inbox"), ("/leads", "nav.leads"), ("/report", "nav.report"), ("/receipts", "nav.receipts"), ("/help", "nav.help")) %}
     <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ t(key) }}</a>
     {% endfor %}
+    {% if logged_in %}<a href="{{ t('start.href') }}"{% if here in ("/start", "/pl/start") %} aria-current="page"{% endif %}>{{ t("nav.start") }}</a>{% endif %}
     </nav>
     <span class="tag">{{ t("tagline") }}</span>
     {% if read_only %}<span class="badge warn">{{ t("badge.read_only") }}</span>{% endif %}
@@ -44,7 +45,15 @@
       {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">{{ t("auth.sign_in") }}</a>{% endif %}
     </span>
   </header>
-  <main>{% block content %}{% endblock %}</main>
+  <main>
+  {%- if logged_in and here == "/studio" %}
+  <aside class="ob-banner" id="ob-banner" data-key="{{ onboarding_key(request) }}" aria-label="{{ t('start.banner_label') }}" hidden>
+    <p>{{ t("start.banner") }} <a class="ob-banner-link" href="{{ t('start.href') }}">{{ t("start.link") }}</a></p>
+    <button type="button" class="secondary small-button" id="ob-banner-close">{{ t("start.banner_close") }}</button>
+  </aside>
+  <script src="/static/onboarding.js" defer></script>
+  {%- endif %}
+  {% block content %}{% endblock %}</main>
   <footer class="foot">
     {{ t("foot.ledger") }} <code>{{ epoch }}</code> · {{ t("foot.seq") }} <code>{{ seq }}</code> ·
     <a href="/api/receipts.jsonl">receipts.jsonl</a> ·

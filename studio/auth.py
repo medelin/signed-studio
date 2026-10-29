@@ -43,7 +43,8 @@ FORM_CHECKED_PREFIXES = ("/account/",)  # studio.routes_account checks the csrf 
 PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favicon.ico",
                           "/privacy", "/data-deletion",
                           "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys",
-                          "/try", "/pl/try", "/try/data.json"})  # the recorded tour
+                          "/try", "/pl/try", "/try/data.json",  # the recorded tour
+                          "/start", "/pl/start"})  # onboarding
 PUBLIC_PREFIXES = ("/static/", "/try/img/")
 JSON_PREFIXES = ("/api/", "/assets/")
 
