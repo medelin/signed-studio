@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-29 — first live PAUSED run
+
+- A live run on the Muse Studio Lite ad account (after the app went Live) created a real campaign (52566255666766), ad set (52566255672966) and ad (52566255715566), all PAUSED, daily budget 6 GBP, with the EU DSA beneficiary and payor fields sent. The ad preview needed `business.facebook.com`, which is now accepted. Docs updated (README "Honest status", `docs/SECURITY.md`).
+
 ## 2026-10-29 — pixel check before signing
 
 - `studio/meta/pixel.py` and `Adapter.pixel_check(pixel_id, landing_url)` (graph and mock, read-only): for website leads and sales the producer checks the owner's pixel while it builds the approval — `GET /{pixel_id}?fields=id,name,last_fired_time,is_unavailable`, the pixel among `GET /act_{id}/adspixels?fields=id` (after-cursor, at most 5 pages), `GET /{pixel_id}/stats?aggregation=event` for 7 days (an erroring edge is "unknown", odd shapes count as no events), and the pixel id in the landing page's HTML (`fbq('init', …)`, `facebook.com/tr?id=…`). Result `ok`/`warn`/`fail`, one entry per check, `last_fired_time`, events by name; no token or response body.

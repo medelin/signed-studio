@@ -15,7 +15,28 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
   Brief v1 and the [FACT] questions: [docs/brief.md](docs/brief.md) ·
   threat model: [docs/SECURITY.md](docs/SECURITY.md) · MCP server: [docs/mcp.md](docs/mcp.md) · review policy and platform limits: [docs/policy.md](docs/policy.md) · video script: [docs/demo-script.md](docs/demo-script.md)
 
-<!-- screenshots: docs/screenshots/ (studio run, signed approval, PAUSED campaign, studio verify) -->
+## For judges
+
+- **Pitch:** an AI ad agency for a one-person business that creates the Meta campaign PAUSED, and only after the owner signed the exact bytes; every step is a receipt you can check offline.
+- **Theme:** Build for Your World, Indie track: small-business owners running their own Meta ads safely.
+- **Try it:** https://muse.udun.eu, login `judge`; the password is in the submission form, not in this repo.
+<!-- - No-login tour: https://muse.udun.eu/try -->
+- **3-minute video:** <!-- VIDEO_URL -->
+- **Built during the event:** first commit 2026-10-27; solo.
+
+| Meta model | What it does | File |
+|---|---|---|
+| `muse-spark-1.3` | plan and tools, image review (vision), comment triage, lead rationale, report | `studio/agents/producer.py`, `reviewer.py`, `community.py`, `lead_scorer.py`, `analyst.py` |
+| `muse-spark-1.3-contributor` | copy and image prompts when the input has no personal data | `studio/agents/copywriter.py`, `studio/pii.py` |
+| `muse-image-1.0` | the three placements and carousel cards | `studio/muse/image.py` |
+| `sam-3.1` | product cut-out | `studio/muse/sam.py` |
+| `muse-voice-transcribe-1.0` | spoken brief and dictation | `studio/muse/voice.py` |
+| `muse-wonder-1.0` | video shot list | `studio/agents/video.py` |
+| `meta-models/muse-spark-open` (Baseten) | second-opinion reviewer | `studio/muse/openweights.py` |
+
+Read first: `studio/approvals.py` (signature bound to bytes), `studio/receipts.py` (hash chain), `studio/executor.py` (code creates the campaign, PAUSED), `studio/agents/producer.py` (the agent loop), `studio/agents/reviewer.py` (reviewers and policy checks).
+
+Verify receipts in one command (export from the footer link after signing in): `studio verify receipts.jsonl --server https://muse.udun.eu`
 
 ## Before / after, for a one-person business
 
@@ -82,8 +103,8 @@ replays that flow headless. `make test` runs the suite offline, `make eval` rege
 | Measurement | results and cost per result for the objective, reach, frequency, CPM, spend, CTR, link clicks, by age and gender, placement and region, with the attribution setting; hourly `insights.snapshot` receipts; code-rule recommendations | a budget change or pause runs only after a new signature |
 | Currency | budgets in the ad account's currency (read from the account), minor units by Meta's offsets | the ad account |
 
-Development used **Muse Code** for the Muse-specific modules and prompt tuning; session
-exports go to [docs/build-log/](docs/build-log/).
+Development used **Muse Code** for the Muse-specific modules and prompt tuning; see
+[docs/build-log/](docs/build-log/) for what is and is not logged there.
 
 ## What is different here: a signature bound to bytes, and a log anyone can check
 
@@ -156,10 +177,13 @@ Tools, receipts and limits: [docs/mcp.md](docs/mcp.md).
 
 - Meta writes go through `META_ADAPTER=graph` (Marketing API v25.0, own ad account,
   PAUSED-only) or the mock adapter; the sandbox always runs the mock and never holds a Meta
-  token. The graph adapter's writes are tested against hand-written cassettes until the
-  live PAUSED smoke on the operator's own account is recorded; its reads (account currency,
-  targeting search, insights fields, lead forms) were checked live, read-only, and recorded
-  (`fixtures/cassettes/graph_readonly.json`).
+  token. On 2026-10-29 a live run on the Muse Studio Lite ad account (after the app went
+  Live) created a real campaign (52566255666766), ad set (52566255672966) and ad
+  (52566255715566), all PAUSED, daily budget 6 GBP, with the EU DSA beneficiary and payor
+  fields sent; the ad preview needed `business.facebook.com`, which is now accepted. The
+  graph adapter's other write paths are tested against hand-written cassettes; its reads
+  (account currency, targeting search, insights fields, lead forms) were checked live,
+  read-only, and recorded (`fixtures/cassettes/graph_readonly.json`).
 - Google Search is a minimal second channel (`GOOGLE_ADS_ADAPTER=rest`, Google Ads REST API
   v23, no client library): tick it in the brief and a second approval signs one Search
   campaign (its spec hashed into the signature, created paused after a dry run, activated

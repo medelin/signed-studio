@@ -116,8 +116,9 @@ injected Graph transport (tests, replay) nothing is fetched at all.
   paraphrase relies on the two model reviewers and the human.
 - **Prompt injection is mitigated, not solved.** The envelope reduces it; the boundary is
   "no tools on customer-text calls + a human signature on every send".
-- **Graph API behaviour** (token transport, activation order, `appsecret_proof`) is tested
-  against hand-written cassettes until the live smoke on the operator's own ad account.
+- **Graph API behaviour** (token transport, activation order, `appsecret_proof`): the create path
+  was run live once on 2026-10-29 (campaign, ad set and ad, all PAUSED); activation and other
+  writes are tested against hand-written cassettes.
 - **Second-opinion reviewer** is unavailable without `BASETEN_API_KEY`; the approval screen
   says so.
 - **Sessions live in process memory**: a restart signs everyone out and revokes their keys
