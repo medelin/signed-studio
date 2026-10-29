@@ -267,15 +267,18 @@ class Assistants:
         return str(row[0]) if row else None
 
     def own_brief(self, p: Principal, brief_id: str) -> tuple[Any, ...]:
-        """The brief row, if it exists and no other account's token drafted it."""
+        """The brief row, if it exists, no other account's token drafted it and it is not
+        another account's WhatsApp brief (``routes_studio.owns``)."""
         with self.conn.lock:
             row = self.conn.execute("SELECT id, run_id, source, text, draft, brief_v1, "
-                                    "brief_sha256, draft_run_id, created_ts FROM briefs "
-                                    "WHERE id = ?", (brief_id,)).fetchone()
+                                    "brief_sha256, draft_run_id, created_ts, channel, "
+                                    "account_id FROM briefs WHERE id = ?",
+                                    (brief_id,)).fetchone()
         owner = self.owner_of(brief_id)
-        if row is None or (owner is not None and owner != p.account_id):
+        if row is None or (owner is not None and owner != p.account_id) or \
+                not routes_studio.owns(row[9], row[10], p.account_id):
             raise ApiRefused("not_found")
-        return tuple(row)
+        return tuple(row[:9])
 
     def own_run(self, p: Principal, run_id: str) -> None:
         if not routes_studio.RUN_ID.fullmatch(run_id) or run_id in self.foreign_runs(
@@ -333,8 +336,9 @@ def list_briefs(s: Assistants, p: Principal, limit: int = 20) -> dict[str, Any]:
             "SELECT b.id, b.run_id, b.source, b.created_ts, b.draft_run_id, b.draft != '', "
             "b.brief_sha256, a.account_id, a.confirmation != '' FROM briefs b "
             "LEFT JOIN api_briefs a ON a.brief_id = b.id "
-            "WHERE a.account_id IS NULL OR a.account_id = ? "
-            "ORDER BY b.created_ts DESC LIMIT ?", (p.account_id, limit)).fetchall()
+            "WHERE (a.account_id IS NULL OR a.account_id = ?) "
+            "AND (b.channel != 'whatsapp' OR b.account_id = ?) "
+            "ORDER BY b.created_ts DESC LIMIT ?", (p.account_id, p.account_id, limit)).fetchall()
     return {"briefs": [{
         "brief_id": r[0], "run_id": r[1], "source": r[2], "created_ts": r[3],
         "state": "running" if r[1] else "confirmed" if r[8] else "draft" if r[5]
@@ -432,7 +436,8 @@ def confirm_brief(s: Assistants, p: Principal, brief_id: str,
     body = {"brief_id": brief_id, "brief_v1": brief, "resolutions": resolutions}
     c = routes_studio.check_confirmation(s.conn, body, ceiling=s.settings.max_daily_budget,
                                          currency=s.currency,
-                                         google_currency=s.google_currency, untrusted=True)
+                                         google_currency=s.google_currency, untrusted=True,
+                                         owner=p.account_id)
     _tag(s, p, brief_id)  # a brief drafted in the web UI becomes this account's here
     with db.transaction(s.conn):
         s.conn.execute("UPDATE api_briefs SET confirmation = ? WHERE brief_id = ? AND "
@@ -458,7 +463,8 @@ def start_run(s: Assistants, p: Principal, brief_id: str, open_weights: bool = F
     saved = json.loads(row[0])
     body = {"brief_id": brief_id, "brief_v1": saved["brief_v1"],
             "resolutions": saved["resolutions"], "open_weights": open_weights}
-    response = s.app.state.confirm_and_start(body, agent=p.token.agent, untrusted=True)
+    response = s.app.state.confirm_and_start(body, p.account_id, agent=p.token.agent,
+                                             untrusted=True)
     out = json.loads(bytes(response.body))
     if response.status_code != 202:
         out.pop("run_id", None)  # the run in progress may be another account's

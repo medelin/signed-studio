@@ -3,6 +3,9 @@
   <p class="hint">{{ t("assist.lead") }}</p>
   <p class="hint">{{ t("assist.how_html") }}</p>
   {{ error_of("assistants", "assistants-error") }}
+  {% if account.is_demo %}
+  <p class="hint" id="assistants-demo">{{ t("err.token_demo") }}</p>
+  {% else %}
   {% if new_token %}
   <div class="panel" id="new-token" role="status">
     <h3>{{ t("assist.new_title") }}</h3>
@@ -24,6 +27,13 @@
     <select id="token-days" name="days">
       {% for d in token_days %}<option value="{{ d }}"{% if d == token_default_days %} selected{% endif %}>{{ t("assist.days", days=d) }}</option>{% endfor %}
     </select>
+    <p class="hint" id="token-reauth">{{ t("assist.reauth_hint") }}</p>
+    <label for="token-password">{{ t("assist.password") }}</label>
+    <input id="token-password" name="password" type="password" autocomplete="current-password" required aria-describedby="token-reauth">
+    {% if account.totp_enabled %}
+    <label for="token-code">{{ t("assist.code") }}</label>
+    <input id="token-code" name="code" inputmode="numeric" autocomplete="one-time-code" required>
+    {% endif %}
     <button type="submit">{{ t("assist.create") }}</button>
   </form>
   {% if api_tokens %}
@@ -41,5 +51,6 @@
   </div>
   {% else %}
   <p class="hint">{{ t("assist.none") }}</p>
+  {% endif %}
   {% endif %}
 </section>

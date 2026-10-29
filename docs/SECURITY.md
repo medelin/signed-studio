@@ -106,7 +106,9 @@ injected Graph transport (tests, replay) nothing is fetched at all.
 - **Personal access tokens are bearer secrets.** Whoever holds one can read (and, with
   `draft`, draft and start runs) as that account until it expires (≤ 90 days) or is
   revoked on `/account`; it can never sign. Only a keyed hash is stored; the value is shown
-  once. Leads and comments go to the owner's assistant as the signed-in UI shows them.
+  once. Minting needs the current password (and two-step code); a password, two-step or
+  status change and "Sign out other sessions" kill every token; the shared `judge` account
+  has none. Leads and comments go to the owner's assistant as the signed-in UI shows them.
 
 - **TOFU in `studio verify --server`.** Without a pinned key, `--server` trusts the key and
   `seq` the server serves at that moment; a compromised server can serve a matching forged

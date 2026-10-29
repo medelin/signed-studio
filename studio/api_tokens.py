@@ -12,8 +12,13 @@
   stored (``SCOPES`` is closed, the table has a ``CHECK``): signing stays a human tap in
   the browser.
 - **Expiry** (default 30 days, at most 90), **revocation**, **last used** time, a
-  **label** (the receipt agent ``api:<label>``). A token of an account that is disabled
-  or deleted stops working on the next request.
+  **label** (the receipt agent ``api:<label>``). A token is bound to its account's
+  ``credential_gen`` when it is made: a password change or reset, a two-step change, a
+  disable, deletion or demo-password rotation bumps it and kills every token of the
+  account on its next request; "sign out other sessions" revokes them (``revoke_all``).
+- **Not for the shared demo account** (``judge``): no token can be made for it, and one
+  that exists is refused. Making a token needs the current password (and the two-step
+  code when it is on), checked in ``routes_api``.
 - **Never logged**: the value exists only in the response that shows it once; receipts
   and logs name a token by its id.
 """
@@ -44,6 +49,7 @@ CREATE TABLE IF NOT EXISTS api_tokens (
     label TEXT NOT NULL,
     scopes TEXT NOT NULL CHECK (scopes IN ('read', 'read draft')),
     token_hmac TEXT NOT NULL,            -- HMAC-SHA256 of the whole value; never the value
+    credential_gen INTEGER NOT NULL DEFAULT -1,  -- the account's when made; must still match
     created_ts REAL NOT NULL,
     expires_ts REAL NOT NULL,
     last_used_ts REAL,
@@ -121,6 +127,10 @@ def derive_key(ledger_key: Ed25519PrivateKey) -> bytes:
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    have = {row[1] for row in conn.execute("PRAGMA table_info(api_tokens)")}
+    if "credential_gen" not in have:  # a table made before the binding: those tokens die
+        conn.execute("ALTER TABLE api_tokens ADD COLUMN credential_gen INTEGER NOT NULL "
+                     "DEFAULT -1")
 
 
 _COLUMNS = ("id, account_id, label, scopes, created_ts, expires_ts, last_used_ts, "
@@ -160,15 +170,21 @@ class Tokens:
         tid = "tok_" + secrets.token_hex(6)
         value = f"{PREFIX}{tid}_{secrets.token_urlsafe(32)}"
         with transaction(self.conn) as c:
+            acct = c.execute("SELECT status, is_demo, credential_gen FROM accounts WHERE "
+                             "id = ?", (account_id,)).fetchone()
+            if acct is None or acct[0] != "active":
+                raise TokenError("unknown_token")
+            if acct[1]:
+                raise TokenError("token_demo")
             live = c.execute("SELECT count(*) FROM api_tokens WHERE account_id = ? AND "
                              "revoked_ts IS NULL AND expires_ts > ?",
                              (account_id, now)).fetchone()[0]
             if live >= MAX_ACTIVE:
                 raise TokenError("token_limit")
             c.execute("INSERT INTO api_tokens (id, account_id, label, scopes, token_hmac, "
-                      "created_ts, expires_ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                      "credential_gen, created_ts, expires_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                       (tid, account_id, label, " ".join(SCOPE_SETS[scope]), self._mac(value),
-                       now, now + days * 86400.0))
+                       int(acct[2]), now, now + days * 86400.0))
         token = self.get(account_id, tid)
         assert token is not None
         return token, value
@@ -195,9 +211,17 @@ class Tokens:
                             (self.clock(), token_id, account_id))
         return cur.rowcount == 1
 
+    def revoke_all(self, account_id: str) -> int:
+        """Revoke every live token of the account ("sign out other sessions")."""
+        with transaction(self.conn) as c:
+            cur = c.execute("UPDATE api_tokens SET revoked_ts = ? WHERE account_id = ? AND "
+                            "revoked_ts IS NULL", (self.clock(), account_id))
+        return int(cur.rowcount)
+
     def verify(self, value: str | None) -> Token | None:
         """The live token for a presented value: right shape, known id, matching keyed
-        hash, not revoked, not expired, its account active. ``None`` otherwise."""
+        hash, not revoked, not expired, its account active, not the demo account, and
+        the account's credentials unchanged since it was made. ``None`` otherwise."""
         m = TOKEN.fullmatch(value or "")
         if m is None:
             return None
@@ -205,7 +229,8 @@ class Tokens:
         with self.conn.lock:
             row = self.conn.execute(
                 "SELECT t.id, t.account_id, t.label, t.scopes, t.created_ts, t.expires_ts, "
-                "t.last_used_ts, t.revoked_ts, t.token_hmac, a.status "
+                "t.last_used_ts, t.revoked_ts, t.token_hmac, a.status, a.is_demo, "
+                "t.credential_gen, a.credential_gen "
                 "FROM api_tokens t JOIN accounts a ON "
                 "a.id = t.account_id WHERE t.id = ?", (m.group(1),)).fetchone()
         if row is None:
@@ -214,7 +239,7 @@ class Tokens:
         token, digest, status = _row(row[:8]), row[8], row[9]
         if not hmac.compare_digest(digest, self._mac(value or "")):
             return None
-        if status != "active" or not token.active(now):
+        if status != "active" or row[10] or row[11] != row[12] or not token.active(now):
             return None
         if token.last_used_ts is None or now - token.last_used_ts >= TOUCH_EVERY_S:
             with transaction(self.conn) as c:

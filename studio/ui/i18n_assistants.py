@@ -67,6 +67,13 @@ EN_ASSISTANTS: dict[str, str] = {
                               "token.",
     "err.invalid_token": "Missing, unknown, revoked or expired token.",
     "err.not_confirmed": "Confirm the brief (confirm_brief) before starting its run.",
+    "err.token_demo": "Tokens are off for the shared judge account: use the no-login tour "
+                      "(/try) or your own account.",
+    "assist.password": "Your current password",
+    "assist.code": "Two-step code",
+    "assist.reauth_hint": "Making a token asks for your password again, so a borrowed "
+                          "session cannot mint one. Changing your password, two-step "
+                          "sign-in or signing out other sessions revokes every token.",
 }
 
 PL_ASSISTANTS: dict[str, str] = {
@@ -134,4 +141,11 @@ PL_ASSISTANTS: dict[str, str] = {
                               "czytania i szkiców.",
     "err.invalid_token": "Brak tokenu albo token nieznany, unieważniony lub wygasły.",
     "err.not_confirmed": "Najpierw potwierdź brief (confirm_brief), potem uruchom przebieg.",
+    "err.token_demo": "Tokeny są wyłączone dla wspólnego konta jury: skorzystaj z wycieczki "
+                      "bez logowania (/try) albo z własnego konta.",
+    "assist.password": "Twoje obecne hasło",
+    "assist.code": "Kod logowania dwuetapowego",
+    "assist.reauth_hint": "Utworzenie tokenu wymaga ponownego podania hasła, więc cudza "
+                          "sesja go nie wyda. Zmiana hasła, logowania dwuetapowego lub "
+                          "wylogowanie innych sesji unieważnia wszystkie tokeny.",
 }

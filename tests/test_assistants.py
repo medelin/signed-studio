@@ -37,13 +37,13 @@ def make_app(tmp, **env):
     return app
 
 
-def account(app, username="judge"):
+def account(app, username="owner"):
     store = Accounts(app.state.conn)
     found = store.by_username(username)
     return found or store.create(username, OTHER_PASSWORD)
 
 
-def token(app, username="judge", scope="draft", label="Claude Desktop", days=30):
+def token(app, username="owner", scope="draft", label="Claude Desktop", days=30):
     """A token made straight in the store: ``(Token, value)``."""
     return app.state.assistants.tokens.create(account(app, username).id, label, scope, days)
 
@@ -52,7 +52,10 @@ def bearer(value):
     return {"Authorization": "Bearer " + value}
 
 
-def login(client, app, username="judge", password=None):
+def login(client, app, username="owner", password=None):
+    if username != "judge":
+        account(app, username)
+        password = password or OTHER_PASSWORD
     r = client.post("/login", data={"username": username,
                                     "password": password or app.state.judge_password,
                                     "csrf": csrf(client)})
@@ -94,7 +97,8 @@ def test_a_token_is_made_on_the_account_page_shown_once_and_stored_as_a_keyed_ha
     page = c.get("/account")
     assert 'id="assistants"' in page.text and "/account/tokens/create" in page.text
     r = c.post("/account/tokens/create", data={"csrf": csrf(c), "label": "Claude Desktop",
-                                               "scope": "draft", "days": "30"})
+                                               "scope": "draft", "days": "30",
+                                               "password": OTHER_PASSWORD})
     assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
     (value,) = set(TOKEN.findall(r.text))
     assert TOKEN.findall(c.get("/account").text) == []  # shown once
@@ -120,7 +124,8 @@ def test_the_form_refuses_a_sign_scope_odd_expiry_and_bad_labels(tmp_path):
                    {"label": "x", "scope": "read", "days": "365"},
                    {"label": "", "scope": "read", "days": "30"},
                    {"label": "<script>", "scope": "read", "days": "30"}):
-        r = c.post("/account/tokens/create", data={"csrf": csrf(c), **fields})
+        r = c.post("/account/tokens/create", data={"csrf": csrf(c),
+                                                   "password": OTHER_PASSWORD, **fields})
         assert r.status_code == 400, fields
     assert app.state.conn.execute("SELECT count(*) FROM api_tokens").fetchone()[0] == 0
     with pytest.raises(Exception):  # noqa: B017 - the CHECK constraint, not just the form

@@ -329,3 +329,4 @@ def test_in_the_sandbox_bearer_calls_work_and_cookieless_writes_elsewhere_do_not
                       ).status_code == 401
         assert c.post("/api/runs", json={"brief": "x"}, headers=bearer(value)
                       ).status_code == 401
+

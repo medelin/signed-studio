@@ -239,6 +239,12 @@ def _account_forms(app: FastAPI, svc: assistants.Assistants) -> None:
                 "token_default_days": api_tokens.DEFAULT_DAYS}
 
     app.state.account_extras = tokens_of
+    app.state.after_revoke_others = svc.tokens.revoke_all
+
+    def refuse(request: Request, sid: str, account: Any, code: str, status: int) -> Response:
+        response: Response = app.state.account_page(
+            request, sid, account, status=status, errors={"assistants": ("err." + code, "")})
+        return response
 
     @app.post("/account/tokens/create")
     async def create_token(request: Request) -> Response:
@@ -246,10 +252,27 @@ def _account_forms(app: FastAPI, svc: assistants.Assistants) -> None:
         if isinstance(got, Response):
             return got
         sid, account, fields = got
+        if account.is_demo:  # the shared judge account: a token would outlive the rotation
+            return refuse(request, sid, account, "token_demo", 403)
         try:
             days = int(fields.get("days", api_tokens.DEFAULT_DAYS))
         except ValueError:
             days = 0
+        # a stolen session cookie must not become a long-lived token: re-authenticate
+        ip, ok = app.state.account_limited(request)
+        if not ok:
+            refused: Response = app.state.account_refused(request, sid, account,
+                                                          "assistants", ip)
+            return refused
+        store = app.state.accounts
+        good = store.authenticate(account.username, fields.get("password", "")) is not None
+        code_ok = good and (not account.totp_enabled
+                            or store.verify_second_factor(account.id, fields.get("code", "")))
+        app.state.limiter.settle(ip, good and code_ok)
+        if not good:
+            return refuse(request, sid, account, "wrong_password", 400)
+        if not code_ok:
+            return refuse(request, sid, account, "wrong_code", 400)
         try:
             token, value = svc.tokens.create(account.id, fields.get("label", ""),
                                              fields.get("scope", "read"), days)
@@ -267,6 +290,8 @@ def _account_forms(app: FastAPI, svc: assistants.Assistants) -> None:
         if isinstance(got, Response):
             return got
         sid, account, fields = got
+        if account.is_demo:
+            return refuse(request, sid, account, "token_demo", 403)
         if not svc.tokens.revoke(account.id, fields.get("token", "")):
             return app.state.account_page(request, sid, account, status=404,
                                           errors={"assistants": ("err.unknown_token", "")})

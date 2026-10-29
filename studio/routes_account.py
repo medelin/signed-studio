@@ -198,6 +198,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     app.state.account_page = page  # the "Assistants & API" forms (studio.routes_api)
     app.state.account_posted = posted
+    app.state.account_limited = limited
+    app.state.account_refused = refused
 
     # -- pages -----------------------------------------------------------------------------
 
@@ -349,6 +351,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return got
         sid, account, _ = got
         store.revoke_others(account.id, current_sid=sid)
+        hook = getattr(app.state, "after_revoke_others", None)  # routes_api: API tokens too
+        if hook is not None:
+            hook(account.id)
         return done("sessions_revoked")
 
     @app.post("/account/notifications")

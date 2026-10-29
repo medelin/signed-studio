@@ -21,11 +21,19 @@ Sign in, open **Account → Assistants & API** (`/account#assistants`):
 - **What it may do**: *Read only* (`read`) or *Read and draft* (`read` + `draft`). There is
   no third choice: a `sign` scope does not exist and cannot be stored.
 - **Expires after** 7, 30 (default) or 90 days.
+- **Your current password** (and the two-step code when two-step sign-in is on): a borrowed
+  or stolen session cookie cannot mint a long-lived token. Attempts count against the login
+  limiter.
 
 The token (`msl_tok_…_…`) is shown **once**. The studio keeps only an HMAC-SHA256 of it
-(key derived from the ledger key), its label, scopes, expiry and last-used time. Revoke it
-on the same page: the assistant is cut off on its next request. A disabled or deleted
-account's tokens stop working too. At most 10 live tokens per account.
+(key derived from the ledger key), its label, scopes, expiry, last-used time and the
+account's credential generation when it was made. Revoke it on the same page: the assistant
+is cut off on its next request. Every token of the account also dies on a password change
+or operator reset, a two-step sign-in change, a disable or deletion (all bump the
+generation), and on "Sign out other sessions". At most 10 live tokens per account.
+
+**Not for the shared `judge` demo account**: tokens are off there (a token would outlive the
+judge password's rotation). Judges use the no-login tour (`/try`) or their own account.
 
 ## 2. Connect
 
