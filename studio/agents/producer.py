@@ -215,6 +215,10 @@ def campaign_payload(run: RunResult, variant_index: int,
         "ad": {"primary_text": v.primary_text, "headline": v.headline,
                "description": v.description, "cta": v.cta},
         "risks": list(run.copy.risks),
+        # what the owner asked for and the copy left out (A2): signed with the ad, so the
+        # signature covers what was dropped and why (absent when nothing was)
+        **({"left_out": [x.model_dump() for x in run.copy.left_out]}
+           if run.copy.left_out else {}),
         "images": [{"placement": i.placement, "sha256": i.sha256}
                    for i in run.creatives.images],
         "review": {"verdict": run.review["verdict"],
@@ -583,15 +587,21 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 raise ToolError(f"{im.placement} changed on disk since it was rendered")
             images.append((im.placement, im.sha256, png))
         checks = {im.placement: im.sam_check for im in run.creatives.images}
+        # the same copy also runs on Google Search when the brief chose it: Google's
+        # policies (P9) then weigh as blocks (``rules``)
+        channels = ("meta", "google") if (ctx.brief_v1 is not None
+                                          and ctx.brief_v1.channels.google_search) \
+            else ("meta",)
         result = reviewer.run_formats(ctx.client, ctx.open_client, images,
                                       run.copy.variants[args.variant_index], run_id=run.run_id,
-                                      brief=ctx.brief_v1, sam_checks=checks)
+                                      brief=ctx.brief_v1, sam_checks=checks, channels=channels)
         # copy A/B: every further variant that will run is reviewed on every image too
         ab = []
         for i in ab_variants(ctx, run, args.variant_index)[1:]:
             extra = reviewer.run_formats(ctx.client, ctx.open_client, images,
                                          run.copy.variants[i], run_id=run.run_id,
-                                         brief=ctx.brief_v1, sam_checks=checks)
+                                         brief=ctx.brief_v1, sam_checks=checks,
+                                         channels=channels)
             ab.append({**extra, "variant_index": i})
         worst = max([result["verdict"], *(x["verdict"] for x in ab)],
                     key=reviewer.RANK.__getitem__)

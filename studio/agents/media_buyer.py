@@ -328,9 +328,22 @@ def request_update(conn: sqlite3.Connection, ledger: Ledger, rec_id: str,
 
 
 def update(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
-           payload: dict[str, Any], ceiling: int) -> dict[str, Any]:
-    """Execute a signed recommendation: one adapter call, receipts, the campaign row."""
+           payload: dict[str, Any], ceiling: int,
+           data_dir: Path | None = None) -> dict[str, Any]:
+    """Execute a signed recommendation: one adapter call, receipts, the campaign row. A
+    signed ``replace_creative`` (a disapproved ad, ``studio.disapprovals``) creates a new
+    creative and a new PAUSED ad under the same ad set instead."""
     v: Verified = executor.authorize(conn, verified, "campaign.update", payload)
+    if (payload.get("change") or {}).get("kind") == "replace_creative":
+        from studio import disapprovals
+
+        if data_dir is None:
+            executor.finish(conn, v, "failed", {"error": "no_assets"})
+            raise BuyError("the approved image is not reachable", "no_assets")
+        try:
+            return disapprovals.replace(conn, ledger, adapter, v, payload, data_dir)
+        except disapprovals.DisapprovalError as exc:
+            raise BuyError(str(exc), exc.code) from None
     c = campaign(conn, v.item_id)
     change = payload.get("change") or {}
     problem = ""

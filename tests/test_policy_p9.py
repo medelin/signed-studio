@@ -3,7 +3,11 @@
 A human-written ad ("Załóż spółkę w Anglii w 24 h. Bez ZUS") was rejected by an ad
 platform under "Government documents and official services" and "Exaggerated or
 inaccurate claims". The checklist carries the rule for both reviewers, and a code check
-(``reviewer.policy_net``) adds a P9 BLOCK whatever the models say.
+(``reviewer.policy_net``) adds a P9 finding whatever the models say.
+
+P9 is a Google Ads policy, not a Meta one (docs/scenarios.md): it is a BLOCK when the copy
+also runs on Google Search (``channels`` meta + google), and a tip with its Google source
+on a Meta-only campaign (``rules.RULES``).
 """
 
 import json
@@ -17,6 +21,7 @@ from tests.cassettes import CASSETTES, ROOT, interactions
 
 ADS = json.loads((ROOT / "fixtures" / "eval" / "ads.SYNTHETIC.json").read_text())["ads"]
 IMAGE = (CASSETTES / "files" / "image_series-1.png").read_bytes()
+GOOGLE = ("meta", "google")
 
 
 def _copy(ad):
@@ -33,9 +38,17 @@ def test_checklist_has_p9_for_both_reviewers():
 
 @pytest.mark.parametrize("ad", [a for a in ADS if a["expect"] == "P9"], ids=lambda a: a["id"])
 def test_net_flags_every_p9_ad(ad):
-    found = reviewer.policy_net(_copy(ad))
+    found = reviewer.policy_net(_copy(ad), GOOGLE)
     assert found and all(f.rule == "P9" and f.severity == "block" for f in found)
     assert "code check" in found[0].evidence
+    assert found[0].source.startswith("https://support.google.com/adspolicy/")
+
+
+@pytest.mark.parametrize("ad", [a for a in ADS if a["expect"] == "P9"], ids=lambda a: a["id"])
+def test_on_meta_alone_p9_is_a_tip_with_its_google_source(ad):
+    found = reviewer.policy_net(_copy(ad))
+    assert found and all(f.rule == "P9" and f.severity == "tip" for f in found)
+    assert "support.google.com" in found[0].source
 
 
 @pytest.mark.parametrize("ad", [a for a in ADS if a["expect"] != "P9"], ids=lambda a: a["id"])
@@ -64,10 +77,17 @@ class _Agreeable:
         return R()
 
 
-def test_a_p9_ad_is_blocked_even_when_the_model_says_ok():
+def test_a_p9_ad_on_meta_only_is_ok_with_a_tip():
+    ad = next(a for a in ADS if a["id"] == "p9-zaloz-spolke")
+    out = reviewer.run(_Agreeable(), None, IMAGE, _copy(ad), run_id="run_p9m")
+    assert out.verdict == "OK"
+    assert {(f.rule, f.severity) for f in out.primary.findings} == {("P9", "tip")}
+
+
+def test_a_p9_ad_is_blocked_on_google_even_when_the_model_says_ok():
     ad = next(a for a in ADS if a["id"] == "p9-zaloz-spolke")
     client = _Agreeable()
-    out = reviewer.run(client, None, IMAGE, _copy(ad), run_id="run_p9")
+    out = reviewer.run(client, None, IMAGE, _copy(ad), run_id="run_p9", channels=GOOGLE)
     assert out.verdict == "BLOCK"
     assert {f.rule for f in out.primary.findings} == {"P9"}
     receipt = client.ledger.receipts("run_p9")[-1]
@@ -79,7 +99,7 @@ def test_net_does_not_duplicate_a_p9_finding_the_model_made():
     ad = next(a for a in ADS if a["id"] == "p9-no-zus")
     model = Review.model_validate({"verdict": "BLOCK", "summary": "x", "findings": [
         {"rule": "P9", "evidence": "No ZUS obligation", "severity": "block"}]})
-    merged = reviewer.with_policy_net(model, _copy(ad))
+    merged = reviewer.with_policy_net(model, _copy(ad), GOOGLE)
     assert [f.rule for f in merged.findings] == ["P9"]
 
 
@@ -97,7 +117,7 @@ def test_recorded_spark_review_blocks_the_p9_ad_on_its_own():
     client = MuseClient(FAKE_KEY, ledger=Ledger(), budget=Budget(1.0))
     with respx.mock() as router:
         sent = mount(router, "review_p9", BASE_URL)
-        result = reviewer.review(client, image, _copy(ad), run_id="run_p9")
+        result = reviewer.review(client, image, _copy(ad), run_id="run_p9", channels=GOOGLE)
     assert result.verdict == "BLOCK"
     assert any(f.rule == "P9" and f.severity == "block" for f in result.findings)
     assert "P9" in sent[0]["messages"][0]["content"]  # the checklist the model was given
@@ -114,4 +134,4 @@ def test_recorded_spark_review_blocks_the_p9_ad_on_its_own():
 def test_net_catches_the_ads_an_ad_platform_rejected(text):
     copy = CopyVariant(primary_text=text, headline="Spółka LTD", description="UK",
                        cta="LEARN_MORE")
-    assert reviewer.policy_net(copy)
+    assert reviewer.policy_net(copy, GOOGLE)[0].severity == "block"

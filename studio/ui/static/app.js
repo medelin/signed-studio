@@ -147,6 +147,22 @@ function renderImages(runId, creatives) {
   }
 }
 
+// The source a finding stands on (a Meta policy or spec page; "muse:grounding" for the
+// rule that only lets the ad say what the owner confirmed). Only https links are made.
+function sourceLink(source) {
+  if (!source) return null;
+  if (!/^https:\/\//.test(source)) {
+    const label = source === "muse:grounding" ? T("source_muse_grounding")
+      : source === "muse:unmapped-rule" ? T("source_muse_unmapped") : T("source_muse_prompt");
+    return el("span", "(" + label + ")", "hint");
+  }
+  const a = el("a", T("source_link"));
+  a.href = source;
+  a.rel = "noopener noreferrer";
+  a.target = "_blank";
+  return a;
+}
+
 function renderReviewBlock(title, review) {
   const div = el("div");
   const h = el("h3", title + " ");
@@ -154,7 +170,12 @@ function renderReviewBlock(title, review) {
   div.append(h, el("p", review.summary));
   if (review.findings.length) {
     const ul = el("ul");
-    for (const f of review.findings) ul.append(el("li", f.rule + " (" + TV("severity", f.severity) + "): " + f.evidence));
+    for (const f of review.findings) {
+      const li = el("li", f.rule + " (" + TV("severity", f.severity) + "): " + f.evidence, "finding finding-" + f.severity);
+      const link = sourceLink(f.source);
+      if (link) li.append(" ", link);
+      ul.append(li);
+    }
     div.append(ul);
   }
   return div;
@@ -359,6 +380,49 @@ function showPixel(px) {
   }
 }
 
+// A2: what the owner asked for and the copy left out, with the rule in one sentence, the
+// policy link and the phrasing used instead. Recordings made before the structured field
+// only have free-text risks: those are shown as plain lines. The owner can overrule by
+// editing the brief (the link goes back to it).
+function ruleSentence(id) {
+  const key = "rule_" + id;
+  const text = T(key);
+  return text === key ? "" : text;
+}
+
+function showLeftOut(content) {
+  const box = $("ap-left-out");
+  const list = $("ap-left-out-list");
+  list.replaceChildren();
+  const items = Array.isArray(content.left_out) ? content.left_out : [];
+  const notes = Array.isArray(content.risks) ? content.risks : [];
+  box.hidden = !items.length && !notes.length;
+  if (box.hidden) return;
+  for (const x of items) {
+    const li = el("li", null, "left-out-item");
+    li.append(el("p", T("left_out_asked", { asked: x.asked }), "left-out-asked"));
+    const rule = el("p", T("left_out_rule", { rule: x.rule, sentence: ruleSentence(x.rule) }), "hint");
+    const link = sourceLink(x.source);
+    if (link) rule.append(" ", link);
+    li.append(rule);
+    if (x.instead) li.append(el("p", T("left_out_instead", { instead: x.instead })));
+    list.append(li);
+  }
+  if (notes.length) {
+    const li = el("li", null, "left-out-notes");
+    li.append(el("p", T("left_out_notes"), "hint"));
+    const ul = el("ul");
+    for (const n of notes) ul.append(el("li", n));
+    li.append(ul);
+    list.append(li);
+  }
+  const back = el("li", null, "left-out-overrule");
+  const a = el("a", T("left_out_edit"));
+  a.href = "#brief-panel";
+  back.append(el("span", T("left_out_overrule") + " "), a);
+  list.append(back);
+}
+
 async function showApproval(pendingId) {
   const panel = $("approve-panel");
   panel.hidden = false;
@@ -368,6 +432,7 @@ async function showApproval(pendingId) {
     const data = await Signer.loadPayload(pendingId);
     currentPayload = data;
     $("ap-action").textContent = T("item", { action: data.fields.action, id: data.fields.item_id });
+    showLeftOut(data.content || {});
     $("ap-sha").textContent = data.content_sha256;
     $("ap-head").textContent = data.chain_head;
     const briefSha = data.fields.brief_sha256 || "";

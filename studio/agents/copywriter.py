@@ -13,8 +13,8 @@ import re
 import unicodedata
 
 from studio import envelope
-from studio.agents import prompts
-from studio.agents.schemas import Angle, CopyPack, CopyVariant
+from studio.agents import prompts, rules
+from studio.agents.schemas import Angle, CopyPack, CopyVariant, LeftOut
 from studio.muse.client import MuseClient, MuseResult
 from studio.muse.structured import structured
 from studio.pii import choose_tier
@@ -162,6 +162,27 @@ def flag_unfilled_facts(pack: CopyPack) -> CopyPack:
                                    "unfilled_facts": max(pack.unfilled_facts, found)})
 
 
+MAX_LEFT_OUT = 10
+_RULE_ID = re.compile(r"\bP\d+\b")
+
+
+def explain_left_out(pack: CopyPack) -> CopyPack:
+    """Code has the final say on what the owner is shown (``rules.RULES``): each dropped
+    claim's rule is a checklist id (``"P1 Personal"`` → ``P1``; unknown → ``UNMAPPED``)
+    and its source the table's, never the model's; entries without the owner's words are
+    dropped (nothing to show), at most ``MAX_LEFT_OUT``."""
+    out = []
+    for item in pack.left_out:
+        asked = item.asked.strip()
+        if not asked:
+            continue
+        m = _RULE_ID.search(item.rule)
+        rule_id = m.group() if m and m.group() in rules.RULES else "UNMAPPED"
+        out.append(LeftOut(asked=asked[:300], rule=rule_id, source=rules.source(rule_id),
+                           instead=item.instead.strip()[:300]))
+    return pack.model_copy(update={"left_out": out[:MAX_LEFT_OUT]})
+
+
 def write(
     client: MuseClient,
     angle: Angle,
@@ -194,4 +215,4 @@ def write(
         reasoning_effort="low" if tier == "open" else "minimal",
         envelope_sources=["transcript"] if transcript else (),
     )
-    return flag_unfilled_facts(pack), result
+    return explain_left_out(flag_unfilled_facts(pack)), result

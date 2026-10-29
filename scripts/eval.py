@@ -444,8 +444,12 @@ def _ads() -> list[dict[str, Any]]:
     return json.loads((EVAL / "ads.SYNTHETIC.json").read_text())["ads"]  # type: ignore[no-any-return]
 
 
-def record_reviews(env_file: Path, max_cost: float = 0.25) -> None:
-    """Real Muse Spark 1.3 vision reviews of every seeded ad (operator key, once)."""
+def record_reviews(env_file: Path, max_cost: float = 0.25,
+                   only: list[str] | None = None) -> None:
+    """Real Muse Spark 1.3 vision reviews of every seeded ad (operator key, once). With
+    ``only`` (ad ids) just those are re-recorded and merged into the existing file; each
+    re-recorded row carries its own ``recorded`` date. Rows keep the model's own levels
+    and verdict (rule ids mapped only), so the table in code re-derives the final ones."""
     import httpx
 
     from studio.agents import reviewer
@@ -471,19 +475,34 @@ def record_reviews(env_file: Path, max_cost: float = 0.25) -> None:
     led = Ledger()
     client = MuseClient(settings.model_api_key, settings.model_api_base_url, ledger=led,
                         budget=Budget(max_cost), transport=Capture())
+    from studio.agents.schemas import Review
+
     out = []
     for ad in _ads():
+        if only and ad["id"] not in only:
+            continue
         image = (EVAL / f"{ad['image']}.SYNTHETIC.png").read_bytes()
         copy = CopyVariant(**ad["copy"])
         review = reviewer.review(client, image, copy, run_id="eval")
+        raw = reviewer.canonical_rules(Review.model_validate_json(
+            captured[-1]["response"]["choices"][0]["message"]["content"]))
         r = led.receipts("eval")[-1]
-        out.append({"id": ad["id"], "expect": ad["expect"], "verdict": review.verdict,
-                    "findings": [f.model_dump() for f in review.findings],
+        out.append({"id": ad["id"], "expect": ad["expect"], "verdict": raw.verdict,
+                    "findings": [f.model_dump() for f in raw.findings],
                     "tokens_in": r.tokens_in, "tokens_out": r.tokens_out,
-                    "cost_usd": r.cost_usd, "model": r.model})
+                    "cost_usd": r.cost_usd, "model": r.model,
+                    **({"recorded": time.strftime("%Y-%m-%d", time.gmtime())} if only else {})})
         if ad["id"] == "p9-zaloz-spolke":
             _save_p9_cassette(captured[-1])
         print(f"{ad['id']:<18} {review.verdict:<5} {[f.rule for f in review.findings]}")
+    if only:  # merge into the recorded set, same order
+        data = json.loads(REVIEWS.read_text())
+        fresh = {x["id"]: x for x in out}
+        data["reviews"] = [fresh.get(x["id"], x) for x in data["reviews"]]
+        data["cost_usd"] = round(sum(x["cost_usd"] for x in data["reviews"]), 6)
+        data["re_recorded"] = sorted({*data.get("re_recorded", []), *fresh})
+        REVIEWS.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
+        return
     REVIEWS.write_text(json.dumps({
         "_provenance": "recorded", "recorded": time.strftime("%Y-%m-%d", time.gmtime()),
         "model": "muse-spark-1.3", "reviews": out,
@@ -599,7 +618,10 @@ def reviewer_metrics() -> dict[str, Any] | None:
     for r in data["reviews"]:
         model = Review.model_validate({"verdict": r["verdict"], "findings": r["findings"],
                                        "summary": ""})
-        merged = reviewer.with_policy_net(model, CopyVariant(**ads[r["id"]]["copy"]))
+        # the seeded set is the Google-rejected ads: judged as copy that also runs on
+        # Google Search, where P9 is a block (on Meta alone P9 is a tip, ``rules``)
+        merged = reviewer.with_policy_net(model, CopyVariant(**ads[r["id"]]["copy"]),
+                                          ("meta", "google"))
         rules = sorted({f.rule for f in model.findings})
         rows.append({"id": r["id"], "expect": r["expect"], "model_verdict": r["verdict"],
                      "model_rules": rules, "final_verdict": merged.verdict,
@@ -609,7 +631,8 @@ def reviewer_metrics() -> dict[str, Any] | None:
     p9 = [x for x in bad if x["expect"] == "P9"]
     return {
         "rows": rows, "n_bad": len(bad), "n_clean": len(clean), "cost_usd": data["cost_usd"],
-        "recorded": data["recorded"],
+        "recorded": data["recorded"], "re_recorded": data.get("re_recorded", []),
+        "re_recorded_on": max((r.get("recorded", "") for r in data["reviews"]), default=""),
         "model_flagged": sum(x["model_verdict"] != "OK" for x in bad),
         "model_blocked": sum(x["model_verdict"] == "BLOCK" for x in bad),
         "model_rule": sum(x["rule_cited"] for x in bad),
@@ -744,6 +767,14 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
                 f"${rv['cost_usd']:.4f}. \"Final\" adds the code check for P9 "
                 "(`reviewer.policy_net`) the product runs after the model. The set was written "
                 "before these runs and was not used to tune the prompts.", "",
+                *([f"Re-recorded live on {rv['re_recorded_on']} with the checklist that moved "
+                   "a misleading affiliation with Meta to P3 (Meta: Unacceptable business "
+                   "practices) and made the brand name P5 a tip: "
+                   + ", ".join(f"`{x}`" for x in rv["re_recorded"]) + ". Levels are re-derived "
+                   "by code from the rules table (`studio/agents/rules.py`): brand-name-only "
+                   "findings are tips on Meta, so an ad whose only finding is P5 is OK; the "
+                   "P9 ads are scored as copy that also runs on Google Search (P9 is a "
+                   "Google Ads rule).", ""] if rv.get("re_recorded") else []),
                 "| Ad | Expected rule | Model verdict | Rules cited | Final verdict |",
                 "|---|---|---|---|---|"]
         out += [f"| `{r['id']}` | {r['expect']} | {r['model_verdict']} | "
@@ -766,7 +797,11 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
                 f"{ag['tokens_in']:,} input / {ag['tokens_out']:,} output tokens (reasoning "
                 f"included), ${ag['cost_usd']:.4f} at Baseten's published Model APIs price "
                 "($1.25 / $4.25 per 1M input / output tokens). Model verdicts only, before the "
-                "P9 code check.", "",
+                "P9 code check."
+                + (" Spark Open was not re-recorded for "
+                   + ", ".join(f"`{x}`" for x in rv["re_recorded"]) + ": those rows compare "
+                   "a Spark Open review under the earlier checklist with the new Spark vision "
+                   "review." if rv and rv.get("re_recorded") else ""), "",
                 f"- Same decision (OK vs WARN/BLOCK): **{ag['same_decision']}/{ag['n']} "
                 f"({pct:.0f} %)**; same verdict: {ag['same_verdict']}/{ag['n']}.",
                 f"- Bad ads flagged by Spark Open: {ag['open_flagged']}/{ag['n_bad']}; by either "
@@ -828,10 +863,13 @@ def main(argv: list[str] | None = None) -> int:
                    help="real Model API calls: review the seeded ads once")
     p.add_argument("--record-open-reviews", action="store_true",
                    help="real Baseten calls: Spark Open reviews of the seeded ads once")
+    p.add_argument("--only", default="", help="with --record-reviews: these ad ids only")
+    p.add_argument("--max-cost", type=float, default=0.25, help="USD cap for recording")
     p.add_argument("--env-file", type=Path, default=ROOT / ".env")
     args = p.parse_args(argv)
     if args.record_reviews:
-        record_reviews(args.env_file)
+        record_reviews(args.env_file, max_cost=args.max_cost,
+                       only=args.only.split(",") if args.only else None)
     if args.record_open_reviews:
         record_open_reviews(args.env_file)
     report = render(tamper_suite(args.n), attack_suites(), reviewer_metrics(), run_costs(),
