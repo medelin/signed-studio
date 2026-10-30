@@ -12,7 +12,7 @@ RITUAL = {"primary_text": "Your first coffee deserves a mug that feels like a mo
 
 def test_three_angles_are_diverse():
     result = diversity.check([GIFT, CRAFT, RITUAL], ["a", "b", "c"])
-    assert result == {"status": "ok", "variants": 3, "distinct_images": 3,
+    assert result == {"verdict": "ok", "variants": 3, "distinct_images": 3,
                       "near_duplicates": []}
 
 
@@ -20,7 +20,7 @@ def test_a_paraphrase_is_a_near_duplicate():
     twin = {"primary_text": "A mug made by hand for someone who keeps all your secrets!",
             "headline": "The gift that remembers hands"}
     result = diversity.check([GIFT, CRAFT, twin], ["a", "b", "a"])
-    assert result["status"] == "warn"
+    assert result["verdict"] == "warn"
     assert result["near_duplicates"] == [{"variants": [1, 3], "similarity": 0.93,
                                           "same_image": True}]
     assert result["distinct_images"] == 2

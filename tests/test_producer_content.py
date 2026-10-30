@@ -198,7 +198,7 @@ def test_ab_variants_and_their_review_binding(env):
         run.copy.variants[i].headline for i in (1, 0, 2)]
     # the signed, advisory diversity check covers exactly the variants that run
     assert p["creative_diversity"]["variants"] == 3
-    assert p["creative_diversity"]["status"] in ("ok", "warn")
+    assert p["creative_diversity"]["verdict"] in ("ok", "warn")
 
 
 def test_payload_signs_the_diversity_of_every_written_variant(env):
@@ -212,3 +212,5 @@ def test_payload_signs_the_diversity_of_every_written_variant(env):
     payload = producer.campaign_payload(run, 0)
     assert "ad_variants" not in payload  # no A/B: one variant runs
     assert payload["creative_diversity"]["variants"] == len(run.copy.variants) > 1
+    from studio.meta.adapter import check_paused
+    check_paused(payload)  # every "status" in a creation payload must be PAUSED

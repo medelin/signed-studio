@@ -48,5 +48,5 @@ def check(variants: Sequence[Mapping[str, Any]],
             pairs.append({"variants": [i + 1, j + 1], "similarity": score,
                           "same_image": same_image})
     distinct_images = len(set(images)) if images else 1
-    return {"status": "warn" if pairs else "ok", "variants": len(variants),
+    return {"verdict": "warn" if pairs else "ok", "variants": len(variants),
             "distinct_images": distinct_images, "near_duplicates": pairs}
