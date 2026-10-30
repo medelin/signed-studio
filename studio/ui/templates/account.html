@@ -68,6 +68,27 @@
       <p class="hint" id="pf-tax-hint">{{ t("account.profile.tax_hint") }}</p>
       <p class="hint" id="pf-billing">{{ t("account.profile.billing_note") }}</p>
     </fieldset>
+    <fieldset aria-describedby="pf-online-lead">
+      <legend>{{ t("account.profile.online") }}</legend>
+      <p class="hint" id="pf-online-lead">{{ t("account.profile.online_lead") }}</p>
+      <label for="pf-website">{{ t("account.profile.website") }}</label>
+      <input id="pf-website" name="website" type="url" inputmode="url" maxlength="300" autocomplete="url" placeholder="https://" value="{{ values.website }}"{{ invalid("profile", "profile-error", "website", "pf-website-hint") }}>
+      <p class="hint" id="pf-website-hint">{{ t("account.profile.website_hint") }}</p>
+      <label for="pf-sells">{{ t("account.profile.sell_countries") }}</label>
+      <input id="pf-sells" name="sell_countries" maxlength="60" autocomplete="off" autocapitalize="characters" spellcheck="false" value="{{ values.sell_countries.split(',') | map('trim') | reject('equalto', '') | join(', ') }}"{{ invalid("profile", "profile-error", "sell_countries", "pf-sells-hint") }}>
+      <p class="hint" id="pf-sells-hint">{{ t("account.profile.sell_countries_hint") }}</p>
+      <label for="pf-pixel">{{ t("account.profile.pixel_id") }}</label>
+      {% if pixels %}
+      <select id="pf-pixel" name="pixel_id"{{ invalid("profile", "profile-error", "pixel_id", "pf-pixel-hint") }}>
+        <option value="">{{ t("account.profile.no_pixel") }}</option>
+        {% for p in pixels %}<option value="{{ p.id }}"{% if values.pixel_id == p.id %} selected{% endif %}>{{ p.name or t("account.profile.pixel_unnamed") }} · {{ p.id }}</option>{% endfor %}
+        {% if values.pixel_id and values.pixel_id not in pixels | map(attribute="id") | list %}<option value="{{ values.pixel_id }}" selected>{{ t("account.profile.pixel_saved") }} · {{ values.pixel_id }}</option>{% endif %}
+      </select>
+      {% else %}
+      <input id="pf-pixel" name="pixel_id" inputmode="numeric" maxlength="20" autocomplete="off" spellcheck="false" value="{{ values.pixel_id }}"{{ invalid("profile", "profile-error", "pixel_id", "pf-pixel-hint") }}>
+      {% endif %}
+      <p class="hint" id="pf-pixel-hint">{{ t("account.profile.pixel_hint_html") }}</p>
+    </fieldset>
     <button type="submit"{% if read_only %} disabled{% endif %}>{{ t("account.profile.save") }}</button>
   </form>
 </section>

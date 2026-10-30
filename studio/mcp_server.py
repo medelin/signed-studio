@@ -353,9 +353,11 @@ def draft_brief(s: StudioMcp, agent: str, text: str, lang: str = "en") -> dict[s
                                      lang=lang, landing_url=s.settings.landing_url)
     except MuseError as exc:
         raise McpRefused("model_error", code=exc.code) from None
+    draft, from_profile = brief_v1.profile_defaults(
+        draft, s.accounts.get(s.account_id), default_landing=s.settings.landing_url)
     brief_id = routes_studio.store_draft(s.conn, text, draft, run_id)
     return {"brief_id": brief_id, "draft_run_id": run_id,
-            "brief": draft.model_dump(mode="json"),
+            "brief": draft.model_dump(mode="json"), "from_profile": from_profile,
             "problems": brief_v1.problems(draft, confirmed=False,
                                           ceiling_daily=s.settings.max_daily_budget,
                                           currency=s.currency()),

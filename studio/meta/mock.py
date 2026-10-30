@@ -92,6 +92,15 @@ class MockAdapter:
     def account_info(self) -> dict[str, str]:
         return {"currency": self.currency, "timezone_name": "Europe/Warsaw"}
 
+    # the demo ad account's pixels (``list_pixels``); nothing exists on Meta
+    PIXELS = ({"id": "1234567890123456", "name": "Clay Workshop website"},
+              {"id": "6543210987654321", "name": "Clay Workshop shop"})
+
+    def list_pixels(self) -> list[dict[str, str]]:
+        """The demo ad account's two pixels (read-only, nothing fetched; not in ``calls``,
+        since every account page view reads them)."""
+        return [dict(p) for p in self.PIXELS]
+
     def delivery_estimate(self, targeting: Mapping[str, Any],
                           optimization_goal: str) -> dict[str, Any]:
         """A deterministic, saturating curve (no network): reach grows with spend and

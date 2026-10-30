@@ -231,12 +231,13 @@ def campaign_payload(run: RunResult, variant_index: int,
     }
     ab = [x["variant_index"] for x in run.review.get("ab", [])]
     if ab:  # copy A/B: every reviewed variant runs (dynamic creative or separate ads)
-        payload["ad_variants"] = [
+        variants: list[dict[str, Any]] = [
             {k: getattr(run.copy.variants[i], k) for k in ("primary_text", "headline",
                                                             "description", "cta")}
             for i in [variant_index, *ab]]
+        payload["ad_variants"] = variants
         # advisory, signed with the rest: near-identical variants reach the same people
-        payload["creative_diversity"] = diversity.check(payload["ad_variants"])
+        payload["creative_diversity"] = diversity.check(variants)
     cards, clip = run.creatives.cards, run.creatives.video
     if cards or clip:
         payload["format"] = {"cards": list(cards), "video": {

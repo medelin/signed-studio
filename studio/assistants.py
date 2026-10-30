@@ -383,11 +383,15 @@ def _drafted(s: Assistants, p: Principal, text: str, lang: str, brief_id: str | 
     muse, _ = s.app.state.clients()
     draft = producer.draft_brief(muse, text, run_id=run_id, source="transcript", lang=lang,
                                  landing_url=s.settings.landing_url)
+    store = getattr(s.app.state, "accounts", None)
+    draft, from_profile = brief_v1.profile_defaults(
+        draft, store.get(p.account_id) if store is not None else None,
+        default_landing=s.settings.landing_url)
     brief_id = routes_studio.store_draft(s.conn, text, draft, run_id, brief_id)
     _tag(s, p, brief_id)
     return {
         "brief_id": brief_id, "draft_run_id": run_id,
-        "brief": draft.model_dump(mode="json"),
+        "brief": draft.model_dump(mode="json"), "from_profile": from_profile,
         "open_questions": [q.model_dump() for q in draft.open_questions],
         "problems": brief_v1.problems(draft, confirmed=False,
                                       ceiling_daily=s.settings.max_daily_budget,

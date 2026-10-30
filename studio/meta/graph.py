@@ -33,6 +33,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -72,6 +73,7 @@ from studio.meta.adapter import (
 )
 from studio.meta.preview import from_graph_body
 
+LOG = logging.getLogger(__name__)
 VERSION = "v25.0"
 BASE = "https://graph.facebook.com"
 TRANSIENT = frozenset({4, 17, 32, 613})
@@ -269,22 +271,46 @@ class GraphAdapter:
     PIXEL_FIELDS = "id,name,last_fired_time,is_unavailable"
     PIXEL_PAGES = 5  # at most 5 x 100 pixels of the ad account are listed
 
-    def _account_pixels(self) -> set[str]:
-        """``GET /act_{id}/adspixels?fields=id``: the pixels the ad account can use (its
-        own and those shared with it), following the ``after`` cursor."""
-        ids: set[str] = set()
-        params: dict[str, Any] = {"fields": "id", "limit": "100"}
+    PIXEL_LIST_TTL_S = 300.0  # the profile form's pixel list, kept per process
+
+    def _adspixels(self, fields: str) -> list[dict[str, Any]]:
+        """``GET /act_{id}/adspixels?fields=…``: the pixels the ad account can use (its own
+        and those shared with it), following the ``after`` cursor (at most
+        ``PIXEL_PAGES`` pages); only entries with a string ``id``."""
+        out: list[dict[str, Any]] = []
+        params: dict[str, Any] = {"fields": fields, "limit": "100"}
         for _ in range(self.PIXEL_PAGES):
             body = self._request("GET", f"{self.account}/adspixels", params=params)
-            ids |= {str(x["id"]) for x in body.get("data") or []
-                    if isinstance(x, dict) and isinstance(x.get("id"), str)}
+            out += [x for x in body.get("data") or []
+                    if isinstance(x, dict) and isinstance(x.get("id"), str)]
             paging = body.get("paging")
             paging = paging if isinstance(paging, dict) else {}
             after = (paging.get("cursors") or {}).get("after") if paging.get("next") else None
             if not isinstance(after, str) or not after:
                 break
             params = {**params, "after": after}
-        return ids
+        return out
+
+    def _account_pixels(self) -> set[str]:
+        return {str(x["id"]) for x in self._adspixels("id")}
+
+    def list_pixels(self) -> list[dict[str, str]]:
+        """The ad account's pixels as ``[{"id", "name"}]`` for the profile form, kept for
+        ``PIXEL_LIST_TTL_S``; a Graph error is an empty list (not kept, so the next page
+        view tries again)."""
+        now = self._clock()
+        cached = getattr(self, "_pixel_list", None)
+        if cached is not None and now - cached[0] < self.PIXEL_LIST_TTL_S:
+            return [dict(p) for p in cached[1]]
+        try:
+            rows = self._adspixels("id,name")
+        except AdapterError as exc:
+            LOG.info("pixel list unavailable: %s", exc.code)
+            return []
+        pixels = [{"id": str(x["id"]), "name": str(x.get("name") or "")[:100]}
+                  for x in rows if pixel.PIXEL_ID.fullmatch(str(x["id"]))]
+        self._pixel_list: tuple[float, list[dict[str, str]]] | None = (now, pixels)
+        return [dict(p) for p in pixels]
 
     def pixel_check(self, pixel_id: str, landing_url: str, *,
                     event_type: str = "") -> dict[str, Any]:

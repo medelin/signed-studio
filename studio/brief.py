@@ -589,3 +589,48 @@ def render(brief: BriefV1) -> str:
 def counts(brief: BriefV1, answered: int, struck: int) -> dict[str, int]:
     return {"facts": len(brief.confirmed_facts), "open_questions": len(brief.open_questions),
             "answered": answered, "struck": struck}
+
+
+def profile_defaults(draft: BriefV1, account: Any, *, default_landing: str = ""
+                     ) -> tuple[BriefV1, list[str]]:
+    """The draft with the account's business profile (``studio.accounts``: ``website``,
+    ``sell_countries``, ``pixel_id``) in the fields the draft left empty, and the paths it
+    filled (the studio shows them as "from your profile"). A value the draft has is never
+    replaced; the landing page counts as empty when it is not an https URL or is the
+    server's default (``default_landing``). The pixel goes in only when the objective
+    needs one (``objectives.row(...).needs``)."""
+    if account is None:
+        return draft, []
+    website = str(getattr(account, "website", "") or "")
+    countries = [c for c in str(getattr(account, "sell_countries", "") or "").split(",")
+                 if _ISO2.fullmatch(c)]
+    pixel_id = str(getattr(account, "pixel_id", "") or "")
+    filled: list[str] = []
+    a, au, pr = draft.advertiser, draft.audience, draft.promotion
+    advertiser: dict[str, Any] = {}
+    if website and _https(website) and website != a.landing_url and (
+            not _https(a.landing_url) or a.landing_url == default_landing):
+        advertiser["landing_url"] = website
+        filled.append("advertiser.landing_url")
+    if countries and not a.countries:
+        advertiser["countries"] = list(countries)
+        filled.append("advertiser.countries")
+    audience: dict[str, Any] = {}
+    if countries and not [x for x in au.locations if x.strip()]:
+        audience["locations"] = list(countries)
+        filled.append("audience.locations")
+    promotion: dict[str, Any] = {}
+    if pixel_id and _ID.fullmatch(pixel_id) and not pr.pixel_id.strip():
+        try:
+            needs = objectives.row(draft.objective.goal, draft.objective.sub).needs
+        except objectives.DeliveryError:
+            needs = ()
+        if "pixel_id" in needs:
+            promotion["pixel_id"] = pixel_id
+            filled.append("promotion.pixel_id")
+    if not filled:
+        return draft, []
+    return draft.model_copy(update={
+        "advertiser": a.model_copy(update=advertiser),
+        "audience": au.model_copy(update=audience),
+        "promotion": pr.model_copy(update=promotion)}), filled

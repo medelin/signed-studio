@@ -23,6 +23,9 @@
   password change, ``studio account disable`` (another process) or a deletion takes effect
   on the next request. Approver keys are bound to the session hash, so revoking a session
   revokes its keys.
+- **Business profile**: the owner's website, the countries they sell in and their Meta
+  pixel, saved once (``website``, ``sell_countries``, ``pixel_id``); a brief draft starts
+  from them (``studio.brief.profile_defaults``) instead of asking for them every time.
 - **Deletion** erases every personal field and the second factor. The account row stays as
   a tombstone with its random id: receipts are append-only and hash-chained, and they name
   the approver only by key fingerprint, which now leads to that pseudonymous id and nothing
@@ -130,7 +133,10 @@ CODE_LOCK_BASE_S = 30.0
 CODE_LOCK_MAX_S = 3600.0
 ISSUER = "Muse Studio Lite"
 ADVERTISER_TYPES = ("person", "company")
-LIMITS = {"display_name": 80, "email": 254, "legal_name": 160, "country": 80, "tax_id": 40}
+LIMITS = {"display_name": 80, "email": 254, "legal_name": 160, "country": 80, "tax_id": 40,
+          "website": 300, "sell_countries": 60, "pixel_id": 20}
+MAX_SELL_COUNTRIES = 10
+_PIXEL = re.compile(r"\d{1,20}")
 _EMAIL = re.compile(r"[^@\s]{1,64}@[^@\s.]+(\.[^@\s.]+)+")
 _SECRET_INFO = b"muse-studio-lite/totp-secret/v1"
 
@@ -186,6 +192,18 @@ class InvalidProfile(AccountError):
     code = "invalid_profile"
 
 
+class InvalidWebsite(InvalidProfile):
+    code = "invalid_website"
+
+
+class InvalidCountries(InvalidProfile):
+    code = "invalid_countries"
+
+
+class InvalidPixel(InvalidProfile):
+    code = "invalid_pixel"
+
+
 class DemoAccount(AccountError):
     code = "demo_account"
 
@@ -228,9 +246,13 @@ class Account:
     password_changed_ts: float
     tier: str = "full"  # "trial": self-registered, signs only what the judge account signs
     has_password: bool = True
+    # the business online: a brief draft starts from these (``brief.profile_defaults``)
+    website: str = ""  # https URL or ""
+    sell_countries: str = ""  # ISO 3166-1 alpha-2, comma-separated ("PL,DE") or ""
+    pixel_id: str = ""  # the Meta pixel's id (digits) or ""
 
     PROFILE = ("display_name", "email", "lang", "theme", "palette", "advertiser_type",
-               "legal_name", "country", "tax_id")
+               "legal_name", "country", "tax_id", "website", "sell_countries", "pixel_id")
 
     @property
     def sees_personal_data(self) -> bool:
@@ -246,22 +268,26 @@ class Account:
 _COLUMNS = ("id, username, status, is_demo, display_name, email, lang, theme, palette, "
             "advertiser_type, legal_name, country, tax_id, totp_secret != '', "
             "totp_pending != '', created_ts, updated_ts, password_changed_ts, tier, "
-            "password_hash != ''")
+            "password_hash != '', website, sell_countries, pixel_id")
 
 
 def _account(row: tuple[Any, ...]) -> Account:
     (aid, username, status, demo, display, email, lang, theme, palette, kind, legal, country,
-     tax, totp, pending, created, updated, changed, tier, has_password) = row
+     tax, totp, pending, created, updated, changed, tier, has_password, website, sells,
+     pixel_id) = row
     return Account(aid, username or "", status, bool(demo), display, email, lang, theme,
                    palette, kind, legal, country, tax, bool(totp), bool(pending), created,
-                   updated, changed, tier, bool(has_password))
+                   updated, changed, tier, bool(has_password), website, sells, pixel_id)
 
 
 # Columns added after the accounts table first shipped (``ALTER TABLE … ADD COLUMN``).
 _LATER_COLUMNS = {"credential_gen": "INTEGER NOT NULL DEFAULT 0",
                   "code_failures": "INTEGER NOT NULL DEFAULT 0",
                   "code_locked_until": "REAL NOT NULL DEFAULT 0",
-                  "tier": "TEXT NOT NULL DEFAULT 'full'"}
+                  "tier": "TEXT NOT NULL DEFAULT 'full'",
+                  "website": "TEXT NOT NULL DEFAULT ''",
+                  "sell_countries": "TEXT NOT NULL DEFAULT ''",
+                  "pixel_id": "TEXT NOT NULL DEFAULT ''"}
 
 TIERS = ("full", "trial")
 EXTERNAL_PASSWORD_WINDOW_S = 15 * 60  # a first password, this soon after a provider sign-in
@@ -1021,7 +1047,8 @@ class Accounts:
         c.execute("UPDATE accounts SET username = NULL, password_hash = '', "
                   "status = 'deleted', display_name = '', email = '', lang = '', "
                   "theme = '', palette = '', advertiser_type = 'person', legal_name = '', "
-                  "country = '', tax_id = '', totp_secret = '', totp_pending = '', "
+                  "country = '', tax_id = '', website = '', sell_countries = '', pixel_id = '', "
+                  "totp_secret = '', totp_pending = '', "
                   "totp_last_step = 0, credential_gen = credential_gen + 1, "
                   "whatsapp_number = '', notify_whatsapp = 0, whatsapp_verified_ts = 0, "
                   "updated_ts = ?, deleted_ts = ? WHERE id = ?",
@@ -1099,6 +1126,12 @@ def _clean_profile(fields: Mapping[str, str]) -> dict[str, str]:
         if name in allowed:
             if value not in allowed[name]:
                 raise InvalidProfile(name)
+        elif name in _BUSINESS:
+            check, error = _BUSINESS[name]
+            if len(value) > LIMITS[name] or any(
+                    unicodedata.category(ch) in ("Cc", "Cf") for ch in value):
+                raise error(name)
+            value = check(value) if value else ""
         else:
             if len(value) > LIMITS[name] or any(
                     unicodedata.category(ch) in ("Cc", "Cf") for ch in value):
@@ -1109,6 +1142,41 @@ def _clean_profile(fields: Mapping[str, str]) -> dict[str, str]:
     if out.get("advertiser_type") == "person":
         out.update(legal_name="", country="", tax_id="")
     return out
+
+
+def _website(value: str) -> str:
+    from studio import brief  # the brief's own landing-page rule
+
+    if not brief._https(value):
+        raise InvalidWebsite("website")
+    return value
+
+
+def sell_countries(value: str) -> list[str]:
+    """``"pl, de"`` → ``["PL", "DE"]`` (upper case, de-duplicated, order kept); raises
+    ``InvalidCountries`` for anything but up to ``MAX_SELL_COUNTRIES`` ISO 3166-1 alpha-2
+    codes separated by commas or spaces."""
+    from studio import brief
+
+    codes = list(dict.fromkeys(c.upper() for c in re.split(r"[,;\s]+", value) if c))
+    if not codes or len(codes) > MAX_SELL_COUNTRIES or not all(
+            brief._ISO2.fullmatch(c) for c in codes):
+        raise InvalidCountries("sell_countries")
+    return codes
+
+
+def _pixel(value: str) -> str:
+    if not _PIXEL.fullmatch(value):
+        raise InvalidPixel("pixel_id")
+    return value
+
+
+# the business-profile fields: (a trimmed, non-empty value → the stored value, or raises;
+# the field's own error)
+_BUSINESS: dict[str, tuple[Callable[[str], str], type[InvalidProfile]]] = {
+    "website": (_website, InvalidWebsite),
+    "sell_countries": (lambda v: ",".join(sell_countries(v)), InvalidCountries),
+    "pixel_id": (_pixel, InvalidPixel)}
 
 
 # -- sessions bound to accounts --------------------------------------------------------

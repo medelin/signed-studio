@@ -72,6 +72,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         run_id = producer.new_run_id()
         draft = producer.draft_brief(muse, text, run_id=run_id, source="transcript",
                                      lang=lang, landing_url=settings.landing_url)
+        draft, _ = brief_v1.profile_defaults(draft, app.state.accounts.get(who.account_id),
+                                             default_landing=settings.landing_url)
         stored = json.dumps(brief_v1.as_json(draft), ensure_ascii=False)
         with db.transaction(conn):
             conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts, draft, "

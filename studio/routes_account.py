@@ -24,6 +24,7 @@ from fastapi.templating import Jinja2Templates
 
 from studio import accounts, auth, billing, db, notify, prefs, whatsapp
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
+from studio.meta.adapter import AdapterError
 from studio.receipts import Ledger
 from studio.settings import Settings
 from studio.ui import i18n
@@ -146,6 +147,18 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         account = app.state.sessions.account_of(cookie) if sid else None
         return (sid, account) if sid and account else None
 
+    def pixels() -> list[dict[str, str]]:
+        """The ad account's pixels for the profile's pixel choice (read-only, kept for a few
+        minutes by the adapter); empty when there is no adapter or they cannot be read,
+        and the form then asks for the id as text."""
+        lister = getattr(getattr(app.state, "adapter", None), "list_pixels", None)
+        if lister is None:
+            return []
+        try:
+            return list(lister())
+        except AdapterError:
+            return []
+
     def page(request: Request, sid: str, account: Account, *, status: int = 200,
              errors: dict[str, tuple[str, str]] | None = None, codes: list[str] | None = None,
              values: dict[str, str] | None = None, whatsapp_code: str = "",
@@ -164,7 +177,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "codes_left": store.recovery_codes_left(account.id),
             "values": values or account.profile(), "langs": i18n.LANGS,
             "themes": prefs.THEMES, "palettes": prefs.PALETTES,
-            "advertiser_types": accounts.ADVERTISER_TYPES,
+            "advertiser_types": accounts.ADVERTISER_TYPES, "pixels": pixels(),
             "sections": (SECTIONS[:1] + ("billing",) + SECTIONS[1:]
                          if settings.billing.enabled and not account.is_demo else SECTIONS),
             "billing": bill,

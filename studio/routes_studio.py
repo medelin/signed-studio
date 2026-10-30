@@ -373,10 +373,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     def logged_in(request: Request) -> bool:
         return app.state.sessions.check(request.cookies.get("studio_session")) is not None
 
+    def profile_of(request: Request) -> Any:
+        """The signed-in ``Account`` (its business profile prefills drafts), or None."""
+        account_of = getattr(app.state.sessions, "account_of", None)
+        return account_of(request.cookies.get("studio_session")) if account_of else None
+
     def owner_of(request: Request) -> str | None:
         """The signed-in account's id (None for a visitor)."""
-        account_of = getattr(app.state.sessions, "account_of", None)
-        account = account_of(request.cookies.get("studio_session")) if account_of else None
+        account = profile_of(request)
         return account.id if account is not None else None
 
     def clients() -> tuple[MuseClient, OpenWeightsClient]:
@@ -591,7 +595,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         run_id = producer.new_run_id()
+        account = profile_of(request)
         website = body.get("website") if isinstance(body.get("website"), str) else ""
+        if not website and account is not None and brand_scan.first_site(text) is None:
+            website = account.website  # the profile's site when the brief names none
         site = await run_in_threadpool(scan_site, run_id, website, text)
         try:
             muse, _ = clients()
@@ -604,6 +611,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "model_error", "code": exc.code}, 502)
         except MuseError as exc:
             return JSONResponse({"error": "model_error", "code": exc.code}, 502)
+        draft, from_profile = brief_v1.profile_defaults(
+            draft, account, default_landing=settings.landing_url)
         brief_id = store_draft(conn, text, draft, run_id, brief_id)
         clip_id = body.get("clip_id") if isinstance(body.get("clip_id"), str) else ""
         attached = bool(clip_id) and (owner := clip_allowed(request)) is not None and \
@@ -611,7 +620,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return JSONResponse({
             "clip_id": clip_id if attached else "",
             "brief_id": brief_id, "draft_run_id": run_id, "source": source,
-            "brief": draft.model_dump(mode="json"),
+            "brief": draft.model_dump(mode="json"), "from_profile": from_profile,
             "problems": brief_v1.problems(draft, confirmed=False,
                                           ceiling_daily=settings.max_daily_budget,
                                           currency=account_currency()),
@@ -964,7 +973,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         live = settings.meta_adapter != "mock" or settings.google_adapter != "mock"
         accounts = getattr(app.state, "accounts", None)
         aid = accounts.session_account(guard) if accounts is not None else None
-        account = accounts.get(aid) if aid else None
+        account = accounts.get(aid) if accounts is not None and aid else None
         if account is None and live:
             return JSONResponse({"error": "login_required"}, 401)
         # the judge account and self-registered trial accounts share the operator's live ad
