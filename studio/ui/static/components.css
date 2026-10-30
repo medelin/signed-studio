@@ -310,3 +310,36 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9
 .il-rotate .turn { opacity: 0; transition: opacity .9s ease; }
 .il-rotate .turn.on { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .il-rotate .turn { transition: none; } }
+
+/* Brief step 2: the summary card, the one-question-at-a-time assistant, the folded form */
+.bv-summary, .bv-assistant { border: 1px solid var(--rule-soft); padding: .7rem 1rem; display: grid; gap: .5rem; min-width: 0; }
+.bv-summary { border-left: 3px solid var(--ok); background: var(--bg-raised); }
+.bv-assistant { border-left: 3px solid var(--signal); }
+.bv-summary h3, .bv-assistant h3 { margin: 0; font-size: 1.05rem; }
+.bv-summary-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .45rem; }
+.bv-sum { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .8rem; justify-content: space-between; border-bottom: 1px solid var(--rule-soft); padding-bottom: .4rem; }
+.bv-sum > p { margin: 0; flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+.bv-sum > .hint { flex-basis: 100%; order: 3; }
+.bv-sum.is-missing .bv-sum-text { color: var(--signal); font-weight: 600; }
+.bv-sum-change { min-height: 44px; flex: none; }
+.bv-sum-badge { margin-left: .3rem; white-space: nowrap; }
+.bv-ask-progress { margin: 0; font-size: 1rem; }
+.bv-ask-list { list-style: none; padding: 0; }
+.bv-assistant .bv-questions { border: 0 !important; padding: 0; }
+.bv-assistant .bv-questions > .bv-list { list-style: none; padding-left: 0; }
+.bv-ask-q { margin: 0; font-weight: 700; font-size: 1.05rem; }
+.bv-ask textarea, .bv-ask input:not([type="radio"]):not([type="checkbox"]) { width: 100%; }
+.bv-ask > button { justify-self: start; }
+.bv-chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+.bv-chip { min-height: 44px; }
+.bv-chip[aria-pressed="true"] { background: var(--signal); color: var(--signal-ink); }
+.bv-chip[aria-pressed="true"]::before { content: "✓ "; }
+.bv-ask-end { margin: 0; font-weight: 600; }
+.bv-ask-nav { gap: .5rem; }
+.bv-details { border: 1px solid var(--rule-soft); padding: .5rem 1rem; display: grid; gap: 1rem; }
+.bv-details[open] { padding-bottom: 1rem; }
+.bv-details > summary { cursor: pointer; font-weight: 600; min-height: 44px; display: flex; align-items: center; }
+.bv-details:not([open]) { gap: 0; }
+@media (max-width: 480px) {
+  .bv-summary, .bv-assistant, .bv-details { padding-left: .7rem; padding-right: .7rem; }
+}

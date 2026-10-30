@@ -371,6 +371,34 @@
     return { p: $("err-bf-confirmed_facts"), id: "bf-confirmed_facts" };
   }
 
+  // A field folded away (in the folded details, or on a question card the assistant does not
+  // show right now) is brought into view before it gets focus.
+  function reveal(node) {
+    const details = node && node.closest("details");
+    if (details) details.open = true;
+    if (node) v1.dispatchEvent(new CustomEvent("brief:reveal", { detail: node }));
+  }
+
+  function controlOf(path) {
+    const direct = $(idOf(path));
+    if (direct) return direct;
+    const holder = v1.querySelector('[data-field="' + path + '"]');
+    return holder && holder.querySelector("input, textarea, select");
+  }
+
+  function focusField(path) {
+    let control = controlOf(path);
+    if (!control) {  // a list item (a fact, a reason): its first control
+      const holder = errTarget(path).p.closest(".bf-field, .bv-item, fieldset");
+      control = holder && holder.querySelector("input, textarea, select, button");
+    }
+    if (!control) return null;
+    reveal(control);
+    control.scrollIntoView({ block: "center" });
+    control.focus();
+    return control;
+  }
+
   function showErrors(fields) {
     clearErrors();
     const list = $("bv-error-list");
@@ -383,13 +411,16 @@
       const holder = p.closest(".bf-field, .bv-item, fieldset");
       const control = $(id) || (holder && holder.querySelector("input, textarea, select"));
       if (control) control.setAttribute("aria-invalid", "true");
+      const details = p.closest("details");
+      if (details) details.open = true;
       const li = el("li");
       const a = el("a", (holder && holder.querySelector("legend, label") ? holder.querySelector("legend, label").textContent.trim() + ": " : "") + msg);
       a.href = "#" + (control ? control.id : p.id);
-      a.addEventListener("click", (ev) => { ev.preventDefault(); if (control) control.focus(); });
+      a.addEventListener("click", (ev) => { ev.preventDefault(); if (control) { reveal(control); control.focus(); } });
       li.append(a);
       list.append(li);
     }
+    v1.dispatchEvent(new CustomEvent("brief:errors", { detail: fields }));
     $("bv-errors").hidden = false;
     $("bv-errors").focus();
     say(T("brief_errors", { n: entries.length }));
@@ -400,7 +431,7 @@
     $("read-aloud").hidden = false;
     $("read-aloud").addEventListener("click", () => {
       const parts = [];
-      for (const fs of v1.querySelectorAll(":scope > fieldset")) {
+      for (const fs of v1.querySelectorAll("#bv-questions, #bv-details > fieldset")) {
         parts.push(fs.querySelector("legend").textContent + ".");
         for (const node of fs.querySelectorAll("input:not([type=radio]):not([type=checkbox]), textarea, select")) {
           const value = node.tagName === "SELECT" ? node.options[node.selectedIndex].text : node.value.trim();
@@ -495,6 +526,7 @@
     fill(draft.brief);
     showBudgetAdvice(draft.budget_advice);
     v1.hidden = false;
+    v1.dispatchEvent(new CustomEvent("brief:draft", { detail: data }));
     setStep(2, false);
     const n = draft.brief.open_questions.length;
     const msg = n ? T("brief_drafted", { n }) : T("brief_drafted_none");
@@ -503,6 +535,14 @@
     if (n) setStep(3, false);
     $("bv-h").focus();
   }
+  // The summary card and the assistant (brief_summary.js) read and write the same form.
+  window.BriefForm = {
+    fill, collect, focusField, reveal, controlOf, labelFor, say, idOf, getPath,
+    errorText: (code) => T(ERR_PREFIX + code, { ceiling: draft ? draft.ceiling : "",
+      currency: draft ? draft.currency : "", google_currency: draft ? draft.google_currency || "" : "" }),
+    draft: () => draft,
+    questions: () => questions,
+  };
   const stored = new URLSearchParams(location.search).get("brief");
   if (stored && /^b_[0-9a-f]{16}$/.test(stored)) {
     fetch("/api/briefs/" + stored, { credentials: "same-origin" }).then(async (r) => {

@@ -26,9 +26,9 @@
 <div class="bf-field" data-field="{{ path }}">
   <label for="{{ id }}">{{ t("brief.f." ~ key) }}</label>
   {% if hint %}<p class="hint" id="hint-{{ id }}">{{ t(hint) }}</p>{% endif %}
-  {% if kind == "lines" %}<textarea id="{{ id }}" data-path="{{ path }}" data-kind="lines" rows="3" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}hint-lines err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
-  {% elif kind == "area" %}<textarea id="{{ id }}" data-path="{{ path }}" rows="2" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
-  {% else %}<input id="{{ id }}" data-path="{{ path }}" type="{{ kind }}" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}>{% endif %}
+  {% if kind == "lines" %}<textarea id="{{ id }}" name="{{ path }}" data-path="{{ path }}" data-kind="lines" rows="3" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}hint-lines err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
+  {% elif kind == "area" %}<textarea id="{{ id }}" name="{{ path }}" data-path="{{ path }}" rows="2" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
+  {% else %}<input id="{{ id }}" name="{{ path }}" data-path="{{ path }}" type="{{ kind }}" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}>{% endif %}
   {{ err(id) }}
 </div>
 {%- endmacro -%}
@@ -90,7 +90,6 @@
   <form id="brief-v1-form" class="brief-v1" hidden novalidate aria-labelledby="bv-h">
     <h2 id="bv-h" tabindex="-1">{{ t("brief.check_title") }}</h2>
     <p class="hint">{{ t("brief.check_lead") }}</p>
-    <p class="hint" id="hint-lines">{{ t("brief.one_per_line") }}</p>
     <div class="inline">
       <button type="button" id="read-aloud" class="secondary" hidden>{{ t("brief.read_aloud") }}</button>
       <button type="button" id="read-stop" class="secondary" hidden>{{ t("brief.read_stop") }}</button>
@@ -100,6 +99,16 @@
       <ul id="bv-error-list"></ul>
     </div>
 
+    <section class="bv-summary" id="bv-summary" aria-labelledby="bv-summary-h">
+      <h3 id="bv-summary-h">{{ t("brief.sum_title") }}</h3>
+      <p class="hint" id="bv-summary-hint">{{ t("brief.sum_hint") }}</p>
+      <ul id="bv-summary-list" class="bv-summary-list" aria-describedby="bv-summary-hint"></ul>
+    </section>
+
+    <section class="bv-assistant" id="bv-assistant" aria-labelledby="bv-ask-title">
+      <h3 id="bv-ask-title">{{ t("brief.ask_title") }}</h3>
+      <p class="hint" id="bv-ask-hint">{{ t("brief.ask_hint") }}</p>
+      <h4 class="bv-ask-progress" id="bv-ask-h" tabindex="-1" hidden></h4>
     <fieldset class="bv-questions" id="bv-questions">
       <legend>{{ t("brief.s.questions") }}</legend>
       <p class="hint" id="hint-questions">{{ t("brief.questions_hint") }}</p>
@@ -107,7 +116,18 @@
       <ol id="bv-question-list" class="bv-list"></ol>
       {{ err("bf-open_questions") }}
     </fieldset>
+      <ol id="bv-ask-list" class="bv-list bv-ask-list"></ol>
+      <p class="bv-ask-end" id="bv-ask-end" tabindex="-1" hidden></p>
+      <div class="inline bv-ask-nav" id="bv-ask-nav" hidden>
+        <button type="button" id="bv-ask-back" class="secondary">{{ t("brief.ask_back") }}</button>
+        <button type="button" id="bv-ask-skip" class="secondary">{{ t("brief.ask_skip") }}</button>
+        <button type="button" id="bv-ask-next">{{ t("brief.ask_next") }}</button>
+      </div>
+    </section>
 
+    <details class="bv-details" id="bv-details" open>
+    <summary>{{ t("brief.details_summary") }}</summary>
+    <p class="hint" id="hint-lines">{{ t("brief.one_per_line") }}</p>
     <fieldset>
       <legend>{{ t("brief.s.facts") }}</legend>
       <p class="hint" id="hint-facts">{{ t("brief.facts_hint") }}</p>
@@ -299,6 +319,7 @@
       <p class="hint">{{ t("brief.assets_hint", concept=product_concept) }}</p>
       {{ field("assets", "assets", "lines") }}
     </fieldset>
+    </details>
 
     <div class="bf-field">
       <label><input type="checkbox" id="open-weights-run" aria-describedby="hint-open-weights"{% if open_weights_forced %} checked disabled{% endif %}> {{ t("brief.f.open_weights") }}</label>
@@ -438,5 +459,6 @@
 <script src="/static/signer.js" defer></script>
 <script src="/static/app.js" defer></script>
 <script src="/static/brief.js" defer></script>
+<script src="/static/brief_summary.js" defer></script>
 <script src="/static/motion.js" defer></script>
 {% endblock %}
