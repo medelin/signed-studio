@@ -597,7 +597,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         run_id = producer.new_run_id()
         account = profile_of(request)
         website = body.get("website") if isinstance(body.get("website"), str) else ""
-        if not website and account is not None and brand_scan.first_site(text) is None:
+        if not website and account is not None and account.sees_personal_data and \
+                brand_scan.first_site(text) is None:
             website = account.website  # the profile's site when the brief names none
         site = await run_in_threadpool(scan_site, run_id, website, text)
         try:

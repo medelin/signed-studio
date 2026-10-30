@@ -147,12 +147,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         account = app.state.sessions.account_of(cookie) if sid else None
         return (sid, account) if sid and account else None
 
-    def pixels() -> list[dict[str, str]]:
+    def pixels(account: Account) -> list[dict[str, str]]:
         """The ad account's pixels for the profile's pixel choice (read-only, kept for a few
         minutes by the adapter); empty when there is no adapter or they cannot be read,
-        and the form then asks for the id as text."""
+        and the form then asks for the id as text. The operator's pixels are listed only
+        to an account that runs its own ads, not to the judge or a trial account."""
         lister = getattr(getattr(app.state, "adapter", None), "list_pixels", None)
-        if lister is None:
+        if lister is None or not account.sees_personal_data:
             return []
         try:
             return list(lister())
@@ -177,7 +178,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "codes_left": store.recovery_codes_left(account.id),
             "values": values or account.profile(), "langs": i18n.LANGS,
             "themes": prefs.THEMES, "palettes": prefs.PALETTES,
-            "advertiser_types": accounts.ADVERTISER_TYPES, "pixels": pixels(),
+            "advertiser_types": accounts.ADVERTISER_TYPES, "pixels": pixels(account),
             "sections": (SECTIONS[:1] + ("billing",) + SECTIONS[1:]
                          if settings.billing.enabled and not account.is_demo else SECTIONS),
             "billing": bill,

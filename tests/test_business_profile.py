@@ -131,6 +131,13 @@ def test_the_mock_pixels_are_options_with_no_pixel_first(client):
     assert 'aria-describedby="pf-pixel-hint"' in page.split('id="pf-pixel"', 1)[1][:200]
 
 
+def test_a_trial_account_is_not_shown_the_operators_pixels(app, client):
+    app.state.accounts.set_tier("ola", "trial")
+    page = client.get("/account").text
+    assert '<select id="pf-pixel"' not in page and 'id="pf-pixel"' in page  # a text field
+    assert all(p["id"] not in page for p in MockAdapter.PIXELS)
+
+
 def test_a_saved_pixel_missing_from_the_list_stays_selected(app, client):
     assert save(client, pixel_id="999").status_code == 303
     assert '<option value="999" selected>' in client.get("/account").text
@@ -210,8 +217,17 @@ def test_the_pixel_check_still_reads_ids_only():
 
 class Profile:
     def __init__(self, website="https://glina.example/", sell_countries="PL,DE",
-                 pixel_id=PIXEL):
+                 pixel_id=PIXEL, sees_personal_data=True):
         self.website, self.sell_countries, self.pixel_id = website, sell_countries, pixel_id
+        self.sees_personal_data = sees_personal_data  # a full account that runs its own ads
+
+
+def test_the_judge_and_trial_accounts_get_no_profile_defaults():
+    """They advertise on the operator's page: a website of their own would make the
+    signature check refuse the campaign, so nothing is filled."""
+    draft = _empty()
+    assert bv.profile_defaults(draft, Profile(sees_personal_data=False),
+                               default_landing="https://example.com/") == (draft, [])
 
 
 def _empty(goal="sales", sub="website", landing="https://example.com/", **promotion):

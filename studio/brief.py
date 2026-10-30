@@ -599,7 +599,9 @@ def profile_defaults(draft: BriefV1, account: Any, *, default_landing: str = ""
     replaced; the landing page counts as empty when it is not an https URL or is the
     server's default (``default_landing``). The pixel goes in only when the objective
     needs one (``objectives.row(...).needs``)."""
-    if account is None:
+    # only an account that runs its own ads: the shared judge account and trial accounts
+    # advertise on the operator's page, whose links a signature check requires
+    if account is None or not getattr(account, "sees_personal_data", False):
         return draft, []
     website = str(getattr(account, "website", "") or "")
     countries = [c for c in str(getattr(account, "sell_countries", "") or "").split(",")
