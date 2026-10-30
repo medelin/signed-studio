@@ -39,7 +39,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from studio import db
-from studio.auth import is_bearer
+from studio.auth import CSRF_EXEMPT_PATHS, is_bearer
 from studio.settings import ConfigError, Settings
 
 LOG = logging.getLogger("studio.sandbox")
@@ -266,7 +266,8 @@ class SandboxGuard:
         method = scope.get("method", "GET").upper()
         path = scope.get("path", "")
         if (not wait and method not in SAFE_METHODS and path not in SESSION_PATHS
-                and not is_bearer(path)):  # bearer paths: token + per-token limits
+                and not is_bearer(path)  # bearer paths: token + per-token limits
+                and path not in CSRF_EXEMPT_PATHS):  # signed webhooks: their HMAC + IP limit
             sid = self.session_of(request)
             if sid is None:
                 await JSONResponse({"error": "login_required"}, 401)(scope, receive, send)
