@@ -100,6 +100,7 @@ class PriceCache:
         self._lock = threading.Lock()
         self._prices: dict[str, Price | None] = {}
         self._until: dict[str, float] = {}
+        self._fetching: set[str] = set()
 
     def plans(self) -> list[str]:
         """The plans on offer (a price id is configured), in display order."""
@@ -107,11 +108,19 @@ class PriceCache:
         return [p for p in PLANS if api is not None and api.config.plans.get(p)]
 
     def get(self, plan: str = "monthly", *, fetch: bool = True) -> Price | None:
-        """The plan's price; ``fetch=False`` never calls Stripe (for async handlers)."""
+        """The plan's price; ``fetch=False`` never calls Stripe (for async handlers).
+
+        Readers never wait on the network: a fresh cached value is returned without the
+        lock, and the Stripe call runs outside it; only one caller per plan fetches
+        (``_fetching``), the others get the cached value meanwhile."""
+        now = self._clock()
+        if not fetch or now < self._until.get(plan, 0.0):
+            return self._prices.get(plan)
         with self._lock:
-            now = self._clock()
-            if now < self._until.get(plan, 0.0) or not fetch:
+            if plan in self._fetching:
                 return self._prices.get(plan)
+            self._fetching.add(plan)
+        try:
             api = self._stripe_of()
             price_id = api.config.plans.get(plan, "") if api is not None else ""
             if api is None or not price_id:
@@ -120,13 +129,16 @@ class PriceCache:
                 price = parse(api.price(price_id), plan)
                 if price is None:
                     log.warning("pricing: the Stripe price of plan %s does not match it", plan)
-                self._until[plan] = now + TTL_S
+                until = now + TTL_S
             except BillingError as exc:
                 log.warning("pricing: %s", exc.code)
-                price = None
-                self._until[plan] = now + RETRY_S
-            self._prices[plan] = price
+                price, until = None, now + RETRY_S
+            with self._lock:
+                self._prices[plan], self._until[plan] = price, until
             return price
+        finally:
+            with self._lock:
+                self._fetching.discard(plan)
 
     def warm(self) -> None:
         for plan in self.plans():

@@ -303,8 +303,24 @@ def _checkout(c, **fields):
 
 
 def _consents(app):
-    return [x for x in app.state.ledger.receipts(billing.RUN_ID)
-            if x.details.get("tool") == "billing.consent"]
+    """The billing.consent receipts, each with its full, privately stored record as
+    ``details``; the public receipt itself never names the account, buyer or amount."""
+    from types import SimpleNamespace
+    out = []
+    bodies = {}
+    for row in app.state.conn.execute("SELECT sha256, body FROM billing_consents"):
+        bodies[row[0]] = json.loads(row[1])
+    for x in app.state.ledger.receipts(billing.RUN_ID):
+        if x.details.get("tool") != "billing.consent":
+            continue
+        assert not {"account_id", "buyer", "amount_minor", "price_id"} & set(x.details)
+        body = bodies[x.details["consent_sha256"]]
+        assert billing.store_consent(app.state.conn, body["account_id"],
+                                     {k: v for k, v in body.items() if k != "account_id"}
+                                     ) == x.details["consent_sha256"]
+        assert x.details["plan"] == body["plan"]
+        out.append(SimpleNamespace(agent=x.agent, kind=x.kind, details=body))
+    return out
 
 
 def test_account_billing_offers_the_plans_buyers_and_consents(tmp_path):
@@ -589,12 +605,19 @@ def test_report_spend_sends_one_fee_event_per_account_and_day(tmp_path):
     assert form == {"event_name": ["muse_ad_spend"], "identifier": [f"{ola}:2026-10-29"],
                     "payload[stripe_customer_id]": ["cus_1"], "payload[value]": ["65"]}
     assert event.headers["idempotency-key"] == f"{ola}:2026-10-29"
-    usage = {r.details["account_id"]: r.details for r in app.state.ledger.receipts()
-             if r.details.get("tool") == "billing.usage"}
-    assert usage[ola]["spend_minor"] == 1300 and usage[ola]["fee_minor"] == 65
-    assert usage[ola]["fee_pct"] == "5" and usage[ola]["currency"] == "GBP"
-    assert usage[ola]["campaigns"] == 2 and usage[ola]["day"] == 20261029
-    assert usage[bob]["status"] == "no_customer"
+    usage = [r.details for r in app.state.ledger.receipts()
+             if r.details.get("tool") == "billing.usage"]
+    # the public receipts carry no account and no amounts, only the record's hash
+    assert all(not {"account_id", "spend_minor", "fee_minor", "currency"} & set(u)
+               for u in usage)
+    sent = {"account_id": ola, "day": "2026-10-29", "campaigns": 2, "spend_minor": 1300,
+            "currency": "GBP", "fee_pct": "5", "fee_minor": 65}
+    by_hash = {u["usage_sha256"]: u for u in usage}
+    assert by_hash[billing.usage_sha256(sent)]["status"] == "sent"
+    assert by_hash[billing.usage_sha256(sent)]["day"] == 20261029
+    assert sorted(u["status"] for u in usage) == ["no_customer", "sent"]
+    assert app.state.conn.execute("SELECT spend_minor, fee_minor, currency FROM spend_usage "
+                                  "WHERE account_id = ?", (ola,)).fetchone() == (1300, 65, "GBP")
     again = billing.report_spend(app.state.conn, api, "2026-10-29", ledger=app.state.ledger)
     assert again["sent"] == 0  # a rerun sends nothing new
     assert len([r for r in fake.posts if r.url.path == "/v1/billing/meter_events"]) == 1

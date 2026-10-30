@@ -136,17 +136,23 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn) -> None:  #
         amount = await run_in_threadpool(app.state.price.amount, lang, plan)
         with conn.lock:
             current = billing.of(conn, account.id)
-        ledger.append(billing.RUN_ID, agent="owner", kind="tool_call", details={
-            "tool": "billing.consent", "side_effects": "local", "account_id": account.id,
-            # YYYYMMDD as a number: the receipts redactor reads a dated string as a phone
-            "terms_updated": int(legal_texts.UPDATED.replace("-", "")),
-            "terms_sha256": legal_texts.digest("terms"), "plan": plan, "buyer": buyer,
-            "price_id": cfg.plans[plan], "interval": "month",
+        terms_updated = int(legal_texts.UPDATED.replace("-", ""))  # a dated string would be
+        terms_sha256 = legal_texts.digest("terms")                 # redacted as a phone
+        consent = {
+            "terms_updated": terms_updated, "terms_sha256": terms_sha256, "plan": plan,
+            "buyer": buyer, "price_id": cfg.plans[plan], "interval": "month",
             "interval_count": billing.PLAN_MONTHS[plan] if plan != "once" else 0,
             "amount_minor": price.amount if price else 0,
             "currency": price.currency if price else "",
             "spend_fee_pct": cfg.fee_pct_text if cfg.spend_fee else "0",
-            "recurring_consent": True, "immediate_start": buyer == "person"})
+            "recurring_consent": plan != "once", "immediate_start": buyer == "person"}
+        # the full consent stays private (billing_consents); the receipts log, readable by
+        # every signed-in account, gets the plan, the terms and the hash of the record
+        digest = billing.store_consent(conn, account.id, consent)
+        ledger.append(billing.RUN_ID, agent="owner", kind="tool_call", details={
+            "tool": "billing.consent", "side_effects": "local", "plan": plan,
+            "terms_updated": terms_updated, "terms_sha256": terms_sha256,
+            "consent_sha256": digest})
         try:
             url = await run_in_threadpool(
                 app.state.stripe.checkout, account_id=account.id, email=account.email,

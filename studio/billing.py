@@ -51,6 +51,7 @@ from urllib.parse import quote, urlencode
 import httpx
 
 from studio.approvals import transaction
+from studio.receipts import canonical, sha256_hex
 
 API = "https://api.stripe.com/v1"
 TIMEOUT_S = 15.0
@@ -91,6 +92,12 @@ CREATE TABLE IF NOT EXISTS stripe_events (
 CREATE TABLE IF NOT EXISTS renewal_reminders (  -- invoice.upcoming mails, once each
     key TEXT PRIMARY KEY,                       -- subscription id : renewal time
     sent_ts REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS billing_consents (  -- what the owner agreed to before a checkout
+    sha256 TEXT PRIMARY KEY,                    -- the billing.consent receipt carries only this
+    account_id TEXT NOT NULL,
+    body TEXT NOT NULL,                         -- canonical JSON: plan, buyer, price, terms…
+    created_ts REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS spend_usage (    -- one meter event per account and day (UTC)
     account_id TEXT NOT NULL,
@@ -423,13 +430,41 @@ def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: 
                               "(?, ?, ?, ?, ?, ?)",
                               (aid, day, spend_minor, currency, fee, time.time()))
         out["sent" if status == "sent" else "skipped"] += 1
+        # the receipts log is readable by every signed-in account: no account id and no
+        # amounts in it, only the hash of the full record (spend_usage holds the amounts;
+        # the owner and the operator can recompute it)
+        full = {"account_id": aid, "day": day, "campaigns": row["campaigns"],
+                "spend_minor": spend_minor, "currency": currency,
+                "fee_pct": cfg.fee_pct_text, "fee_minor": fee}
         ledger.append(RUN_ID, agent="billing", kind="tool_call", details={
             "tool": "billing.usage", "side_effects": "billing" if status == "sent" else "none",
-            "status": status, "account_id": aid, "day": day_number,
-            "campaigns": row["campaigns"], "spend_minor": spend_minor, "currency": currency,
-            "fee_pct": cfg.fee_pct_text, "fee_minor": fee,
+            "status": status, "day": day_number, "usage_sha256": usage_sha256(full),
             "meter_event": cfg.meter_event if status == "sent" else ""})
     return out
+
+
+def usage_sha256(record: Mapping[str, Any]) -> str:
+    """The hash a ``billing.usage`` receipt carries instead of the account and amounts."""
+    return sha256_hex(canonical(dict(record)))
+
+
+def store_consent(conn: sqlite3.Connection, account_id: str, body: Mapping[str, Any]) -> str:
+    """Keep the full consent privately; return the sha256 the public receipt carries."""
+    record = {"account_id": account_id, **body}
+    digest = sha256_hex(canonical(record))
+    with transaction(conn) as c:
+        c.execute("INSERT OR IGNORE INTO billing_consents (sha256, account_id, body, "
+                  "created_ts) VALUES (?, ?, ?, ?)",
+                  (digest, account_id, canonical(record).decode(), time.time()))
+    return digest
+
+
+def consents_of(conn: sqlite3.Connection, account_id: str) -> list[dict[str, Any]]:
+    """The account's stored consents, newest first."""
+    with conn.lock:  # type: ignore[attr-defined]
+        rows = conn.execute("SELECT body FROM billing_consents WHERE account_id = ? "
+                            "ORDER BY created_ts DESC", (account_id,)).fetchall()
+    return [json.loads(r[0]) for r in rows]
 
 
 def verify_signature(body: bytes, header: str, secret: str, now: float | None = None) -> bool:
