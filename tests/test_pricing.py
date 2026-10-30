@@ -668,3 +668,21 @@ def test_cli_report_usage_without_fee_is_a_no_op(tmp_path, capsys):
     env.chmod(0o600)
     assert cli.main(["billing", "report-usage", "--env-file", str(env)]) == 0
     assert "spend fee off" in capsys.readouterr().out
+
+
+def test_a_failed_meter_event_leaves_no_record_so_the_next_run_retries(tmp_path):
+    fake = FakeStripe()
+    app = _billing_app(tmp_path, fake, **FEE)
+    ola, _ = _seed_spend(app)
+    api = fake.api(app.state.settings.billing)
+
+    def down(**kw):
+        raise billing.BillingError("stripe_unreachable")
+
+    real, api.meter_event = api.meter_event, down
+    with pytest.raises(billing.BillingError):
+        billing.report_spend(app.state.conn, api, "2026-10-29", ledger=app.state.ledger)
+    assert app.state.conn.execute("SELECT COUNT(*) FROM spend_usage").fetchone() == (0,)
+    api.meter_event = real
+    out = billing.report_spend(app.state.conn, api, "2026-10-29", ledger=app.state.ledger)
+    assert out["sent"] == 1

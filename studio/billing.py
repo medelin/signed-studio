@@ -123,6 +123,9 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     for name, decl in COLUMNS.items():
         if name not in have:
             conn.execute(f"ALTER TABLE billing ADD COLUMN {name} {decl}")
+    usage = {r[1] for r in conn.execute("PRAGMA table_info(spend_usage)")}
+    if "nonce" not in usage:
+        conn.execute("ALTER TABLE spend_usage ADD COLUMN nonce TEXT NOT NULL DEFAULT ''")
 
 
 @dataclass(frozen=True)
@@ -426,12 +429,22 @@ def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: 
             if fee <= 0:
                 status = "zero_fee"
             else:
-                api.meter_event(customer_id=customer, value=fee, identifier=f"{aid}:{day}")
+                # recorded first: a local write that fails after Stripe took the event
+                # would send it again on the next run; a failed send undoes the record
+                # (Stripe also deduplicates by the identifier)
                 with transaction(conn) as c:
                     c.execute("INSERT OR IGNORE INTO spend_usage (account_id, day, "
                               "spend_minor, currency, fee_minor, nonce, sent_ts) VALUES "
                               "(?, ?, ?, ?, ?, ?, ?)",
                               (aid, day, spend_minor, currency, fee, nonce, time.time()))
+                try:
+                    api.meter_event(customer_id=customer, value=fee,
+                                    identifier=f"{aid}:{day}")
+                except Exception:
+                    with transaction(conn) as c:
+                        c.execute("DELETE FROM spend_usage WHERE account_id = ? AND day = ?",
+                                  (aid, day))
+                    raise
         out["sent" if status == "sent" else "skipped"] += 1
         # the receipts log is readable by every signed-in account: no account id and no
         # amounts in it, only the salted hash of the full record (spend_usage keeps the
