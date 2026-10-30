@@ -34,6 +34,7 @@ from studio import (
     disapprovals,
     executor,
     leadads,
+    mandates,
     notify,
     store,
     whatsapp,
@@ -242,6 +243,7 @@ def init(conn: sqlite3.Connection) -> None:
     disapprovals.ensure_schema(conn)
     google_store.ensure_schema(conn)
     api_tokens.ensure_schema(conn)  # assistants: personal access tokens, API-drafted briefs
+    mandates.ensure_schema(conn)  # assistants: the owner's signed mandates
 
 
 def _strings(value: Any) -> list[str]:

@@ -425,6 +425,28 @@ function showLeftOut(content) {
   list.append(back);
 }
 
+// A mandate (studio.mandates): every limit in plain words above the hashes, so the owner
+// reads what the assistant may do before signing it.
+function showMandate(m) {
+  const box = $("ap-mandate-box");
+  const list = $("ap-mandate");
+  list.replaceChildren();
+  box.hidden = !m;
+  if (!m) return;
+  $("ap-mandate-title").textContent = T("mandate_title");
+  const join = (xs) => (xs || []).join(", ");
+  for (const line of [
+    T("mandate_scope"),
+    T("mandate_objectives", { list: join(m.objectives) }),
+    T("mandate_countries", { list: join(m.countries) }),
+    T("mandate_hosts", { list: join(m.landing_hosts) }),
+    T("mandate_budget", { amount: m.max_daily_budget, currency: m.currency }),
+    T("mandate_count", { n: m.max_campaigns }),
+    T("mandate_until", { date: new Date(m.valid_until * 1000).toLocaleString() }),
+    T("mandate_tokens", { list: join(m.token_ids) }),
+  ]) list.append(el("li", line));
+}
+
 async function showApproval(pendingId) {
   const panel = $("approve-panel");
   panel.hidden = false;
@@ -434,6 +456,7 @@ async function showApproval(pendingId) {
     const data = await Signer.loadPayload(pendingId);
     currentPayload = data;
     $("ap-action").textContent = T("item", { action: data.fields.action, id: data.fields.item_id });
+    showMandate(data.fields.action === "mandate.grant" ? data.content.mandate : null);
     showLeftOut(data.content || {});
     $("ap-sha").textContent = data.content_sha256;
     $("ap-head").textContent = data.chain_head;
@@ -514,6 +537,11 @@ $("approve-button").addEventListener("click", async () => {
     $("signature").hidden = false;
     $("sig-value").textContent = r.data.signature;
     $("sig-receipt").textContent = r.data.receipt_id + " · " + r.data.receipt_hash.slice(0, 16);
+    if (currentPayload.fields.action === "mandate.grant") {
+      status("approve-status", r.data.executed ? T("mandate_signed")
+        : T("signed_failed", { error: r.data.execution_error || "" }), !r.data.executed);
+      return;
+    }
     if (r.data.executed && r.data.result) {
       status("approve-status", T("signed_executed", { adapter: r.data.result.adapter }));
       showCampaign(currentPayload.content.run_id, r.data.result.campaign_item_id);
@@ -575,8 +603,12 @@ $("open-form").addEventListener("submit", (ev) => {
     try { await Signer.registerKey(); $("approver-key-line").textContent = T("your_key", { key: Signer.approver() }); }
     catch (e) { status("run-status", e.message, true); }
   }
-  const run = new URLSearchParams(location.search).get("run");
+  const params = new URLSearchParams(location.search);
+  const run = params.get("run");
   if (run && /^[A-Za-z0-9_-]{1,40}$/.test(run)) follow(run);
+  // a mandate prepared on /account opens straight on this signing screen
+  const approval = params.get("approval");
+  if (!run && approval && /^[0-9a-f]{32}$/.test(approval)) showApproval(approval);
 })();
 
 // -- the owner's clip -------------------------------------------------------------------

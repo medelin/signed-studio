@@ -21,7 +21,7 @@ from tests.forms import csrf
 BASE = "https://testserver"
 MCP_TOOLS = {"whoami", "list_briefs", "read_brief", "draft_brief", "confirm_brief",
              "start_run", "run_status", "pending_approvals", "campaigns", "insights",
-             "leads", "comments", "draft_reply"}
+             "leads", "comments", "draft_reply", "mandates"}
 TOKEN = re.compile(r"msl_tok_[0-9a-f]{12}_[A-Za-z0-9_-]{43}")
 OTHER_PASSWORD = "Owl-" + secrets.token_urlsafe(18)
 

@@ -32,6 +32,8 @@ from studio.receipts import (
     BRIEF_BOUND_ACTIONS,
     BRIEF_KIND,
     GENESIS,
+    MANDATE_FIELD,
+    MANDATE_GRANT,
     Ledger,
     approval_message,
     canonical,
@@ -66,7 +68,10 @@ __all__ = [
 ]
 
 ACTIONS = frozenset({"campaign.create", "campaign.activate", "campaign.update", "reply.post",
-                     "comment.hide", "google.create", "google.activate"})
+                     "comment.hide", "google.create", "google.activate",
+                     # the owner's signed limits for an assistant (studio.mandates): no
+                     # external write of its own, its receipt carries the signed body
+                     MANDATE_GRANT})
 SPEC_BLOCKS = {"campaign.create": "delivery", "google.create": "google"}
 SIGNED_FIELDS = APPROVAL_SIGNED_FIELDS
 TTL_S = APPROVAL_TTL_S  # the verifier enforces the same window between approval and write
@@ -523,6 +528,10 @@ def verify_and_consume(
     if cur.rowcount != 1:
         raise NonceUsed("approval was already decided")
 
+    # a signed mandate's receipt carries its body (the exact content just verified by
+    # hash), so ``studio verify`` can check every campaign made under it
+    body = payload.get(MANDATE_FIELD) if (pending.action == MANDATE_GRANT
+                                          and isinstance(payload, Mapping)) else None
     ledger.append(
         pending.run_id,
         agent="human",
@@ -533,6 +542,7 @@ def verify_and_consume(
             **pending.fields(approval.approver),
             "sig": approval.signature,
             "pending_id": pending.id,
+            **({MANDATE_FIELD: body} if body is not None else {}),
         },
     )
     return Verified(

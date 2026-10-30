@@ -43,7 +43,10 @@ DESCRIPTION = (
     "**No endpoint signs, approves, launches, spends or changes a budget or status**: "
     "a run ends at a pending approval and a reply draft is one; each comes back with a "
     "`sign_url` the owner opens to sign in the browser. Every call is a receipt "
-    "(agent `api:<label>`). The same operations are MCP tools at `/mcp`.")
+    "(agent `api:<label>`). The same operations are MCP tools at `/mcp`. The one "
+    "exception the owner can sign on /account is a mandate (`GET /mandates`): within its "
+    "limits a run started by a listed token creates its campaign PAUSED without a new tap; "
+    "no endpoint creates, signs or revokes a mandate.")
 
 
 class Gate:
@@ -198,6 +201,11 @@ def build_api(svc: assistants.Assistants) -> FastAPI:
     @api.get("/campaigns", summary="Runs and campaigns")
     async def campaigns(request: Request, limit: int = Query(20, ge=1, le=100)) -> Response:
         return await do(request, "campaigns", {"limit": limit})
+
+    @api.get("/mandates", summary="The owner's signed mandates and whether this token is "
+                                  "listed (read only)")
+    async def mandates(request: Request) -> Response:
+        return await do(request, "mandates", {})
 
     @api.get("/insights", summary="Latest insights, recommendations and report")
     async def insights(request: Request) -> Response:

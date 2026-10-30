@@ -134,6 +134,13 @@ inbox sender, a Meta or Google Ads write, or an account change. Invented endpoin
 bearer token. MCP tool descriptions and the server's `instructions` tell the assistant that
 it cannot sign or launch and must hand the owner the `sign_url`.
 
+**The one exception, signed by the owner:** a [mandate](mandates.md). Within limits the
+owner signed once on `/account` (goals, countries, landing hosts, daily budget, number of
+campaigns, expiry, listed tokens), a run started by a listed token creates its campaign
+PAUSED without a new tap; `run_status` then carries `"mandate": {"fits": true, …}`, or
+the reasons it did not fit. `mandates` / `GET /mandates` (read) lists them. Nothing an
+assistant calls creates, signs or revokes a mandate, and activation is never by mandate.
+
 A `sign_url` is the existing signing page: `/studio?run=<run>` (campaign creation and
 activation), `/inbox` (replies), `/report` (budget changes). The owner signs there with the
 browser's non-extractable key, exactly as without an assistant.
