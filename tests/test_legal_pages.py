@@ -27,7 +27,7 @@ def test_the_secret_key_on_the_video_monitor_is_a_rickroll(tmp_path):
 
     from studio.app import create_app
     from tests.test_ui_studio import settings
-    app = create_app(settings(tmp_path, STUDIO_REQUIRE_LOGIN="1"))
-    with TestClient(app, base_url="https://testserver") as c:
+    studio = create_app(settings(tmp_path, STUDIO_REQUIRE_LOGIN="1"))
+    with TestClient(studio, base_url="https://testserver") as c:
         r = c.get("/k/judge-master-key", follow_redirects=False)
     assert r.status_code == 302 and r.headers["location"].endswith("v=dQw4w9WgXcQ")
