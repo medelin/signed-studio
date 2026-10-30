@@ -13,12 +13,17 @@ an ad set that cannot reach that keeps optimising on too little data. So:
 - ``suggested``: ``learning`` kept between ``minimum`` and the studio's ceiling, and
   ``fits_learning`` says whether the ceiling or the owner's amount allows it.
 
+With Meta's own ``delivery_estimate`` (``with_estimate``) the advice also says how many
+people a day and how many results the suggested and the owner's amount reach, read off
+Meta's curve (linear between its points, flat beyond the last).
+
 Nothing here spends or changes a campaign: the advice is shown with the draft and the owner
 keeps the amount they choose.
 """
 
 from __future__ import annotations
 
+import itertools
 import math
 from typing import Any
 
@@ -49,6 +54,39 @@ def advise(goal: str, currency: str, *, ceiling: int, amount: float | None = Non
            "cost_per_result": round(cpr, 2), "events_per_week": LEARNING_EVENTS,
            "fits_learning": learning <= ceiling, "estimate": True}
     if amount is not None:
+        out["amount"] = amount
         out["results_per_week"] = math.floor(amount * 7 / cpr) if cpr else 0
         out["amount_fits_learning"] = amount >= learning
+    return out
+
+
+def _at(curve: list[dict[str, int]], spend_minor: int, key: str) -> int:
+    if not curve:
+        return 0
+    if spend_minor <= curve[0]["spend_minor"]:
+        first = curve[0]
+        return int(first[key] * spend_minor / first["spend_minor"]) if first["spend_minor"] else 0
+    for a, b in itertools.pairwise(curve):
+        if a["spend_minor"] <= spend_minor <= b["spend_minor"]:
+            span = b["spend_minor"] - a["spend_minor"] or 1
+            return int(a[key] + (b[key] - a[key]) * (spend_minor - a["spend_minor"]) / span)
+    return curve[-1][key]
+
+
+def with_estimate(advice: dict[str, Any], estimate: dict[str, Any]) -> dict[str, Any]:
+    """``advice`` plus Meta's numbers for the suggested amount (and the owner's)."""
+    curve = estimate.get("curve") or []
+    if not curve:
+        return advice
+    out = dict(advice)
+    out["meta"] = {
+        "audience_lower": estimate.get("audience_lower", 0),
+        "audience_upper": estimate.get("audience_upper", 0),
+        "suggested_reach": _at(curve, advice["suggested"] * 100, "reach"),
+        "suggested_results": _at(curve, advice["suggested"] * 100, "results"),
+    }
+    if "results_per_week" in advice and advice.get("amount") is not None:
+        amount_minor = int(advice["amount"] * 100)
+        out["meta"]["amount_reach"] = _at(curve, amount_minor, "reach")
+        out["meta"]["amount_results"] = _at(curve, amount_minor, "results")
     return out

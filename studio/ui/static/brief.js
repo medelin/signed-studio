@@ -471,6 +471,15 @@
     let text = T("budget_advice", vars);
     if (!a.fits_learning) text += " " + T("budget_advice_ceiling", vars);
     else if (a.amount_fits_learning === false) text += " " + T("budget_advice_low", vars);
+    if (a.meta) {  // Meta's own delivery estimate for this audience and goal
+      const fmt = (n) => Number(n).toLocaleString();
+      text += " " + T("budget_meta", { suggested: a.suggested, currency: a.currency,
+        reach: fmt(a.meta.suggested_reach), results: fmt(a.meta.suggested_results) });
+      if (a.meta.amount_reach !== undefined && a.amount !== a.suggested) {
+        text += " " + T("budget_meta_amount", { amount: a.amount, currency: a.currency,
+          reach: fmt(a.meta.amount_reach), results: fmt(a.meta.amount_results) });
+      }
+    }
     node.textContent = text;
   }
 

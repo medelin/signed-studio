@@ -56,6 +56,10 @@ EN_PIXEL: dict[str, str] = {
                             "may stay in the learning phase.",
     "js.budget_advice_ceiling": "The learning phase would need about {learning} {currency} "
                                 "a day, above this studio's ceiling.",
+    "js.budget_meta": "Meta's estimate for this audience: at {suggested} {currency} a day "
+                      "about {reach} people and {results} results a day.",
+    "js.budget_meta_amount": "At your {amount} {currency}: about {reach} people and "
+                             "{results} results.",
 }
 
 PL_PIXEL: dict[str, str] = {
@@ -106,4 +110,8 @@ PL_PIXEL: dict[str, str] = {
                             "może nie wyjść z fazy uczenia się.",
     "js.budget_advice_ceiling": "Faza uczenia się wymagałaby ok. {learning} {currency} "
                                 "dziennie, więcej niż limit tego studia.",
+    "js.budget_meta": "Szacunek Mety dla tej grupy: przy {suggested} {currency} dziennie "
+                      "ok. {reach} osób i {results} wyników dziennie.",
+    "js.budget_meta_amount": "Przy Twoich {amount} {currency}: ok. {reach} osób i "
+                             "{results} wyników.",
 }

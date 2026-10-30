@@ -53,7 +53,7 @@ from studio.approvals import (
     verify_and_consume,
 )
 from studio.approvals import renew as renew_approval
-from studio.meta import pixel
+from studio.meta import audience, objectives, pixel
 from studio.meta.adapter import MOCK_PAGE, AdapterError, NotApproved, delivery_of
 from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
@@ -516,13 +516,33 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return result if result["pages"] else None
 
     def budget_of(draft: brief_v1.BriefV1) -> dict[str, Any]:
-        """What a day makes sense for the draft's objective (``studio.budget_advice``)."""
+        """What a day makes sense for the draft's objective (``studio.budget_advice``),
+        with Meta's ``delivery_estimate`` for the draft's countries and ages when the
+        adapter answers (read-only; any error leaves the rough estimate alone)."""
         try:
             amount: float | None = float(brief_v1.daily_budget(draft))
         except ValueError:
             amount = None
-        return budget_advice.advise(draft.objective.goal, account_currency(),
-                                    ceiling=settings.max_daily_budget, amount=amount)
+        advice = budget_advice.advise(draft.objective.goal, account_currency(),
+                                      ceiling=settings.max_daily_budget, amount=amount)
+        adapter = getattr(app.state, "adapter", None)
+        if adapter is None:
+            return advice
+        try:
+            au = draft.audience
+            spec = objectives.delivery(draft.objective.goal, draft.objective.sub,
+                                       page_id=MOCK_PAGE,
+                                       promotion=draft.promotion.model_dump())
+            targeting = audience.targeting(
+                countries=draft.advertiser.countries, age_min=au.age_min,
+                age_max=au.age_max, genders=au.genders,
+                excluded_countries=au.excluded_countries,
+                advantage=au.advantage_audience)
+            estimate = adapter.delivery_estimate(targeting, spec["optimization_goal"])
+        except (AdapterError, objectives.DeliveryError, KeyError, ValueError) as exc:
+            LOG.info("delivery estimate unavailable: %s", type(exc).__name__)
+            return advice
+        return budget_advice.with_estimate(advice, estimate)
 
     def site_summary(site: dict[str, Any] | None) -> dict[str, Any] | None:
         if not site:
@@ -586,7 +606,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "ceiling": settings.max_daily_budget, "currency": account_currency(),
             "google_currency": draft_google_currency(),
             "site": site_summary(site),
-            "budget_advice": budget_of(draft),
+            "budget_advice": await run_in_threadpool(budget_of, draft),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 
     @app.get("/api/briefs/{brief_id}")

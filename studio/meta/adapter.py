@@ -135,6 +135,13 @@ class Adapter(Protocol):
         """Read-only check of the advertiser's pixel before signing (``pixel.result``:
         ``status`` ok/warn/fail, per-check entries, ``last_fired_time``, ``events_7d``)."""
 
+    def delivery_estimate(self, targeting: Mapping[str, Any],
+                          optimization_goal: str) -> dict[str, Any]:
+        """Read-only: Meta's own estimate for this targeting and goal
+        (``GET /act_{id}/delivery_estimate``): ``audience_lower``/``audience_upper``
+        (monthly active people) and ``curve``, a list of ``{"spend_minor", "reach",
+        "results"}`` per day, rising with the daily budget."""
+
     def upload_image(self, png: bytes, payload: Mapping[str, Any],
                      approval: Verified) -> str: ...
 

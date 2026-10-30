@@ -92,6 +92,17 @@ class MockAdapter:
     def account_info(self) -> dict[str, str]:
         return {"currency": self.currency, "timezone_name": "Europe/Warsaw"}
 
+    def delivery_estimate(self, targeting: Mapping[str, Any],
+                          optimization_goal: str) -> dict[str, Any]:
+        """A deterministic, saturating curve (no network): reach grows with spend and
+        flattens, results are 2% of reach."""
+        self.calls.append(("delivery_estimate", optimization_goal))
+        curve = [{"spend_minor": s, "reach": int(9000 * s / (s + 2500)),
+                  "results": int(180 * s / (s + 2500))}
+                 for s in (100, 300, 500, 1000, 2000, 5000, 10000)]
+        return {"audience_lower": 1_200_000, "audience_upper": 1_400_000, "ready": True,
+                "curve": curve}
+
     def pixel_check(self, pixel_id: str, landing_url: str, *,
                     event_type: str = "") -> dict[str, Any]:
         """A deterministic healthy pixel (read-only): found in the ad account, fired

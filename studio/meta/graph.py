@@ -247,6 +247,25 @@ class GraphAdapter:
             self._account: dict[str, str] | None = cached
         return dict(cached)
 
+    def delivery_estimate(self, targeting: Mapping[str, Any],
+                          optimization_goal: str) -> dict[str, Any]:
+        """``GET /act_{id}/delivery_estimate`` (read-only; nothing is created)."""
+        body = self._request("GET", f"{self.account}/delivery_estimate", params={
+            "optimization_goal": optimization_goal,
+            "targeting_spec": json.dumps(dict(targeting), separators=(",", ":"))})
+        data = body.get("data")
+        first = data[0] if isinstance(data, list) and data and isinstance(data[0], dict) else {}
+        curve = []
+        for point in first.get("daily_outcomes_curve") or []:
+            if isinstance(point, dict):
+                curve.append({"spend_minor": int(point.get("spend") or 0),
+                              "reach": int(point.get("reach") or 0),
+                              "results": int(point.get("actions") or 0)})
+        return {"audience_lower": int(first.get("estimate_mau_lower_bound") or 0),
+                "audience_upper": int(first.get("estimate_mau_upper_bound") or 0),
+                "ready": bool(first.get("estimate_ready", True)),
+                "curve": sorted(curve, key=lambda p: p["spend_minor"])}
+
     PIXEL_FIELDS = "id,name,last_fired_time,is_unavailable"
     PIXEL_PAGES = 5  # at most 5 x 100 pixels of the ad account are listed
 
