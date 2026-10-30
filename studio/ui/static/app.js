@@ -559,7 +559,7 @@ $("approve-button").addEventListener("click", async () => {
 
 // -- runs -----------------------------------------------------------------------------
 
-function follow(runId) {
+function follow(runId, retry = 0) {
   document.body.classList.add("has-run");  // the run's panels appear with the first run
   if (source) source.close();
   $("ticker").replaceChildren();
@@ -580,7 +580,14 @@ function follow(runId) {
     source.close();
     if (!readOnly && loggedIn) $("run-button").disabled = false;
   });
-  source.onerror = () => status("run-status", T("connection_lost"), true);
+  source.onerror = () => {
+    status("run-status", T("connection_lost"), true);
+    // the browser retries a dropped stream by itself, but not one the server refused or
+    // closed; follow again a few times (the stream replays the run from its start)
+    if (source.readyState === EventSource.CLOSED && retry < 5) {
+      setTimeout(() => follow(runId, retry + 1), 3000);
+    }
+  };
 }
 
 // The brief form itself (draft → confirm → run) lives in brief.js; it starts runs here.

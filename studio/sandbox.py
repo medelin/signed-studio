@@ -54,6 +54,7 @@ MARKER = "last_reset"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 SESSION_PATHS = frozenset({"/login", "/logout", "/login/2fa"})  # login limiter / same-origin
 QUIET_S = 120.0  # a reset waits until no judge has written for this long ...
+SIGN_WINDOW_S = 1800.0  # ... no run is working, and none waits for a signature this fresh
 TICK_S = 60.0
 MIN_INTERVAL_S = 300.0
 _TRUE = frozenset({"1", "true", "yes", "on"})
@@ -152,7 +153,8 @@ def maybe_reset(
     """One reset decision: ``disabled`` | ``marked`` | ``waiting`` | ``deferred`` | ``reset``.
 
     ``last_write`` is when a judge last wrote; a due reset is ``deferred`` while that is
-    under ``QUIET_S`` ago, until the reset is overdue by half an interval.
+    under ``QUIET_S`` ago or a run is busy (``run_busy``), until the reset is overdue by
+    half an interval.
     """
     if not enabled:
         return "disabled"
@@ -164,12 +166,28 @@ def maybe_reset(
     age = t - marker
     if age < interval_s:
         return "waiting"
-    if last_write is not None and t - last_write < QUIET_S and age < interval_s * 1.5:
+    if age < interval_s * 1.5 and (
+            (last_write is not None and t - last_write < QUIET_S) or run_busy(conn, t)):
         return "deferred"
     kwargs = {} if seed_dir is None else {"seed_dir": seed_dir}
     db.reset_demo(conn, keep_receipts=True, now=t, **kwargs)  # marker last, same transaction
     LOG.info("sandbox: demo data reset (receipts kept)")
     return "reset"
+
+
+def run_busy(conn: Any, now: float) -> bool:
+    """A run is working (agents write nothing on the judge's behalf for minutes, so
+    ``last_write`` alone looks quiet) or waits for a signature it got recently: a reset
+    now would delete its state and end its live view mid-run."""
+    try:
+        with conn.lock:
+            row = conn.execute(
+                "SELECT 1 FROM run_state WHERE status = 'running' OR "
+                "(status = 'awaiting_approval' AND updated_ts > ?) LIMIT 1",
+                (now - SIGN_WINDOW_S,)).fetchone()
+    except Exception:  # noqa: BLE001 - no run table yet: nothing is busy
+        return False
+    return row is not None
 
 
 class Resetter:

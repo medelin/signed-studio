@@ -132,6 +132,21 @@ def test_reset_waits_for_quiet_but_not_forever(conn):
     assert maybe_reset(conn, enabled=True, now=overdue, last_write=overdue - 1) == "reset"
 
 
+@pytest.mark.parametrize("status,age,deferred", [
+    ("running", 5, True), ("awaiting_approval", 600, True),
+    ("awaiting_approval", 3600, False), ("done", 5, False)])
+def test_reset_waits_for_a_busy_run_but_not_forever(conn, status, age, deferred):
+    """A run's agents write nothing for the judge for minutes; a reset then would delete
+    its state and end its live view mid-run (seen on the sandbox)."""
+    maybe_reset(conn, enabled=True, now=0.0)
+    conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
+                 "VALUES ('run_busy', ?, '{}', ?)", (status, HOUR - age))
+    expected = "deferred" if deferred else "reset"
+    assert maybe_reset(conn, enabled=True, now=HOUR) == expected
+    if deferred:  # never past half an interval
+        assert maybe_reset(conn, enabled=True, now=HOUR * 1.5 + 1) == "reset"
+
+
 def test_failed_reset_keeps_marker_and_data(conn, tmp_path):
     maybe_reset(conn, enabled=True, now=0.0)
     conn.execute("DELETE FROM leads")

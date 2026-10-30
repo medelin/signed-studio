@@ -447,7 +447,7 @@ def record(x: float, y: float, w: float = 180, h: float = 150, *, signed: bool =
     if signed:  # the signature field, filled: the record is now correct
         out.append(f'<rect class="r-signed" x="10" y="{_n(sy)}" width="{_n(w - 56)}" '
                    f'height="18"/><path class="r-sig" d="M16 {_n(sy + 12)}c6 -10 10 6 16 -2'
-                   f's6 -6 10 2 12 -4"/>')
+                   f's6 -6 10 2s4 -6 6 -2"/>')  # a scribble: two curves, four numbers each
     else:  # unsigned: the ! field
         out.append(f'<rect class="warn-field" x="10" y="{_n(sy)}" width="{_n(w - 56)}" '
                    f'height="18"/><path class="warn-mark" d="M{_n(w / 2 - 18)} {_n(sy + 4)}'
