@@ -10,24 +10,35 @@ ACCOUNT_ENTRIES: tuple[tuple[str, str, str, dict[str, str], dict[str, str]], ...
         "accounts", "kofi", "private",
         {"en": "Who has an account, and how do I get one?",
          "pl": "Kto ma konto i jak je dostać?"},
-        {"en": "There is no public sign-up. The operator creates each account on the server "
-               "(<code>studio account create</code>) and gives you the user name and a first "
-               "password. Change it on <a href=\"/account#password\">your account page</a>: "
-               "at least 12 characters, not a common password. Changing it signs out your "
+        {"en": "Register on <a href=\"/login\">the sign-in page</a> with Google or "
+               "Facebook, where the operator turned that on. A new account starts on trial: "
+               "you prepare and sign campaigns that are created paused, until the operator "
+               "lifts the trial. It has no password at first; add one on your account page "
+               "right after signing in with your provider. The operator can also create an "
+               "account on the server (<code>studio account create</code>) and give you the "
+               "user name and a first password. Change it on "
+               "<a href=\"/account#password\">your account page</a>: at least 12 "
+               "characters, not a common password. Changing it signs out your "
                "other sessions. The profile keeps your display name, an optional e-mail, "
                "your language and display defaults, and whether you advertise as a person "
                "or a company (legal name, country and a tax id in any country's format, not "
-               "checked). Billing comes after the hackathon; for now these details are only "
-               "stored. Judges use the shared <code>judge</code> account.",
-         "pl": "Nie ma publicznej rejestracji. Operator zakłada każde konto na serwerze "
-               "(<code>studio account create</code>) i przekazuje nazwę użytkownika oraz "
-               "pierwsze hasło. Zmień je na <a href=\"/account#password\">stronie konta</a>: "
+               "checked). Where the operator turned billing on, the subscription is under "
+               "<a href=\"/account#billing\">Billing</a>: Stripe takes the card and issues "
+               "every invoice. Judges use the shared <code>judge</code> account.",
+         "pl": "Zarejestruj się na <a href=\"/login\">stronie logowania</a> przez Google "
+               "lub Facebooka, jeśli operator to włączył. Nowe konto zaczyna od okresu "
+               "próbnego: przygotowujesz i podpisujesz kampanie, które powstają wstrzymane, "
+               "dopóki operator go nie zniesie. Na początku nie ma hasła; dodasz je na stronie "
+               "konta zaraz po zalogowaniu przez dostawcę. Operator może też założyć konto na "
+               "serwerze (<code>studio account create</code>) i przekazać nazwę użytkownika "
+               "oraz pierwsze hasło. Zmień je na <a href=\"/account#password\">stronie konta</a>: "
                "co najmniej 12 znaków, nie popularne hasło. Zmiana wylogowuje pozostałe "
                "sesje. Profil przechowuje wyświetlaną nazwę, nieobowiązkowy e-mail, "
                "ustawienia języka i wyglądu oraz to, czy reklamujesz się jako osoba czy "
                "firma (nazwa prawna, kraj i numer podatkowy w formacie dowolnego kraju, bez "
-               "sprawdzania). Rozliczenia pojawią się po hackathonie; na razie te dane są "
-               "tylko zapisywane. Jury używa wspólnego konta <code>judge</code>."},
+               "sprawdzania). Jeśli operator włączył rozliczenia, subskrypcja jest w części "
+               "<a href=\"/account#billing\">Rozliczenia</a>: kartę przyjmuje Stripe i "
+               "wystawia każdą fakturę. Jury używa wspólnego konta <code>judge</code>."},
     ),
     (
         "two-step-sign-in", "priya", "signed",

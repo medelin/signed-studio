@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs
@@ -21,7 +22,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from studio import accounts, auth, db, notify, prefs, whatsapp
+from studio import accounts, auth, billing, db, notify, prefs, whatsapp
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
 from studio.receipts import Ledger
 from studio.settings import Settings
@@ -29,7 +30,8 @@ from studio.ui import i18n
 
 CHALLENGE_COOKIE = "studio_2fa"
 DONE = frozenset({"profile", "password", "2fa_started", "2fa_cancelled", "2fa_off",
-                  "session_revoked", "sessions_revoked", "notify", "token_revoked"})
+                  "session_revoked", "sessions_revoked", "notify", "token_revoked",
+                  "linked", "billing"})
 SECTIONS = ("profile", "password", "two-factor", "sessions", "assistants", "notifications",
             "export", "delete")
 NO_STORE = {"Cache-Control": "no-store"}
@@ -50,7 +52,8 @@ def install(app: FastAPI, settings: Settings, conn: Any) -> None:
 
 
 def login_enabled(app: FastAPI, settings: Settings) -> bool:
-    return settings.judge_login_enabled or bool(app.state.accounts.any_login())
+    return (settings.judge_login_enabled or bool(settings.social.enabled)
+            or bool(app.state.accounts.any_login()))
 
 
 def _secure(request: Request, settings: Settings) -> bool:
@@ -106,6 +109,10 @@ def _extras(app: FastAPI, account: Account) -> dict[str, Any]:
     return dict(hook(account)) if hook is not None else {}
 
 
+def _day(ts: float) -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime(ts)) if ts else ""
+
+
 def _fields(raw: bytes) -> dict[str, str] | None:
     try:
         form = parse_qs(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=MAX_FIELDS)
@@ -137,9 +144,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
              errors: dict[str, tuple[str, str]] | None = None, codes: list[str] | None = None,
              values: dict[str, str] | None = None, whatsapp_code: str = "",
              extra: dict[str, Any] | None = None) -> Response:
+        from studio import routes_social  # it imports this module
+
         done = request.query_params.get("done", "")
         pending = store.totp_pending_secret(account.id) if account.totp_pending else None
         uri = accounts.provisioning_uri(pending, account.username) if pending else ""
+        bill = billing.of(conn, account.id) if settings.billing.enabled else None
         response = templates.TemplateResponse(request, "account.html", {
             **base(request, True), "account": account, "errors": errors or {},
             "done": done if done in DONE else "", "codes": codes or [],
@@ -148,8 +158,18 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "codes_left": store.recovery_codes_left(account.id),
             "values": values or account.profile(), "langs": i18n.LANGS,
             "themes": prefs.THEMES, "palettes": prefs.PALETTES,
-            "advertiser_types": accounts.ADVERTISER_TYPES, "sections": SECTIONS,
+            "advertiser_types": accounts.ADVERTISER_TYPES,
+            "sections": (SECTIONS[:1] + ("billing",) + SECTIONS[1:]
+                         if settings.billing.enabled and not account.is_demo else SECTIONS),
+            "billing": bill,
+            "billing_on": settings.billing.enabled and not account.is_demo,
+            "billing_test": not settings.billing.live,
+            "billing_error": request.query_params.get("billing_error", "")[:40],
+            "billing_until": _day(bill.period_end) if bill else "",
             "min_password": accounts.MIN_PASSWORD_LEN,
+            "identities": store.identities(account.id), "social": settings.social.enabled,
+            "first_password": not account.has_password and routes_social.external_fresh(
+                app, account.id),
             "notify_prefs": notify.preferences(conn, account.id),
             "whatsapp_prefs": whatsapp.preferences(conn, account.id),
             "whatsapp_enabled": settings.whatsapp.enabled,
@@ -250,10 +270,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         ip, ok = limited(request)
         if not ok:
             return refused(request, sid, account, "password", ip)
+        from studio import routes_social  # it imports this module
+
         try:
             store.change_password(account.id, fields.get("current", ""),
                                   fields.get("new", ""), fields.get("confirm", ""),
-                                  keep_sid=sid)
+                                  keep_sid=sid,
+                                  external_fresh=routes_social.external_fresh(app, account.id))
         except AccountError as exc:
             app.state.limiter.settle(ip, not isinstance(exc, accounts.WrongPassword))
             field = "current" if isinstance(exc, accounts.WrongPassword) else "new"

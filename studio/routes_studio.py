@@ -43,8 +43,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
+from studio import brand_scan, db
 from studio import brief as brief_v1
-from studio import db
 from studio.agents import producer
 from studio.approvals import (
     Approval,
@@ -59,7 +59,7 @@ from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import StructuredOutputError
-from studio.receipts import BRIEF_KIND, Ledger, Receipt
+from studio.receipts import BRIEF_KIND, Ledger, Receipt, canonical, sha256_hex
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
 LOG = logging.getLogger("studio.runs")
@@ -500,6 +500,28 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     app.state.confirm_and_start = confirm_and_start  # the assistants API starts runs here
 
+    def scan_site(run_id: str, website: str, words: str) -> dict[str, Any] | None:
+        """The advertiser's site named in the owner's words (or the ``website`` field), read
+        by ``studio.brand_scan`` with a ``tool_call`` receipt; None when there is none or
+        ``STUDIO_BRAND_SCAN`` is off (``app.state.brand_fetcher`` replaces the network)."""
+        url = brand_scan.normalize_url(website) if website else brand_scan.first_site(words)
+        if url is None or not settings.brand_scan:
+            return None
+        result = brand_scan.scan(url, getattr(app.state, "brand_fetcher", None))
+        ledger.append(run_id, agent="producer", kind="tool_call", details={
+            "tool": "brand.scan", "side_effects": "read", "url": result["url"],
+            "pages": [p["url"] for p in result["pages"]],
+            "social": sorted(result["social"]), "errors": result["errors"],
+            "result_sha256": sha256_hex(canonical(result))})
+        return result if result["pages"] else None
+
+    def site_summary(site: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not site:
+            return None
+        return {"url": site["url"], "pages": [p["url"] for p in site["pages"]],
+                "social": site["social"],
+                "offers": [o for p in site["pages"] for o in p["offers"]][:6]}
+
     @app.post("/api/briefs/draft")
     async def draft_brief(request: Request) -> Response:
         """Owner's text (or the edited transcript of a voice brief) → Brief v1 draft."""
@@ -532,11 +554,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         run_id = producer.new_run_id()
+        website = body.get("website") if isinstance(body.get("website"), str) else ""
+        site = await run_in_threadpool(scan_site, run_id, website, text)
         try:
             muse, _ = clients()
             draft = await run_in_threadpool(partial(
                 producer.draft_brief, muse, text, run_id=run_id, source=source, lang=lang,
-                landing_url=settings.landing_url))
+                landing_url=settings.landing_url, site=site))
         except (ReadOnlyMode, BudgetExceeded) as exc:
             return JSONResponse({"error": type(exc).__name__}, 503)
         except StructuredOutputError as exc:
@@ -552,6 +576,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                           currency=account_currency()),
             "ceiling": settings.max_daily_budget, "currency": account_currency(),
             "google_currency": draft_google_currency(),
+            "site": site_summary(site),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 
     @app.get("/api/briefs/{brief_id}")
@@ -855,10 +880,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         account = accounts.get(aid) if aid else None
         if account is None and live:
             return JSONResponse({"error": "login_required"}, 401)
+        # the judge account and self-registered trial accounts share the operator's live ad
+        # account: both sign only paused creates aimed at the operator's own landing page
+        limited = account is not None and (account.is_demo or account.tier == "trial")
         try:
             with db.transaction(conn):
                 pending = Pending.load(conn, approval_id)
-                if account is not None and account.is_demo and demo_refused(
+                if limited and demo_refused(
                         pending.action, meta_adapter=settings.meta_adapter,
                         google_adapter=settings.google_adapter):
                     raise _DemoRefused
@@ -866,7 +894,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                    (approval_id,)).fetchone()
                 if row is None:
                     raise _NoPayload
-                if (account is not None and account.is_demo and settings.meta_adapter != "mock"
+                if (limited and settings.meta_adapter != "mock"
                         and pending.action == "campaign.create"
                         and not demo_destinations_ok(json.loads(row[0]),
                                                      settings.landing_url)):

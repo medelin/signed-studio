@@ -24,8 +24,13 @@ rather than in a public issue.
 
 ## Accounts
 
-There is no self-registration: the operator creates accounts with `studio account create`
-(password from the terminal or stdin, never argv). The built-in `judge` account is the
+The operator creates accounts with `studio account create` (password from the terminal or
+stdin, never argv). With Google/Facebook sign-in configured, anyone with such an identity
+registers a *trial* account (`studio.social_login`): OAuth code flow, a one-time `state`
+bound to a `SameSite=Lax` cookie, PKCE for Google, `appsecret_proof` for Facebook; the
+identity is the provider's stable user id, never the e-mail, and an e-mail match never
+links an existing account. A trial account on a live adapter signs only what `judge` signs
+(paused creates to the operator's landing host) until `studio account promote`. The built-in `judge` account is the
 *demo* account, seeded from `JUDGE_PASSWORD` at every start (disabled when it is empty).
 
 | Threat | Control | Where |

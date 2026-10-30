@@ -60,9 +60,8 @@ EN_ACCOUNTS: dict[str, str] = {
     "account.profile.tax_id": "Tax id",
     "account.profile.tax_hint": "Any country's tax or VAT number, as you write it. It is not "
                                 "checked.",
-    "account.profile.billing_note": "Invoices and billing come after the hackathon. These "
-                                    "details are only stored for then; nothing is charged "
-                                    "or sent.",
+    "account.profile.billing_note": "These details are yours to keep here; Stripe asks for "
+                                    "the ones it puts on an invoice at checkout (Billing).",
     "account.profile.save": "Save profile",
     "account.profile.invalid": "Check this field: {field}.",
     # password
@@ -168,10 +167,58 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.no_such_account": "There is no such account.",
     "err.confirmation_mismatch": "The confirmation does not match your user name.",
     "err.two_factor_state": "Two-step sign-in changed meanwhile; reload the page.",
+    "err.billing_off": "Billing is not turned on for this studio.",
+    "err.invalid_event": "That webhook event could not be read.",
     "err.invalid_form": "The form could not be read.",
     "err.unknown_session": "That session is not active any more.",
     "err.second_factor_locked": "Too many wrong codes for this account; wait a while and try "
                                 "again.",
+    "account.section.billing": "Billing",
+    "account.done.billing": "Thank you. Your subscription appears here once Stripe confirms "
+                            "the payment, usually within a minute.",
+    "billing.lead": "Muse Studio Lite is a monthly subscription, paid by card through Stripe. "
+                    "Stripe issues the invoice for every payment; you can cancel any time.",
+    "billing.subscribe": "Subscribe",
+    "billing.portal": "Manage card, invoices and cancellation",
+    "billing.status": "Subscription",
+    "billing.renews": "renews on",
+    "billing.cancels": "ends on",
+    "billing.last_invoice": "Latest invoice (Stripe)",
+    "billing.test_mode": "Test mode: no real money moves. Pay with the test card 4242 4242 "
+                         "4242 4242, any future date and any CVC.",
+    "billing.error": "Billing is not reachable right now. Try again in a moment.",
+    "billing.status.active": "active",
+    "billing.status.trialing": "trial period",
+    "billing.status.past_due": "payment overdue",
+    "billing.status.canceled": "ended",
+    "billing.status.unpaid": "unpaid",
+    "billing.status.incomplete": "waiting for payment",
+    "billing.status.incomplete_expired": "expired",
+    "billing.status.paused": "paused",
+    "social.heading": "New here? Register in one step",
+    "social.lead": "Continue with Google or Facebook to sign in or create your account. A "
+                   "new account starts on trial: campaigns are created paused, on the "
+                   "studio's own page, until the operator lifts the trial.",
+    "social.continue_google": "Continue with Google",
+    "social.continue_facebook": "Continue with Facebook",
+    "social.continue": "Continue to Muse Studio Lite",
+    "social.error": "That sign-in did not go through. Try again, or use your user name "
+                    "and password.",
+    "social.google": "Google",
+    "social.facebook": "Facebook",
+    "social.linked": "connected",
+    "social.reauth": "confirm it's you",
+    "social.link_google": "Connect Google",
+    "social.link_facebook": "Connect Facebook",
+    "social.linked_lead": "Sign in with:",
+    "social.trial": "This account is on trial: you can prepare and sign paused campaigns; "
+                    "the operator lifts the trial.",
+    "social.no_password": "This account signs in with Google or Facebook. To add a "
+                          "password, sign in with your provider again and come back here "
+                          "within 15 minutes.",
+    "social.first_password": "You just signed in with your provider, so you can set a "
+                             "password now without a current one.",
+    "account.done.linked": "Connected. You can sign in with it from now on.",
 }
 
 PL_ACCOUNTS: dict[str, str] = {
@@ -226,9 +273,8 @@ PL_ACCOUNTS: dict[str, str] = {
     "account.profile.tax_id": "Numer podatkowy",
     "account.profile.tax_hint": "Numer podatkowy lub VAT dowolnego kraju, tak jak go zapisujesz. "
                                 "Nie jest sprawdzany.",
-    "account.profile.billing_note": "Faktury i rozliczenia pojawią się po hackathonie. Te dane "
-                                    "są tylko zapisywane na później; nic nie jest pobierane "
-                                    "ani wysyłane.",
+    "account.profile.billing_note": "Te dane przechowujesz tutaj; te, które trafiają na "
+                                    "fakturę, Stripe pobiera przy płatności (Rozliczenia).",
     "account.profile.save": "Zapisz profil",
     "account.profile.invalid": "Sprawdź to pole: {field}.",
     "account.password.lead": "Zmiana hasła wylogowuje wszystkie inne sesje i unieważnia ich "
@@ -327,8 +373,57 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.no_such_account": "Nie ma takiego konta.",
     "err.confirmation_mismatch": "Potwierdzenie nie zgadza się z Twoją nazwą użytkownika.",
     "err.two_factor_state": "Logowanie dwuetapowe w międzyczasie się zmieniło; odśwież stronę.",
+    "err.billing_off": "Rozliczenia nie są włączone w tym studiu.",
+    "err.invalid_event": "Nie udało się odczytać tego zdarzenia webhooka.",
     "err.invalid_form": "Nie udało się odczytać formularza.",
     "err.unknown_session": "Ta sesja nie jest już aktywna.",
     "err.second_factor_locked": "Za dużo błędnych kodów dla tego konta; odczekaj chwilę i "
                                 "spróbuj ponownie.",
+    "account.section.billing": "Rozliczenia",
+    "account.done.billing": "Dziękujemy. Subskrypcja pojawi się tu, gdy Stripe potwierdzi "
+                            "płatność, zwykle w ciągu minuty.",
+    "billing.lead": "Muse Studio Lite to miesięczna subskrypcja, płatna kartą przez Stripe. "
+                    "Stripe wystawia fakturę za każdą płatność; zrezygnujesz w każdej chwili.",
+    "billing.subscribe": "Subskrybuj",
+    "billing.portal": "Karta, faktury i rezygnacja",
+    "billing.status": "Subskrypcja",
+    "billing.renews": "odnawia się",
+    "billing.cancels": "kończy się",
+    "billing.last_invoice": "Ostatnia faktura (Stripe)",
+    "billing.test_mode": "Tryb testowy: żadne prawdziwe pieniądze nie przepływają. Zapłać "
+                         "kartą testową 4242 4242 4242 4242, dowolną przyszłą datą i "
+                         "dowolnym CVC.",
+    "billing.error": "Rozliczenia są teraz niedostępne. Spróbuj za chwilę.",
+    "billing.status.active": "aktywna",
+    "billing.status.trialing": "okres próbny",
+    "billing.status.past_due": "zaległa płatność",
+    "billing.status.canceled": "zakończona",
+    "billing.status.unpaid": "nieopłacona",
+    "billing.status.incomplete": "czeka na płatność",
+    "billing.status.incomplete_expired": "wygasła",
+    "billing.status.paused": "wstrzymana",
+    "social.heading": "Pierwszy raz? Zarejestruj się jednym krokiem",
+    "social.lead": "Kontynuuj przez Google lub Facebooka, żeby się zalogować albo założyć "
+                   "konto. Nowe konto zaczyna od okresu próbnego: kampanie powstają "
+                   "wstrzymane, na stronie studia, dopóki operator go nie zniesie.",
+    "social.continue_google": "Kontynuuj przez Google",
+    "social.continue_facebook": "Kontynuuj przez Facebooka",
+    "social.continue": "Przejdź do Muse Studio Lite",
+    "social.error": "To logowanie się nie udało. Spróbuj ponownie albo użyj nazwy "
+                    "użytkownika i hasła.",
+    "social.google": "Google",
+    "social.facebook": "Facebook",
+    "social.linked": "połączone",
+    "social.reauth": "potwierdź, że to Ty",
+    "social.link_google": "Połącz z Google",
+    "social.link_facebook": "Połącz z Facebookiem",
+    "social.linked_lead": "Logowanie przez:",
+    "social.trial": "To konto jest w okresie próbnym: przygotujesz i podpiszesz kampanie "
+                    "wstrzymane; okres próbny znosi operator.",
+    "social.no_password": "To konto loguje się przez Google lub Facebooka. Żeby dodać "
+                          "hasło, zaloguj się ponownie przez dostawcę i wróć tu w ciągu "
+                          "15 minut.",
+    "social.first_password": "Właśnie zalogowałeś się przez dostawcę, więc możesz teraz "
+                             "ustawić hasło bez podawania obecnego.",
+    "account.done.linked": "Połączono. Od teraz możesz się tak logować.",
 }

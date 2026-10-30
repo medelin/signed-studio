@@ -46,11 +46,12 @@ PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favic
                           "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys",
                           "/try", "/pl/try", "/try/data.json",  # the recorded tour
                           "/start", "/pl/start",  # onboarding
-                          "/webhooks/whatsapp"})  # Meta's servers; authenticated by HMAC
-PUBLIC_PREFIXES = ("/static/", "/try/img/")
+                          "/webhooks/whatsapp",  # Meta's servers; authenticated by HMAC
+                          "/webhooks/stripe"})  # Stripe's servers; Stripe-Signature HMAC
+PUBLIC_PREFIXES = ("/static/", "/try/img/", "/auth/")  # /auth/: studio.routes_social
 # Posted by Meta's servers, never by a browser: the X-Hub-Signature-256 HMAC of the raw body
 # (checked in studio.routes_whatsapp) is the authentication, so no CSRF token is asked for.
-CSRF_EXEMPT_PATHS = frozenset({"/webhooks/whatsapp"})
+CSRF_EXEMPT_PATHS = frozenset({"/webhooks/whatsapp", "/webhooks/stripe"})
 JSON_PREFIXES = ("/api/", "/assets/")
 # /api/v1 and /mcp authenticate with a bearer token (studio.routes_api), never a cookie
 BEARER_PATHS = ("/api/v1", "/mcp")

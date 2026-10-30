@@ -8,13 +8,12 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from studio import db
+from studio import db, leadads
 from studio.app import create_app
 from studio.approvals import Pending
-from studio.receipts import canonical
-from studio import leadads
 from studio.meta import objectives
 from studio.meta.adapter import MOCK_PAGE
+from studio.receipts import canonical
 from studio.routes_studio import demo_destinations_ok, demo_link_ok, demo_refused
 from tests.test_pixel_gate import RUN, _sign
 from tests.test_ui_studio import PASSWORD, csrf, login, register, settings

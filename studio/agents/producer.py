@@ -33,8 +33,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from studio import brand_scan, envelope, leadads
 from studio import brief as brief_v1
-from studio import envelope, leadads
 from studio.agents import art_director, copywriter, formats, prompts, reviewer
 from studio.agents.dispatcher import (
     ApprovalArgs,
@@ -444,31 +444,40 @@ def make_plan(ctx: Context, brief: str, run_id: str) -> Plan:
 
 
 def draft_brief(client: MuseClient, text: str, *, run_id: str, source: str = "operator",
-                lang: str = "en",
-                landing_url: str = "https://example.com/") -> brief_v1.BriefV1:
+                lang: str = "en", landing_url: str = "https://example.com/",
+                site: dict[str, Any] | None = None) -> brief_v1.BriefV1:
     """Brief v1 drafted by Muse Spark from the owner's text or edited voice transcript
     (strict ``BriefV1`` schema), then ``brief.ground_draft``: a fact holding a number the
-    owner never wrote becomes an open ``[FACT]`` question."""
+    owner never wrote becomes an open ``[FACT]`` question. ``site`` is a
+    ``studio.brand_scan`` result: the advertiser's own pages, as enveloped suggestions
+    (a number the site states may be drafted as a fact; the owner confirms them all)."""
     text = text.strip()
     if not text or len(text) > brief_v1.MAX_SOURCE:
         raise ValueError(f"brief text must be 1-{brief_v1.MAX_SOURCE} characters")
     transcript = source == "transcript"
     owner = envelope.wrap(text, "transcript", max_chars=brief_v1.MAX_SOURCE) if transcript \
         else text
-    system = prompts.brief_system() + ("\n\n" + envelope.SYSTEM_RULE if transcript else "")
+    site_block = brand_scan.as_prompt(site) if site else ""
+    system = prompts.brief_system() + ("\n\n" + envelope.SYSTEM_RULE
+                                       if transcript or site_block else "")
+    sources = (["transcript"] if transcript else []) + (["website"] if site_block else [])
+    site_part = ("\n\nThe advertiser's own website (suggestions for products, prices, tone, "
+                 "audience and offer; the owner's words win where they differ; never invent "
+                 f"beyond either):\n{site_block}") if site_block else ""
     draft, _ = structured(
         client, MODEL,
         [{"role": "system", "content": system},
          {"role": "user", "content": f"Owner's language: {lang}\nDefault landing page: "
-                                     f"{landing_url}\n\nOwner's words:\n{owner}\n\n"
-                                     "Draft the Brief v1 only."}],
+                                     f"{landing_url}\n\nOwner's words:\n{owner}"
+                                     f"{site_part}\n\nDraft the Brief v1 only."}],
         brief_v1.BriefV1, tier="standard", tier_reason=(
             "brief draft from a voice transcript" if transcript
             else "brief draft from the owner's text"),
         run_id=run_id, agent=AGENT, max_tokens=4000, reasoning_effort="low",
-        envelope_sources=["transcript"] if transcript else (),
+        envelope_sources=sources,
     )
-    return brief_v1.ground_draft(draft, text, lang=lang)
+    grounding = text + ("\n" + brand_scan.grounding_text(site) if site else "")
+    return brief_v1.ground_draft(draft, grounding, lang=lang)
 
 
 def _headline_key(text: str) -> str:

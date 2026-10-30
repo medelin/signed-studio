@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
 
+from studio.billing import BillingConfig
 from studio.notify import MailConfig
+from studio.social_login import SocialLoginConfig
 from studio.whatsapp import WhatsAppConfig
 
 MIN_SECRET_LEN = 32
@@ -151,6 +153,12 @@ class Settings:
     public_url: str = ""  # base of the links in notification mails
     # WhatsApp Cloud API (studio.whatsapp): off unless STUDIO_WHATSAPP is set
     whatsapp: WhatsAppConfig = field(default_factory=WhatsAppConfig)
+    # sign in / register with Google or Facebook (studio.social_login)
+    social: SocialLoginConfig = field(default_factory=SocialLoginConfig)
+    # read the advertiser's website named in a brief before drafting (studio.brand_scan)
+    brand_scan: bool = False
+    # Stripe subscription, invoices and payment mails (studio.billing)
+    billing: BillingConfig = field(default_factory=BillingConfig)
     # Google Ads (a second, minimal channel): mock unless GOOGLE_ADS_ADAPTER=rest
     google_adapter: str = "mock"
     google_client_id: str = field(default="", repr=False)
@@ -268,6 +276,8 @@ class Settings:
         public_url = _public_url(e.get("STUDIO_PUBLIC_URL", ""))
         try:
             whatsapp = WhatsAppConfig.from_env(e)
+            social = SocialLoginConfig.from_env(e)
+            billing = BillingConfig.from_env(e)
         except ValueError as exc:
             raise ConfigError(str(exc)) from None
         replay = _bool(e, "STUDIO_REPLAY", False)
@@ -326,6 +336,9 @@ class Settings:
             mail=mail,
             public_url=public_url,
             whatsapp=whatsapp,
+            social=social,
+            billing=billing,
+            brand_scan=_bool(e, "STUDIO_BRAND_SCAN", False) and not replay,
             google_adapter=google,
             google_client_id=e.get("GOOGLE_ADS_CLIENT_ID", ""),
             google_client_secret=e.get("GOOGLE_ADS_CLIENT_SECRET", ""),

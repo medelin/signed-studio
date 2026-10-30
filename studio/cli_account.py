@@ -1,6 +1,7 @@
-"""``studio account create|list|disable|enable|reset-password``: the operator's tools.
+"""``studio account create|list|disable|enable|promote|demote|reset-password``: operator tools.
 
-There is no public sign-up; accounts exist only when the operator creates them here.
+Accounts are created here, or by registering with Google or Facebook when that is configured
+(``studio.social_login``); such an account starts on trial until ``promote``.
 Passwords are read from the terminal (twice, not echoed) or from standard input with
 ``--password-stdin`` (one line), never from the command line, where ``ps`` and shell
 history would see them. The database is the server's (``STUDIO_DATA_DIR``, default
@@ -38,6 +39,9 @@ def add_parser(sub: Any) -> None:
     acts.add_parser("list", help="list accounts")
     for name, text in (("disable", "disable an account and end its sessions"),
                        ("enable", "enable a disabled account")):
+        acts.add_parser(name, help=text).add_argument("username")
+    for name, text in (("promote", "lift a self-registered (trial) account to full"),
+                       ("demote", "back to trial: signs only what the judge account signs")):
         acts.add_parser(name, help=text).add_argument("username")
     reset = acts.add_parser("reset-password", help="set a new password, end every session")
     reset.add_argument("username")
@@ -84,6 +88,10 @@ def run(args: argparse.Namespace, stdin: TextIO | None = None) -> int:
                 account = store.set_status(
                     args.username, "disabled" if args.action == "disable" else "active")
                 print(f"{account.username}: {account.status}")
+            elif args.action in ("promote", "demote"):
+                account = store.set_tier(
+                    args.username, "full" if args.action == "promote" else "trial")
+                print(f"{account.username}: {account.tier}")
             elif args.action == "reset-password":
                 account = store.reset_password(
                     args.username, _password(args.password_stdin, stdin),

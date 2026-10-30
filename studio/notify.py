@@ -80,6 +80,12 @@ EVENTS: dict[str, Event] = {
     "signin": Event("security", "/account#sessions"),
     "deletion_requested": Event("security", ""),
     "export_ready": Event("security", "/account#export"),
+    # account and billing mails (studio.billing): to the one account, cannot be turned off
+    "welcome": Event("billing", "/start"),
+    "subscription_started": Event("billing", "/account#billing"),
+    "subscription_ended": Event("billing", "/account#billing"),
+    "payment_received": Event("billing", "/account#billing"),
+    "payment_failed": Event("billing", "/account#billing"),
 }
 
 ALIASES = {"ad.disapproved": "ad_disapproved"}
@@ -473,21 +479,23 @@ def build_message(name: str, ev: Event, who: Recipient, count: int, *, sender: s
     subject = str(i18n.text(lang, f"notify.{name}.subject"))
     body = str(i18n.text(lang, f"notify.{name}.body", count=count))
     link = base_url + ev.path if (base_url and ev.path) else ""
-    foot_key = "notify.footer_security" if ev.category == "security" else "notify.footer"
+    personal = ev.category in ("security", "billing")
+    foot_key = {"security": "notify.footer_security",
+                "billing": "notify.footer_billing"}.get(ev.category, "notify.footer")
     account_url = base_url + "/account#notifications" if base_url else ""
     footer = str(i18n.text(lang, foot_key))
     lines = [body]
     if link:
         lines += ["", str(i18n.text(lang, "notify.open")) + " " + link]
     lines += ["", "--", footer]
-    if account_url and ev.category != "security":
+    if account_url and not personal:
         lines.append(account_url)
     rows = [f"<p>{html.escape(body)}</p>"]
     if link:
         rows.append(f'<p><a href="{html.escape(link)}">'
                     f"{html.escape(str(i18n.text(lang, 'notify.open')))}</a></p>")
     foot = html.escape(footer)
-    if account_url and ev.category != "security":
+    if account_url and not personal:
         foot += f' <a href="{html.escape(account_url)}">{html.escape(account_url)}</a>'
     rows.append(f'<p style="color:#666;font-size:13px">{foot}</p>')
     msg = EmailMessage()

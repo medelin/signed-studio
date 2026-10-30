@@ -10,6 +10,26 @@ EN_NOTIFY: dict[str, str] = {
     "notify.open": "Open it here:",
     "notify.footer": "You get this because notifications are on for your Muse Studio Lite "
                      "account. Choose what you receive:",
+    "notify.footer_billing": "A message about your Muse Studio Lite account and its "
+                             "subscription. Invoices are issued by Stripe for Dwarven "
+                             "Stronghold Ltd (not VAT registered).",
+    "notify.welcome.subject": "Welcome to Muse Studio Lite",
+    "notify.welcome.body": "Your account is ready. Start with one brief: say or type what "
+                           "you sell and to whom. Agents prepare the campaign; nothing goes "
+                           "out until you sign it.",
+    "notify.subscription_started.subject": "Your Muse Studio Lite subscription is active",
+    "notify.subscription_started.body": "Thank you. Your subscription is active; the invoice "
+                                        "and your billing details are on your account page.",
+    "notify.subscription_ended.subject": "Your Muse Studio Lite subscription has ended",
+    "notify.subscription_ended.body": "Your subscription is no longer active. Your account, "
+                                      "receipts and drafts stay; you can subscribe again "
+                                      "from your account page.",
+    "notify.payment_received.subject": "Payment received",
+    "notify.payment_received.body": "We received your payment. The invoice is on your "
+                                    "account page, under Billing.",
+    "notify.payment_failed.subject": "Your payment did not go through",
+    "notify.payment_failed.body": "The payment for your subscription failed. Update your "
+                                  "card on your account page, under Billing.",
     "notify.footer_security": "This is a security notice about your Muse Studio Lite account "
                               "and cannot be turned off. If it was not you, change your "
                               "password and sign out the other sessions.",
@@ -67,6 +87,26 @@ PL_NOTIFY: dict[str, str] = {
     "notify.open": "Otwórz tutaj:",
     "notify.footer": "Dostajesz to, bo powiadomienia są włączone na Twoim koncie Muse Studio "
                      "Lite. Wybierz, co chcesz dostawać:",
+    "notify.footer_billing": "Wiadomość o Twoim koncie Muse Studio Lite i subskrypcji. "
+                             "Faktury wystawia Stripe w imieniu Dwarven Stronghold Ltd "
+                             "(niezarejestrowanej jako podatnik VAT).",
+    "notify.welcome.subject": "Witaj w Muse Studio Lite",
+    "notify.welcome.body": "Twoje konto jest gotowe. Zacznij od jednego briefu: powiedz "
+                           "albo napisz, co sprzedajesz i komu. Agenci przygotują kampanię; "
+                           "nic nie wyjdzie, dopóki jej nie podpiszesz.",
+    "notify.subscription_started.subject": "Twoja subskrypcja Muse Studio Lite jest aktywna",
+    "notify.subscription_started.body": "Dziękujemy. Subskrypcja jest aktywna; faktura i "
+                                        "dane rozliczeń są na stronie Twojego konta.",
+    "notify.subscription_ended.subject": "Twoja subskrypcja Muse Studio Lite wygasła",
+    "notify.subscription_ended.body": "Subskrypcja nie jest już aktywna. Konto, "
+                                      "pokwitowania i szkice zostają; subskrypcję wznowisz "
+                                      "na stronie konta.",
+    "notify.payment_received.subject": "Płatność otrzymana",
+    "notify.payment_received.body": "Otrzymaliśmy Twoją płatność. Faktura jest na stronie "
+                                    "konta, w części Rozliczenia.",
+    "notify.payment_failed.subject": "Płatność się nie powiodła",
+    "notify.payment_failed.body": "Płatność za subskrypcję nie przeszła. Zmień kartę na "
+                                  "stronie konta, w części Rozliczenia.",
     "notify.footer_security": "To powiadomienie o bezpieczeństwie Twojego konta Muse Studio "
                               "Lite i nie da się go wyłączyć. Jeśli to nie Ty, zmień hasło "
                               "i wyloguj pozostałe sesje.",

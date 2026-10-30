@@ -18,6 +18,15 @@
       {% if error %}<p class="status error" id="lp-error" role="alert">{{ error }}</p>{% endif %}
       <button type="submit">{{ t("auth.sign_in") }}</button>
     </form>
+    {% if social %}
+    <div class="social-signin" aria-labelledby="social-h">
+      <h2 id="social-h">{{ t("social.heading") }}</h2>
+      <p class="hint">{{ t("social.lead") }}</p>
+      {% if social_error %}<p class="status error" role="alert">{{ t("social.error") }}</p>{% endif %}
+      {% for p in social %}<a class="ob-button social-{{ p }}" href="/auth/{{ p }}/start?next={{ next | urlencode }}">{{ t("social.continue_" ~ p) }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
     {% else %}
     <p class="empty">{{ t("login.disabled") }}</p>
     {% endif %}

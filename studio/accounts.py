@@ -1,6 +1,11 @@
 """User accounts: argon2id passwords, profile, TOTP second factor, sessions, deletion, export.
 
-- **No self-registration.** The operator creates accounts with ``studio account create``.
+- **Registration**: the operator creates accounts with ``studio account create``; with
+  Google or Facebook sign-in configured (``studio.social_login``) anyone can also register
+  with that identity. Such an account starts in the ``trial`` tier: on the operator's live
+  ad account it signs what the judge account signs (paused campaigns to the operator's own
+  landing page) until the operator runs ``studio account promote``. It has no password until
+  its owner sets one, within 15 minutes of a provider sign-in.
   The built-in ``judge`` account is the *demo* account: it is seeded (or its hash updated)
   from ``JUDGE_PASSWORD`` at every start and disabled when that variable is empty. Its
   password, second factor and existence are not changeable from the UI, so judges sharing
@@ -82,6 +87,13 @@ CREATE TABLE IF NOT EXISTS accounts (
     credential_gen INTEGER NOT NULL DEFAULT 0,  -- bumped by every password/2FA/status change
     code_failures INTEGER NOT NULL DEFAULT 0,   -- wrong codes since the last right one
     code_locked_until REAL NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS external_logins (
+    provider TEXT NOT NULL CHECK (provider IN ('google', 'facebook')),
+    subject TEXT NOT NULL,              -- the provider's stable user id (OIDC sub, FB id)
+    account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+    created_ts REAL NOT NULL,
+    PRIMARY KEY (provider, subject)
 );
 CREATE TABLE IF NOT EXISTS recovery_codes (
     account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
@@ -214,6 +226,8 @@ class Account:
     created_ts: float
     updated_ts: float
     password_changed_ts: float
+    tier: str = "full"  # "trial": self-registered, signs only what the judge account signs
+    has_password: bool = True
 
     PROFILE = ("display_name", "email", "lang", "theme", "palette", "advertiser_type",
                "legal_name", "country", "tax_id")
@@ -224,21 +238,26 @@ class Account:
 
 _COLUMNS = ("id, username, status, is_demo, display_name, email, lang, theme, palette, "
             "advertiser_type, legal_name, country, tax_id, totp_secret != '', "
-            "totp_pending != '', created_ts, updated_ts, password_changed_ts")
+            "totp_pending != '', created_ts, updated_ts, password_changed_ts, tier, "
+            "password_hash != ''")
 
 
 def _account(row: tuple[Any, ...]) -> Account:
     (aid, username, status, demo, display, email, lang, theme, palette, kind, legal, country,
-     tax, totp, pending, created, updated, changed) = row
+     tax, totp, pending, created, updated, changed, tier, has_password) = row
     return Account(aid, username or "", status, bool(demo), display, email, lang, theme,
                    palette, kind, legal, country, tax, bool(totp), bool(pending), created,
-                   updated, changed)
+                   updated, changed, tier, bool(has_password))
 
 
 # Columns added after the accounts table first shipped (``ALTER TABLE … ADD COLUMN``).
 _LATER_COLUMNS = {"credential_gen": "INTEGER NOT NULL DEFAULT 0",
                   "code_failures": "INTEGER NOT NULL DEFAULT 0",
-                  "code_locked_until": "REAL NOT NULL DEFAULT 0"}
+                  "code_locked_until": "REAL NOT NULL DEFAULT 0",
+                  "tier": "TEXT NOT NULL DEFAULT 'full'"}
+
+TIERS = ("full", "trial")
+EXTERNAL_PASSWORD_WINDOW_S = 15 * 60  # a first password, this soon after a provider sign-in
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -506,6 +525,67 @@ class Accounts:
         assert account is not None
         return account
 
+    # -- external identities (studio.social_login) -------------------------------------------
+
+    def by_identity(self, provider: str, subject: str) -> Account | None:
+        with self._read() as c:
+            row = c.execute("SELECT account_id FROM external_logins WHERE provider = ? AND "
+                            "subject = ?", (provider, subject)).fetchone()
+        return self.get(row[0]) if row else None
+
+    def identities(self, account_id: str) -> list[str]:
+        with self._read() as c:
+            return [r[0] for r in c.execute("SELECT provider FROM external_logins WHERE "
+                                            "account_id = ? ORDER BY provider", (account_id,))]
+
+    def link_identity(self, account_id: str, provider: str, subject: str) -> None:
+        """Only ever from a signed-in session: an e-mail match never links on its own."""
+        with transaction(self.conn) as c:
+            row = self._require(c, account_id)
+            if row[3]:
+                raise DemoAccount("the shared demo account cannot sign in with a provider")
+            c.execute("INSERT OR IGNORE INTO external_logins (provider, subject, account_id, "
+                      "created_ts) VALUES (?, ?, ?, ?)",
+                      (provider, subject, account_id, self.clock()))
+
+    def create_external(self, provider: str, subject: str, *, email: str = "",
+                        display_name: str = "") -> Account:
+        """A new ``trial`` account for a provider identity: no password, a user name made
+        from the e-mail's local part and a random suffix."""
+        local = re.sub(r"[^a-z0-9._-]", "", normalize_username(email.split("@")[0]))[:20]
+        profile = _clean_profile({"display_name": display_name[:80], "email": email[:254]})
+        now = self.clock()
+        for _ in range(8):
+            name = f"{local or provider}-{secrets.token_hex(2)}"
+            aid = "acct_" + secrets.token_hex(8)
+            try:
+                with transaction(self.conn) as c:
+                    c.execute("INSERT INTO accounts (id, username, tier, display_name, email, "
+                              "created_ts, updated_ts) VALUES (?, ?, 'trial', ?, ?, ?, ?)",
+                              (aid, name, profile["display_name"], profile["email"], now, now))
+                    c.execute("INSERT INTO external_logins (provider, subject, account_id, "
+                              "created_ts) VALUES (?, ?, ?, ?)", (provider, subject, aid, now))
+            except sqlite3.IntegrityError:
+                existing = self.by_identity(provider, subject)
+                if existing is not None:  # a parallel callback won the race
+                    return existing
+                continue
+            account = self.get(aid)
+            assert account is not None
+            return account
+        raise UsernameTaken("no free user name")
+
+    def set_tier(self, username: str, tier: str) -> Account:
+        if tier not in TIERS:
+            raise ValueError(tier)
+        account = self._operator_target(username)
+        with transaction(self.conn) as c:
+            c.execute("UPDATE accounts SET tier = ?, updated_ts = ? WHERE id = ?",
+                      (tier, self.clock(), account.id))
+        result = self.get(account.id)
+        assert result is not None
+        return result
+
     def seed_demo(self, password: str) -> Account | None:
         """The judge demo account follows ``JUDGE_PASSWORD``: created or re-hashed when it is
         set (the hash is replaced only when the password changed), disabled when empty. Its
@@ -707,14 +787,17 @@ class Accounts:
         return result
 
     def change_password(self, account_id: str, current: str, new: str, confirm: str, *,
-                        keep_sid: str) -> int:
+                        keep_sid: str, external_fresh: bool = False) -> int:
         """Needs the current password; revokes every other session and its approver keys.
-        Returns how many sessions were revoked."""
+        Returns how many sessions were revoked. An account registered with a provider sets
+        its first password without one, when ``external_fresh`` (its session began with a
+        provider sign-in less than ``EXTERNAL_PASSWORD_WINDOW_S`` ago)."""
         with self._read() as c:
             row = self._require(c, account_id)
         if row[3]:
             raise DemoAccount("the demo account's password is set by the operator")
-        self._check_password(row[1], current)
+        if row[1] or not external_fresh:
+            self._check_password(row[1], current)
         if not hmac.compare_digest(new.encode(), confirm.encode()):
             raise PasswordMismatch("the new passwords differ")
         check_password_policy(new, row[0])
@@ -937,6 +1020,7 @@ class Accounts:
                   "updated_ts = ?, deleted_ts = ? WHERE id = ?",
                   (now, now, account_id))
         c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (account_id,))
+        c.execute("DELETE FROM external_logins WHERE account_id = ?", (account_id,))
         c.execute("DELETE FROM whatsapp_codes WHERE account_id = ?", (account_id,))
         c.execute("UPDATE account_sessions SET user_agent = '', last_seen_ts = created_ts "
                   "WHERE account_id = ?", (account_id,))
@@ -969,6 +1053,7 @@ class Accounts:
             "exported_ts": self.clock(),
             "account": {"id": account.id, "username": account.username,
                         "demo": account.is_demo, "status": account.status,
+                        "tier": account.tier, "sign_in_with": self.identities(account_id),
                         "created_ts": account.created_ts,
                         "password_changed_ts": account.password_changed_ts,
                         "two_factor": account.totp_enabled,

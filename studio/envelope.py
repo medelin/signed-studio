@@ -28,7 +28,7 @@ PHRASE = "UNTRUSTED EXTERNAL CONTENT"
 BEGIN = f"<<<BEGIN {PHRASE}>>>"
 END = f"<<<END {PHRASE}>>>"
 SOURCES = frozenset({"comment", "lead", "transcript", "insights", "screenshot", "ad_copy",
-                     "brief_facts"})
+                     "brief_facts", "website"})
 ZWSP = "\u200b"
 MAX_CHARS = 4000
 

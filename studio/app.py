@@ -53,6 +53,7 @@ from studio import (
     prefs,
     routes_account,
     routes_api,
+    routes_billing,
     routes_google,
     routes_help,
     routes_inbox,
@@ -60,6 +61,7 @@ from studio import (
     routes_onboarding,
     routes_receipts,
     routes_report,
+    routes_social,
     routes_studio,
     routes_try,
     routes_whatsapp,
@@ -482,6 +484,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_onboarding.register(app, settings, ledger, templates, session_of, COOKIE)
     routes_account.register(app, settings, ledger, conn, templates, session_of)
     routes_whatsapp.register(app, settings, ledger, conn, session_of)
+    routes_social.register(app, settings)
+    routes_billing.register(app, settings, ledger, conn)
 
     # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
     # each runs only for a consumed, signed approval (studio.executor.authorize).
@@ -598,6 +602,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "login.html", {
             "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": False,
             "login_enabled": routes_account.login_enabled(app, settings),
+            "social": settings.social.enabled,
+            "social_error": request.query_params.get("social_error", "")[:32],
             "read_only": settings.read_only,
             "next": auth.safe_next(nxt), "error": error, "noindex": True,
         }, status_code=status, headers=headers)

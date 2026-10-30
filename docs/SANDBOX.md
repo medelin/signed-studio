@@ -17,7 +17,7 @@ the password cannot be changed from the page, and the account cannot be deleted:
 lock the others out. The profile, the sessions list ("sign out all others" just sends the
 others back to `/login`) and the data export work as for any account.
 
-Other accounts exist only when the operator creates them (no public sign-up):
+Other accounts register with Google or Facebook (trial, see *Registration with Google or Facebook*) or are created by the operator:
 
 ```sh
 # on the VM; locally the same commands run as `studio account …`
@@ -183,6 +183,26 @@ the same file, so they mail too):
 | `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT` | for `smtp` only; port default `465` |
 | `STUDIO_MAIL_FROM` | default `Muse Studio Lite <muse@udun.eu>`; for JMAP it must equal the address of one of the mailbox's identities |
 | `STUDIO_PUBLIC_URL` | the site's origin, e.g. `https://muse.udun.eu` (https; no path); without it mails carry no link |
+
+### Registration with Google or Facebook
+
+| Variable | Meaning |
+|---|---|
+| `GOOGLE_LOGIN_CLIENT_ID`, `GOOGLE_LOGIN_CLIENT_SECRET` | an OAuth web client (Google Cloud → Credentials); redirect URI `<STUDIO_PUBLIC_URL>/auth/google/callback`; scopes `openid email profile` |
+| `FACEBOOK_LOGIN_CLIENT_ID`, `FACEBOOK_LOGIN_CLIENT_SECRET` | a Meta app with the Facebook Login use case (`email`, `public_profile`); valid OAuth redirect URI `<STUDIO_PUBLIC_URL>/auth/facebook/callback` |
+
+A provider is offered on `/login` when both of its variables are set; set `STUDIO_PUBLIC_URL` too, so the redirect URI never comes from the request's Host header. A new identity gets a **trial** account with no password: on a live adapter it signs exactly what `judge` signs (paused `campaign.create` to the operator's landing host) until `studio account promote <user>`. An e-mail match never links an existing account; a signed-in owner links a provider from the account page. While a Google app is in *Testing* or a Meta app in *Development* mode, only its test users / app roles can sign in.
+
+### Billing (Stripe) and the brand scan
+
+| Variable | Meaning |
+|---|---|
+| `STRIPE_SECRET_KEY` | a test key (`sk_test_`/`rk_test_`); a live key is refused unless `STUDIO_BILLING_LIVE=1` |
+| `STRIPE_WEBHOOK_SECRET` | the `whsec_` secret of the endpoint `<STUDIO_PUBLIC_URL>/webhooks/stripe` (events: `checkout.session.completed`, `customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed`) |
+| `STRIPE_PRICE_ID` | the monthly price (`price_…`) Checkout sells |
+| `STUDIO_BRAND_SCAN` | `1`: before drafting, read the advertiser's website named in the brief (`studio.brand_scan`, at most 4 same-site pages, https and public addresses only) |
+
+All three Stripe variables or none. Stripe issues every invoice (the seller's name, address and "not registered for VAT" footer live in the Stripe invoice settings); the studio stores ids, status and dates, and mails the owner when a subscription starts or ends and when a payment succeeds or fails. With a test key a subscription never lifts a trial account: a test card must not unlock the operator's live ad account.
 
 JMAP flow: `GET` the session (accountId from `primaryAccounts` for `urn:ietf:params:jmap:submission`), one setup call (`Identity/get` to pick the identity whose e-mail is the from address, `Mailbox/query` role `sent`; cached per process), then one `POST` per mail with `Email/set` (created in Sent, `$seen`) and `EmailSubmission/set` (`onSuccessUpdateEmail` drops `$draft`). No redirects are followed with the credentials; timeout 10 s.
 

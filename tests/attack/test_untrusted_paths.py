@@ -124,7 +124,30 @@ def _glimmer(client):
     return "comment", None
 
 
+def _brief_reply():
+    from tests.test_brief import sample
+    return sample().model_dump(mode="json")
+
+
+def _brand_scan(client):
+    from studio import brand_scan
+    from studio.agents import producer
+    site = brand_scan.scan("https://shop.example/", _OneSite(
+        f"<title>Shop</title><p>{CANARY}</p>"))
+    producer.draft_brief(client, "Mugs from my shop, 20 a day.", run_id="p9", site=site)
+    return "website", None
+
+
+class _OneSite:
+    def __init__(self, html):
+        self.html = html
+
+    def fetch(self, url):
+        return self.html.encode()
+
+
 PATHS = {
+    "studio/brand_scan.py": (_brand_scan, lambda: _chat(_brief_reply())),
     "studio/muse/glimmer.py": (_glimmer, lambda: _chat(_prescreen_reply())),
     "studio/agents/copywriter.py": (_copywriter, lambda: _chat(_copy_reply())),
     "studio/agents/producer.py": (_producer, lambda: _chat(_plan_reply())),
