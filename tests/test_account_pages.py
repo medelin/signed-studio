@@ -93,8 +93,10 @@ def test_account_needs_a_session_and_is_linked_from_the_header(client):
     page = client.get("/account")
     assert page.status_code == 200 and page.headers["cache-control"] == "no-store"
     assert '<a href="/account" aria-current="page">' in page.text
+    tabs = re.findall(r'data-members="([^"]+)"', page.text)
     for section in ("profile", "password", "two-factor", "sessions", "export", "delete"):
-        assert f'id="{section}"' in page.text and f'href="#{section}"' in page.text
+        assert f'id="{section}"' in page.text  # every section sits in one tab
+        assert sum(section in t.split() for t in tabs) == 1, section
 
 
 def test_account_page_is_accessible_and_csp_clean(client):

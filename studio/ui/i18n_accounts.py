@@ -34,6 +34,11 @@ EN_ACCOUNTS: dict[str, str] = {
     "account.help_html": 'Questions? See <a href="/help#accounts">accounts</a>, '
                          '<a href="/help#two-step-sign-in">two-step sign-in</a> and '
                          '<a href="/help#delete-account">deleting an account</a> in the help.',
+    "account.group.profile": "Profile & billing",
+    "account.group.security": "Security",
+    "account.group.assistants": "Assistants & API",
+    "account.group.notifications": "Notifications",
+    "account.group.data": "Your data",
     "account.section.profile": "Profile",
     "account.section.password": "Password",
     "account.section.two-factor": "Two-step sign-in",
@@ -248,6 +253,11 @@ PL_ACCOUNTS: dict[str, str] = {
     "account.help_html": 'Pytania? Zobacz w pomocy: <a href="/pl/help#accounts">konta</a>, '
                          '<a href="/pl/help#two-step-sign-in">logowanie dwuetapowe</a> i '
                          '<a href="/pl/help#delete-account">usuwanie konta</a>.',
+    "account.group.profile": "Profil i rozliczenia",
+    "account.group.security": "Bezpieczeństwo",
+    "account.group.assistants": "Asystenci i API",
+    "account.group.notifications": "Powiadomienia",
+    "account.group.data": "Twoje dane",
     "account.section.profile": "Profil",
     "account.section.password": "Hasło",
     "account.section.two-factor": "Logowanie dwuetapowe",

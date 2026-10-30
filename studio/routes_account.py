@@ -34,6 +34,12 @@ DONE = frozenset({"profile", "password", "2fa_started", "2fa_cancelled", "2fa_of
                   "linked", "billing"})
 SECTIONS = ("profile", "password", "two-factor", "sessions", "assistants", "notifications",
             "export", "delete")
+# the tabs of /account (studio/ui/static/account.js shows one group; without JavaScript
+# every section stays on the page)
+GROUPS = (("profile", ("profile", "billing")),
+          ("security", ("password", "two-factor", "sessions")),
+          ("assistants", ("assistants",)), ("notifications", ("notifications",)),
+          ("data", ("export", "delete")))
 NO_STORE = {"Cache-Control": "no-store"}
 MAX_FIELDS = 20
 
@@ -162,6 +168,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "sections": (SECTIONS[:1] + ("billing",) + SECTIONS[1:]
                          if settings.billing.enabled and not account.is_demo else SECTIONS),
             "billing": bill,
+            "groups": [(g, [s for s in members if s != "billing" or (
+                settings.billing.enabled and not account.is_demo)]) for g, members in GROUPS],
             "billing_on": settings.billing.enabled and not account.is_demo,
             "billing_test": not settings.billing.live,
             "billing_error": request.query_params.get("billing_error", "")[:40],

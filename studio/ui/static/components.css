@@ -227,6 +227,11 @@ button.dictate[aria-pressed="true"] { background: var(--signal); color: var(--si
 .account-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, 16rem); gap: 1.5rem; align-items: end; margin: 0 0 1rem; }
 .account-art .il { max-height: 11rem; }
 .account-toc ul { list-style: none; display: flex; flex-wrap: wrap; gap: .3rem 1.1rem; padding: 0; margin: 0 0 .5rem; }
+.account-toc.tabs ul { gap: 0; border-bottom: 1px solid var(--rule); margin-bottom: 1rem; }
+.account-toc.tabs a { display: block; padding: .55rem .9rem; text-decoration: none; color: var(--ink-2);
+  border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.account-toc.tabs a:hover { color: var(--ink); }
+.account-toc.tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--signal); font-weight: 600; }
 .account-part { scroll-margin-top: 1rem; }
 .account-part:target { border-color: var(--signal); }
 .account-part fieldset { display: grid; gap: .4rem; border: 1px solid var(--rule-soft); padding: .6rem .8rem .8rem; margin: 0 0 .5rem; }
@@ -265,6 +270,16 @@ button.danger { background: var(--signal); color: var(--signal-ink); }
 .ob-button:hover { filter: brightness(1.08); }
 .ob-button.secondary { background: var(--ink-2); color: var(--bg); }
 .ob-entry { margin: .75rem 0; }
+.social-signin { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+.social-signin h2 { font-size: 1rem; margin: 0 0 .35rem; }
+.social-signin .ob-button {
+  display: flex; justify-content: center; width: 100%; box-sizing: border-box;
+  margin: .6rem 0 0; background: transparent; color: var(--ink);
+  box-shadow: inset 0 0 0 1.5px var(--ink-2); clip-path: none; border-radius: 4px;
+}
+.social-signin .ob-button:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); filter: none; }
+.social-signin .ob-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.social-links { list-style: none; padding: 0; margin: .25rem 0 1rem; display: grid; gap: .4rem; }
 .ob-banner {
   display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between;
   border: 1px solid var(--signal); background: var(--signal-soft); color: var(--ink);

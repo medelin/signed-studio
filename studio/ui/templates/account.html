@@ -14,6 +14,7 @@
 {%- if ids %} aria-describedby="{{ ids | join(' ') }}"{% endif %}{% if bad %} aria-invalid="true"{% endif -%}
 {%- endmacro -%}
 {% block content %}
+<script src="/static/account.js" defer></script>
 <section class="account-head" aria-labelledby="account-h">
   <div>
     <h1 id="account-h">{{ t("account.title") }}</h1>
@@ -24,8 +25,8 @@
   </div>
   <div class="il-place account-art">{{ people(["priya", "harjit"], t("account.art")) }}</div>
 </section>
-<nav class="account-toc" aria-label="{{ t('account.sections') }}">
-  <ul>{% for s in sections %}<li><a href="#{{ s }}">{{ t("account.section." ~ s) }}</a></li>{% endfor %}</ul>
+<nav class="account-toc" aria-label="{{ t('account.sections') }}" data-account-tabs>
+  <ul>{% for g, members in groups %}<li><a href="#{{ members[0] }}" data-group="{{ g }}" data-members="{{ members | join(' ') }}">{{ t("account.group." ~ g) }}</a></li>{% endfor %}</ul>
 </nav>
 <p class="hint">{{ t("account.help_html") }}</p>
 
