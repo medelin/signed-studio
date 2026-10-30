@@ -135,6 +135,11 @@ class Adapter(Protocol):
         """Read-only check of the advertiser's pixel before signing (``pixel.result``:
         ``status`` ok/warn/fail, per-check entries, ``last_fired_time``, ``events_7d``)."""
 
+    def list_pixels(self) -> list[dict[str, str]]:
+        """Read-only: the pixels the ad account can use, ``[{"id", "name"}]`` (the profile
+        form's choice). Any error is an empty list: the form then asks for the id as text.
+        The studio never creates a pixel."""
+
     def delivery_estimate(self, targeting: Mapping[str, Any],
                           optimization_goal: str) -> dict[str, Any]:
         """Read-only: Meta's own estimate for this targeting and goal

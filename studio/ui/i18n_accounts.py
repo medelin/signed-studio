@@ -6,6 +6,9 @@ every other key: same keys, same placeholders, nothing empty.
 
 from __future__ import annotations
 
+# Meta Business Help: "Set up and install a Meta pixel" (the studio never creates one)
+PIXEL_HELP = "https://www.facebook.com/business/help/952192354843755"
+
 EN_ACCOUNTS: dict[str, str] = {
     "nav.account": "Account",
     "meta.account": "Your account: profile, password, two-step sign-in, sessions, data export "
@@ -69,6 +72,25 @@ EN_ACCOUNTS: dict[str, str] = {
                                     "the ones it puts on an invoice at checkout (Billing).",
     "account.profile.save": "Save profile",
     "account.profile.invalid": "Check this field: {field}.",
+    "account.profile.online": "Your business online",
+    "account.profile.online_lead": "Saved once, used by every new brief: the studio fills "
+                                   "these in when a draft leaves them empty. You can change "
+                                   "them in each brief.",
+    "account.profile.website": "Website",
+    "account.profile.website_hint": "The studio reads this site before drafting, to suggest "
+                                    "facts you confirm.",
+    "account.profile.sell_countries": "Countries you sell in",
+    "account.profile.sell_countries_hint": "Two-letter country codes, separated by commas, "
+                                           "for example: PL, DE. At most 10.",
+    "account.profile.pixel_id": "Meta pixel",
+    "account.profile.no_pixel": "No pixel",
+    "account.profile.pixel_unnamed": "Pixel without a name",
+    "account.profile.pixel_saved": "Saved pixel",
+    "account.profile.pixel_hint_html": 'Used for campaigns that count sign-ups or sales on '
+                                       'your website. The studio does not create pixels: '
+                                       '<a href="' + PIXEL_HELP + '" rel="noopener '
+                                       'noreferrer" target="_blank">create one in Meta</a>, '
+                                       'then enter its number here.',
     # password
     "account.password.lead": "Changing the password signs out every other session and "
                              "revokes their signing keys.",
@@ -163,6 +185,10 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.wrong_code": "The code is not correct, or it was used already.",
     "err.invalid_code": "The code is not correct, or it was used already.",
     "err.invalid_profile": "A profile field is not valid.",
+    "err.invalid_website": "The website must be a full address starting with https://.",
+    "err.invalid_countries": "Use two-letter country codes separated by commas, for "
+                             "example PL, DE (at most 10).",
+    "err.invalid_pixel": "The pixel number has digits only (at most 20).",
     "err.demo_account": "The shared judge account cannot do this.",
     "err.demo_landing": "On the shared judge account a real campaign links only to "
                         "the studio's own landing page; set that page in the brief.",
@@ -287,6 +313,25 @@ PL_ACCOUNTS: dict[str, str] = {
                                     "fakturę, Stripe pobiera przy płatności (Rozliczenia).",
     "account.profile.save": "Zapisz profil",
     "account.profile.invalid": "Sprawdź to pole: {field}.",
+    "account.profile.online": "Twoja firma w sieci",
+    "account.profile.online_lead": "Zapisujesz raz, korzysta z tego każdy nowy brief: studio "
+                                   "wpisuje te dane, gdy szkic zostawi je puste. W każdym "
+                                   "briefie możesz je zmienić.",
+    "account.profile.website": "Strona internetowa",
+    "account.profile.website_hint": "Studio czyta tę stronę przed szkicem, żeby podpowiedzieć "
+                                    "fakty, które potwierdzasz.",
+    "account.profile.sell_countries": "Kraje, w których sprzedajesz",
+    "account.profile.sell_countries_hint": "Dwuliterowe kody krajów rozdzielone przecinkami, "
+                                           "na przykład: PL, DE. Najwyżej 10.",
+    "account.profile.pixel_id": "Pixel Meta",
+    "account.profile.no_pixel": "Bez pixela",
+    "account.profile.pixel_unnamed": "Pixel bez nazwy",
+    "account.profile.pixel_saved": "Zapisany pixel",
+    "account.profile.pixel_hint_html": 'Potrzebny w kampaniach, które liczą zapisy lub '
+                                       'sprzedaż na Twojej stronie. Studio nie tworzy '
+                                       'pixeli: <a href="' + PIXEL_HELP + '" '
+                                       'rel="noopener noreferrer" target="_blank">utwórz go '
+                                       'w Mecie</a>, potem wpisz tu jego numer.',
     "account.password.lead": "Zmiana hasła wylogowuje wszystkie inne sesje i unieważnia ich "
                              "klucze do podpisu.",
     "account.password.current": "Obecne hasło",
@@ -374,6 +419,10 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.wrong_code": "Kod jest niepoprawny albo został już użyty.",
     "err.invalid_code": "Kod jest niepoprawny albo został już użyty.",
     "err.invalid_profile": "Jedno z pól profilu jest niepoprawne.",
+    "err.invalid_website": "Adres strony musi być pełny i zaczynać się od https://.",
+    "err.invalid_countries": "Wpisz dwuliterowe kody krajów rozdzielone przecinkami, na "
+                             "przykład PL, DE (najwyżej 10).",
+    "err.invalid_pixel": "Numer pixela składa się tylko z cyfr (najwyżej 20).",
     "err.demo_account": "Wspólne konto jury nie może tego zrobić.",
     "err.demo_landing": "Na wspólnym koncie jury prawdziwa kampania może prowadzić "
                         "tylko na stronę studia; ustaw ją w briefie.",
