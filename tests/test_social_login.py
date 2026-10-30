@@ -200,3 +200,14 @@ def test_login_page_offers_the_configured_providers(tmp_path):
     plain = create_app(settings(tmp_path / "plain"))
     with TestClient(plain, base_url="https://testserver") as c:
         assert "/auth/google/start" not in c.get("/login").text
+
+
+def test_studio_events_reach_full_accounts_only(tmp_path):
+    app = create_app(settings(tmp_path, STUDIO_MAIL_TRANSPORT="mock",
+                              STUDIO_MAIL_FROM="Muse <muse@example.org>"))
+    app.state.accounts.create("owner", PASSWORD, email="owner@example.com")
+    app.state.accounts.create_external("google", "g9", email="trial@example.com")
+    with TestClient(app, base_url="https://testserver"):
+        app.state.notifier.event("lead_new")
+        app.state.notifier.flush()
+    assert [m.to for m in app.state.notifier.outbox] == ["owner@example.com"]

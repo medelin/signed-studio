@@ -580,8 +580,9 @@ def _locked(conn: Any) -> Any:
 _OPTED_IN = ("SELECT id, whatsapp_number, lang FROM accounts WHERE status = 'active' AND "
              "is_demo = 0 AND notify_whatsapp = 1 AND whatsapp_number != '' AND "
              "whatsapp_verified_ts > 0")
-_RECIPIENTS = {"campaigns": _OPTED_IN + " AND notify_campaigns = 1",
-               "leads": _OPTED_IN + " AND notify_leads = 1"}
+# like studio.notify: the operator's studio events reach full accounts only
+_RECIPIENTS = {"campaigns": _OPTED_IN + " AND tier = 'full' AND notify_campaigns = 1",
+               "leads": _OPTED_IN + " AND tier = 'full' AND notify_leads = 1"}
 
 
 class Channel:

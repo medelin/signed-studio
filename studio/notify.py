@@ -283,8 +283,10 @@ class JmapTransport:
 
 _ACTIVE = ("SELECT id, email, lang FROM accounts WHERE status = 'active' AND is_demo = 0 "
            "AND email != ''")
-_RECIPIENTS = {"campaigns": _ACTIVE + " AND notify_campaigns = 1",
-               "leads": _ACTIVE + " AND notify_leads = 1"}
+# studio events are about the operator's campaigns and leads: full accounts only, never a
+# self-registered trial account (security and billing mails go to every account)
+_RECIPIENTS = {"campaigns": _ACTIVE + " AND tier = 'full' AND notify_campaigns = 1",
+               "leads": _ACTIVE + " AND tier = 'full' AND notify_leads = 1"}
 
 
 @dataclass(frozen=True)
