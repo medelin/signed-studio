@@ -25,10 +25,9 @@ CONSENTS = ("recurring_consent", "immediate_start")
 
 def fee_clause(lang: str, plan: str, cfg: billing.BillingConfig) -> str:
     """", plus 5% of the ad spend …" or "" when no ad-spend fee is charged."""
-    if not cfg.spend_fee:
+    if not cfg.spend_fee or plan == "once":  # the one-off month carries no ad-spend fee
         return ""
-    key = "billing.consent.fee_once" if plan == "once" else "billing.consent.fee"
-    return str(i18n.text(lang, key, pct=cfg.fee_pct_text, days=billing.ONCE_DAYS))
+    return str(i18n.text(lang, "billing.consent.fee", pct=cfg.fee_pct_text))
 
 
 def consent_sentence(lang: str, plan: str, amount: str, cfg: billing.BillingConfig) -> str:
@@ -115,7 +114,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn) -> None:  #
         buyer = fields.get("buyer", "")
         tax_id = " ".join(fields.get("tax_id", "").split())[:40]
         error: tuple[str, str] | None = None
-        if plan not in cfg.plans:
+        if not account.email:  # renewal reminders and notice of changed terms go by e-mail
+            error = ("billing.email.missing", "email")
+        elif plan not in cfg.plans:
             error = ("billing.plan.invalid", "plan")
         elif buyer not in billing.BUYERS:
             error = ("billing.buyer.missing", "buyer")

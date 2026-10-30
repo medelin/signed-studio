@@ -287,7 +287,7 @@ def test_consent_sentence_per_plan_and_fee():
     with_fee = s("en", "monthly", "£18", fee)
     assert ("plus 5% of the ad spend of campaigns I sign through the studio, billed monthly "
             "in arrears (the ad spend itself is paid to Meta)") in with_fee
-    assert "invoiced after them" in s("en", "once", "£18", fee)
+    assert "%" not in s("en", "once", "£18", fee)  # the one-off month has no ad-spend fee
     assert "5%" in s("pl", "6m", "90 £", fee)
 
 
@@ -686,3 +686,15 @@ def test_a_failed_meter_event_leaves_no_record_so_the_next_run_retries(tmp_path)
     api.meter_event = real
     out = billing.report_spend(app.state.conn, api, "2026-10-29", ledger=app.state.ledger)
     assert out["sent"] == 1
+
+
+def test_checkout_needs_an_email_address_first(tmp_path):
+    """The renewal reminder and notice of changed terms go by e-mail."""
+    fake = FakeStripe()
+    app = _app(tmp_path, fake, **TEST)
+    app.state.accounts.create("ola", PASSWORD)  # no e-mail
+    with TestClient(app, base_url="https://testserver") as c:
+        _signed_in(c)
+        r = _checkout(c, buyer="person", recurring_consent="1", immediate_start="1")
+    assert r.status_code == 400 and i18n.EN["billing.email.missing"] in r.text
+    assert fake.posts == [] and _consents(app) == []

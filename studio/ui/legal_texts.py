@@ -135,8 +135,8 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
     "terms": {
         "en": ("Terms of Service", [
             ("Who sells", [
-                "Muse Studio Lite is a project of {seller_name}, a company registered in the "
-                "United Kingdom, which sells the plans described here (\"we\", \"us\"). "
+                "Muse Studio Lite is a project of {seller_name}, a company registered in "
+                "England and Wales, which sells the plans described here (\"we\", \"us\"). "
                 "These terms are the agreement between you and us.",
                 "Company number: {seller_number}.",
                 "Registered office: {seller_address}.",
@@ -164,14 +164,15 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
             ("The one-off month", [
                 "The one-off month is one payment for {once_days} days of access, starting "
                 "when you pay. It does not renew.",
-                "{when_fee}The ad-spend fee for those days is invoiced after they end."]),
+                "The ad-spend fee does not apply to the one-off month."]),
             ("Payment", [
                 "Every payment is made by card through Stripe, in advance, and Stripe "
                 "issues the invoice for it.",
                 "Every plan covers the studio and its model costs for normal use, which we "
                 "take to mean up to {fair_use_runs} campaign runs a month.",
-                "{when_fee}On top of the plan we charge {fee_pct}% of the ad spend of the "
-                "campaigns you sign through the studio, billed monthly in arrears through "
+                "{when_fee}On top of a subscription plan (not the one-off month) we charge "
+                "{fee_pct}% of the ad spend of the campaigns you sign through the studio, "
+                "billed monthly in arrears through "
                 "Stripe. It is calculated from the spend Meta reports for those campaigns, "
                 "day by day. The ad spend itself is paid to Meta."]),
             ("Cancelling", [
@@ -226,7 +227,7 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
         "pl": ("Regulamin", [
             ("Kto sprzedaje", [
                 "Muse Studio Lite to projekt spółki {seller_name}, zarejestrowanej w "
-                "Wielkiej Brytanii, która sprzedaje opisane tu plany („my”). Ten regulamin "
+                "Anglii i Walii, która sprzedaje opisane tu plany („my”). Ten regulamin "
                 "jest umową między Tobą a nami.",
                 "Numer spółki: {seller_number}.",
                 "Siedziba: {seller_address}.",
@@ -254,14 +255,14 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
             ("Jednorazowy miesiąc", [
                 "Jednorazowy miesiąc to jedna płatność za {once_days} dni dostępu, liczonych "
                 "od płatności. Nie odnawia się.",
-                "{when_fee}Opłatę od wydatków na reklamy za te dni fakturujemy po ich "
-                "upływie."]),
+                "Opłata od wydatków na reklamy nie dotyczy jednorazowego miesiąca."]),
             ("Płatności", [
                 "Każda płatność odbywa się kartą przez Stripe, z góry, a Stripe wystawia za "
                 "nią fakturę.",
                 "Każdy plan obejmuje studio i koszty modeli przy zwykłym użyciu, czyli do "
                 "{fair_use_runs} przebiegów kampanii miesięcznie.",
-                "{when_fee}Oprócz planu pobieramy {fee_pct}% wydatków na reklamy kampanii, "
+                "{when_fee}Oprócz planu abonamentowego (nie jednorazowego miesiąca) pobieramy "
+                "{fee_pct}% wydatków na reklamy kampanii, "
                 "które podpiszesz w studiu, rozliczane co miesiąc z dołu przez Stripe. "
                 "Liczymy je z wydatków, które Meta podaje dla tych kampanii, dzień po dniu. "
                 "Same wydatki na reklamy płacisz Mecie."]),

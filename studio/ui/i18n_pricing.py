@@ -18,7 +18,7 @@ EN_PRICING: dict[str, str] = {
     "pricing.fee": "Every plan: plus {pct}% of the ad spend of campaigns you sign through "
                    "the studio, billed monthly in arrears; the ad spend itself is paid to "
                    "Meta.",
-    "pricing.fee_once": "For the one-off month the {pct}% is invoiced after the {days} days.",
+    "pricing.fee_once": "The one-off month has no ad-spend fee.",
     "pricing.included": "Included in every plan",
     "pricing.inc.studio": "The whole studio: briefs, ad texts, images, the two reviewers, "
                           "approvals, receipts, the inbox and the daily report.",
@@ -79,6 +79,8 @@ EN_PRICING: dict[str, str] = {
     "billing.buyer.tax_hint": "Stripe asks for it on the payment page and puts it on the "
                               "invoice with your company's name and address. A company "
                               "has no 14-day right to cancel.",
+    "billing.email.missing": "Add your e-mail address in Profile first: we send the "
+                             "renewal reminder and any change to the Terms there.",
     "billing.buyer.missing": "Choose whether you are buying as a private person or as a "
                              "company.",
     # the payment consent (also the line above Stripe's pay button)
@@ -109,9 +111,6 @@ EN_PRICING: dict[str, str] = {
     "billing.consent.fee": ", plus {pct}% of the ad spend of campaigns I sign through the "
                            "studio, billed monthly in arrears (the ad spend itself is paid "
                            "to Meta)",
-    "billing.consent.fee_once": ", plus {pct}% of the ad spend of campaigns I sign through "
-                                "the studio in those {days} days, invoiced after them (the "
-                                "ad spend itself is paid to Meta)",
     "billing.consent.immediate": "Start the service now: I understand I lose the 14-day "
                                  "right to cancel for the part already provided.",
     "billing.consent.immediate_hint_html": 'More in the <a href="/terms#withdrawal">Terms</a>'
@@ -139,8 +138,7 @@ PL_PRICING: dict[str, str] = {
     "pricing.fee": "Każdy plan: do tego {pct}% wydatków na reklamy kampanii, które "
                    "podpiszesz w studiu, rozliczane co miesiąc z dołu; same wydatki na "
                    "reklamy płacisz Mecie.",
-    "pricing.fee_once": "Przy jednorazowym miesiącu {pct}% fakturujemy po upływie {days} "
-                        "dni.",
+    "pricing.fee_once": "Jednorazowy miesiąc jest bez opłaty od wydatków na reklamy.",
     "pricing.included": "W każdym planie",
     "pricing.inc.studio": "Całe studio: briefy, teksty reklam, grafiki, dwóch recenzentów, "
                           "zatwierdzenia, pokwitowania, skrzynka i raport dnia.",
@@ -200,6 +198,8 @@ PL_PRICING: dict[str, str] = {
     "billing.buyer.tax_hint": "Stripe poprosi o niego na stronie płatności i umieści go na "
                               "fakturze z nazwą i adresem firmy. Firma nie ma 14-dniowego "
                               "prawa odstąpienia.",
+    "billing.email.missing": "Najpierw dodaj adres e-mail w Profilu: wysyłamy na niego "
+                             "przypomnienie o odnowieniu i zmiany regulaminu.",
     "billing.buyer.missing": "Wybierz, czy kupujesz jako osoba prywatna, czy jako firma.",
     "billing.fee_line": "Do tego {pct}% wydatków na reklamy kampanii, które podpiszesz w "
                         "studiu, rozliczane co miesiąc z dołu; same wydatki na reklamy "
@@ -230,9 +230,6 @@ PL_PRICING: dict[str, str] = {
     "billing.consent.fee": ", oraz na opłatę {pct}% wydatków na reklamy kampanii, które "
                            "podpiszę w studiu, rozliczaną co miesiąc z dołu (same wydatki "
                            "na reklamy płacę Mecie)",
-    "billing.consent.fee_once": ", oraz opłata {pct}% wydatków na reklamy kampanii, które "
-                                "podpiszę w studiu w ciągu tych {days} dni, fakturowana po "
-                                "ich upływie (same wydatki na reklamy płacę Mecie)",
     "billing.consent.immediate": "Rozpocznij usługę od razu: rozumiem, że tracę 14-dniowe "
                                  "prawo odstąpienia w części, która została już wykonana.",
     "billing.consent.immediate_hint_html": 'Więcej w <a href="/terms#withdrawal">Regulaminie'
