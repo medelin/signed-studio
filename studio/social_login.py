@@ -69,7 +69,9 @@ class SocialLoginConfig:
 
     @property
     def enabled(self) -> list[str]:
-        return [p for p in PROVIDERS if self.client(p)]
+        """Configured providers in display order: Facebook first (the studio is for Meta
+        advertisers), then Google."""
+        return [p for p in ("facebook", "google") if self.client(p)]
 
     @classmethod
     def from_env(cls, e: Mapping[str, str]) -> SocialLoginConfig:

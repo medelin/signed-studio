@@ -10,6 +10,7 @@ const readOnly = root.dataset.readOnly === "yes";
 let source = null;
 let totalCost = 0;
 let shownPending = null;
+document.documentElement.classList.add("js");
 let shownGoogle = null;
 // Set when the brief came from a voice recording: the run is then a transcript run
 // (enveloped, Standard tier) even after the operator edits the text.
@@ -530,6 +531,7 @@ $("approve-button").addEventListener("click", async () => {
 // -- runs -----------------------------------------------------------------------------
 
 function follow(runId) {
+  document.body.classList.add("has-run");  // the run's panels appear with the first run
   if (source) source.close();
   $("ticker").replaceChildren();
   totalCost = 0;
@@ -567,7 +569,8 @@ $("open-form").addEventListener("submit", (ev) => {
 
 (async () => {
   if (loggedIn) {
-    try { await Signer.registerKey(); status("run-status", T("your_key", { key: Signer.approver() })); }
+    // the key is technical: under "Advanced", and on the signing screen when it matters
+    try { await Signer.registerKey(); $("approver-key-line").textContent = T("your_key", { key: Signer.approver() }); }
     catch (e) { status("run-status", e.message, true); }
   }
   const run = new URLSearchParams(location.search).get("run");

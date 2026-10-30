@@ -31,11 +31,11 @@
       <dt>{{ t("ms.attribution") }}</dt><dd>{{ m.attribution_setting or "—" }} · {{ m.date_preset }}</dd>
     </dl>
     {% for name in ("placement", "age_gender", "region") %}{% if m.breakdowns[name] %}
-    <table class="receipts">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="{{ t("ms.by." ~ name) }}"><table class="receipts">
       <caption class="hint">{{ t("ms.by." ~ name) }}</caption>
       <thead><tr><th scope="col">{{ t("ms.segment") }}</th><th scope="col">{{ t("ms.spend") }}</th><th scope="col">{{ t("ms.result") }}</th><th scope="col">{{ t("ms.cpr") }}</th><th scope="col">{{ t("ms.frequency") }}</th></tr></thead>
       <tbody>{% for r in m.breakdowns[name] %}<tr><td>{{ r.key }}</td><td>{{ r.spend }}</td><td>{{ r.results }}</td><td>{{ r.cost_per_result if r.cost_per_result is not none else "—" }}</td><td>{{ r.frequency }}</td></tr>{% endfor %}</tbody>
-    </table>
+    </table></div>
     {% endif %}{% endfor %}
     <h4>{{ t("ms.recs") }}</h4>
     <ul>{% for r in m.recommendations %}<li data-rec="{{ r.id }}">{{ t("ms.rec." ~ r.code, **r.params) }}
@@ -52,11 +52,11 @@
   {% for g in google %}
   <article class="card" aria-labelledby="gs-{{ g.campaign_id }}">
     <h3 id="gs-{{ g.campaign_id }}">{{ g.name }} · {{ g.status }}{% if g.provenance == 'synthetic' %} <span class="hint">({{ t("report.google_synthetic") }})</span>{% endif %}</h3>
-    <table class="receipts">
+    <div class="table-scroll" tabindex="0" role="region" aria-label="{{ g.name }}"><table class="receipts">
       <thead><tr><th scope="col">{{ t("report.g.date") }}</th><th scope="col">{{ t("report.g.impressions") }}</th><th scope="col">{{ t("report.g.clicks") }}</th><th scope="col">{{ t("report.g.cost") }} ({{ g.currency }})</th><th scope="col">{{ t("report.g.conversions") }}</th><th scope="col">{{ t("report.g.ctr") }} %</th></tr></thead>
       <tbody>{% for d in g.days %}<tr><td>{{ d.date }}</td><td>{{ d.impressions }}</td><td>{{ d.clicks }}</td><td>{{ d.cost }}</td><td>{{ d.conversions }}</td><td>{{ d.ctr }}</td></tr>{% endfor %}</tbody>
       <tfoot><tr><th scope="row">{{ t("report.g.total") }}</th><td>{{ g.totals.impressions }}</td><td>{{ g.totals.clicks }}</td><td>{{ g.totals.cost }}</td><td>{{ g.totals.conversions }}</td><td>{{ g.totals.ctr }}</td></tr></tfoot>
-    </table>
+    </table></div>
   </article>
   {% endfor %}
 </section>

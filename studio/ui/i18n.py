@@ -108,12 +108,11 @@ EN: dict[str, str] = {
                             "them in small batches. Free gift wrapping. Lightning-fast shipping. "
                             "Budget 30 PLN per day from 3 to 30 November 2026. Warm and concrete,"
                             " no hype. Don't say these are the best mugs in the world.",
-    "studio.brief_help": "The producer plans, the copywriter writes, the art director cuts the "
-                         "{concept} out of the product photo with SAM 3.1 and renders three "
-                         "placements with Muse Image, two reviewers check it. Nothing is "
-                         "published: the run ends in an approval only you can sign.",
+    "studio.brief_help": "Agents plan, write and design the ad and check it against Meta's "
+                         "rules. Nothing is published until you sign.",
     "studio.run": "Run the studio",
-    "studio.open_label": "or follow an existing run id", "studio.open": "Open",
+    "studio.open_label": "Follow an existing run id", "studio.open": "Open",
+    "studio.advanced": "Advanced: open a run, your signing key",
     "studio.hud": "run",
     "studio.step.producer": "Producer", "studio.step.copywriter": "Copywriter",
     "studio.step.art_director": "Art director", "studio.step.reviewers": "Reviewers",
@@ -535,13 +534,11 @@ PL: dict[str, str] = {
                             "Budżet 30 zł dziennie od 3 do 30 listopada 2026. Ciepło i "
                             "konkretnie, bez przesady. Nie piszcie, że to najlepsze kubki na "
                             "świecie.",
-    "studio.brief_help": "Producent planuje, copywriter pisze, dyrektor artystyczny wycina "
-                         "{concept} ze zdjęcia produktu za pomocą SAM 3.1 i rysuje trzy "
-                         "formaty w Muse Image, dwóch recenzentów to sprawdza. Nic nie jest "
-                         "publikowane: przebieg kończy się zatwierdzeniem, które możesz "
-                         "podpisać tylko Ty.",
+    "studio.brief_help": "Agenci planują, piszą i projektują reklamę oraz sprawdzają ją "
+                         "z zasadami Mety. Nic nie zostanie opublikowane, dopóki nie podpiszesz.",
     "studio.run": "Uruchom studio",
-    "studio.open_label": "albo śledź istniejący przebieg", "studio.open": "Otwórz",
+    "studio.open_label": "Śledź istniejący przebieg", "studio.open": "Otwórz",
+    "studio.advanced": "Zaawansowane: otwórz przebieg, Twój klucz podpisu",
     "studio.hud": "przebieg",
     "studio.step.producer": "Producent", "studio.step.copywriter": "Copywriter",
     "studio.step.art_director": "Dyrektor artystyczny", "studio.step.reviewers": "Recenzenci",
@@ -903,34 +900,31 @@ PL: dict[str, str] = {
 # Brief v1 strings: their own block (merged below), English and Polish.
 EN_BRIEF: dict[str, str] = {
     # Brief v1 (studio page): steps, two input paths, the editable form, [FACT] questions
-    "brief.title": "1 · Brief v1",
+    "brief.title": "1 · Your brief",
     "brief.steps_label": "Brief steps",
     "brief.step1": "Tell us (type or speak)", "brief.step2": "Check the draft",
-    "brief.step3": "Answer the [FACT] questions", "brief.step4": "Confirm and run",
+    "brief.step3": "Answer the questions", "brief.step4": "Confirm and run",
     "brief.no_time_limit": "No step has a time limit. Everything works with a keyboard and "
                            "a screen reader.",
     "brief.a11y_link": "Accessibility notes",
     "brief.paths_legend": "Your brief: type it or say it",
-    "brief.paths_hint": "Both ways are equal. Say or write what you sell, to whom, what it "
-                        "costs and what you want from the ad. The producer turns it into a "
-                        "Brief v1 that you check before anything else happens.",
+    "brief.paths_hint": "Say or write what you sell, to whom, the price and what you want "
+                        "from the ad. You check the draft before anything happens.",
     "brief.path_text": "Type", "brief.path_voice": "Speak",
     "brief.text_label": "Your brief, in your own words (a voice transcript lands here too)",
     "brief.text_help": "Edit freely, also after a recording: the producer reads exactly this "
                        "text.",
-    "brief.voice_hint": "Speak in Polish or English, up to 10 minutes per recording; you can "
-                        "record again to add more. Muse Voice Transcribe writes the text into "
-                        "the box on the left, where you can correct it. The audio is deleted "
-                        "after transcription.",
-    "brief.draft_button": "Draft Brief v1",
-    "brief.check_title": "2 · Check your Brief v1",
+    "brief.voice_hint": "Polish or English, up to 10 minutes. The text appears in the box "
+                        "for you to correct; the audio is deleted.",
+    "brief.draft_button": "Draft my brief",
+    "brief.check_title": "2 · Check the draft",
     "brief.check_lead": "This is the producer's draft. Change anything. The copywriter may use "
                         "only the confirmed facts; every gap is a [FACT] question for you, "
                         "never a guess.",
     "brief.one_per_line": "One item per line.",
     "brief.read_aloud": "Read the brief aloud", "brief.read_stop": "Stop reading",
     "brief.errors_title": "Please fix these fields",
-    "brief.s.questions": "3 · [FACT] questions",
+    "brief.s.questions": "3 · Questions for you",
     "brief.questions_hint": "Each question is a claim the producer could not confirm from your "
                             "words. Answer it in a short sentence (it becomes a confirmed "
                             "fact), or strike the claim (it will not be used).",
@@ -1068,34 +1062,31 @@ EN_BRIEF: dict[str, str] = {
 
 PL_BRIEF: dict[str, str] = {
     # Brief v1 (strona studia): kroki, dwie drogi wejścia, edytowalny formularz, pytania [FACT]
-    "brief.title": "1 · Brief v1",
+    "brief.title": "1 · Twój brief",
     "brief.steps_label": "Kroki briefu",
     "brief.step1": "Opowiedz (wpisz albo powiedz)", "brief.step2": "Sprawdź szkic",
-    "brief.step3": "Odpowiedz na pytania [FACT]", "brief.step4": "Potwierdź i uruchom",
+    "brief.step3": "Odpowiedz na pytania", "brief.step4": "Potwierdź i uruchom",
     "brief.no_time_limit": "Żaden krok nie ma limitu czasu. Wszystko działa z klawiatury i z "
                            "czytnikiem ekranu.",
     "brief.a11y_link": "Uwagi o dostępności",
     "brief.paths_legend": "Twój brief: wpisz go albo powiedz",
-    "brief.paths_hint": "Obie drogi są równorzędne. Powiedz albo napisz, co sprzedajesz, komu, "
-                        "ile to kosztuje i czego oczekujesz od reklamy. Producent zrobi z tego "
-                        "Brief v1, który sprawdzisz, zanim cokolwiek się wydarzy.",
+    "brief.paths_hint": "Powiedz albo napisz, co sprzedajesz, komu, za ile i czego chcesz od "
+                        "reklamy. Szkic sprawdzisz, zanim cokolwiek się wydarzy.",
     "brief.path_text": "Wpisz", "brief.path_voice": "Powiedz",
     "brief.text_label": "Twój brief, własnymi słowami (tu trafia też transkrypcja nagrania)",
     "brief.text_help": "Poprawiaj śmiało, także po nagraniu: producent czyta dokładnie ten "
                        "tekst.",
-    "brief.voice_hint": "Mów po polsku albo po angielsku, do 10 minut na jedno nagranie; "
-                        "możesz nagrać jeszcze raz, żeby coś dodać. Muse Voice Transcribe "
-                        "wpisze tekst do pola obok, gdzie możesz go poprawić. Nagranie jest "
-                        "usuwane po transkrypcji.",
-    "brief.draft_button": "Przygotuj Brief v1",
-    "brief.check_title": "2 · Sprawdź swój Brief v1",
+    "brief.voice_hint": "Po polsku albo po angielsku, do 10 minut. Tekst pojawi się w polu "
+                        "do poprawienia; nagranie jest usuwane.",
+    "brief.draft_button": "Przygotuj szkic",
+    "brief.check_title": "2 · Sprawdź szkic",
     "brief.check_lead": "To szkic producenta. Zmień, co chcesz. Copywriter może użyć tylko "
                         "potwierdzonych faktów; każda luka to pytanie [FACT] do Ciebie, nigdy "
                         "zgadywanie.",
     "brief.one_per_line": "Jedna pozycja w wierszu.",
     "brief.read_aloud": "Przeczytaj brief na głos", "brief.read_stop": "Przestań czytać",
     "brief.errors_title": "Popraw te pola",
-    "brief.s.questions": "3 · Pytania [FACT]",
+    "brief.s.questions": "3 · Pytania do Ciebie",
     "brief.questions_hint": "Każde pytanie to twierdzenie, którego producent nie mógł "
                             "potwierdzić na podstawie Twoich słów. Odpowiedz krótkim zdaniem "
                             "(stanie się potwierdzonym faktem) albo skreśl twierdzenie (nie "

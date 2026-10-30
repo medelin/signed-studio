@@ -58,7 +58,7 @@ GOOGLE = {"sub": "1098", "email": "ola@example.com", "email_verified": True, "na
 
 def test_config_needs_both_halves():
     assert SocialLoginConfig.from_env({}).enabled == []
-    assert SocialLoginConfig.from_env(SOCIAL).enabled == ["google", "facebook"]
+    assert SocialLoginConfig.from_env(SOCIAL).enabled == ["facebook", "google"]
     with pytest.raises(ValueError, match="go together"):
         SocialLoginConfig.from_env({"GOOGLE_LOGIN_CLIENT_ID": "x"})
     with pytest.raises(ValueError, match="numeric"):

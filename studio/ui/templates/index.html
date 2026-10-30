@@ -16,7 +16,7 @@
   <h1>{{ t("index.latest") }}</h1>
   <p class="hint"><a href="/receipts">{{ t("index.all") }}</a></p>
   {% if receipts %}
-  <table class="receipts">
+  <div class="table-scroll" tabindex="0" role="region" aria-label="{{ t("index.latest") }}"><table class="receipts">
     <thead><tr>{% for c in ("time", "run", "agent", "kind", "model", "tier", "tokens", "cost", "hash") %}<th>{{ t("common.receipt_cols." ~ c) }}</th>{% endfor %}</tr></thead>
     <tbody>
     {% for r in receipts %}
@@ -33,7 +33,7 @@
       </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% else %}
   <div class="empty-state">{{ scene("kofi", "unsigned") }}
     <p class="empty">{{ t("index.empty_html") }}</p>

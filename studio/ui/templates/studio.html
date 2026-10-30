@@ -304,14 +304,18 @@
     <p class="status" id="confirm-status" role="status" aria-live="polite"></p>
   </form>
 
-  <form id="open-form" class="inline">
-    <label for="open-run">{{ t("studio.open_label") }}</label>
-    <input id="open-run" name="run" pattern="[A-Za-z0-9_-]{1,40}" placeholder="run_…">
-    <button type="submit">{{ t("studio.open") }}</button>
-  </form>
+  <details class="advanced">
+    <summary>{{ t("studio.advanced") }}</summary>
+    <form id="open-form" class="inline">
+      <label for="open-run">{{ t("studio.open_label") }}</label>
+      <input id="open-run" name="run" pattern="[A-Za-z0-9_-]{1,40}" placeholder="run_…">
+      <button type="submit" class="secondary">{{ t("studio.open") }}</button>
+    </form>
+    <p class="hint" id="approver-key-line"></p>
+  </details>
 </section>
 
-<section class="run-hud-wrap" aria-labelledby="hud-h">
+<section class="run-hud-wrap run-part" aria-labelledby="hud-h">
   <h2 id="hud-h" class="hud-label">{{ t("studio.hud") }}</h2>
   <ol class="run-hud" id="run-hud">
     <li data-step="producer"><span class="tick" aria-hidden="true"></span>{{ t("studio.step.producer") }}</li>
@@ -322,7 +326,7 @@
   </ol>
 </section>
 
-<div class="grid">
+<div class="grid run-part">
   <section class="panel" aria-labelledby="plan-h">
     <h2 id="plan-h">{{ t("studio.plan") }}</h2>
     <div id="plan" class="empty">{{ t("studio.no_plan") }}</div>
@@ -334,7 +338,7 @@
   </section>
 </div>
 
-<section class="panel" aria-labelledby="images-h">
+<section class="panel run-part" aria-labelledby="images-h">
   <h2 id="images-h">{{ t("studio.images") }}</h2>
   <div id="images" class="carousel empty">{{ t("studio.no_images") }}</div>
 </section>
@@ -344,7 +348,7 @@
   <div id="loop"></div>
 </section>
 
-<section class="panel" aria-labelledby="review-h">
+<section class="panel run-part" aria-labelledby="review-h">
   <h2 id="review-h">{{ t("studio.reviews") }}</h2>
   <div id="review" class="empty">{{ t("studio.no_review") }}</div>
 </section>
@@ -410,7 +414,7 @@
   <p class="status" id="activate-status" role="status" aria-live="polite"></p>
 </section>
 
-<section class="panel" aria-labelledby="ticker-h">
+<section class="panel run-part" aria-labelledby="ticker-h">
   <h2 id="ticker-h">{{ t("studio.ticker") }}</h2>
   <div class="table-scroll" role="region" aria-labelledby="ticker-h" tabindex="0">
   <table class="receipts">

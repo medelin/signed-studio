@@ -171,7 +171,7 @@ a.chip:hover { border-color: var(--signal); }
 .nav { display: flex; flex-wrap: wrap; gap: .25rem 1.1rem; align-items: baseline; }
 .prefs { margin-left: auto; display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; }
 .lang-switch { display: inline-flex; gap: .15rem; }
-.lang-switch a { padding: .1rem .35rem; }
+.lang-switch a { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: .1rem .35rem; }  /* WCAG 2.5.8 target size */
 .lang-switch a[aria-current="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--signal); }
 
 /* display preferences */
@@ -287,3 +287,9 @@ button.danger { background: var(--signal); color: var(--signal-ink); }
 }
 .ob-banner p { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .ob-banner-link { font-weight: 600; }
+
+/* /studio: the run's panels (steps, plan, copy, images, reviews, receipts) stay hidden
+   until a run is followed; without JavaScript they are always shown */
+.js body:not(.has-run) .run-part { display: none; }
+details.advanced { margin-top: 1rem; }
+details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
