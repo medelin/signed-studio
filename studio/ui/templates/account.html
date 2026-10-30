@@ -235,6 +235,10 @@
         <label class="choice"><input type="checkbox" name="whatsapp" value="1"{% if whatsapp_prefs.on %} checked{% endif %}> {{ t("account.whatsapp.on") }}</label>
       </div>
       {% if whatsapp_prefs.number %}<p class="hint" id="wa-state">{% if whatsapp_prefs.verified %}{{ t("account.whatsapp.verified") }}{% else %}{{ t("account.whatsapp.pending") }}{% endif %}</p>{% endif %}
+      {% if whatsapp_prefs.number and not whatsapp_prefs.verified %}
+      {# the code form is outside this form (forms do not nest); the button points at it #}
+      <p><button type="submit" form="wa-code-form" class="ob-button">{{ t("account.whatsapp.new_code") }}</button></p>
+      {% endif %}
     </fieldset>
     <p><button type="submit">{{ t("account.notify.save") }}</button></p>
   </form>
@@ -253,9 +257,8 @@
     {% endif %}
   </div>
   {% endif %}
-  <form method="post" action="/account/whatsapp/code">
+  <form method="post" action="/account/whatsapp/code" id="wa-code-form">
     <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
-    <p><button type="submit">{{ t("account.whatsapp.new_code") }}</button></p>
   </form>
   {% endif %}
   {% endif %}

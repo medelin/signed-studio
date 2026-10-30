@@ -28,7 +28,7 @@ EN_WHATSAPP: dict[str, str] = {
                                   "WhatsApp to the Muse Studio Lite number within {minutes} "
                                   "minutes:",
     "account.whatsapp.studio_number": "Muse Studio Lite on WhatsApp:",
-    "account.whatsapp.new_code": "Get a new code",
+    "account.whatsapp.new_code": "Verify this number on WhatsApp",
     "account.whatsapp.one_tap": "One tap: WhatsApp opens a chat with Muse Studio Lite with "
                                 "your code already typed; just press send (valid {minutes} "
                                 "minutes).",
@@ -68,7 +68,7 @@ PL_WHATSAPP: dict[str, str] = {
                                   "tego WhatsAppa na numer Muse Studio Lite w ciągu "
                                   "{minutes} minut:",
     "account.whatsapp.studio_number": "Muse Studio Lite na WhatsAppie:",
-    "account.whatsapp.new_code": "Wygeneruj nowy kod",
+    "account.whatsapp.new_code": "Zweryfikuj ten numer przez WhatsApp",
     "account.whatsapp.one_tap": "Jedno dotknięcie: WhatsApp otworzy czat z Muse Studio Lite z "
                                 "wpisanym już kodem; wystarczy wysłać (ważny {minutes} minut).",
     "account.whatsapp.open": "Wyślij kod przez WhatsApp",
