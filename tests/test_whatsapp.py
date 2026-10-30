@@ -3,9 +3,9 @@ senders, a voice note → transcript → Brief v1 draft → one reply, template 
 notifications next to e-mail, receipts without phone numbers, the account's number."""
 
 import json
-import shutil
 import re
 import secrets
+import shutil
 import time
 
 import httpx
