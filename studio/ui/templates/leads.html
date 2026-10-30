@@ -11,6 +11,36 @@
   <button type="button" id="poll-leads" aria-describedby="poll-hint">{{ t("leads.poll") }}</button>{% endif %}
   <p class="status" id="leads-status" role="status" aria-live="polite"></p>
 </section>
+{% if logged_in %}
+<section class="panel" aria-labelledby="xfer-h" id="export">
+  <h2 id="xfer-h">{{ t("xport.leads_title") }}</h2>
+  <p class="hint" id="xfer-hint">{{ t("xport.leads_hint") if personal else t("xport.leads_masked") }}</p>
+  <p class="downloads">{{ t("xport.download") }}
+    <a href="/leads/export?format=csv" download>CSV</a>
+    <a href="/leads/export?format=json" download>JSON</a>
+    <a href="/leads/export?format=vcf" download>vCard</a></p>
+  {% if personal and not read_only %}
+  <form class="inline" method="post" action="/leads/import" enctype="multipart/form-data" aria-labelledby="imp-h">
+    <h3 id="imp-h" class="small">{{ t("xport.import_title") }}</h3>
+    <p class="hint" id="imp-hint">{{ t("xport.import_hint") }}</p>
+    <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+    <label for="imp-file">{{ t("xport.file") }}</label>
+    <input id="imp-file" name="file" type="file" required accept=".csv,.json,.vcf,text/csv,application/json,text/vcard" aria-describedby="imp-hint">
+    <label for="imp-format">{{ t("xport.format") }}</label>
+    <select id="imp-format" name="format">{% for f in import_formats %}<option value="{{ f }}">{{ t("xport.fmt." ~ f) }}</option>{% endfor %}</select>
+    <button type="submit">{{ t("xport.import") }}</button>
+  </form>
+  {% endif %}
+  {% if imported %}
+  <div class="status" role="status" id="import-result">
+    <p>{{ t("xport.imported", added=imported.added, skipped=imported.skipped, rejected=imported.rejected) }}</p>
+    {% if imported.errors %}<ul>{% for e in imported.errors %}<li>{{ t("xport.line", line=e.line) }} {{ t("xport.err." ~ e.code) }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% elif import_error %}
+  <p class="status error" role="alert" id="import-result">{{ t("xport.err." ~ import_error) }}</p>
+  {% endif %}
+</section>
+{% endif %}
 <section class="cards" aria-label="{{ t('leads.cards') }}">
 {% for l in leads %}
   <article class="panel lead" data-id="{{ l.id }}">

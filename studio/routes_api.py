@@ -9,6 +9,9 @@
   itself, and no CORS is granted. ``/api/v1/openapi.json`` is public.
 - The routes are thin: each maps its path and body to one ``studio.assistants`` operation
   (``Assistants.call``: scope, schema, rate limit, receipt).
+- Downloads (``GET /leads?format=…``, ``GET /statement``; ``read`` scope, the token's
+  account's masking, ``studio.exports``) return a file with ``Content-Disposition``. No
+  endpoint imports: leads come in only through the web form (session + CSRF).
 - ``/account/tokens/create`` and ``/account/tokens/revoke`` are ordinary account forms
   (same-origin, CSRF field, live session, writable, via ``routes_account``); a token is
   shown once on the page that created it and can only be revoked by its own account.
@@ -26,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import Headers
 from starlette.routing import Route
 
-from studio import api_tokens, assistants, remote_mcp
+from studio import api_tokens, assistants, exports, remote_mcp
 from studio import brief as brief_v1
 from studio.agents import community
 
@@ -200,9 +203,49 @@ def build_api(svc: assistants.Assistants) -> FastAPI:
     async def insights(request: Request) -> Response:
         return await do(request, "insights", {})
 
-    @api.get("/leads", summary="Leads")
-    async def leads(request: Request, limit: int = Query(20, ge=1, le=100)) -> Response:
-        return await do(request, "leads", {"limit": limit})
+    async def download(request: Request, name: str, args: dict[str, Any],
+                       make: Any) -> Response:
+        """A file made from the result of ``name`` (its receipt id in ``X-Receipt-Id``)."""
+        principal = request.scope["state"]["principal"]
+        status, result = await run_in_threadpool(svc.call, principal, name, args)
+        if status != 200:
+            return JSONResponse(result, status, headers=NO_STORE)
+        body, media_type, filename = make(result)
+        return Response(body.encode(), media_type=media_type, headers={
+            **NO_STORE, "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Receipt-Id": result["receipt_id"]})
+
+    @api.get("/leads", summary="Leads; with `format`, every lead as a file",
+             description="Without `format`: the newest leads as JSON (`limit`). With "
+                         "`format=json|csv|vcf`: every lead as a download (JSON list, CSV "
+                         "with a BOM, vCard 4.0). A token of a trial account gets "
+                         "initials and `[email]` / `[phone]` in every format.",
+             responses={200: {"content": {"application/json": {}, "text/csv": {},
+                                          "text/vcard": {}}}})
+    async def leads(request: Request, limit: int = Query(20, ge=1, le=100),
+                    format: Literal["json", "csv", "vcf"] | None = None  # noqa: A002
+                    ) -> Response:
+        if format is None:
+            return await do(request, "leads", {"limit": limit})
+        return await download(request, "export_leads", {},
+                              lambda r: exports.lead_file(r["leads"], format))
+
+    @api.get("/statement", summary="The monthly ad statement as a file",
+             description="One row per campaign per day: spend, the approved daily budget, "
+                         "the approval id, approver key and approval receipt hash (check "
+                         "them with `studio verify`), and the run's model cost. "
+                         "`format=json|csv|hledger`; `profile` (CSV only): "
+                         "`generic|xero|quickbooks|wfirma`. See docs/export.md.",
+             responses={200: {"content": {"application/json": {}, "text/csv": {},
+                                          "text/plain": {}}}})
+    async def statement(request: Request,
+                        month: str = Query(pattern=r"^\d{4}-(0[1-9]|1[0-2])$"),
+                        format: Literal["json", "csv", "hledger"] = "json",  # noqa: A002
+                        profile: Literal["generic", "xero", "quickbooks",
+                                         "wfirma"] = "generic") -> Response:
+        return await download(request, "statement", {"month": month},
+                              lambda r: exports.statement_file(month, r["rows"], format,
+                                                               profile))
 
     @api.get("/comments", summary="Comments with triage and reply drafts")
     async def comments(request: Request, limit: int = Query(20, ge=1, le=100)) -> Response:

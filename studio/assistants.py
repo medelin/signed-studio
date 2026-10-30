@@ -38,7 +38,7 @@ from typing import Any
 
 import jsonschema
 
-from studio import api_tokens, db, routes_report, routes_studio
+from studio import api_tokens, db, exports, routes_report, routes_studio
 from studio import brief as brief_v1
 from studio.agents import community, producer
 from studio.approvals import TTL_S
@@ -586,6 +586,21 @@ def leads(s: Assistants, p: Principal, limit: int = 20) -> dict[str, Any]:
             "note": str(i18n.text(s.lang(p), "assist.untrusted_note"))}
 
 
+def export_leads(s: Assistants, p: Principal) -> dict[str, Any]:
+    """Every lead as export rows (``studio.exports``), masked like ``/leads`` for a trial
+    or demo account (``masked``)."""
+    masked = not s.personal(p)
+    rows = exports.leads_rows(s.conn, masked=masked)
+    return {"leads": rows, "count": len(rows), "masked": masked}
+
+
+def statement(s: Assistants, p: Principal, month: str) -> dict[str, Any]:
+    """The monthly ad statement (``studio.exports.statement``), without the runs of
+    another account's API-drafted briefs."""
+    rows = exports.statement(s.conn, month, exclude_runs=s.foreign_runs(p.account_id))
+    return {"month": month, "rows": rows, "totals": exports.totals(rows)}
+
+
 def comments(s: Assistants, p: Principal, limit: int = 20) -> dict[str, Any]:
     """Comments under the ads with their triage, draft and approval status."""
     return {"comments": list_comments(s.conn, s.personal(p))[:limit],
@@ -691,4 +706,11 @@ OPS: dict[str, Op] = {o.name: o for o in (
                 "message": {"type": "string", "maxLength": community.MAX_REPLY,
                             "description": "The exact reply text (optional)."}},
                ("comment_id",)), draft_reply),
+    # downloads of /api/v1 (GET /leads?format=…, GET /statement): not MCP tools
+    Op("export_leads", "Every lead as export rows (masked for a trial or demo account).",
+       "read", _schema(), export_leads, mcp=False),
+    Op("statement", "The monthly ad statement: spend per campaign per day tied to the "
+       "signed approval, and model costs.", "read",
+       _schema({"month": {"type": "string", "pattern": r"^\d{4}-(0[1-9]|1[0-2])$"}},
+               ("month",)), statement, mcp=False),
 )}

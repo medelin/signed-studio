@@ -259,14 +259,24 @@ def register_leads(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     app.state.after_triage = after_triage
 
-    @app.get("/leads", response_class=HTMLResponse)
-    def leads_page(request: Request) -> Response:
+    def render_leads(request: Request, status: int = 200,
+                     extra: dict[str, Any] | None = None) -> Response:
         logged_in = session_of(request) is not None
+        full = personal(app, request)
         return templates.TemplateResponse(request, "leads.html", {
             "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": logged_in,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
-            "leads": list_leads(conn, personal(app, request)),
-        })
+            "leads": list_leads(conn, full),
+            # export (masked like this page) and import (only for who sees personal data)
+            "personal": full, "import_formats": ("csv", "json", "vcf"),
+            **(extra or {}),
+        }, status_code=status)
+
+    app.state.leads_page = render_leads
+
+    @app.get("/leads", response_class=HTMLResponse)
+    def leads_page(request: Request) -> Response:
+        return render_leads(request)
 
     @app.get("/api/leads")
     def leads(request: Request) -> Response:

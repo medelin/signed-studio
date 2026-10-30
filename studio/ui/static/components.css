@@ -343,3 +343,11 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9
 @media (max-width: 480px) {
   .bv-summary, .bv-assistant, .bv-details { padding-left: .7rem; padding-right: .7rem; }
 }
+/* export downloads (/leads, the monthly statement on /report) */
+.downloads { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.downloads a {
+  display: inline-block; padding: .35rem .7rem; border: 1px solid var(--rule);
+  font: 600 .78rem/1.2 var(--font-mono); color: var(--link); text-decoration: none;
+}
+.downloads a:hover { border-color: var(--signal); }
+.downloads a:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
