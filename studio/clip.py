@@ -5,9 +5,10 @@ studio takes one clip, from the brief page (``POST /api/clips``) or as a WhatsAp
 message, and makes it the campaign's 9:16 video instead of a video cut from rendered
 images:
 
-- **Checked first**: ffprobe reads the upload (only the ``file`` protocol, a timeout, no
-  network); it must have a video stream, last at most ``MAX_INPUT_S`` and weigh at most
-  ``MAX_BYTES``.
+- **Checked first**: ffprobe reads the upload (only the ``file`` protocol and container
+  demuxers, ``FORMATS``: never a playlist, concat list or image sequence that could pull in
+  other local files; a timeout, no network); it must have a video stream, last at most
+  ``MAX_INPUT_S`` and weigh at most ``MAX_BYTES``.
 - **Normalised by code**: ffmpeg (fixed argument list, no shell) crops it to 1080×1920,
   keeps the first ``MAX_S`` seconds at 30 fps, H.264 + AAC with ``faststart``; the frame at
   ``POSTER_AT_S`` is the poster (``video_9x16``), which both reviewers check like every
@@ -42,6 +43,9 @@ POSTER_AT_S = 0.6
 SIZE = (1080, 1920)
 TIMEOUT_S = 180
 ATTACH_WINDOW_S = 24 * 3600
+# container demuxers only: a playlist (hls), concat list or image sequence uploaded as
+# "video" could make ffmpeg open other local files through the file protocol
+FORMATS = "mov,mp4,m4a,3gp,3g2,mj2,matroska,webm"
 TYPES = {"video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm",
          "video/3gpp": ".3gp", "video/x-matroska": ".mkv"}
 
@@ -94,12 +98,16 @@ def probe(path: Path) -> tuple[float, bool]:
     if shutil.which("ffprobe") is None:
         raise ClipError("ffmpeg_missing", 503)
     out = _run(["ffprobe", "-v", "error", "-protocol_whitelist", "file",
-                "-show_entries", "format=duration:stream=codec_type", "-of", "json",
-                str(path)])
+                "-format_whitelist", FORMATS,
+                "-show_entries", "format=duration,format_name:stream=codec_type",
+                "-of", "json", str(path)])
     try:
         data = json.loads(out.stdout or b"{}")
     except ValueError:
         raise ClipError("video_unreadable") from None
+    fmt = str((data.get("format") or {}).get("format_name") or "")
+    if not fmt or not set(fmt.split(",")) <= set(FORMATS.split(",")):
+        raise ClipError("video_unreadable")
     kinds = {s.get("codec_type") for s in data.get("streams") or [] if isinstance(s, dict)}
     if "video" not in kinds:
         raise ClipError("no_video_stream")
@@ -126,7 +134,7 @@ def normalize(data: bytes, out_dir: Path) -> tuple[Path, Path, str, float]:
         mp4, poster = out_dir / "clip.mp4", out_dir / "poster.png"
         w, h = SIZE
         args = ["ffmpeg", "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file",
-                "-i", str(src), "-t", f"{MAX_S}",
+                "-format_whitelist", FORMATS, "-i", str(src), "-t", f"{MAX_S}",
                 "-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase,"
                        f"crop={w}:{h},fps=30,format=yuv420p",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "21"]
@@ -136,7 +144,8 @@ def normalize(data: bytes, out_dir: Path) -> tuple[Path, Path, str, float]:
             raise ClipError("video_unreadable")
     at = min(POSTER_AT_S, max(0.0, min(duration, MAX_S) / 2))
     if _run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-protocol_whitelist", "file",
-             "-ss", f"{at:.2f}", "-i", str(mp4), "-frames:v", "1", str(poster)]
+             "-format_whitelist", FORMATS, "-ss", f"{at:.2f}", "-i", str(mp4),
+             "-frames:v", "1", str(poster)]
             ).returncode != 0 or not poster.exists():
         raise ClipError("video_unreadable")
     body = mp4.read_bytes()

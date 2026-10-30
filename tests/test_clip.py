@@ -141,3 +141,15 @@ def test_a_clip_may_be_larger_than_the_small_body_limit(tmp_path):
         r = c.post("/api/clips", content=b"\0" * (300 * 1024),
                    headers={"Content-Type": "video/mp4"})
     assert r.status_code == 422, r.text  # read and refused as video, not cut at 64 KB
+
+
+@needs_ffmpeg
+@pytest.mark.parametrize("payload", [
+    b"#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n#EXTINF:10.0,\nfile:///etc/passwd\n#EXT-X-ENDLIST\n",
+    b"ffconcat version 1.0\nfile '/etc/passwd'\n",
+])
+def test_a_playlist_posing_as_video_never_reads_local_files(tmp_path, payload):
+    with pytest.raises(clip.ClipError) as exc:
+        clip.normalize(payload * 20, tmp_path / "out")
+    assert exc.value.code in ("video_unreadable", "no_video_stream")
+    assert not (tmp_path / "out" / "clip.mp4").exists()
