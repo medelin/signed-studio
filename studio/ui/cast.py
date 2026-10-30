@@ -638,3 +638,27 @@ def people(keys: Sequence[str], label: str = "", cls: str = "") -> Markup:
     top = max(0, int(min(b[1] for b in lay.boxes) - 4))
     right = max(b[2] for b in lay.boxes) + 4
     return svg(body, f"0 {top} {_n(right)} {lay.height - top}", label, cls)
+
+
+def rotation(slots: Sequence[Sequence[str]], label: str = "", cls: str = "") -> Markup:
+    """Owners taking turns: each slot holds several people drawn at the same place, size
+    and floor line, one shown at a time (``.turn.on``; rotate.js moves it along). Without
+    script or under reduced motion the first of each slot stays, like ``people``."""
+    ppl = [[BY_KEY[k] for k in keys] for keys in slots]
+    width = max(person_box(p)[2] - person_box(p)[0] for row in ppl for p in row)
+    body, tops, x0 = [], [], 4.0
+    for row in ppl:
+        body.append('<g class="slot">')
+        for i, p in enumerate(row):
+            bx0, _, bx1, by1 = person_box(p)
+            x = x0 + (width - (bx1 - bx0)) / 2 - bx0
+            y = 12.0 if p.wheelchair else 250 - by1
+            draw, box = figure(p, x, y, 1.0)
+            tops.append(box[1])
+            on = " on" if i == 0 else ""
+            body.append(f'<g class="turn{on}" data-who="{p.key}">{draw}</g>')
+        body.append("</g>")
+        x0 += width + GAP
+    top = max(0, int(min(tops) - 4))
+    return svg("".join(body), f"0 {top} {_n(x0 - GAP + 4)} {250 - top}", label,
+               f"il-rotate {cls}".strip())

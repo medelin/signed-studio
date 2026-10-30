@@ -16,8 +16,9 @@ EN_META: dict[str, str] = {
         "November 2026. The ad in Polish. Matter-of-fact and calm, no "
         "promises of profit. Do not name any company."),
     "studio.example_label": "Example brief",
-    "studio.example_hint": "Two examples to start from; both are made-up owners' words you can "
-                           "edit.",
+    "studio.example_hint": "Start with your own words, or load one of two made-up owners' "
+                           "briefs and edit it.",
+    "studio.example.own": "your own words (empty box)",
     "studio.example.ceramics": "a ceramics shop (PLN)",
     "studio.example.muse": "this studio, advertised as an open-source tool (GBP)",
     # Brief v1: objective and sub-choice
@@ -181,8 +182,9 @@ PL_META: dict[str, str] = {
         "dni, od 4 do 10 listopada 2026. Rzeczowo i spokojnie, bez obietnic"
         " zysku. Reklama po polsku. Nie wymieniajcie nazwy żadnej firmy."),
     "studio.example_label": "Przykładowy brief",
-    "studio.example_hint": "Dwa przykłady na start; oba to wymyślone słowa właściciela, które "
-                           "możesz zmienić.",
+    "studio.example_hint": "Zacznij od własnych słów albo wczytaj jeden z dwóch wymyślonych "
+                           "briefów i go popraw.",
+    "studio.example.own": "własne słowa (puste pole)",
     "studio.example.ceramics": "sklep z ceramiką (PLN)",
     "studio.example.muse": "to studio jako narzędzie open source (GBP)",
     "brief.goal.app_promotion": "promocja aplikacji",

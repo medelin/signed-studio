@@ -3,7 +3,7 @@
 {% block description %}{{ t("meta.login") }}{% endblock %}
 {% block content %}
 <section class="login" aria-labelledby="login-page-h">
-  <div class="login-art il-place">{{ people(["grace", "kofi"]) }}</div>
+  <div class="login-art il-place">{{ rotation([["grace", "amara", "leila", "mei"], ["kofi", "tomasz", "harjit", "diego", "ola"]]) }}</div>
   <div class="panel login-panel">
     <h1 id="login-page-h">{{ t("login.title") }}</h1>
     {% if login_enabled %}
@@ -35,4 +35,5 @@
     <p class="hint">{{ t("login.public_html") }}</p>
   </div>
 </section>
+<script src="/static/rotate.js" defer></script>
 {% endblock %}

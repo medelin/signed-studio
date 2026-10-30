@@ -249,3 +249,12 @@ def test_pages_load_tokens_and_illustration_css(client):
     html = client.get("/help").text
     for sheet in ("tokens.css", "components.css", "illustrations.css"):
         assert f'href="/static/{sheet}"' in html
+
+
+def test_a_rotation_draws_every_owner_on_one_floor_and_shows_one_per_slot():
+    slots = [["grace", "amara", "priya"], ["kofi", "ola"]]
+    svg = str(cast.rotation(slots))
+    assert svg.count('class="slot"') == 2 and svg.count('class="turn') == 5
+    assert svg.count('class="turn on"') == 2  # without script: the first of each slot
+    assert [m for m in re.findall(r'data-who="(\w+)"', svg)] == [k for s in slots for k in s]
+    assert len(svg.encode()) <= cast.MAX_BYTES * 5 + 2048

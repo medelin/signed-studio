@@ -306,3 +306,7 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9
 .display-prefs[open] > .theme-form { position: absolute; right: 0; top: 1.8rem; z-index: 20;
   display: grid; gap: .35rem; padding: .7rem; background: var(--bg-raised); border: 1px solid var(--rule);
   box-shadow: 0 6px 18px rgb(0 0 0 / .15); min-width: 12rem; }
+/* cast.rotation: one person per slot at a time, cross-faded by rotate.js */
+.il-rotate .turn { opacity: 0; transition: opacity .9s ease; }
+.il-rotate .turn.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .il-rotate .turn { transition: none; } }
