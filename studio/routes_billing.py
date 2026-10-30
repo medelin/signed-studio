@@ -197,8 +197,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn) -> None:  #
             pid: billing.PLAN_MONTHS[p] for p, pid in cfg.plans.items() if p != "once"})
         ledger.append(billing.RUN_ID, agent="billing", kind="tool_call", details={
             "tool": "stripe.webhook", "side_effects": "read", "event": event.get("type"),
-            "event_id": event.get("id"), "duplicate": done.duplicate,
-            "account_id": done.account_id, "tier": done.tier})
+            "event_id": event.get("id"), "duplicate": done.duplicate, "tier": done.tier})
         store = app.state.accounts
         account = store.get(done.account_id) if done.account_id else None
         if account is not None:

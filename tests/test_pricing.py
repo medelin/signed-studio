@@ -315,9 +315,9 @@ def _consents(app):
             continue
         assert not {"account_id", "buyer", "amount_minor", "price_id"} & set(x.details)
         body = bodies[x.details["consent_sha256"]]
-        assert billing.store_consent(app.state.conn, body["account_id"],
-                                     {k: v for k, v in body.items() if k != "account_id"}
-                                     ) == x.details["consent_sha256"]
+        from studio.receipts import canonical, sha256_hex
+        assert sha256_hex(canonical(body)) == x.details["consent_sha256"]  # salted record
+        assert len(body["nonce"]) == 32
         assert x.details["plan"] == body["plan"]
         out.append(SimpleNamespace(agent=x.agent, kind=x.kind, details=body))
     return out
@@ -610,8 +610,10 @@ def test_report_spend_sends_one_fee_event_per_account_and_day(tmp_path):
     # the public receipts carry no account and no amounts, only the record's hash
     assert all(not {"account_id", "spend_minor", "fee_minor", "currency"} & set(u)
                for u in usage)
-    sent = {"account_id": ola, "day": "2026-10-29", "campaigns": 2, "spend_minor": 1300,
-            "currency": "GBP", "fee_pct": "5", "fee_minor": 65}
+    nonce = app.state.conn.execute("SELECT nonce FROM spend_usage WHERE account_id = ?",
+                                   (ola,)).fetchone()[0]
+    sent = {"nonce": nonce, "account_id": ola, "day": "2026-10-29", "campaigns": 2,
+            "spend_minor": 1300, "currency": "GBP", "fee_pct": "5", "fee_minor": 65}
     by_hash = {u["usage_sha256"]: u for u in usage}
     assert by_hash[billing.usage_sha256(sent)]["status"] == "sent"
     assert by_hash[billing.usage_sha256(sent)]["day"] == 20261029

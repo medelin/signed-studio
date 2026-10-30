@@ -40,6 +40,7 @@ import hmac
 import json
 import math
 import re
+import secrets
 import sqlite3
 import time
 from collections.abc import Mapping
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS spend_usage (    -- one meter event per account and d
     spend_minor INTEGER NOT NULL,
     currency TEXT NOT NULL,
     fee_minor INTEGER NOT NULL,
+    nonce TEXT NOT NULL DEFAULT '',         -- salts the hash in the public receipt
     sent_ts REAL NOT NULL,
     PRIMARY KEY (account_id, day)
 );
@@ -409,6 +411,7 @@ def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: 
     for aid, row in sorted(per.items()):
         customer, sub_status = customers.get(aid, ("", ""))
         status, spend_minor, currency, fee = "sent", 0, "", 0
+        nonce = secrets.token_hex(16)
         if not customer:
             status = "no_customer"
         elif sub_status not in LIFTING:  # the metered item rides on a live subscription
@@ -426,14 +429,15 @@ def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: 
                 api.meter_event(customer_id=customer, value=fee, identifier=f"{aid}:{day}")
                 with transaction(conn) as c:
                     c.execute("INSERT OR IGNORE INTO spend_usage (account_id, day, "
-                              "spend_minor, currency, fee_minor, sent_ts) VALUES "
-                              "(?, ?, ?, ?, ?, ?)",
-                              (aid, day, spend_minor, currency, fee, time.time()))
+                              "spend_minor, currency, fee_minor, nonce, sent_ts) VALUES "
+                              "(?, ?, ?, ?, ?, ?, ?)",
+                              (aid, day, spend_minor, currency, fee, nonce, time.time()))
         out["sent" if status == "sent" else "skipped"] += 1
         # the receipts log is readable by every signed-in account: no account id and no
-        # amounts in it, only the hash of the full record (spend_usage holds the amounts;
-        # the owner and the operator can recompute it)
-        full = {"account_id": aid, "day": day, "campaigns": row["campaigns"],
+        # amounts in it, only the salted hash of the full record (spend_usage keeps the
+        # amounts and the nonce, so the owner and the operator can recompute it and nobody
+        # else can guess it from the few likely amounts)
+        full = {"nonce": nonce, "account_id": aid, "day": day, "campaigns": row["campaigns"],
                 "spend_minor": spend_minor, "currency": currency,
                 "fee_pct": cfg.fee_pct_text, "fee_minor": fee}
         ledger.append(RUN_ID, agent="billing", kind="tool_call", details={
@@ -450,7 +454,8 @@ def usage_sha256(record: Mapping[str, Any]) -> str:
 
 def store_consent(conn: sqlite3.Connection, account_id: str, body: Mapping[str, Any]) -> str:
     """Keep the full consent privately; return the sha256 the public receipt carries."""
-    record = {"account_id": account_id, **body}
+    # a random nonce: the receipt's hash cannot be guessed from the few plans and buyers
+    record = {"nonce": secrets.token_hex(16), "account_id": account_id, **body}
     digest = sha256_hex(canonical(record))
     with transaction(conn) as c:
         c.execute("INSERT OR IGNORE INTO billing_consents (sha256, account_id, body, "
