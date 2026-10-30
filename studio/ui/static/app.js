@@ -95,6 +95,11 @@ function samLine(check) {
 function renderImages(runId, creatives) {
   const box = $("images");
   if (!creatives) return;
+  // every run-state update calls this; rebuilding unchanged images reloads and re-animates
+  // them (a visible flash when the reviews arrive), so only a real change redraws
+  const key = runId + " " + JSON.stringify(creatives);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
   box.replaceChildren();
   box.classList.remove("empty");
   const cut = el("figure");

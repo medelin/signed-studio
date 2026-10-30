@@ -309,6 +309,7 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9
 /* cast.rotation: one person per slot at a time, cross-faded by rotate.js */
 .il-rotate .turn { opacity: 0; transition: opacity .9s ease; }
 .il-rotate .turn.on { opacity: 1; }
+.il-rotate .turn.was { opacity: 1; transition: none; }  /* stays under the incoming one */
 @media (prefers-reduced-motion: reduce) { .il-rotate .turn { transition: none; } }
 
 /* Brief step 2: the summary card, the one-question-at-a-time assistant, the folded form */
