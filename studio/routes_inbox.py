@@ -76,6 +76,18 @@ def public_view(value: Any) -> Any:
     return redact(value)
 
 
+def personal(app: FastAPI, request: Request) -> bool:
+    """The signed-in account may see leads' and commenters' personal data: any account on
+    the mock adapter (synthetic people), else ``Account.sees_personal_data`` (real people
+    from the live ad account: never the judge or a trial account)."""
+    from studio.app import COOKIE
+    sessions = getattr(app.state, "sessions", None)
+    account = sessions.account_of(request.cookies.get(COOKIE)) if sessions else None
+    if account is None:
+        return False
+    return app.state.settings.meta_adapter == "mock" or account.sees_personal_data
+
+
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
              write_guard: Guard, templates: Jinja2Templates,
              session_of: Callable[[Request], str | None]) -> None:
@@ -86,7 +98,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return templates.TemplateResponse(request, "inbox.html", {
             "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": logged_in,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
-            "comments": list_comments(conn, logged_in), "adapter": settings.meta_adapter,
+            "comments": list_comments(conn, personal(app, request)),
+            "adapter": settings.meta_adapter,
             # ads Meta disapproved (A7): Meta's reason explained, a compliant variant to sign
             "disapprovals": disapprovals.listing(
                 conn, getattr(request.state, "lang", "en") or "en", logged_in),
@@ -94,7 +107,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
     @app.get("/api/comments")
     def comments(request: Request) -> Response:
-        return JSONResponse({"comments": list_comments(conn, session_of(request) is not None)},
+        return JSONResponse({"comments": list_comments(conn, personal(app, request))},
                             headers={"Cache-Control": "no-store"})
 
     async def _json(request: Request) -> dict[str, Any]:
@@ -252,12 +265,12 @@ def register_leads(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return templates.TemplateResponse(request, "leads.html", {
             "seq": ledger.seq(), "epoch": ledger.epoch, "logged_in": logged_in,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
-            "leads": list_leads(conn, logged_in),
+            "leads": list_leads(conn, personal(app, request)),
         })
 
     @app.get("/api/leads")
     def leads(request: Request) -> Response:
-        return JSONResponse({"leads": list_leads(conn, session_of(request) is not None)},
+        return JSONResponse({"leads": list_leads(conn, personal(app, request))},
                             headers={"Cache-Control": "no-store"})
 
     @app.post("/api/leads/{lead_id}/score")

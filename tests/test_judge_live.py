@@ -145,3 +145,21 @@ def _form(privacy, follow_up):
 ])
 def test_every_destination_of_a_judge_live_campaign_is_checked(payload, ok):
     assert demo_destinations_ok(payload, HOME) is ok
+
+
+def test_on_a_live_adapter_the_judge_sees_leads_without_personal_data(tmp_path):
+    app = create_app(settings(tmp_path, **LIVE))
+    conn = app.state.conn
+    with db.transaction(conn):
+        conn.execute("INSERT INTO leads (id, name, email, phone, source, created_ts) "
+                     "VALUES ('l1', 'Real Person', 'real@example.com', '+48 600 000 000', "
+                     "'lead_form', 1)")
+    with TestClient(app, base_url="https://testserver") as c:
+        login(c)
+        leads = str(c.get("/api/leads").json()["leads"])
+        assert "Real Person" not in leads and "real@example.com" not in leads
+        assert "600 000" not in leads
+    app.state.accounts.create("ola", PASSWORD)
+    with TestClient(app, base_url="https://testserver") as c:
+        c.post("/login", data={"username": "ola", "password": PASSWORD, "csrf": csrf(c)})
+        assert "real@example.com" in str(c.get("/api/leads").json()["leads"])

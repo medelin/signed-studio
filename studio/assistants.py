@@ -150,6 +150,14 @@ class Assistants:
         self.requests = Window(REQUESTS_PER_MIN, 60.0, max_keys=5_000)
         self.drafts = Window(DRAFTS_PER_MIN, 60.0, max_keys=5_000)
 
+    def personal(self, p: Principal) -> bool:
+        """The token's account may see personal data (``Account.sees_personal_data``)."""
+        store = getattr(self.app.state, "accounts", None)
+        account = store.get(p.account_id) if store is not None else None
+        if account is None:
+            return False
+        return self.settings.meta_adapter == "mock" or account.sees_personal_data
+
     # -- authentication -----------------------------------------------------------------
 
     def authenticate(self, headers: Any) -> tuple[api_tokens.Token | None, int, dict[str, Any]]:
@@ -570,13 +578,13 @@ def insights(s: Assistants, p: Principal) -> dict[str, Any]:
 
 def leads(s: Assistants, p: Principal, limit: int = 20) -> dict[str, Any]:
     """Leads as the signed-in web UI shows them (scored, with their tasks)."""
-    return {"leads": list_leads(s.conn, True)[:limit],
+    return {"leads": list_leads(s.conn, s.personal(p))[:limit],
             "note": str(i18n.text(s.lang(p), "assist.untrusted_note"))}
 
 
 def comments(s: Assistants, p: Principal, limit: int = 20) -> dict[str, Any]:
     """Comments under the ads with their triage, draft and approval status."""
-    return {"comments": list_comments(s.conn, True)[:limit],
+    return {"comments": list_comments(s.conn, s.personal(p))[:limit],
             "note": str(i18n.text(s.lang(p), "assist.untrusted_note"))}
 
 

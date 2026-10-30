@@ -232,6 +232,13 @@ class Account:
     PROFILE = ("display_name", "email", "lang", "theme", "palette", "advertiser_type",
                "legal_name", "country", "tax_id")
 
+    @property
+    def sees_personal_data(self) -> bool:
+        """Leads' and commenters' names and contacts: never for the shared judge account or
+        a self-registered trial account (they see initials and placeholders), since the
+        studio's leads and comments are the operator's."""
+        return self.status == "active" and not self.is_demo and self.tier == "full"
+
     def profile(self) -> dict[str, str]:
         return {name: getattr(self, name) for name in self.PROFILE}
 
