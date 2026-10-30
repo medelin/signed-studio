@@ -114,3 +114,5 @@ def test_no_scan_unless_the_operator_turned_it_on(tmp_path):
         login(c)
         d = drafted(c, website="https://glina.example/")
     assert d["site"] is None and app.state.brand_fetcher.asked == []
+    advice = d["budget_advice"]  # studio.budget_advice comes with every draft
+    assert advice["estimate"] is True and advice["suggested"] >= advice["minimum"] >= 1

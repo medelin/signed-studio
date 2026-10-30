@@ -43,7 +43,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
-from studio import brand_scan, db
+from studio import brand_scan, budget_advice, db
 from studio import brief as brief_v1
 from studio.agents import producer
 from studio.approvals import (
@@ -515,6 +515,15 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "result_sha256": sha256_hex(canonical(result))})
         return result if result["pages"] else None
 
+    def budget_of(draft: brief_v1.BriefV1) -> dict[str, Any]:
+        """What a day makes sense for the draft's objective (``studio.budget_advice``)."""
+        try:
+            amount: float | None = float(brief_v1.daily_budget(draft))
+        except ValueError:
+            amount = None
+        return budget_advice.advise(draft.objective.goal, account_currency(),
+                                    ceiling=settings.max_daily_budget, amount=amount)
+
     def site_summary(site: dict[str, Any] | None) -> dict[str, Any] | None:
         if not site:
             return None
@@ -577,6 +586,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "ceiling": settings.max_daily_budget, "currency": account_currency(),
             "google_currency": draft_google_currency(),
             "site": site_summary(site),
+            "budget_advice": budget_of(draft),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 
     @app.get("/api/briefs/{brief_id}")

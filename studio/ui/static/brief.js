@@ -458,6 +458,22 @@
     showDraft(r.data);
   });
 
+  // What a day buys for this objective (studio.budget_advice): an estimate, the owner
+  // keeps the amount they choose.
+  function showBudgetAdvice(a) {
+    const node = document.getElementById("bf-budget-advice");
+    if (!node) return;
+    node.hidden = !a;
+    if (!a) return;
+    const vars = { suggested: a.suggested, learning: a.learning, minimum: a.minimum,
+      currency: a.currency, cpr: a.cost_per_result, events: a.events_per_week,
+      results: a.results_per_week ?? "" };
+    let text = T("budget_advice", vars);
+    if (!a.fits_learning) text += " " + T("budget_advice_ceiling", vars);
+    else if (a.amount_fits_learning === false) text += " " + T("budget_advice_low", vars);
+    node.textContent = text;
+  }
+
   // A draft made elsewhere (a voice note sent on WhatsApp): /studio?brief=<id> opens it
   // here, at the same step as a draft made on this page.
   function showDraft(data) {
@@ -466,6 +482,7 @@
     clearErrors();
     v1.querySelectorAll("input, textarea, select, button").forEach((n) => { n.disabled = false; });
     fill(draft.brief);
+    showBudgetAdvice(draft.budget_advice);
     v1.hidden = false;
     setStep(2, false);
     const n = draft.brief.open_questions.length;
