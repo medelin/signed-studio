@@ -5,7 +5,7 @@
 <article class="panel legal">
   <h1>{{ title }}</h1>
   {% for heading, paragraphs in sections %}
-  <h2>{{ heading }}</h2>
+  <h2{% if anchors %} id="{{ anchors[loop.index0] }}"{% endif %}>{{ heading }}</h2>
   {% for para in paragraphs %}<p>{{ para }}</p>
   {% endfor %}
   {% endfor %}

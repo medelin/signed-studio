@@ -27,6 +27,7 @@ from studio.ui.i18n_notify import EN_NOTIFY, PL_NOTIFY
 from studio.ui.i18n_onboarding import EN_ONBOARDING, PL_ONBOARDING
 from studio.ui.i18n_open import EN_OPEN, PL_OPEN
 from studio.ui.i18n_pixel import EN_PIXEL, PL_PIXEL
+from studio.ui.i18n_pricing import EN_PRICING, PL_PRICING
 from studio.ui.i18n_rules import EN_RULES, PL_RULES
 from studio.ui.i18n_summary import EN_SUMMARY, PL_SUMMARY
 from studio.ui.i18n_tour import EN_TOUR, PL_TOUR
@@ -1261,6 +1262,8 @@ EN.update(EN_WHATSAPP)
 PL.update(PL_WHATSAPP)
 EN.update(EN_SUMMARY)
 PL.update(PL_SUMMARY)
+EN.update(EN_PRICING)
+PL.update(PL_PRICING)
 
 CATALOGS = {"en": EN, "pl": PL}
 

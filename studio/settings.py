@@ -159,6 +159,12 @@ class Settings:
     brand_scan: bool = False
     # Stripe subscription, invoices and payment mails (studio.billing)
     billing: BillingConfig = field(default_factory=BillingConfig)
+    # the seller named on /pricing and /terms (studio.pricing); a missing line is left out
+    seller_name: str = "Dwarven Stronghold Ltd"
+    seller_number: str = ""  # company number
+    seller_address: str = ""  # registered office
+    price_display: str = ""  # shown when Stripe's price cannot be read, e.g. "£9"
+    fair_use_runs: int = 60  # campaign runs a month the price covers
     # Google Ads (a second, minimal channel): mock unless GOOGLE_ADS_ADAPTER=rest
     google_adapter: str = "mock"
     google_client_id: str = field(default="", repr=False)
@@ -280,6 +286,14 @@ class Settings:
             billing = BillingConfig.from_env(e)
         except ValueError as exc:
             raise ConfigError(str(exc)) from None
+        try:
+            fair_use = int(e.get("STUDIO_FAIR_USE_RUNS", "") or 60)
+        except ValueError:
+            raise ConfigError("STUDIO_FAIR_USE_RUNS must be an integer") from None
+        if not 1 <= fair_use <= 10_000:
+            raise ConfigError("STUDIO_FAIR_USE_RUNS must be 1-10000")
+        seller = {k: _one_line(e, f"STUDIO_SELLER_{k.upper()}", limit)
+                  for k, limit in (("name", 120), ("number", 40), ("address", 300))}
         replay = _bool(e, "STUDIO_REPLAY", False)
         open_weights = _bool(e, "STUDIO_OPEN_WEIGHTS", False)
         if open_weights and not e.get("BASETEN_API_KEY", "") and not replay:
@@ -338,6 +352,11 @@ class Settings:
             whatsapp=whatsapp,
             social=social,
             billing=billing,
+            seller_name=seller["name"] or "Dwarven Stronghold Ltd",
+            seller_number=seller["number"],
+            seller_address=seller["address"],
+            price_display=_one_line(e, "STUDIO_PRICE_DISPLAY", 40),
+            fair_use_runs=fair_use,
             brand_scan=_bool(e, "STUDIO_BRAND_SCAN", False) and not replay,
             google_adapter=google,
             google_client_id=e.get("GOOGLE_ADS_CLIENT_ID", ""),
@@ -355,6 +374,14 @@ def _dsa_name(e: Mapping[str, str], name: str) -> str:
     value = e.get(name, "").strip()
     if len(value) > 100 or not value.isprintable():
         raise ConfigError(f"{name} must be a printable name of at most 100 characters")
+    return value
+
+
+def _one_line(e: Mapping[str, str], name: str, limit: int) -> str:
+    """A short, single-line display value (seller details, the fallback price)."""
+    value = " ".join(e.get(name, "").split())
+    if len(value) > limit:
+        raise ConfigError(f"{name} must be at most {limit} characters")
     return value
 
 

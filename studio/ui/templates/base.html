@@ -63,6 +63,8 @@
     <a href="/api/receipts.jsonl">receipts.jsonl</a> ·
     <a href="/api/ledger-manifest">{{ t("foot.manifest") }}</a> ·
     <a href="/api/ledger-key">{{ t("foot.key") }}</a> ·
+    <a href="/pricing"{% if here == "/pricing" %} aria-current="page"{% endif %}>{{ t("foot.pricing") }}</a> ·
+    <a href="/terms"{% if here == "/terms" %} aria-current="page"{% endif %}>{{ t("foot.terms") }}</a> ·
     <a href="/privacy">{{ t("foot.privacy") }}</a> ·
     <a href="/data-deletion">{{ t("foot.deletion") }}</a>
   </footer>

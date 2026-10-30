@@ -207,9 +207,10 @@ EN_ACCOUNTS: dict[str, str] = {
     "account.section.billing": "Billing",
     "account.done.billing": "Thank you. Your subscription appears here once Stripe confirms "
                             "the payment, usually within a minute.",
-    "billing.lead": "Muse Studio Lite is a monthly subscription, paid by card through Stripe. "
-                    "Stripe issues the invoice for every payment; you can cancel any time.",
-    "billing.subscribe": "Subscribe",
+    "billing.lead": "Pay monthly, for 3, 6 or 12 months in advance, or once for one month, "
+                    "by card through Stripe. Stripe issues the invoice for every payment; "
+                    "you can cancel a plan any time.",
+    "billing.subscribe": "Continue to payment",
     "billing.portal": "Manage card, invoices and cancellation",
     "billing.status": "Subscription",
     "billing.renews": "renews on",
@@ -441,9 +442,10 @@ PL_ACCOUNTS: dict[str, str] = {
     "account.section.billing": "Rozliczenia",
     "account.done.billing": "Dziękujemy. Subskrypcja pojawi się tu, gdy Stripe potwierdzi "
                             "płatność, zwykle w ciągu minuty.",
-    "billing.lead": "Muse Studio Lite to miesięczna subskrypcja, płatna kartą przez Stripe. "
-                    "Stripe wystawia fakturę za każdą płatność; zrezygnujesz w każdej chwili.",
-    "billing.subscribe": "Subskrybuj",
+    "billing.lead": "Płać co miesiąc, z góry za 3, 6 lub 12 miesięcy albo jednorazowo za "
+                    "jeden miesiąc, kartą przez Stripe. Stripe wystawia fakturę za każdą "
+                    "płatność; z planu zrezygnujesz w każdej chwili.",
+    "billing.subscribe": "Przejdź do płatności",
     "billing.portal": "Karta, faktury i rezygnacja",
     "billing.status": "Subskrypcja",
     "billing.renews": "odnawia się",

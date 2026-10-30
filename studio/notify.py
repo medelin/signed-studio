@@ -86,6 +86,7 @@ EVENTS: dict[str, Event] = {
     "subscription_ended": Event("billing", "/account#billing"),
     "payment_received": Event("billing", "/account#billing"),
     "payment_failed": Event("billing", "/account#billing"),
+    "renewal_reminder": Event("billing", "/account#billing"),  # 3-, 6-, 12-month plans
 }
 
 ALIASES = {"ad.disapproved": "ad_disapproved"}
