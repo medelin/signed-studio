@@ -12,7 +12,7 @@ EN_META: dict[str, str] = {
         "nothing reaches the ads without your signature. The code is open, "
         "under the Apache 2.0 licence. We want traffic to the sandbox at "
         "https://muse.udun.eu. For people running a one-person business in "
-        "Poland, aged 25-55. Budget 6 GBP a day for 7 days, from 4 to 10 "
+        "Poland, aged 25-55. Budget 3 GBP a day for 7 days, from 4 to 10 "
         "November 2026. The ad in Polish. Matter-of-fact and calm, no "
         "promises of profit. Do not name any company."),
     "studio.example_label": "Example brief",
@@ -177,7 +177,7 @@ PL_META: dict[str, str] = {
         "nic nie trafia do reklam bez twojego podpisu. Kod jest otwarty, na"
         " licencji Apache 2.0. Chcemy ruchu do piaskownicy na "
         "https://muse.udun.eu. Dla osób prowadzących jednoosobową "
-        "działalność w Polsce, 25-55 lat. Budżet 6 GBP dziennie przez 7 "
+        "działalność w Polsce, 25-55 lat. Budżet 3 GBP dziennie przez 7 "
         "dni, od 4 do 10 listopada 2026. Rzeczowo i spokojnie, bez obietnic"
         " zysku. Reklama po polsku. Nie wymieniajcie nazwy żadnej firmy."),
     "studio.example_label": "Przykładowy brief",

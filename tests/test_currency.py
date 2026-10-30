@@ -90,7 +90,7 @@ def test_the_self_advertising_example_is_selectable_and_ceramics_stays_default(t
             assert 'value="ceramics"' in page and 'value="muse"' in page
             assert page.index('value="ceramics"') < page.index('value="muse"')
             text = i18n.CATALOGS[lang]["studio.brief_example_muse"]
-            assert "6 GBP" in text and "https://muse.udun.eu" in text
+            assert "3 GBP" in text and "https://muse.udun.eu" in text
     from studio.demo import BRIEFS
     assert BRIEFS["muse"]["account_currency"] == "GBP"
     for word in ("Ceramics", "Meta ", "Google"):
