@@ -82,6 +82,17 @@ class Clip:
     brief_id: str = ""
 
 
+def may_add(account: object, meta_adapter: str) -> bool:
+    """Whether ``account`` may add a clip (from the brief page or WhatsApp). On a live
+    adapter the clip goes to the operator's ad account: full accounts only, never the
+    shared judge account or a trial account. One rule for every way in."""
+    if account is None:
+        return False
+    if meta_adapter == "mock":
+        return True
+    return not getattr(account, "is_demo", True) and getattr(account, "tier", "") == "full"
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
 

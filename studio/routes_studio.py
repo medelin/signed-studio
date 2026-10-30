@@ -725,9 +725,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         goes to the operator's ad account: full accounts only (never judge or trial)."""
         account_of = getattr(app.state.sessions, "account_of", None)
         account = account_of(request.cookies.get("studio_session")) if account_of else None
-        if account is None:
-            return None
-        if settings.meta_adapter != "mock" and (account.is_demo or account.tier != "full"):
+        if account is None or not clip.may_add(account, settings.meta_adapter):
             return None
         return account.id
 

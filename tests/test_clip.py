@@ -153,3 +153,17 @@ def test_a_playlist_posing_as_video_never_reads_local_files(tmp_path, payload):
         clip.normalize(payload * 20, tmp_path / "out")
     assert exc.value.code in ("video_unreadable", "no_video_stream")
     assert not (tmp_path / "out" / "clip.mp4").exists()
+
+
+@pytest.mark.parametrize("is_demo,tier,adapter,ok", [
+    (False, "full", "graph", True), (True, "full", "graph", False),
+    (False, "trial", "graph", False), (True, "trial", "mock", True)])
+def test_one_rule_decides_who_may_add_a_clip(is_demo, tier, adapter, ok):
+    """The brief page and WhatsApp share it: the judge and trial accounts never put a clip
+    into the operator's live ad account."""
+    class Account:
+        pass
+    a = Account()
+    a.is_demo, a.tier = is_demo, tier
+    assert clip.may_add(a, adapter) is ok
+    assert clip.may_add(None, adapter) is False

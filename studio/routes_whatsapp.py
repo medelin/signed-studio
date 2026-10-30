@@ -91,7 +91,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         adapter only full accounts: the clip would go to the operator's ad account."""
         settings.require_writable()
         account = app.state.accounts.get(who.account_id)
-        if settings.meta_adapter != "mock" and (account is None or account.tier != "full"):
+        if not clip.may_add(account, settings.meta_adapter):
             raise whatsapp.WhatsAppError("clip_not_allowed")
         try:
             return clip.store(conn, settings.data_dir, data, account_id=who.account_id,
