@@ -47,7 +47,7 @@ from studio.agents.dispatcher import (
 )
 from studio.agents.schemas import CopyPack, CreativeSet, Plan
 from studio.approvals import Pending, confirmed_brief, transaction
-from studio.meta import audience, objectives, pixel
+from studio.meta import audience, diversity, objectives, pixel
 from studio.meta.adapter import MOCK_PAGE
 from studio.meta.currency import to_minor
 from studio.muse.client import MuseClient, MuseError, ToolCall
@@ -233,6 +233,8 @@ def campaign_payload(run: RunResult, variant_index: int,
             {k: getattr(run.copy.variants[i], k) for k in ("primary_text", "headline",
                                                             "description", "cta")}
             for i in [variant_index, *ab]]
+        # advisory, signed with the rest: near-identical variants reach the same people
+        payload["creative_diversity"] = diversity.check(payload["ad_variants"])
     cards, clip = run.creatives.cards, run.creatives.video
     if cards or clip:
         payload["format"] = {"cards": list(cards), "video": {
@@ -537,7 +539,9 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
             brief_source=ctx.brief_source,
             facts=ctx.brief_v1.confirmed_facts if ctx.brief_v1 is not None else None,
             open_weights=ctx.open_weights,
-            blocked=blocked or None)
+            blocked=blocked or None,
+            # the A/B variants carry the plan's other angles (creative diversity, Andromeda)
+            others=[a for i, a in enumerate(run.plan.angles) if i != args.angle_index])
         run.angle_index = args.angle_index
         if before is not None and blocked:
             run.rewrites.append({"variant_index": before_index, "findings": blocked,

@@ -129,10 +129,23 @@ REWRITE_RULE = ("Your previous copy for this angle was BLOCKED by the policy rev
                 "Blocked findings:")
 
 
+ANGLES_RULE = ("Creative angles, not personas: variant 1 is for the angle above; variant 2 "
+               "and variant 3 take one each of these other angles of the plan, in order. Each "
+               "variant gives its own reason to buy with its own opening line and wording, "
+               "never a rephrasing of another variant: Meta treats near-identical ads as one "
+               "and shows them to the same people. The moment is who is in that situation, "
+               "never a demographic or a personal attribute of the reader. Other angles:")
+
+
 def _user_message(angle: Angle, persona: str, brief: str,
                   brief_source: str = "operator", facts: list[str] | None = None,
-                  blocked: list[dict[str, str]] | None = None) -> str:
-    lines = [f"Angle: {angle.name}", f"Hook: {angle.hook}", f"Persona: {persona}"]
+                  blocked: list[dict[str, str]] | None = None,
+                  others: list[Angle] | None = None) -> str:
+    lines = [f"Angle: {angle.name}", f"Hook: {angle.hook}", f"Moment: {persona}"]
+    if others:
+        lines.append(ANGLES_RULE + "\n" + "\n".join(
+            f"{i + 2}. {a.name} (hook: {a.hook}; moment: {a.persona})"
+            for i, a in enumerate(others[:2])))
     if brief and brief_source == "transcript":
         lines.append("Brief (voice transcript):\n" + envelope.wrap(brief, "transcript",
                                                                     max_chars=8000))
@@ -195,12 +208,13 @@ def write(
     facts: list[str] | None = None,
     open_weights: bool = False,
     blocked: list[dict[str, str]] | None = None,
+    others: list[Angle] | None = None,
 ) -> tuple[CopyPack, MuseResult]:
     """``brief_source="transcript"``: the brief is a voice transcript — enveloped, declared,
     and on Standard (``choose_tier(..., source="transcript")``). ``facts``: the confirmed
     facts of a Brief v1, the only facts the copy may use."""
     transcript = bool(brief) and brief_source == "transcript"
-    user = _user_message(angle, persona, brief, brief_source, facts, blocked)
+    user = _user_message(angle, persona, brief, brief_source, facts, blocked, others)
     tier, reason, model = choose_tier(user, "contributor",
                                       source="transcript" if transcript else "operator",
                                       open_weights=open_weights)

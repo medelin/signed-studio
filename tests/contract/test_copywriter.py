@@ -70,3 +70,13 @@ def test_unfilled_fact_is_flagged_as_risk(client):
         router.post(url__startswith=BASE_URL).mock(return_value=httpx.Response(200, json=fake))
         pack, _ = copywriter.write(client, ANGLE, "x", run_id="run-3")
     assert any("[FACT]" in r and "variant 1" in r for r in pack.risks)
+
+
+def test_the_other_angles_become_variants_two_and_three():
+    gift = Angle(name="A gift", hook="For the one who keeps your secrets", persona="birthdays")
+    craft = Angle(name="How it is made", hook="Fired at 1240 degrees", persona="makers")
+    text = copywriter._user_message(ANGLE, ANGLE.persona, "", others=[gift, craft])
+    assert "Moment: home-office worker, 30-45" in text and "Persona:" not in text
+    assert "2. A gift (hook: For the one who keeps your secrets; moment: birthdays)" in text
+    assert "3. How it is made" in text and "near-identical" in text
+    assert "Other angles" not in copywriter._user_message(ANGLE, ANGLE.persona, "")

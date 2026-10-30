@@ -465,6 +465,18 @@ async function showApproval(pendingId) {
     const px = data.content.pixel_check;
     showPixel(px);
     $("ap-pixel-dt").hidden = $("ap-pixel-dd").hidden = !px;
+    const dv = data.content.creative_diversity;
+    const dvList = $("ap-diversity");
+    dvList.replaceChildren();
+    if (dv) {
+      if (!dv.near_duplicates.length) dvList.append(el("li", T("div_ok", { n: dv.variants })));
+      for (const p of dv.near_duplicates) {
+        const li = el("li");
+        li.append(el("span", "WARN", "verdict WARN"), " ", T("div_warn", { a: p.variants[0], b: p.variants[1], pct: Math.round(p.similarity * 100) }));
+        dvList.append(li);
+      }
+    }
+    $("ap-diversity-dt").hidden = $("ap-diversity-dd").hidden = !dv;
     $("ap-key").textContent = Signer.approver();
     $("ap-exp").textContent = new Date(data.expires_ts * 1000).toLocaleTimeString();
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);

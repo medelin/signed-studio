@@ -44,6 +44,18 @@ EN_PIXEL: dict[str, str] = {
     "err.pixel_check_missing": "This campaign needs a pixel check before it can be signed. "
                                "Run the brief again.",
     "err.pixel_check_mismatch": "The pixel check is for another pixel. Run the brief again.",
+    # creative diversity (studio.meta.diversity), advisory
+    "studio.ap.diversity": "Creative diversity (advisory)",
+    "js.div_ok": "{n} variants, each with its own angle",
+    "js.div_warn": "variants {a} and {b} are {pct}% alike: Meta treats them as one ad",
+    # budget advice on the brief (studio.budget_advice), an estimate
+    "js.budget_advice": "Suggested about {suggested} {currency} a day: Meta learns from "
+                        "about {events} results a week, at an estimated {cpr} {currency} "
+                        "each (account minimum {minimum} {currency}).",
+    "js.budget_advice_low": "At this amount: about {results} results a week, so delivery "
+                            "may stay in the learning phase.",
+    "js.budget_advice_ceiling": "The learning phase would need about {learning} {currency} "
+                                "a day, above this studio's ceiling.",
 }
 
 PL_PIXEL: dict[str, str] = {
@@ -84,4 +96,14 @@ PL_PIXEL: dict[str, str] = {
                                "Uruchom brief ponownie.",
     "err.pixel_check_mismatch": "Sprawdzenie dotyczy innego piksela. Uruchom brief "
                                 "ponownie.",
+    "studio.ap.diversity": "Różnorodność kreacji (podpowiedź)",
+    "js.div_ok": "{n} warianty, każdy z własnym kątem",
+    "js.div_warn": "warianty {a} i {b} są podobne w {pct}%: Meta potraktuje je jak jedną reklamę",
+    "js.budget_advice": "Proponowane ok. {suggested} {currency} dziennie: Meta uczy się na "
+                        "ok. {events} wynikach tygodniowo, przy szacowanym koszcie {cpr} "
+                        "{currency} za wynik (minimum konta {minimum} {currency}).",
+    "js.budget_advice_low": "Przy tej kwocie: ok. {results} wyników tygodniowo, więc emisja "
+                            "może nie wyjść z fazy uczenia się.",
+    "js.budget_advice_ceiling": "Faza uczenia się wymagałaby ok. {learning} {currency} "
+                                "dziennie, więcej niż limit tego studia.",
 }

@@ -196,3 +196,6 @@ def test_ab_variants_and_their_review_binding(env):
     p = producer.campaign_payload(run, 1)
     assert [v["headline"] for v in p["ad_variants"]] == [
         run.copy.variants[i].headline for i in (1, 0, 2)]
+    # the signed, advisory diversity check covers exactly the variants that run
+    assert p["creative_diversity"]["variants"] == 3
+    assert p["creative_diversity"]["status"] in ("ok", "warn")
