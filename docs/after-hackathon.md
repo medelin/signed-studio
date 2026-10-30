@@ -23,3 +23,9 @@ is deleted after 16 November 2026).
 - Daily rows in the spend statement need an insights pull with `time_increment=1`.
 - Signed mandates (`docs/mandates.md`): AP2-compatible format; optional settlement by a bank
   payment with the bank's own strong customer authentication (PSD2 payment initiation).
+- Mandate approvals: `studio verify` checks the `checked` values against the signed
+  mandate, but those values are the server's (ledger-signed) statement; carry the redacted
+  delivery fields (objective, countries, hosts, budget, account, token) in the receipt so
+  the verifier recomputes the fit, or report mandate-made campaigns separately.
+- `GET /api/approvals/{id}/payload` lets any signed-in session read any pending payload
+  (including a pending mandate's limits); restrict it to the account that owns the run.
