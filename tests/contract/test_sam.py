@@ -137,3 +137,21 @@ def test_garbled_stream_is_a_muse_error(client):
 def test_concept_must_be_a_short_noun_phrase(client, concept):
     with pytest.raises(ValueError):
         sam.cutout(client, PHOTO, concept, run_id="run-3")
+
+
+def test_the_cutout_mask_loses_its_pinholes_and_loose_pixels():
+    """A pinhole inside the product and a stray pixel outside it are SAM noise: the
+    cut-out's alpha is solid inside, empty outside and has no NEAREST stair-steps."""
+    raster = Image.new("L", (100, 100), 0)
+    raster.paste(255, (20, 20, 80, 80))  # the product
+    raster.putpixel((50, 50), 0)  # a pinhole
+    raster.paste(0, (60, 30, 62, 32))  # a 2x2 hole
+    raster.putpixel((5, 5), 255)  # a loose pixel
+    clean = sam._despeckle(raster)
+    assert clean.getpixel((50, 50)) == 255 and clean.getpixel((61, 31)) == 255
+    assert clean.getpixel((5, 5)) == 0
+    assert clean.getbbox() == (20, 20, 80, 80)
+    edge = sam._smooth(clean, (257, 257))  # a box that is no whole multiple of the raster
+    assert edge.getpixel((128, 128)) == 255 and edge.getpixel((10, 10)) == 0
+    ramp = [edge.getpixel((x, 128)) for x in range(40, 60)]
+    assert any(0 < v < 255 for v in ramp)  # an antialiased edge, not a hard step

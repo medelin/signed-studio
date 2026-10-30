@@ -32,7 +32,7 @@ from meta_sam_parser import (
     decode_mask_to_raster,
     image_segmentation_format,
 )
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageFilter
 
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.vision import data_url
@@ -52,6 +52,8 @@ OVERLAY_SIDE = 512
 PRODUCT_TINT = (0, 132, 255, 120)
 PEOPLE_TINT = (230, 40, 40, 150)
 CALLS_PER_CHECK = 2  # product + person
+SPECK = 0.002  # holes and islands of the cut-out mask below this share of its raster go
+EDGE_SMOOTH = 0.0025  # Gaussian radius (share of the box's longer side) of the alpha edge
 
 
 class NoMatch(MuseError):
@@ -99,16 +101,57 @@ def compose(photo_png: bytes, box: SegmentationBoxRecord,
     right, bottom = min(photo.width, int(box.right)), min(photo.height, int(box.bottom))
     if right <= left or bottom <= top:
         raise NoMatch("SAM box is empty", code="empty_box")
-    scaled = small.resize((right - left, bottom - top), Image.Resampling.NEAREST)
     alpha = Image.new("L", photo.size, 0)
-    alpha.paste(scaled, (left, top))
+    alpha.paste(_smooth(_despeckle(small), (right - left, bottom - top)), (left, top))
     photo.putalpha(alpha)
-    foreground = sum(alpha.histogram()[1:])
+    foreground = sum(alpha.histogram()[128:])
     full = io.BytesIO()
     photo.save(full, "PNG")
     crop = io.BytesIO()
     photo.crop((left, top, right, bottom)).save(crop, "PNG")
     return full.getvalue(), crop.getvalue(), (left, top, right, bottom), foreground
+
+
+def _despeckle(mask: Image.Image, share: float = SPECK) -> Image.Image:
+    """The mask raster with its small holes filled and small islands dropped: every
+    4-connected region (of either value) smaller than ``share`` of the raster flips.
+
+    SAM's raster of a flat, low-contrast part (a laptop's base on a beige table) comes back
+    with pinholes and loose pixels; scaled up, they read as a torn edge in the cut-out.
+    Pure Python on the raster (≤ ~1 Mpx, well under a second), before scaling.
+    """
+    w, h = mask.size
+    n = w * h
+    px = bytearray(1 if v >= 128 else 0 for v in mask.tobytes())
+    limit = int(n * share)
+    seen = bytearray(n)
+    for start in range(n):
+        if seen[start]:
+            continue
+        value, region, i = px[start], [start], 0
+        seen[start] = 1
+        while i < len(region):
+            p = region[i]
+            i += 1
+            x = p % w
+            for q in (p - 1 if x else -1, p + 1 if x < w - 1 else -1, p - w, p + w):
+                if 0 <= q < n and not seen[q] and px[q] == value:
+                    seen[q] = 1
+                    region.append(q)
+        if len(region) < limit:
+            for p in region:
+                px[p] = 1 - value
+    return Image.frombytes("L", (w, h), bytes(px).translate(_TO_ALPHA))
+
+
+def _smooth(mask: Image.Image, size: tuple[int, int]) -> Image.Image:
+    """The raster scaled onto its box with a smooth, antialiased edge (not NEAREST
+    stair-steps): bilinear scale, a small blur, then a steep ramp around half intensity."""
+    scaled = mask.resize(size, Image.Resampling.BILINEAR)
+    radius = max(size) * EDGE_SMOOTH
+    if radius >= 0.5:
+        scaled = scaled.filter(ImageFilter.GaussianBlur(radius))
+    return scaled.point(lambda v: max(0, min(255, (v - 128) * 4 + 128)))
 
 
 def _concept(concept: str) -> str:
