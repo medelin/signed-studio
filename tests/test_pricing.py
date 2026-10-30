@@ -698,3 +698,32 @@ def test_checkout_needs_an_email_address_first(tmp_path):
         r = _checkout(c, buyer="person", recurring_consent="1", immediate_start="1")
     assert r.status_code == 400 and i18n.EN["billing.email.missing"] in r.text
     assert fake.posts == [] and _consents(app) == []
+
+
+def test_a_campaign_approved_by_a_mandate_is_billed_to_the_mandates_account(tmp_path):
+    """The owner's assistant created c4 under ola's signed mandate (approver mandate:…,
+    no browser key): its spend is ola's too."""
+    fake = FakeStripe()
+    app = _billing_app(tmp_path, fake, **FEE)
+    ola, _ = _seed_spend(app)
+    conn, now = app.state.conn, time.time()
+    with conn.lock:
+        conn.execute("INSERT INTO campaigns (id, name, objective, daily_budget_minor, "
+                     "adapter, created_ts, currency) VALUES ('c4', 'x', 'traffic', 1000, "
+                     "'mock', ?, 'GBP')", (now,))
+        conn.execute("INSERT INTO approvals (id, run_id, action, item_id, content_sha256, "
+                     "chain_head, nonce, ts, status, approver, decided_ts) VALUES "
+                     "('ap_c4', 'r4', 'campaign.create', 'c4', 'h', 'g', 'n_c4', ?, "
+                     "'approved', 'mandate:m1', ?)", (int(now), int(now)))
+        conn.execute("INSERT INTO mandates (id, account_id, body, sha256, approval_id, "
+                     "created_ts) VALUES ('m1', ?, '{}', 'x', 'ap_grant', ?)", (ola, now))
+        conn.execute("INSERT INTO mandate_uses (approval_id, mandate_id, token_id, run_id, "
+                     "ts) VALUES ('ap_c4', 'm1', 'tok', 'r4', ?)", (now,))
+        conn.execute("INSERT INTO insights_snapshots (id, campaign_id, body, created_ts) "
+                     "VALUES ('sn9', 'c4', ?, ?)",
+                     (json.dumps({"spend_by_day": {"2026-10-29": 7.0}}), now))
+    assert billing._signed_campaigns(conn)["c4"] == (ola, "GBP")
+    api = fake.api(app.state.settings.billing)
+    billing.report_spend(conn, api, "2026-10-29", ledger=app.state.ledger)
+    assert conn.execute("SELECT spend_minor FROM spend_usage WHERE account_id = ?",
+                        (ola,)).fetchone() == (2000,)  # 12.34 + 0.66 + 7.00

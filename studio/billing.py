@@ -342,15 +342,23 @@ class StripeApi:
 
 def _signed_campaigns(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     """campaign id → (account id, ad account currency): the account whose session
-    registered the key that signed the campaign's ``campaign.create`` (the latest one)."""
+    registered the key that signed the campaign's ``campaign.create`` (the latest one), or,
+    for a campaign approved by a signed mandate (``studio.mandates``), the mandate's
+    account — its assistant's campaigns are that account's spend too."""
     rows = conn.execute(
-        "SELECT c.id, s.account_id, c.currency FROM campaigns c "
+        "SELECT c.id, s.account_id, c.currency, a.decided_ts FROM campaigns c "
         "JOIN approvals a ON a.item_id = c.id AND a.action = 'campaign.create' "
         "AND a.status = 'approved' "
         "JOIN keys k ON k.approver = a.approver "
         "JOIN account_sessions s ON s.sid_sha256 = k.session_sha256 "
-        "ORDER BY a.decided_ts").fetchall()
-    return {cid: (aid, cur) for cid, aid, cur in rows}
+        "UNION ALL "
+        "SELECT c.id, m.account_id, c.currency, a.decided_ts FROM campaigns c "
+        "JOIN approvals a ON a.item_id = c.id AND a.action = 'campaign.create' "
+        "AND a.status = 'approved' "
+        "JOIN mandate_uses u ON u.approval_id = a.id "
+        "JOIN mandates m ON m.id = u.mandate_id "
+        "ORDER BY 4").fetchall()
+    return {cid: (aid, cur) for cid, aid, cur, _ in rows}
 
 
 def _day_spend(conn: sqlite3.Connection, campaign_id: str, day: str) -> float | None:
