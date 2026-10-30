@@ -135,6 +135,9 @@ def pull(adapter: Any, external_id: str, spec: Mapping[str, Any]) -> dict[str, A
         "attribution_setting": str(rows[0].get("attribution_setting", "")) if rows else "",
         "totals": normalize(rows[0], spec["result"]) if rows else normalize({}, spec["result"]),
         "breakdowns": {}, "provenance": str(total.get("_provenance") or "live")}
+    for edge in ("date_start", "date_stop"):  # the reporting window (monthly statement)
+        if rows and isinstance(rows[0].get(edge), str):
+            snap[edge] = rows[0][edge][:10]
     for name, value in BREAKDOWNS.items():
         body = adapter.insights_report(external_id, fields, breakdowns=value)
         snap["breakdowns"][name] = [

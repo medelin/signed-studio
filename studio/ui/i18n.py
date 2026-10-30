@@ -20,6 +20,7 @@ from markupsafe import Markup
 
 from studio.ui.i18n_accounts import EN_ACCOUNTS, PL_ACCOUNTS
 from studio.ui.i18n_assistants import EN_ASSISTANTS, PL_ASSISTANTS
+from studio.ui.i18n_export import EN_EXPORT, PL_EXPORT
 from studio.ui.i18n_google import EN_GOOGLE, PL_GOOGLE
 from studio.ui.i18n_mcp import EN_MCP, PL_MCP
 from studio.ui.i18n_meta import EN_META, PL_META
@@ -1261,6 +1262,8 @@ EN.update(EN_WHATSAPP)
 PL.update(PL_WHATSAPP)
 EN.update(EN_SUMMARY)
 PL.update(PL_SUMMARY)
+EN.update(EN_EXPORT)
+PL.update(PL_EXPORT)
 
 CATALOGS = {"en": EN, "pl": PL}
 

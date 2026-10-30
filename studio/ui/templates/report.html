@@ -45,6 +45,40 @@
   </article>
   {% else %}<p class="empty">{{ t("ms.empty") }}</p>{% endfor %}
 </section>
+{% if statement %}
+<section class="panel" aria-labelledby="st-h" id="statement">
+  <h2 id="st-h">{{ t("xport.st_title") }}</h2>
+  <p class="hint">{{ t("xport.st_hint") }}</p>
+  <form class="inline" method="get" action="/report">
+    <label for="st-month">{{ t("xport.month") }}</label>
+    <input id="st-month" name="month" type="month" value="{{ statement.month }}" pattern="[0-9]{4}-[0-9]{2}" required>
+    <button type="submit" class="secondary">{{ t("xport.show") }}</button>
+  </form>
+  {% if statement.rows %}
+  <div class="table-scroll" tabindex="0" role="region" aria-labelledby="st-h"><table class="receipts">
+    <caption class="hint">{{ t("xport.st_caption", month=statement.month) }}</caption>
+    <thead><tr><th scope="col">{{ t("xport.col.date") }}</th><th scope="col">{{ t("xport.col.campaign") }}</th><th scope="col">{{ t("xport.col.spend") }}</th><th scope="col">{{ t("xport.col.budget") }}</th><th scope="col">{{ t("xport.col.approval") }}</th><th scope="col">{{ t("xport.col.model") }}</th></tr></thead>
+    <tbody>{% for r in statement.rows %}<tr>
+      <td>{{ r.date }}</td>
+      <td>{% if r.campaign_item_id %}{{ r.campaign_name }} <code>{{ r.campaign_item_id }}</code>{% else %}{{ t("xport.models_only") }} <code>{{ r.run_id }}</code>{% endif %}</td>
+      <td>{% if r.currency %}{{ "%.2f" | format(r.spend) }} {{ r.currency }}{% else %}—{% endif %}</td>
+      <td>{% if r.currency %}{{ r.approved_daily_budget }} {{ r.currency }}{% else %}—{% endif %}</td>
+      <td>{% if r.approval_id %}<code>{{ r.approval_id }}</code> · <code>{{ r.approved_by }}</code> · <code title="{{ r.approval_receipt_hash }}">{{ r.approval_receipt_hash[:12] }}</code>{% else %}—{% endif %}</td>
+      <td>${{ "%.6f" | format(r.model_cost_usd) }}</td>
+    </tr>{% endfor %}</tbody>
+    <tfoot><tr><th scope="row" colspan="2">{{ t("xport.total") }}</th>
+      <td>{% for cur, amount in statement.totals.spend.items() %}{{ "%.2f" | format(amount) }} {{ cur }}{% if not loop.last %} · {% endif %}{% else %}—{% endfor %}</td>
+      <td></td><td></td><td>${{ "%.6f" | format(statement.totals.model_cost_usd) }}</td></tr></tfoot>
+  </table></div>
+  {% if statement.more %}<p class="hint">{{ t("xport.more", n=statement.more) }}</p>{% endif %}
+  {% else %}<p class="empty">{{ t("xport.st_empty", month=statement.month) }}</p>{% endif %}
+  <p class="downloads">{{ t("xport.download") }}
+    {% for p in statement.profiles %}<a href="/report/statement?month={{ statement.month }}&amp;format=csv&amp;profile={{ p }}" download>{{ t("xport.profile." ~ p) }}</a>
+    {% endfor %}<a href="/report/statement?month={{ statement.month }}&amp;format=hledger" download>hledger</a>
+    <a href="/report/statement?month={{ statement.month }}&amp;format=json" download>JSON</a></p>
+  <p class="hint">{{ t("xport.traces_html") }}</p>
+</section>
+{% endif %}
 {% if google %}
 <section class="panel" aria-labelledby="gs-h" id="google-insights">
   <h2 id="gs-h">{{ t("report.google") }}</h2>

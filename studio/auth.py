@@ -11,9 +11,10 @@
   (``Sec-Fetch-Site``); the existing ``Origin`` check in the routes stays.
 - CSRF: a random token in an HttpOnly, SameSite=Strict cookie (double submit). Requests whose
   body a cross-site HTML form could send (urlencoded, multipart, text/plain) must echo it:
-  as the ``csrf`` form field on ``/login``, ``/login/2fa``, ``/logout`` and the ``/account/``
-  forms (checked there), as the ``X-CSRF-Token`` header everywhere else. JSON and raw uploads
-  cannot be sent cross-site without a CORS preflight, which this app never grants.
+  as the ``csrf`` form field on ``/login``, ``/login/2fa``, ``/logout``, ``/leads/import``
+  and the ``/account/`` forms (checked there), as the ``X-CSRF-Token`` header everywhere
+  else. JSON and raw uploads cannot be sent cross-site without a CORS preflight, which this
+  app never grants.
 """
 
 from __future__ import annotations
@@ -39,7 +40,8 @@ CSRF_HEADER = "x-csrf-token"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 FORM_TYPES = frozenset({"application/x-www-form-urlencoded", "multipart/form-data",
                         "text/plain"})
-FORM_CHECKED_IN_ROUTE = frozenset({"/login", "/logout", "/login/2fa"})
+FORM_CHECKED_IN_ROUTE = frozenset({"/login", "/logout", "/login/2fa",
+                                   "/leads/import"})  # studio.routes_export
 FORM_CHECKED_PREFIXES = ("/account/",)  # studio.routes_account checks the csrf field
 PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favicon.ico",
                           "/privacy", "/data-deletion",

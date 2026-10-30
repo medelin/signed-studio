@@ -66,13 +66,21 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return rep if rep is None or session_of(request) is not None else public_view(rep)
 
     @app.get("/report", response_class=HTMLResponse)
-    def report_page(request: Request) -> Response:
+    def report_page(request: Request, month: str = "") -> Response:
+        from studio import exports, routes_export
+
+        logged_in = session_of(request) is not None
+        if not exports.MONTH.fullmatch(month):
+            month = exports.current_month()
         return templates.TemplateResponse(request, "report.html", {
             "seq": ledger.seq(), "epoch": ledger.epoch,
-            "logged_in": session_of(request) is not None,
+            "logged_in": logged_in,
             "login_enabled": settings.judge_login_enabled, "read_only": settings.read_only,
             "rep": view(request), "measurement": measurement.latest(conn),
             "google": google_store.latest(conn),
+            # the monthly statement (signed-in only): preview + downloads
+            "statement": routes_export.statement_view(app, conn, request, month)
+            if logged_in else None,
         })
 
     @app.get("/api/reports/latest")

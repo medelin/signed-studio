@@ -54,6 +54,7 @@ from studio import (
     routes_account,
     routes_api,
     routes_billing,
+    routes_export,
     routes_google,
     routes_help,
     routes_inbox,
@@ -82,6 +83,7 @@ SESSION_TTL_S = 8 * 3600
 MAX_BODY = 64 * 1024
 UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024 * 1024,
                  "/api/clips": 64 * 1024 * 1024,  # the owner's phone video (studio.clip)
+                 "/leads/import": routes_export.IMPORT_BODY_LIMIT,  # studio.exports
                  **routes_api.UPLOAD_LIMITS}
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5
@@ -480,6 +482,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_inbox.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_inbox.register_leads(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
+    routes_export.register(app, settings, ledger, conn, write_guard, session_of)
     routes_receipts.register(app, settings, ledger, templates, session_of)
     routes_help.register(app, settings, ledger, templates, session_of)
     routes_try.register(app, settings, templates, session_of)
