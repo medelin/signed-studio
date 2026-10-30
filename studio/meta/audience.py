@@ -42,6 +42,12 @@ NUMERIC_ID = re.compile(r"\d{1,30}")
 # ISO 639-1 code is looked up by a name prefix.
 LANGUAGE_QUERY = {"pl": "Pol", "en": "English", "de": "Deutsch", "uk": "Україн",
                   "fr": "Français", "es": "Español", "it": "Italiano", "cs": "Čeština"}
+# a draft may name the language instead of its code ("Polish", "polski"): the same query
+LANGUAGE_QUERY |= {name: LANGUAGE_QUERY[code] for code, names in {
+    "pl": ("polish", "polski"), "en": ("english", "angielski"),
+    "de": ("german", "niemiecki"), "uk": ("ukrainian", "ukraiński"),
+    "fr": ("french", "francuski"), "es": ("spanish", "hiszpański"),
+    "it": ("italian", "włoski"), "cs": ("czech", "czeski")}.items() for name in names}
 
 # (kind, query) → search results [{"id"|"key", "name"}]; kind: adinterest | adlocale
 Search = Callable[[str, str], list[dict[str, Any]]]

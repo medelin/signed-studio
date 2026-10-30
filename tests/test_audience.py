@@ -37,6 +37,13 @@ def test_resolve_prefers_the_exact_name_and_never_guesses():
     assert offline.interests == [] and offline.unresolved == ["coffee"]
 
 
+@pytest.mark.parametrize("hint", ["Polish", "polski", "PL"])
+def test_a_language_named_in_words_resolves_like_its_code(hint):
+    """A draft may write "Polish" or "polski" instead of "pl"."""
+    r = audience.resolve(search, [], languages=[hint])
+    assert r.locales == [{"hint": hint, "key": 15, "name": "polski"}] and not r.unresolved
+
+
 def test_advantage_audience_is_the_default_with_suggestions():
     r = audience.resolve(search, ["coffee"], languages=["pl"])
     t = audience.targeting(countries=["PL"], age_min=30, age_max=50, genders=["female"],
