@@ -100,6 +100,8 @@ class Context:
     # open-weights mode (STUDIO_OPEN_WEIGHTS=1 or the run's own toggle): the copywriter
     # runs on Muse Spark Open (``open_client``), same prompt and CopyPack schema
     open_weights: bool = False
+    # the owner's own phone clip (studio.clip): (mp4, poster png, seconds) → the ad's video
+    own_clip: tuple[Path, Path, float] | None = None
 
 
 def _limit(ctx: Context) -> int:
@@ -572,7 +574,8 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 can_spend=lambda usd: _cost(ctx, run.run_id) + usd <= max_cost_usd,
                 carousel_cards=fmt.carousel_cards if fmt else 0,
                 with_video=bool(fmt and fmt.video),
-                advertiser=ctx.brief_v1.advertiser.display_name if ctx.brief_v1 else "")
+                advertiser=ctx.brief_v1.advertiser.display_name if ctx.brief_v1 else "",
+                own_clip=ctx.own_clip)
         except art_director.CostCapReached:
             raise ToolError("cost cap reached while rendering; no creative set") from None
         with transaction(ctx.conn):

@@ -60,6 +60,24 @@ EN_PIXEL: dict[str, str] = {
                       "about {reach} people and {results} results a day.",
     "js.budget_meta_amount": "At your {amount} {currency}: about {reach} people and "
                              "{results} results.",
+    # the owner's phone clip as the ad's video (studio.clip)
+    "clip.title": "Your clip (optional)",
+    "clip.hint": "A short vertical video from your phone, up to 3 minutes: the first 15 "
+                 "seconds become the ad's video. You can also send it on WhatsApp.",
+    "clip.pick": "Add a video",
+    "clip.poster_alt": "First frame of your clip",
+    "js.clip_uploading": "Uploading and preparing your clip…",
+    "js.clip_ready": "Clip ready ({seconds} s): it will be the ad's video.",
+    "js.clip_too_big": "This video is larger than 64 MB.",
+    "js.clip_failed": "The clip could not be used: {error}",
+    "err.clip_not_allowed": "Only a full account can add its own video on this studio.",
+    "err.unsupported_video_type": "Use an MP4, MOV, WebM or 3GP video.",
+    "err.video_too_large": "This video is larger than 64 MB.",
+    "err.video_unreadable": "This video could not be read.",
+    "err.no_video_stream": "This file has no video.",
+    "err.video_length": "The video must be between half a second and 3 minutes long.",
+    "err.empty_video": "The file is empty.",
+    "err.ffmpeg_missing": "Video processing is not available on this server.",
 }
 
 PL_PIXEL: dict[str, str] = {
@@ -114,4 +132,21 @@ PL_PIXEL: dict[str, str] = {
                       "ok. {reach} osób i {results} wyników dziennie.",
     "js.budget_meta_amount": "Przy Twoich {amount} {currency}: ok. {reach} osób i "
                              "{results} wyników.",
+    "clip.title": "Twój klip (opcjonalnie)",
+    "clip.hint": "Krótki pionowy film z telefonu, do 3 minut: pierwsze 15 sekund będzie "
+                 "filmem reklamy. Możesz go też wysłać na WhatsAppie.",
+    "clip.pick": "Dodaj film",
+    "clip.poster_alt": "Pierwsza klatka Twojego klipu",
+    "js.clip_uploading": "Przesyłam i przygotowuję klip…",
+    "js.clip_ready": "Klip gotowy ({seconds} s): będzie filmem reklamy.",
+    "js.clip_too_big": "Ten film ma więcej niż 64 MB.",
+    "js.clip_failed": "Nie udało się użyć klipu: {error}",
+    "err.clip_not_allowed": "Własny film może dodać w tym studiu tylko pełne konto.",
+    "err.unsupported_video_type": "Użyj filmu MP4, MOV, WebM albo 3GP.",
+    "err.video_too_large": "Ten film ma więcej niż 64 MB.",
+    "err.video_unreadable": "Nie udało się odczytać tego filmu.",
+    "err.no_video_stream": "Ten plik nie zawiera obrazu.",
+    "err.video_length": "Film musi trwać od pół sekundy do 3 minut.",
+    "err.empty_video": "Plik jest pusty.",
+    "err.ffmpeg_missing": "Przetwarzanie wideo nie jest dostępne na tym serwerze.",
 }

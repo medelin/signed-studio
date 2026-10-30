@@ -43,7 +43,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
-from studio import brand_scan, budget_advice, db
+from studio import brand_scan, budget_advice, clip, db
 from studio import brief as brief_v1
 from studio.agents import producer
 from studio.approvals import (
@@ -342,7 +342,8 @@ def run_context(settings: Settings, conn: Any, muse: MuseClient,
                 open_weights: OpenWeightsClient | None, adapter: Any, *, currency: str,
                 brief_source: str = "operator", confirmed: brief_v1.BriefV1 | None = None,
                 digest: str = "", google: Any = None,
-                open_mode: bool | None = None) -> producer.Context:
+                open_mode: bool | None = None,
+                own_clip: clip.Clip | None = None) -> producer.Context:
     """The producer's context for one run (``adapter`` only for its Page id, its
     read-only targeting search and pixel check; ``google`` the Google Ads adapter, when
     configured)."""
@@ -356,7 +357,8 @@ def run_context(settings: Settings, conn: Any, muse: MuseClient,
         page_id=getattr(adapter, "page_id", "") or MOCK_PAGE,
         search=getattr(adapter, "search_targeting", None), google=google,
         pixel_check=getattr(adapter, "pixel_check", None),
-        open_weights=settings.open_weights if open_mode is None else open_mode)
+        open_weights=settings.open_weights if open_mode is None else open_mode,
+        own_clip=(own_clip.path, own_clip.poster_path, own_clip.seconds) if own_clip else None)
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
@@ -428,6 +430,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         except AdapterError:
             return ""
 
+    def clip_of_run(run_id: str) -> clip.Clip | None:
+        """The owner's clip bound to the brief this run was confirmed from."""
+        with conn.lock:
+            row = conn.execute("SELECT id FROM briefs WHERE run_id = ?", (run_id,)).fetchone()
+        return clip.for_brief(conn, row[0]) if row else None
+
     def worker(run_id: str, brief: str, brief_source: str = "operator",
                confirmed: brief_v1.BriefV1 | None = None, digest: str = "",
                open_mode: bool = False) -> None:
@@ -437,7 +445,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                               getattr(app.state, "adapter", None), currency=account_currency(),
                               brief_source=brief_source, confirmed=confirmed, digest=digest,
                               google=getattr(app.state, "google", None),
-                              open_mode=open_mode)
+                              open_mode=open_mode, own_clip=clip_of_run(run_id))
             producer.run(ctx, brief, run_id=run_id)
             with conn.lock:
                 waiting = conn.execute("SELECT 1 FROM run_state WHERE run_id = ? AND "
@@ -597,7 +605,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         except MuseError as exc:
             return JSONResponse({"error": "model_error", "code": exc.code}, 502)
         brief_id = store_draft(conn, text, draft, run_id, brief_id)
+        clip_id = body.get("clip_id") if isinstance(body.get("clip_id"), str) else ""
+        attached = bool(clip_id) and (owner := clip_allowed(request)) is not None and \
+            clip.attach(conn, clip_id, brief_id, owner)
         return JSONResponse({
+            "clip_id": clip_id if attached else "",
             "brief_id": brief_id, "draft_run_id": run_id, "source": source,
             "brief": draft.model_dump(mode="json"),
             "problems": brief_v1.problems(draft, confirmed=False,
@@ -697,6 +709,51 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         app.state.last_thread = thread
         thread.start()
         return JSONResponse({"run_id": run_id}, 202)
+
+    def clip_allowed(request: Request) -> str | None:
+        """The signed-in account that may add a clip, or None. On a live adapter the clip
+        goes to the operator's ad account: full accounts only (never judge or trial)."""
+        account_of = getattr(app.state.sessions, "account_of", None)
+        account = account_of(request.cookies.get("studio_session")) if account_of else None
+        if account is None:
+            return None
+        if settings.meta_adapter != "mock" and (account.is_demo or account.tier != "full"):
+            return None
+        return account.id
+
+    @app.post("/api/clips")
+    async def upload_clip(request: Request) -> Response:
+        """The owner's phone video (raw body, ``video/*``) → a normalised 9:16 clip that the
+        next draft can use as the ad's video (``studio.clip``)."""
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        owner = clip_allowed(request)
+        if owner is None:
+            return JSONResponse({"error": "clip_not_allowed"}, 403)
+        ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
+        if ctype not in clip.TYPES:
+            return JSONResponse({"error": "unsupported_video_type"}, 415)
+        declared = request.headers.get("content-length", "")
+        if declared.isdigit() and int(declared) > clip.MAX_BYTES:
+            return JSONResponse({"error": "video_too_large"}, 413)
+        data = await request.body()
+        try:
+            made = await run_in_threadpool(partial(
+                clip.store, conn, settings.data_dir, data, account_id=owner, source="upload"))
+        except clip.ClipError as exc:
+            return JSONResponse({"error": exc.code}, exc.status)
+        return JSONResponse({"clip_id": made.id, "seconds": round(made.seconds, 1),
+                             "sha256": made.sha256})
+
+    @app.get("/api/clips/{clip_id}/poster.png")
+    def clip_poster(clip_id: str, request: Request) -> Response:
+        """The clip's poster frame, for its owner only."""
+        found = clip.get(conn, clip_id) if re.fullmatch(r"clip_[0-9a-f]{16}", clip_id) else None
+        if found is None or found.account_id != owner_of(request):
+            return JSONResponse({"error": "not_found"}, 404)
+        return Response(found.poster_path.read_bytes(), media_type="image/png",
+                        headers={"Cache-Control": "private, no-store"})
 
     @app.post("/api/briefs/voice")
     async def voice_brief(request: Request) -> Response:

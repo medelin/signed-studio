@@ -72,6 +72,12 @@
         </div>
         <p class="status" id="voice-status" role="status" aria-live="polite"></p>
         <ol id="turns" class="hint" aria-label="{{ t('studio.turns') }}"></ol>
+        <h2 class="path-h" id="clip-h">{{ t("clip.title") }}</h2>
+        <p class="hint" id="clip-hint">{{ t("clip.hint") }}</p>
+        <label class="ob-button secondary clip-pick" for="clip-file">{{ t("clip.pick") }}</label>
+        <input type="file" id="clip-file" accept="video/*" capture="environment" class="sr-only" aria-describedby="clip-hint"{% if not logged_in or read_only %} disabled{% endif %}>
+        <p class="status" id="clip-status" role="status" aria-live="polite"></p>
+        <img id="clip-poster" alt="{{ t('clip.poster_alt') }}" width="108" height="192" hidden>
       </div>
     </fieldset>
     <p id="brief-hint-run" class="hint">{{ t("studio.brief_help", concept=product_concept) }}</p>

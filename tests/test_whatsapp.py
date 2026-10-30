@@ -3,6 +3,7 @@ senders, a voice note → transcript → Brief v1 draft → one reply, template 
 notifications next to e-mail, receipts without phone numbers, the account's number."""
 
 import json
+import shutil
 import re
 import secrets
 import time
@@ -636,3 +637,48 @@ def test_numbers_are_shown_in_groups():
     assert whatsapp.pretty_number("+48600123456") == "+48 600 123 456"
     assert whatsapp.pretty_number("+353871234567") == "+353 871 234 567"
     assert whatsapp.pretty_number("") == ""
+
+
+def video(mid="wamid.V1", sender=SENDER, media="881", caption=""):
+    body = {"id": media, "mime_type": "video/mp4"}
+    if caption:
+        body["caption"] = caption
+    return {"from": sender, "id": mid, "timestamp": str(int(time.time())), "type": "video",
+            "video": body}
+
+
+needs_ffmpeg = pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg missing")
+
+
+@needs_ffmpeg
+def test_a_video_with_a_caption_drafts_a_brief_with_the_clip(app, client, tmp_path):
+    from studio import clip
+    from tests.test_clip import phone_video
+    app.state.whatsapp.transport.media["881"] = (phone_video(tmp_path), "video/mp4")
+    assert deliver(client, event(video(caption=OWNER))).json()["queued"] == 1
+    [reply] = sent(app)
+    assert "studio?brief=" in reply["payload"]["text"]["body"]
+    with app.state.conn.lock:
+        brief_id = app.state.conn.execute(
+            "SELECT id FROM briefs WHERE channel = 'whatsapp'").fetchone()[0]
+    attached = clip.for_brief(app.state.conn, brief_id)
+    assert attached is not None and attached.seconds > 2
+
+
+@needs_ffmpeg
+def test_a_video_alone_waits_for_the_next_brief(app, client, tmp_path):
+    from studio import clip
+    from tests.test_clip import phone_video
+    app.state.whatsapp.transport.media["881"] = (phone_video(tmp_path), "video/mp4")
+    deliver(client, event(video()))
+    [first] = sent(app)
+    assert first["payload"]["text"]["body"] == i18n.PL["whatsapp.reply.clip_saved"]
+    ola = app.state.accounts.by_username("ola")
+    waiting = clip.waiting(app.state.conn, ola.id)
+    assert waiting is not None
+    deliver(client, event(text(OWNER, mid="wamid.T9")))
+    sent(app)
+    with app.state.conn.lock:
+        brief_id = app.state.conn.execute(
+            "SELECT id FROM briefs WHERE channel = 'whatsapp'").fetchone()[0]
+    assert clip.for_brief(app.state.conn, brief_id).id == waiting.id

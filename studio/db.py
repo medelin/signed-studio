@@ -30,6 +30,7 @@ from studio import (
     accounts,
     api_tokens,
     approvals,
+    clip,
     disapprovals,
     executor,
     leadads,
@@ -236,6 +237,7 @@ def init(conn: sqlite3.Connection) -> None:
     leadads.ensure_schema(conn)
     notify.ensure_schema(conn)
     whatsapp.ensure_schema(conn)
+    clip.ensure_schema(conn)
     measurement.ensure_schema(conn)
     disapprovals.ensure_schema(conn)
     google_store.ensure_schema(conn)

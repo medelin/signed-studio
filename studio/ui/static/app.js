@@ -15,6 +15,7 @@ let shownGoogle = null;
 // Set when the brief came from a voice recording: the run is then a transcript run
 // (enveloped, Standard tier) even after the operator edits the text.
 let voiceBriefId = null;
+let clipId = null;  // the owner's phone clip for the ad's video (POST /api/clips)
 
 function el(tag, text, cls) {
   const node = document.createElement(tag);
@@ -558,6 +559,7 @@ function follow(runId) {
 window.Studio = {
   follow,
   voiceBriefId: () => voiceBriefId,
+  clipId: () => clipId,
   clearVoiceBrief: () => { voiceBriefId = null; },
 };
 
@@ -575,6 +577,33 @@ $("open-form").addEventListener("submit", (ev) => {
   }
   const run = new URLSearchParams(location.search).get("run");
   if (run && /^[A-Za-z0-9_-]{1,40}$/.test(run)) follow(run);
+})();
+
+// -- the owner's clip -------------------------------------------------------------------
+// A phone video → raw POST /api/clips → a 9:16 clip that the next draft uses as the ad's
+// video. The server checks and re-encodes it; only its poster comes back.
+
+(() => {
+  const input = $("clip-file");
+  if (!input) return;
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (file.size > 64 * 1024 * 1024) { status("clip-status", T("clip_too_big"), true); return; }
+    status("clip-status", T("clip_uploading"));
+    const r = await fetch("/api/clips", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": file.type || "video/mp4" }, body: file,
+    });
+    let data = {};
+    try { data = await r.json(); } catch (_) { /* empty body */ }
+    if (!r.ok) { status("clip-status", T("clip_failed", { error: E(data, r.status) }), true); return; }
+    clipId = data.clip_id;
+    const img = $("clip-poster");
+    img.src = "/api/clips/" + encodeURIComponent(clipId) + "/poster.png";
+    img.hidden = false;
+    status("clip-status", T("clip_ready", { seconds: data.seconds }));
+  });
 })();
 
 // -- voice brief ----------------------------------------------------------------------

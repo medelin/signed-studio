@@ -40,6 +40,8 @@ EN_WHATSAPP: dict[str, str] = {
                                "account. Open {link}",
     "whatsapp.reply.ready": "Brief ready: {facts} facts, {questions} questions — open "
                             "{link}",
+    "whatsapp.reply.clip_saved": "Got your clip. It will be the video of your next brief: "
+                                 "send it as a voice note or text within 24 hours.",
     "whatsapp.reply.failed": "Muse Studio Lite could not make a brief from this message "
                              "({code}). Try again, or type the brief in the studio: {link}",
     "notify.ad_disapproved.subject": "Meta did not approve one of your ads",
@@ -79,6 +81,8 @@ PL_WHATSAPP: dict[str, str] = {
                                "kontem. Otwórz {link}",
     "whatsapp.reply.ready": "Brief gotowy — fakty: {facts}, pytania: {questions}. Otwórz: "
                             "{link}",
+    "whatsapp.reply.clip_saved": "Mam Twój klip. Będzie filmem w następnym briefie: wyślij "
+                                 "go jako notatkę głosową albo tekst w ciągu 24 godzin.",
     "whatsapp.reply.failed": "Muse Studio Lite nie zrobiło briefu z tej wiadomości ({code}). "
                              "Spróbuj ponownie albo wpisz brief w studiu: {link}",
     "notify.ad_disapproved.subject": "Meta nie zatwierdziła jednej z Twoich reklam",

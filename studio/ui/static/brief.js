@@ -446,6 +446,8 @@
     const body = { text: $("brief").value, lang, dictated };
     const voiceId = Studio.voiceBriefId();
     if (voiceId) body.brief_id = voiceId;
+    const clipId = Studio.clipId();  // the owner's phone clip becomes the ad's video
+    if (clipId) body.clip_id = clipId;
     const r = await Signer.postJSON("/api/briefs/draft", body);
     btn.disabled = false;
     if (!r.ok) {

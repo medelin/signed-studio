@@ -148,6 +148,7 @@ def run(
     carousel_cards: int = 0,
     with_video: bool = False,
     advertiser: str = "",
+    own_clip: tuple[Path, Path, float] | None = None,  # (mp4, poster png, seconds)
 ) -> CreativeSet:
     """``can_spend(usd)`` is asked before every image; ``False`` raises ``CostCapReached``."""
     if not is_opaque(run_id):
@@ -216,7 +217,10 @@ def run(
                                 out_dir=out_dir, data_dir=data_dir, run_id=run_id,
                                 can_spend=can_spend)))
     clip = None
-    if with_video:
+    if own_clip is not None:  # the owner's phone clip is the video (studio.clip)
+        clip = _own_video(client, own_clip, out_dir, data_dir, run_id)
+        images.append(clip[1])
+    elif with_video:
         clip = _video(client, headline, images, out_dir, data_dir, run_id)
         images.append(clip[1])
     return CreativeSet(
@@ -260,6 +264,26 @@ def sam_check(
     sam.check_not_run(client, png, run_id=run_id, placement=placement, status=status,
                       agent=AGENT, error=error)
     return SamCheck(status=status, error=error)  # type: ignore[arg-type]
+
+
+def _own_video(client: MuseClient, own: tuple[Path, Path, float], out_dir: Path,
+               data_dir: Path, run_id: str) -> tuple[VideoClip, CreativeImage]:
+    """The owner's normalised clip (``studio.clip``) and its poster, copied into the run."""
+    src_mp4, src_poster, seconds = own
+    data, poster = src_mp4.read_bytes(), src_poster.read_bytes()
+    mp4 = out_dir / f"{video.POSTER}.mp4"
+    poster_path = out_dir / f"{video.POSTER}.png"
+    mp4.write_bytes(data)
+    poster_path.write_bytes(poster)
+    client.ledger.append(run_id, agent=AGENT, kind="tool_call", output_sha256=sha256_hex(data),
+                         details={"tool": "video.own_clip", "status": "ok",
+                                  "side_effects": "local", "seconds": seconds})
+    clip = VideoClip(path=str(mp4.relative_to(data_dir)), sha256=sha256_hex(data),
+                     seconds=seconds, bytes=len(data), poster=video.POSTER, storyboard="owner")
+    w, h = video.SIZE
+    return clip, CreativeImage(placement=video.POSTER, size=f"{w}x{h}",
+                               path=str(poster_path.relative_to(data_dir)),
+                               sha256=sha256_hex(poster), width=w, height=h, response_id="")
 
 
 def _video(client: MuseClient, headline: str, images: list[CreativeImage], out_dir: Path,

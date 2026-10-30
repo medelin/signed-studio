@@ -29,7 +29,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 
 from studio import brief as brief_v1
-from studio import db, whatsapp
+from studio import clip, db, whatsapp
 from studio.agents import producer
 from studio.muse import voice
 from studio.receipts import Ledger
@@ -78,8 +78,24 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                          "draft_run_id, channel, account_id) VALUES (?, '', ?, ?, ?, ?, ?, "
                          "'whatsapp', ?)",
                          (brief_id, text, source, time.time(), stored, run_id, who.account_id))
+        waiting = clip.waiting(conn, who.account_id)  # a clip sent just before, or with it
+        if waiting is not None:
+            clip.attach(conn, waiting.id, brief_id, who.account_id)
         return whatsapp.BriefResult(brief_id, len(draft.confirmed_facts),
                                     len(draft.open_questions))
+
+    def make_clip(who: whatsapp.Linked, m: whatsapp.Inbound, data: bytes) -> str:
+        """A WhatsApp video → the account's waiting clip (``studio.clip``). On a live
+        adapter only full accounts: the clip would go to the operator's ad account."""
+        settings.require_writable()
+        account = app.state.accounts.get(who.account_id)
+        if settings.meta_adapter != "mock" and (account is None or account.tier != "full"):
+            raise whatsapp.WhatsAppError("clip_not_allowed")
+        try:
+            return clip.store(conn, settings.data_dir, data, account_id=who.account_id,
+                              source="whatsapp").id
+        except clip.ClipError as exc:
+            raise whatsapp.WhatsAppError(exc.code) from None
 
     def reply(who: whatsapp.Linked, key: str, values: dict[str, Any]) -> str:
         from studio.ui import i18n
@@ -91,7 +107,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return str(i18n.text(i18n.norm(who.lang), key, **values))
 
     inbox = whatsapp.Inbox(conn, ledger, client, make_brief, reply,
-                           accepts_work=accepts_work) if client is not None else None
+                           accepts_work=accepts_work,
+                           make_clip=make_clip) if client is not None else None
     app.state.whatsapp_inbox = inbox
 
     @app.get(whatsapp.WEBHOOK_PATH)

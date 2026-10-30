@@ -81,6 +81,7 @@ COOKIE = "studio_session"
 SESSION_TTL_S = 8 * 3600
 MAX_BODY = 64 * 1024
 UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024 * 1024,
+                 "/api/clips": 64 * 1024 * 1024,  # the owner's phone video (studio.clip)
                  **routes_api.UPLOAD_LIMITS}
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5

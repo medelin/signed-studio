@@ -68,6 +68,7 @@ TOKEN_OK = re.compile(r"[A-Za-z0-9_.~-]{16,128}")
 WAMID = re.compile(r"[A-Za-z0-9_.:=+/-]{1,256}")
 LANGS = {"pl": "pl", "en": "en_US"}
 AUDIO_TYPES = ("audio",)
+VIDEO_TYPES = ("video",)  # the owner's clip for the ad (studio.clip); its caption = brief
 
 CODE_TTL_S = 900  # a verification code is valid for 15 minutes
 CODE_RE = re.compile(r"\bMUSE-([0-9]{6})\b", re.IGNORECASE)
@@ -696,8 +697,10 @@ def messages(event: Any, phone_id: str) -> list[Inbound]:
                 text, media = "", ""
                 if kind == "text" and isinstance(m.get("text"), Mapping):
                     text = str(m["text"].get("body", ""))[:MAX_TEXT_BRIEF + 1]
-                if kind in AUDIO_TYPES and isinstance(m.get(kind), Mapping):
+                if kind in (*AUDIO_TYPES, *VIDEO_TYPES) and isinstance(m.get(kind), Mapping):
                     media = str(m[kind].get("id", ""))
+                if kind in VIDEO_TYPES and isinstance(m.get(kind), Mapping):
+                    text = str(m[kind].get("caption", ""))[:MAX_TEXT_BRIEF + 1]
                 out.append(Inbound(mid, sender, kind[:20], ts, text, media))
     return out
 
@@ -734,6 +737,8 @@ class BriefResult:
 
 # (account, inbound, audio bytes or None) -> the stored draft
 BriefMaker = Callable[[Linked, Inbound, bytes | None], BriefResult]
+# (account, inbound, video bytes) -> the stored clip's id (raises when not allowed)
+ClipMaker = Callable[[Linked, Inbound, bytes], str]
 
 
 class Inbox:
@@ -743,11 +748,13 @@ class Inbox:
     def __init__(self, conn: sqlite3.Connection, ledger: Ledger, client: Client,
                  make_brief: BriefMaker, reply: Callable[[Linked, str, dict[str, Any]], str],
                  *, clock: Callable[[], float] = time.time,
-                 accepts_work: Callable[[], str] = lambda: "") -> None:
+                 accepts_work: Callable[[], str] = lambda: "",
+                 make_clip: ClipMaker | None = None) -> None:
         self.conn = conn
         self.ledger = ledger
         self.client = client
         self.make_brief = make_brief
+        self.make_clip = make_clip
         self.reply = reply  # (account, key, values) -> the text in the account's language
         self.clock = clock
         self.accepts_work = accepts_work  # "" or the reason no work is done (read only…)
@@ -798,7 +805,9 @@ class Inbox:
             if not self.limiter.allow(number_hash(m.sender, self.key)):
                 self._receipt(m, "rate_limited", who.account_id)
                 continue
-            if m.kind not in (*AUDIO_TYPES, "text") or (m.kind == "text" and not m.text.strip()):
+            video = m.kind in VIDEO_TYPES and self.make_clip is not None
+            if (m.kind not in (*AUDIO_TYPES, "text") and not video) or \
+                    (m.kind == "text" and not m.text.strip()):
                 self._receipt(m, "ignored_type", who.account_id)
                 continue
             refused = self.accepts_work()
@@ -828,7 +837,14 @@ class Inbox:
     def _work(self, who: Linked, m: Inbound) -> None:
         audio: bytes | None = None
         try:
-            if m.kind in AUDIO_TYPES:
+            if m.kind in VIDEO_TYPES and self.make_clip is not None:
+                data, _ = self.client.download_media(m.media_id)
+                clip_id = self.make_clip(who, m, data)
+                self._receipt(m, "clip_saved", who.account_id, clip_id=clip_id)
+                if not m.text.strip():  # no caption: the clip waits for the next brief
+                    self._answer(who, m, "whatsapp.reply.clip_saved", {})
+                    return
+            elif m.kind in AUDIO_TYPES:
                 audio, _ = self.client.download_media(m.media_id)
             elif len(m.text) > MAX_TEXT_BRIEF:
                 raise WhatsAppError("brief_too_long")
