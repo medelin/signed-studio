@@ -43,7 +43,7 @@ def check(variants: Sequence[Mapping[str, Any]],
     pairs = []
     for i, j in combinations(range(len(variants)), 2):
         score = round(similarity(sets[i], sets[j]), 2)
-        same_image = bool(images) and len(images) > max(i, j) and images[i] == images[j]
+        same_image = images is not None and len(images) > max(i, j) and images[i] == images[j]
         if score >= SIMILAR:
             pairs.append({"variants": [i + 1, j + 1], "similarity": score,
                           "same_image": same_image})
