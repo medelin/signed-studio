@@ -29,6 +29,13 @@ EN_WHATSAPP: dict[str, str] = {
                                   "minutes:",
     "account.whatsapp.studio_number": "Muse Studio Lite on WhatsApp:",
     "account.whatsapp.new_code": "Get a new code",
+    "account.whatsapp.one_tap": "One tap: WhatsApp opens a chat with Muse Studio Lite with "
+                                "your code already typed; just press send (valid {minutes} "
+                                "minutes).",
+    "account.whatsapp.open": "Send the code on WhatsApp",
+    "account.whatsapp.qr_label": "QR code: opens WhatsApp with your code",
+    "account.whatsapp.qr_hint": "On a computer: scan with your phone's camera.",
+    "account.whatsapp.manual": "Or send it yourself to {number}:",
     "whatsapp.reply.verified": "Muse Studio Lite: this number is now linked to your "
                                "account. Open {link}",
     "whatsapp.reply.ready": "Brief ready: {facts} facts, {questions} questions — open "
@@ -62,6 +69,12 @@ PL_WHATSAPP: dict[str, str] = {
                                   "{minutes} minut:",
     "account.whatsapp.studio_number": "Muse Studio Lite na WhatsAppie:",
     "account.whatsapp.new_code": "Wygeneruj nowy kod",
+    "account.whatsapp.one_tap": "Jedno dotknięcie: WhatsApp otworzy czat z Muse Studio Lite z "
+                                "wpisanym już kodem; wystarczy wysłać (ważny {minutes} minut).",
+    "account.whatsapp.open": "Wyślij kod przez WhatsApp",
+    "account.whatsapp.qr_label": "Kod QR: otwiera WhatsAppa z Twoim kodem",
+    "account.whatsapp.qr_hint": "Na komputerze: zeskanuj aparatem telefonu.",
+    "account.whatsapp.manual": "Albo wyślij go sam na {number}:",
     "whatsapp.reply.verified": "Muse Studio Lite: ten numer jest teraz połączony z Twoim "
                                "kontem. Otwórz {link}",
     "whatsapp.reply.ready": "Brief gotowy — fakty: {facts}, pytania: {questions}. Otwórz: "

@@ -183,6 +183,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "whatsapp_enabled": settings.whatsapp.enabled,
             "whatsapp_code": whatsapp_code,
             "whatsapp_studio_number": settings.whatsapp.display_number,
+            "whatsapp_studio_number_display": whatsapp.pretty_number(
+                settings.whatsapp.display_number),
             "whatsapp_code_minutes": whatsapp.CODE_TTL_S // 60,
             **_extras(app, account),  # studio.routes_api: the "Assistants & API" section
             **(extra or {}),

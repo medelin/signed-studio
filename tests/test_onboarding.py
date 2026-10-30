@@ -223,11 +223,15 @@ def test_links_on_the_landing_page_and_login(client, gated):
     assert f'<a class="ob-button" href="/pl/start">{PL_ONBOARDING["start.link"]}</a>' in html
 
 
-def test_nav_link_for_signed_in_users_only(client):
+def test_how_it_works_is_in_the_footer_not_the_menu(client):
     nav = re.compile(r'<nav class="nav".*?</nav>', re.S)
-    assert 'href="/start"' not in nav.search(client.get("/?lang=en").text).group(0)
-    _signed_in(client)
-    assert 'href="/start"' in nav.search(client.get("/?lang=en").text).group(0)
+    foot = re.compile(r'<footer class="foot">.*?</footer>', re.S)
+    for signed_in in (False, True):
+        if signed_in:
+            _signed_in(client)
+        page = client.get("/?lang=en").text
+        assert 'href="/start"' not in nav.search(page).group(0)
+        assert 'href="/start"' in foot.search(page).group(0)
     assert '<a href="/start" aria-current="page">' in client.get("/start?lang=en").text
 
 

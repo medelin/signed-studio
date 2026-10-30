@@ -20,10 +20,10 @@
     <a class="brand" href="/">{{ t("brand") }}</a>
     {% set here = page_path(request.url.path) %}
     <nav class="nav" aria-label="{{ t('nav.label') }}">
-    {% for href, key in (("/studio", "nav.studio"), ("/inbox", "nav.inbox"), ("/leads", "nav.leads"), ("/report", "nav.report"), ("/receipts", "nav.receipts"), ("/help", "nav.help")) %}
+    {# five places to work; the receipts and "how it works" are in the footer #}
+    {% for href, key in (("/studio", "nav.studio"), ("/inbox", "nav.inbox"), ("/leads", "nav.leads"), ("/report", "nav.report"), ("/help", "nav.help")) %}
     <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ t(key) }}</a>
     {% endfor %}
-    {% if logged_in %}<a href="{{ t('start.href') }}"{% if here in ("/start", "/pl/start") %} aria-current="page"{% endif %}>{{ t("nav.start") }}</a>{% endif %}
     </nav>
     <span class="tag">{{ t("tagline") }}</span>
     {% if read_only %}<span class="badge warn">{{ t("badge.read_only") }}</span>{% endif %}
@@ -32,6 +32,7 @@
       <span class="lang-switch" role="group" aria-label="{{ t('lang.label') }}">
       {% for code, name in lang_names.items() %}<a href="{{ query_with(request.url.query, lang=code) }}" hreflang="{{ code }}" lang="{{ code }}"{% if code == lang %} aria-current="true"{% endif %}>{{ code | upper }}</a>{% endfor %}
       </span>
+      <details class="display-prefs"><summary>{{ t("theme.label") }}</summary>
       <form class="theme-form" method="get" action="{{ here }}" aria-label="{{ t('theme.label') }}">
         {% for k, v in query_pairs(request.url.query, "theme", "palette") %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
         <label for="pref-theme">{{ t("theme.mode") }}</label>
@@ -40,6 +41,7 @@
         <select id="pref-palette" name="palette">{% for p in palettes %}<option value="{{ p }}"{% if p == request.state.palette %} selected{% endif %}>{{ t("palette." ~ p) }}</option>{% endfor %}</select>
         <button type="submit" class="secondary theme-apply">{{ t("theme.apply") }}</button>
       </form>
+      </details>
       {% if logged_in %}<a href="/account"{% if here.startswith("/account") %} aria-current="page"{% endif %}>{{ t("nav.account") }}</a>
       <form class="logout-form" method="post" action="/logout"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><button type="submit" class="secondary">{{ t("auth.sign_out") }}</button></form>
       {% elif here != "/login" %}<a href="/login?next={{ here | urlencode }}">{{ t("auth.sign_in") }}</a>{% endif %}
@@ -55,6 +57,8 @@
   {%- endif %}
   {% block content %}{% endblock %}</main>
   <footer class="foot">
+    <a href="/receipts"{% if here == "/receipts" %} aria-current="page"{% endif %}>{{ t("nav.receipts") }}</a> ·
+    <a href="{{ t('start.href') }}"{% if here in ("/start", "/pl/start") %} aria-current="page"{% endif %}>{{ t("nav.start") }}</a> ·
     {{ t("foot.ledger") }} <code>{{ epoch }}</code> · {{ t("foot.seq") }} <code>{{ seq }}</code> ·
     <a href="/api/receipts.jsonl">receipts.jsonl</a> ·
     <a href="/api/ledger-manifest">{{ t("foot.manifest") }}</a> ·

@@ -240,10 +240,17 @@
   </form>
   {% if whatsapp_prefs.number and not whatsapp_prefs.verified %}
   {% if whatsapp_code %}
-  <div class="stack" id="wa-code" role="status">
+  <div class="stack wa-code" id="wa-code" role="status">
+    {% if whatsapp_studio_number %}
+    {% set wa_link = "https://wa.me/" ~ whatsapp_studio_number[1:] ~ "?text=" ~ whatsapp_code %}
+    <p>{{ t("account.whatsapp.one_tap", minutes=whatsapp_code_minutes) }}</p>
+    <p><a class="ob-button wa-open" href="{{ wa_link }}" rel="noopener" target="_blank">{{ t("account.whatsapp.open") }}</a></p>
+    <figure class="qr-place wa-qr">{{ qr_svg(wa_link, t("account.whatsapp.qr_label")) | safe }}<figcaption class="hint">{{ t("account.whatsapp.qr_hint") }}</figcaption></figure>
+    <p class="hint">{{ t("account.whatsapp.manual", number=whatsapp_studio_number_display) }} <code class="secret">{{ whatsapp_code }}</code></p>
+    {% else %}
     <p>{{ t("account.whatsapp.send_code", minutes=whatsapp_code_minutes) }}</p>
     <p><code class="secret">{{ whatsapp_code }}</code></p>
-    {% if whatsapp_studio_number %}<p>{{ t("account.whatsapp.studio_number") }} <a href="https://wa.me/{{ whatsapp_studio_number[1:] }}?text={{ whatsapp_code }}" rel="noopener">{{ whatsapp_studio_number }}</a></p>{% endif %}
+    {% endif %}
   </div>
   {% endif %}
   <form method="post" action="/account/whatsapp/code">

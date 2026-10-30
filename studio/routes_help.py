@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -22,6 +22,8 @@ from studio.ui import cast, help_texts, legal_texts
 # Paths whose clients expect JSON, never an HTML page.
 _API_PREFIXES = ("/api/", "/assets/", "/static/")
 
+
+RICKROLL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2Templates,
              session_of: Callable[[Request], str | None]) -> None:
@@ -72,6 +74,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2
     @app.get("/data-deletion", response_class=HTMLResponse)
     def data_deletion(request: Request) -> Response:
         return legal_page(request, "data-deletion")
+
+    @app.get("/k/judge-master-key")
+    def judge_master_key() -> Response:
+        """The "secret admin link" on the monitor in the demo video. There is no master
+        key; whoever zooms in and follows it gets the classic instead."""
+        return RedirectResponse(RICKROLL, 302)
 
     @app.exception_handler(StarletteHTTPException)
     async def not_found(request: Request, exc: StarletteHTTPException) -> Response:

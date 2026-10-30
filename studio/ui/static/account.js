@@ -22,6 +22,11 @@
     }
   }
 
+  // a fresh WhatsApp code (POST /account/whatsapp/code answers with this page): show it
+  // in its tab and give the page its own address back, so a reload does not post again
+  const waCode = document.getElementById("wa-code");
+  if (waCode) history.replaceState(null, "", "/account#notifications");
+
   function fromPage() {
     const id = decodeURIComponent(location.hash.slice(1));
     if (groupOf.has(id)) return groupOf.get(id);
@@ -31,4 +36,5 @@
 
   window.addEventListener("hashchange", () => show(fromPage()));
   show(fromPage());
+  if (waCode) waCode.scrollIntoView({ block: "center" });
 })();

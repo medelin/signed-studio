@@ -495,6 +495,25 @@ def _code_hash(account_id: str, number: str, code: str) -> str:
     return sha256_text(f"{account_id}|{number}|{code.upper()}")
 
 
+# two-digit ITU country codes (the others under 1 and 7 are one digit, the rest three)
+_CC2 = frozenset("20 27 30 31 32 33 34 36 39 40 41 43 44 45 46 47 48 49 51 52 53 54 55 56 "
+                 "57 58 60 61 62 63 64 65 66 81 82 84 86 90 91 92 93 94 95 98".split())
+
+
+def pretty_number(number: str) -> str:
+    """``+15551982857`` → ``+1 555 198 2857``, ``+48600123456`` → ``+48 600 123 456``:
+    the country code, then groups of three (the last group takes the remainder)."""
+    digits = re.sub(r"[^0-9]", "", number or "")
+    if not digits:
+        return number
+    cc = 1 if digits[0] in "17" else 2 if digits[:2] in _CC2 else 3
+    head, rest = digits[:cc], digits[cc:]
+    groups = [rest[i:i + 3] for i in range(0, len(rest), 3)]
+    if len(groups) > 1 and len(groups[-1]) == 1:
+        groups[-2:] = [groups[-2] + groups[-1]]
+    return "+" + head + " " + " ".join(groups)
+
+
 def issue_code(conn: sqlite3.Connection, account_id: str, *,
                now: float | None = None) -> str:
     """A one-time ``MUSE-123456`` for the account's pending number (15 min; only its hash

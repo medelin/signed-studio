@@ -293,3 +293,16 @@ button.danger { background: var(--signal); color: var(--signal-ink); }
 .js body:not(.has-run) .run-part { display: none; }
 details.advanced { margin-top: 1rem; }
 details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+
+/* /account: the WhatsApp verification code (one-tap link + QR for a computer) */
+.wa-code .wa-open { font-size: .95rem; }
+.wa-qr svg.qr { width: 10rem; height: auto; }
+@media (hover: none) { .wa-qr { display: none; } }  /* on a phone the button is enough */
+
+/* header: the display settings fold away (also on the account page) */
+.display-prefs { position: relative; }
+.display-prefs > summary { cursor: pointer; list-style: none; font: inherit; color: var(--ink-2); }
+.display-prefs > summary::-webkit-details-marker { display: none; }
+.display-prefs[open] > .theme-form { position: absolute; right: 0; top: 1.8rem; z-index: 20;
+  display: grid; gap: .35rem; padding: .7rem; background: var(--bg-raised); border: 1px solid var(--rule);
+  box-shadow: 0 6px 18px rgb(0 0 0 / .15); min-width: 12rem; }

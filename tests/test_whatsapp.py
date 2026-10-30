@@ -29,7 +29,8 @@ SENDER = NUMBER[1:]
 PHONE_ID = "1385668691299457"
 WA_ENV = {"STUDIO_WHATSAPP": "mock", "META_APP_SECRET": SECRET,
           "META_WHATSAPP_PHONE_ID": PHONE_ID, "STUDIO_WHATSAPP_VERIFY_TOKEN": VERIFY,
-          "STUDIO_PUBLIC_URL": "https://muse.example.test"}
+          "STUDIO_PUBLIC_URL": "https://muse.example.test",
+          "STUDIO_WHATSAPP_NUMBER": "+15551982857"}
 
 
 def link(app, account_id, number, *, on=True):
@@ -480,6 +481,9 @@ def test_account_page_stores_a_valid_number_and_refuses_an_invalid_one(app, clie
     assert len(stored) == 1 and code not in stored[0][0]
     r = post(client, "/account/whatsapp/code")
     assert r.status_code == 200 and re.search(r"MUSE-[0-9]{6}", r.text)
+    fresh = re.search(r"MUSE-[0-9]{6}", r.text).group(0)  # one tap: the code typed in
+    assert f"https://wa.me/15551982857?text={fresh}" in r.text and 'class="qr"' in r.text
+    assert "+1 555 198 2857" in r.text
     assert post(client, "/account/notifications", whatsapp_number="").status_code == 303
     assert whatsapp.preferences(app.state.conn, ola.id) == {"number": "", "on": False,
                                                            "verified": False}
@@ -625,3 +629,10 @@ def test_mcp_cannot_read_another_accounts_whatsapp_brief(app, client, transcribe
     with pytest.raises(mcp_server.McpRefused):
         mcp_server.read_brief(S, "agent", brief_id)
     assert brief_id not in json.dumps(mcp_server.list_briefs(S, "agent"))
+
+
+def test_numbers_are_shown_in_groups():
+    assert whatsapp.pretty_number("+15551982857") == "+1 555 198 2857"
+    assert whatsapp.pretty_number("+48600123456") == "+48 600 123 456"
+    assert whatsapp.pretty_number("+353871234567") == "+353 871 234 567"
+    assert whatsapp.pretty_number("") == ""
