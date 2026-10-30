@@ -1,4 +1,5 @@
-"""Executors run an external write only for a consumed, human-signed approval.
+"""Executors run an external write only for a consumed, human-signed approval (or, for
+``campaign.create`` alone, an approval made by a signed mandate: ``studio.mandates``).
 
 ``authorize`` is the gate in front of every adapter write, checked before the adapter is
 touched: the ``Verified`` must name an approval that the database shows as ``approved``
@@ -20,7 +21,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from studio.approvals import TTL_S, Verified, payload_sha256, transaction
-from studio.receipts import Ledger, Receipt
+from studio.receipts import MANDATE_APPROVER, Ledger, Receipt
 
 LOG = logging.getLogger("studio.executor")
 
@@ -83,6 +84,17 @@ def authorize(conn: sqlite3.Connection, verified: Any, action: str,
             raise ExecutionRefused("approval nonce was never consumed", "not_approved")
         if clock - row[7] > TTL_S:
             raise ExecutionRefused(f"approval older than {TTL_S} s", "expired")
+        if verified.approver.startswith(MANDATE_APPROVER):
+            # No human signature: a signed mandate stands in for one, for campaign.create
+            # only, with its own checks (studio.mandates); every other action and every
+            # other approver keeps needing a human-signed approval.
+            from studio import mandates
+
+            problem = mandates.execution_problem(conn, verified, payload, now=clock)
+            if problem is not None:
+                raise ExecutionRefused(problem[1], problem[0])
+        elif not verified.approver.startswith("ed25519:"):
+            raise ExecutionRefused("approval is not signed by a human key", "not_approved")
         try:
             conn.execute(
                 "INSERT INTO executions (approval_id, action, item_id, run_id, status, "

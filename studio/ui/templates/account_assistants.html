@@ -52,5 +52,64 @@
   {% else %}
   <p class="hint">{{ t("assist.none") }}</p>
   {% endif %}
+  {% if mandate_show %}
+  <section id="mandates" aria-labelledby="mandates-h">
+    <h3 id="mandates-h">{{ t("mandate.title") }}</h3>
+    <p class="hint" id="mandates-lead">{{ t("mandate.lead") }}</p>
+    {{ error_of("mandates", "mandates-error") }}
+    {% if mandate_problems %}{% set ns = namespace(f=[]) %}{% for f in mandate_problems %}{% set ns.f = ns.f + [t("mandate.field." ~ f)] %}{% endfor %}
+    <p class="status error" role="alert">{{ t("mandate.problems", fields=ns.f | join(", ")) }}</p>{% endif %}
+    {% if request.query_params.get("mandate") == "revoked" %}<p class="status" role="status">{{ t("mandate.revoked") }}</p>{% endif %}
+    {% if mandate_tokens %}
+    <form method="post" action="/account/mandates/prepare" class="stack" aria-describedby="mandates-lead">
+      <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+      <fieldset>
+        <legend>{{ t("mandate.objectives") }}</legend>
+        {% for g in mandate_goals %}<label><input type="checkbox" name="objective" value="{{ g }}"{% if g == "traffic" %} checked{% endif %}> {{ t("brief.goal." ~ g) }}</label>
+        {% endfor %}
+      </fieldset>
+      <label for="mandate-countries">{{ t("mandate.countries") }}</label>
+      <input id="mandate-countries" name="countries" maxlength="200" required autocomplete="off" aria-describedby="mandate-countries-hint"{{ invalid("mandates", "mandates-error") }}>
+      <p class="hint" id="mandate-countries-hint">{{ t("mandate.countries_hint") }}</p>
+      <label for="mandate-hosts">{{ t("mandate.hosts") }}</label>
+      <input id="mandate-hosts" name="hosts" maxlength="600" required autocomplete="off" aria-describedby="mandate-hosts-hint">
+      <p class="hint" id="mandate-hosts-hint">{{ t("mandate.hosts_hint") }}</p>
+      <label for="mandate-budget">{{ t("mandate.budget", currency=mandate_currency) }}</label>
+      <input id="mandate-budget" name="max_daily_budget" type="number" min="1" max="{{ mandate_ceiling }}" step="1" required aria-describedby="mandate-budget-hint">
+      <p class="hint" id="mandate-budget-hint">{{ t("mandate.budget_hint", ceiling=mandate_ceiling, currency=mandate_currency) }}</p>
+      <label for="mandate-max">{{ t("mandate.max_campaigns") }}</label>
+      <input id="mandate-max" name="max_campaigns" type="number" min="1" max="{{ mandate_max_campaigns }}" step="1" value="3" required>
+      <label for="mandate-days">{{ t("mandate.days", days=mandate_max_days) }}</label>
+      <input id="mandate-days" name="days" type="number" min="1" max="{{ mandate_max_days }}" step="1" value="7" required>
+      <fieldset>
+        <legend>{{ t("mandate.tokens") }}</legend>
+        {% for k in mandate_tokens %}<label><input type="checkbox" name="token" value="{{ k.id }}"> {{ k.label }}</label>
+        {% endfor %}
+      </fieldset>
+      <p class="hint" id="mandate-prepare-hint">{{ t("mandate.prepare_hint") }}</p>
+      <button type="submit" aria-describedby="mandate-prepare-hint">{{ t("mandate.prepare") }}</button>
+    </form>
+    {% else %}
+    <p class="hint">{{ t("mandate.no_tokens") }}</p>
+    {% endif %}
+    {% if mandate_list %}
+    <div class="table-scroll" tabindex="0" role="region" aria-labelledby="mandates-caption">
+    <table class="receipts tokens">
+      <caption id="mandates-caption">{{ t("mandate.caption") }}</caption>
+      <thead><tr><th scope="col">{{ t("mandate.col.limits") }}</th><th scope="col">{{ t("mandate.col.used") }}</th><th scope="col">{{ t("mandate.col.until") }}</th><th scope="col">{{ t("mandate.col.status") }}</th><th scope="col">{{ t("mandate.col.action") }}</th></tr></thead>
+      <tbody>
+      {% for m in mandate_list %}{% set l = m.limits %}{% set ns = namespace(names=[]) %}{% for k in l.token_ids %}{% set ns.names = ns.names + [mandate_labels.get(k, k)] %}{% endfor %}
+        <tr><td>{{ t("mandate.limits", objectives=l.objectives | join(", "), countries=l.countries | join(", "), hosts=l.landing_hosts | join(", "), budget=l.max_daily_budget, currency=l.currency, tokens=ns.names | join(", ")) }}</td>
+        <td>{{ t("mandate.used", used=m.used, max=l.max_campaigns) }}</td><td>{{ l.valid_until | utc }}</td><td>{{ t("mandate.status." ~ m.status) }}</td>
+        <td>{% if m.status == "active" or m.status == "used_up" %}<form method="post" action="/account/mandates/revoke" class="inline-form"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><input type="hidden" name="mandate" value="{{ m.mandate_id }}"><button type="submit" class="secondary small-button" aria-label="{{ t('mandate.revoke_label', id=m.mandate_id) }}">{{ t("mandate.revoke_button") }}</button></form>{% endif %}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="hint">{{ t("mandate.none") }}</p>
+    {% endif %}
+  </section>
+  {% endif %}
   {% endif %}
 </section>

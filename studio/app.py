@@ -58,6 +58,7 @@ from studio import (
     routes_google,
     routes_help,
     routes_inbox,
+    routes_mandates,
     routes_meta,
     routes_onboarding,
     routes_receipts,
@@ -525,6 +526,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     routes_google.register(app, settings, ledger, conn, write_guard, session_of)
     routes_api.install(app)  # /api/v1 and /mcp for the owner's own assistant (bearer tokens)
+    routes_mandates.register(app, settings, ledger, conn)  # the owner's signed mandates
 
     @app.get("/api/campaigns/{item_id}")
     def get_campaign(item_id: str, request: Request) -> Response:

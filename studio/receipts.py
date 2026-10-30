@@ -33,7 +33,7 @@ from studio.pii import redact_digit_runs
 GENESIS = "0" * 64
 APPROVAL_TTL_S = 900  # an approval authorises one write within this many seconds of issue
 KINDS = frozenset({"model_call", "tool_call", "approval", "external_write", "review",
-                   "brief.confirmed", "insights.snapshot", "ad.review"})
+                   "brief.confirmed", "insights.snapshot", "ad.review", "mandate.revoke"})
 BRIEF_KIND = "brief.confirmed"
 BRIEF_SCHEMA = "brief/v1"
 # Actions whose approval must sign the run's confirmed brief (``brief_sha256``) when the
@@ -90,6 +90,63 @@ APPROVAL_BRIEF_FIELD = "brief_sha256"
 # goal, destination, promoted object); every adapter step that sends it names the same hash.
 APPROVAL_SPEC_FIELD = "spec_sha256"
 SPEC_STEPS = frozenset({"campaign", "adset", "google_validate", "google_create"})
+
+# A signed mandate (``studio.mandates``): the owner signs its limits once as a
+# ``mandate.grant`` approval whose receipt carries the body (``MANDATE_FIELD``); within
+# them a run started by a listed token creates its campaign PAUSED with an approval
+# receipt that names the mandate (``by_mandate``) instead of a human signature.
+MANDATE_GRANT = "mandate.grant"
+MANDATE_REVOKE = "mandate.revoke"
+MANDATE_FIELD = "mandate"
+MANDATE_APPROVER = "mandate:"
+MANDATE_ACTIONS = frozenset({"campaign.create"})  # the only action a mandate can stand for
+MANDATE_KEYS = frozenset({"scope", "account_id", "token_ids", "objectives", "countries",
+                          "landing_hosts", "max_daily_budget", "currency", "max_campaigns",
+                          "valid_until"})
+_MANDATE_ACCOUNT = re.compile(r"acct_[0-9a-f]{16}")
+_MANDATE_TOKEN = re.compile(r"tok_[0-9a-f]{12}")
+_COUNTRY = re.compile(r"[A-Z]{2}")
+_CURRENCY = re.compile(r"[A-Z]{3}")
+_GOAL = re.compile(r"[a-z_]{1,20}")
+HOST = re.compile(r"(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
+
+
+def _int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _strings_of(value: Any, pattern: re.Pattern[str], most: int) -> bool:
+    return (isinstance(value, list) and 1 <= len(value) <= most and len(set(value)) == len(value)
+            and all(isinstance(v, str) and pattern.fullmatch(v) for v in value))
+
+
+def mandate_body_problem(body: Any) -> str | None:
+    """Why ``body`` is not a well-formed mandate, or ``None``. The schema is closed and
+    every value is an id, a code, a host name or a number, so the body can sit in a
+    public receipt byte-exact (it is the content the owner signed)."""
+    if not isinstance(body, dict) or set(body) != MANDATE_KEYS:
+        return "fields"
+    if body["scope"] != sorted(MANDATE_ACTIONS):
+        return "scope"
+    if not isinstance(body["account_id"], str) or not _MANDATE_ACCOUNT.fullmatch(
+            body["account_id"]):
+        return "account_id"
+    if not _strings_of(body["token_ids"], _MANDATE_TOKEN, 10):
+        return "token_ids"
+    if not _strings_of(body["objectives"], _GOAL, 10):
+        return "objectives"
+    if not _strings_of(body["countries"], _COUNTRY, 50):
+        return "countries"
+    if not _strings_of(body["landing_hosts"], HOST, 10) or any(
+            redact(h) != h for h in body["landing_hosts"]):
+        return "landing_hosts"
+    if not isinstance(body["currency"], str) or not _CURRENCY.fullmatch(body["currency"]):
+        return "currency"
+    for name, high in (("max_daily_budget", 10**9), ("max_campaigns", 20),
+                       ("valid_until", 2**40)):
+        if not _int(body[name]) or not 1 <= body[name] <= high:
+            return name
+    return None
 
 
 def approval_message(fields: Mapping[str, Any]) -> bytes:
@@ -202,12 +259,17 @@ def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
                    if k.endswith("_sha256") and isinstance(v, str) and _SHA256.fullmatch(v)}
         return {**dict(redact({k: v for k, v in details.items() if k not in digests})),
                 **digests}
-    keep = (*APPROVAL_SIGNED_FIELDS, APPROVAL_BRIEF_FIELD, APPROVAL_SPEC_FIELD, "sig")
+    keep = (*APPROVAL_SIGNED_FIELDS, APPROVAL_BRIEF_FIELD, APPROVAL_SPEC_FIELD, "sig",
+            "by_mandate", "mandate_sha256")
     for k in keep:
         if k in details and not is_opaque(details[k]):
             raise ValueError(f"approval field {k!r} must be an opaque value, not free text")
-    rest = redact({k: v for k, v in details.items() if k not in keep})
-    return {**rest, **{k: details[k] for k in keep if k in details}}
+    body = details.get(MANDATE_FIELD)
+    if body is not None and mandate_body_problem(body) is not None:
+        raise ValueError("a mandate body must match the closed mandate schema")
+    exact = (*keep, MANDATE_FIELD)
+    rest = redact({k: v for k, v in details.items() if k not in exact})
+    return {**rest, **{k: details[k] for k in exact if k in details}}
 
 
 class Store(Protocol):
@@ -528,6 +590,121 @@ def _check_approval(
                       str(d.get(APPROVAL_BRIEF_FIELD) or ""), str(spec or ""))
 
 
+@dataclass(frozen=True)
+class _Mandate:
+    """A signed ``mandate.grant`` seen in the log: its body, hash and when it was signed."""
+
+    body: dict[str, Any]
+    sha256: str
+    ts: float
+    receipt_id: str
+
+
+@dataclass
+class _Mandates:
+    """What the verifier knows about mandates so far, in log order."""
+
+    grants: dict[str, _Mandate] = field(default_factory=dict)
+    revoked: dict[str, tuple[float, str]] = field(default_factory=dict)
+    used: dict[str, int] = field(default_factory=dict)
+
+
+def _by_mandate(receipt: Receipt) -> bool:
+    d = receipt.details
+    return "by_mandate" in d or str(d.get("approver", "")).startswith(MANDATE_APPROVER)
+
+
+def _record_grant(receipt: Receipt, grant: _Grant, mandates: _Mandates) -> list[str]:
+    """A valid ``mandate.grant`` approval: its receipt must carry the body the owner signed
+    (canonical JSON of ``{"action": "mandate.grant", "mandate": body}`` is the signed
+    ``content_sha256``)."""
+    body = receipt.details.get(MANDATE_FIELD)
+    problem = mandate_body_problem(body)
+    if problem is not None or not isinstance(body, dict):
+        return [f"{receipt.id}: mandate.grant without a well-formed mandate body ({problem})"]
+    signed = sha256_hex(canonical({"action": MANDATE_GRANT, "mandate": body}))
+    if signed != grant.content_sha256:
+        return [f"{receipt.id}: the mandate body is not the one the owner signed "
+                "(content_sha256 differs)"]
+    mandates.grants.setdefault(grant.item_id, _Mandate(dict(body), signed, receipt.ts,
+                                                       receipt.id))
+    return []
+
+
+def _checked_problems(receipt: Receipt, body: Mapping[str, Any], n: int) -> list[str]:
+    """``details.checked`` of a mandate approval must lie inside the mandate's limits."""
+    checked = receipt.details.get("checked")
+    where = f"{receipt.id}: campaign created under mandate"
+    if not isinstance(checked, dict):
+        return [f"{where} without the checked limits (details.checked)"]
+    errors: list[str] = []
+    if checked.get("objective") not in body["objectives"]:
+        errors.append(f"{where} with an objective outside the mandate")
+    countries = checked.get("countries")
+    if not isinstance(countries, list) or not countries or not set(countries) <= set(
+            body["countries"]):
+        errors.append(f"{where} targeting countries outside the mandate")
+    hosts = checked.get("hosts")
+    if not isinstance(hosts, list) or not hosts or not set(hosts) <= set(
+            body["landing_hosts"]):
+        errors.append(f"{where} sending people outside the mandate's landing hosts")
+    budget = checked.get("daily_budget")
+    if not _number(budget) or budget > body["max_daily_budget"]:
+        errors.append(f"{where} with a daily budget above the mandate "
+                      f"({body['max_daily_budget']} {body['currency']})")
+    if checked.get("currency") != body["currency"]:
+        errors.append(f"{where} in another currency than the mandate")
+    if n > body["max_campaigns"]:
+        errors.append(f"{where}: campaign {n} of at most {body['max_campaigns']} "
+                      "(more campaigns than the mandate allows)")
+    n_of_max = checked.get("n_of_max")
+    if n_of_max != [n, body["max_campaigns"]]:
+        errors.append(f"{where}: its count {n_of_max!r} is not the log's {n} of "
+                      f"{body['max_campaigns']}")
+    return errors
+
+
+def _check_mandate_approval(
+    receipt: Receipt, seen: set[str], brief: str | None, mandates: _Mandates
+) -> tuple[list[str], _Grant | None]:
+    """An approval made by a mandate instead of a human signature: only for
+    ``campaign.create``, under a ``mandate.grant`` the owner signed earlier in the log,
+    with the same hash, not revoked before it, before the mandate's ``valid_until``, with
+    ``checked`` inside its limits and no more campaigns than it allows."""
+    problems, grant = _check_approval(receipt, seen, None, brief)
+    if grant is None:
+        return problems, None
+    d = receipt.details
+    mid = d.get("by_mandate")
+    errors: list[str] = []
+    if not isinstance(mid, str) or not mid or d.get("approver") != MANDATE_APPROVER + mid:
+        return [f"{receipt.id}: approval by mandate does not name its mandate "
+                "(details.by_mandate, approver)"], None
+    if grant.action not in MANDATE_ACTIONS:
+        return [f"{receipt.id}: a mandate cannot approve {grant.action!r} (only "
+                "campaign.create; every other action needs a human signature)"], None
+    m = mandates.grants.get(mid)
+    if m is None:
+        return [f"{receipt.id}: approval by mandate {mid} without an earlier signed "
+                "mandate.grant in the log"], None
+    if d.get("mandate_sha256") != m.sha256:
+        errors.append(f"{receipt.id}: approval names another mandate hash than the one "
+                      f"the owner signed in {m.receipt_id}")
+    if receipt.ts < m.ts:
+        errors.append(f"{receipt.id}: approval by mandate dated before the mandate")
+    if mid in mandates.revoked:
+        errors.append(f"{receipt.id}: campaign created under mandate {mid} after it was "
+                      f"revoked ({mandates.revoked[mid][1]})")
+    if receipt.ts > m.body["valid_until"]:
+        errors.append(f"{receipt.id}: campaign created under mandate {mid} after it expired")
+    n = mandates.used.get(mid, 0) + 1
+    mandates.used[mid] = n
+    errors += _checked_problems(receipt, m.body, n)
+    if errors:
+        return errors, None
+    return [], grant
+
+
 def _spec_changed(receipt: Receipt, grant: _Grant) -> list[str]:
     """A step or write that names a delivery hash must name the one the human signed; a
     campaign or ad set step under a spec-signed approval must name it."""
@@ -633,6 +810,14 @@ def verify(
     A campaign approval that signs a delivery (``spec_sha256``) binds its campaign and ad
     set steps and its write: each must name that same hash, so a log of a campaign created
     with another objective or promoted object than the one signed fails.
+
+    An approval made by a signed mandate (``details.by_mandate``, approver
+    ``mandate:<id>``, no human signature) is valid only for ``campaign.create``, only
+    after a ``mandate.grant`` approval of that id earlier in the log whose approver
+    signature is valid (when keys are given) and whose receipt carries exactly the signed
+    body, with the same ``mandate_sha256``, before any ``mandate.revoke`` of it, no later
+    than its ``valid_until``, with ``details.checked`` inside the body's limits and no
+    more such approvals than ``max_campaigns``.
     """
     errors: list[str] = []
     signatures = 0
@@ -644,6 +829,7 @@ def verify(
     used: dict[str, set[str]] = {}
     nonces: set[str] = set()
     briefs: dict[str, str] = {}  # run -> brief_sha256 of its latest confirmed brief
+    mandates = _Mandates()  # signed mandates, their revocations and use counts
     counts: dict[str, int] = {}
     manifests: list[Any] = []
     ids: set[str] = set()
@@ -697,9 +883,20 @@ def verify(
             errors += problems
             if digest is not None:
                 briefs[run] = digest
+        if receipt.kind == MANDATE_REVOKE:
+            mid = receipt.details.get("mandate_id")
+            if isinstance(mid, str):
+                mandates.revoked.setdefault(mid, (receipt.ts, receipt.id))
         if receipt.kind == "approval":
-            problems, grant = _check_approval(receipt, seen.get(run, set()), approver_keys,
-                                              briefs.get(run))
+            if _by_mandate(receipt):
+                problems, grant = _check_mandate_approval(receipt, seen.get(run, set()),
+                                                          briefs.get(run), mandates)
+            else:
+                problems, grant = _check_approval(receipt, seen.get(run, set()),
+                                                  approver_keys, briefs.get(run))
+                if grant is not None and grant.action == MANDATE_GRANT:
+                    bad = _record_grant(receipt, grant, mandates)
+                    problems, grant = (problems + bad, None) if bad else (problems, grant)
             nonce = receipt.details.get("nonce")
             if isinstance(nonce, str) and nonce in nonces:
                 problems.append(f"{receipt.id}: approval nonce {nonce} is used more than once")
@@ -708,7 +905,7 @@ def verify(
                 nonces.add(nonce)
             errors += problems
             if grant is not None:  # a bad approval authorises nothing
-                signatures += approver_keys is not None
+                signatures += approver_keys is not None and not _by_mandate(receipt)
                 pending_id = receipt.details.get("pending_id")
                 grants.setdefault(run, {})[str(pending_id or receipt.id)] = grant
                 valid.setdefault(run, {})[str(pending_id or receipt.id)] = grant

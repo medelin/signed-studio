@@ -43,7 +43,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import ValidationError
 
-from studio import brand_scan, budget_advice, clip, db
+from studio import brand_scan, budget_advice, clip, db, mandates
 from studio import brief as brief_v1
 from studio.agents import producer
 from studio.approvals import (
@@ -440,9 +440,40 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             row = conn.execute("SELECT id FROM briefs WHERE run_id = ?", (run_id,)).fetchone()
         return clip.for_brief(conn, row[0]) if row else None
 
+    def under_mandate(run_id: str, token_id: str) -> bool:
+        """A run started by an assistant's token: its pending ``campaign.create`` is
+        approved by a signed mandate of the token's account when it fits one
+        (``studio.mandates``); the decision goes into the run state for the assistant.
+        True when the campaign was approved that way."""
+        with conn.lock:
+            row = conn.execute("SELECT state FROM run_state WHERE run_id = ?",
+                               (run_id,)).fetchone()
+            state = json.loads(row[0]) if row else {}
+            owner = mandates.token_account(conn, token_id, time.time())
+        pending_id = state.get("pending_id")
+        if not pending_id:
+            return False
+        accounts = getattr(app.state, "accounts", None)
+        account = accounts.get(owner) if accounts is not None and owner else None
+        if account is None:
+            decision: dict[str, Any] = {"fits": False, "reasons": ["token"]}
+        else:
+            decision = mandates.execute(conn, ledger, pending_id, token_id, account=account,
+                                        meta_adapter=settings.meta_adapter,
+                                        executor=app.state.executors.get("campaign.create"))
+        with db.transaction(conn):
+            row = conn.execute("SELECT state FROM run_state WHERE run_id = ?",
+                               (run_id,)).fetchone()
+            if row is not None:
+                fresh = json.loads(row[0])
+                fresh["mandate"] = decision
+                conn.execute("UPDATE run_state SET state = ? WHERE run_id = ?",
+                             (json.dumps(fresh, ensure_ascii=False), run_id))
+        return bool(decision.get("fits"))
+
     def worker(run_id: str, brief: str, brief_source: str = "operator",
                confirmed: brief_v1.BriefV1 | None = None, digest: str = "",
-               open_mode: bool = False) -> None:
+               open_mode: bool = False, token_id: str = "") -> None:
         try:
             muse, open_weights = clients()
             ctx = run_context(settings, conn, muse, open_weights,
@@ -454,6 +485,19 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             with conn.lock:
                 waiting = conn.execute("SELECT 1 FROM run_state WHERE run_id = ? AND "
                                        "status = 'awaiting_approval'", (run_id,)).fetchone()
+            if waiting and token_id:
+                try:
+                    by_mandate = under_mandate(run_id, token_id)
+                except Exception as exc:  # noqa: BLE001 - the run then waits for the owner
+                    LOG.warning("mandate check of run %s failed: %s", run_id,
+                                type(exc).__name__)
+                    by_mandate = False
+                with conn.lock:
+                    left = conn.execute("SELECT state FROM run_state WHERE run_id = ?",
+                                        (run_id,)).fetchone()
+                google_left = bool(left and json.loads(left[0]).get("google_pending_id"))
+                if by_mandate and not google_left:
+                    waiting = None
             if waiting:
                 app.state.notifier.event("approval_waiting")
         except Exception as exc:  # noqa: BLE001 - recorded in run_state; never crash the app
@@ -475,11 +519,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         return on
 
     def confirm_and_start(body: dict[str, Any], owner: str | None = None, *,
-                          agent: str = "owner", untrusted: bool = False) -> Response:
+                          agent: str = "owner", untrusted: bool = False,
+                          token_id: str = "") -> Response:
         """Confirm a drafted Brief v1 (every open question answered or struck, every field
         valid) and start its run; the ``brief.confirmed`` receipt, the brief row and the
         run state commit together. ``agent``/``untrusted``: the assistants API
-        (``studio.assistants``) confirms as ``api:<label>``, its text enveloped."""
+        (``studio.assistants``) confirms as ``api:<label>``, its text enveloped;
+        ``token_id``: the token that started it, whose account's signed mandate may
+        approve the run's PAUSED campaign (``under_mandate``)."""
         try:
             c = check_confirmation(conn, body, ceiling=settings.max_daily_budget,
                                    currency=account_currency,
@@ -505,7 +552,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse(exc.body, exc.status)
         thread = threading.Thread(target=worker, daemon=True, name=f"producer-{c.run_id}",
                                   args=(c.run_id, brief_v1.render(c.brief), c.source,
-                                        c.brief, c.digest, mode))
+                                        c.brief, c.digest, mode, token_id))
         app.state.last_thread = thread
         thread.start()
         return JSONResponse({"run_id": c.run_id, "brief_sha256": c.digest, **c.counts}, 202)
@@ -989,6 +1036,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                    (approval_id,)).fetchone()
                 if row is None:
                     raise _NoPayload
+                if pending.action == mandates.GRANT and (
+                        account is None
+                        or not mandates.may_grant(account, settings.meta_adapter)
+                        or not mandates.signer_may_sign(conn, approval_id, account.id)):
+                    raise _NotOwnMandate  # only the owner signs their assistant's limits
                 if (limited and settings.meta_adapter != "mock"
                         and pending.action == "campaign.create"
                         and not demo_destinations_ok(json.loads(row[0]),
@@ -1015,6 +1067,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "demo_live_write"}, 403)
         except _DemoLanding:
             return JSONResponse({"error": "demo_landing"}, 403)
+        except _NotOwnMandate:
+            return JSONResponse({"error": "mandate_not_yours"}, 403)
         except _PixelRefused as exc:
             return JSONResponse({"error": exc.code}, 409)
         except ApprovalError as exc:
@@ -1077,6 +1131,11 @@ class _DemoRefused(Exception):
 class _DemoLanding(Exception):
     """The judge account's live ``campaign.create`` pointing away from the operator's
     landing host (``demo_link_ok``); nothing is consumed."""
+
+
+class _NotOwnMandate(Exception):
+    """A ``mandate.grant`` signed from another account's session (or a limited account
+    on a live adapter); nothing is consumed."""
 
 
 class _PixelRefused(Exception):

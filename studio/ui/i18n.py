@@ -22,6 +22,7 @@ from studio.ui.i18n_accounts import EN_ACCOUNTS, PL_ACCOUNTS
 from studio.ui.i18n_assistants import EN_ASSISTANTS, PL_ASSISTANTS
 from studio.ui.i18n_export import EN_EXPORT, PL_EXPORT
 from studio.ui.i18n_google import EN_GOOGLE, PL_GOOGLE
+from studio.ui.i18n_mandates import EN_MANDATES, PL_MANDATES
 from studio.ui.i18n_mcp import EN_MCP, PL_MCP
 from studio.ui.i18n_meta import EN_META, PL_META
 from studio.ui.i18n_notify import EN_NOTIFY, PL_NOTIFY
@@ -1264,6 +1265,8 @@ EN.update(EN_SUMMARY)
 PL.update(PL_SUMMARY)
 EN.update(EN_EXPORT)
 PL.update(PL_EXPORT)
+EN.update(EN_MANDATES)
+PL.update(PL_MANDATES)
 
 CATALOGS = {"en": EN, "pl": PL}
 
