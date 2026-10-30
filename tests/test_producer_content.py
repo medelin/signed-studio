@@ -199,3 +199,16 @@ def test_ab_variants_and_their_review_binding(env):
     # the signed, advisory diversity check covers exactly the variants that run
     assert p["creative_diversity"]["variants"] == 3
     assert p["creative_diversity"]["status"] in ("ok", "warn")
+
+
+def test_payload_signs_the_diversity_of_every_written_variant(env):
+    """One variant runs, but the copywriter wrote three angles: whether they really differ
+    is checked by code and signed even without an A/B test."""
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 0}
+    payload = producer.campaign_payload(run, 0)
+    assert "ad_variants" not in payload  # no A/B: one variant runs
+    assert payload["creative_diversity"]["variants"] == len(run.copy.variants) > 1

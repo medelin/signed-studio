@@ -236,8 +236,13 @@ def campaign_payload(run: RunResult, variant_index: int,
                                                             "description", "cta")}
             for i in [variant_index, *ab]]
         payload["ad_variants"] = variants
-        # advisory, signed with the rest: near-identical variants reach the same people
-        payload["creative_diversity"] = diversity.check(variants)
+    written = [{k: getattr(v, k) for k in ("primary_text", "headline", "description", "cta")}
+               for v in run.copy.variants]
+    if len(written) > 1:
+        # advisory, signed with the rest: the three angles must really differ, or Meta
+        # shows near-identical ads to the same people (every variant the copywriter wrote,
+        # whether one runs or several run as A/B)
+        payload["creative_diversity"] = diversity.check(written)
     cards, clip = run.creatives.cards, run.creatives.video
     if cards or clip:
         payload["format"] = {"cards": list(cards), "video": {
