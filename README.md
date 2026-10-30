@@ -23,6 +23,8 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - **No login:** a recorded run replayed and verifiable in your browser at https://muse.udun.eu/try
 - **How it works in 1 minute:** https://muse.udun.eu/start
 - **From your own assistant:** with your own account (tokens are off for `judge`), make a token on `/account#assistants`, then `claude mcp add --transport http muse https://muse.udun.eu/mcp --header "Authorization: Bearer …"` (or the HTTPS API, `/api/v1/openapi.json`); it drafts and runs, a human still signs every send ([docs/assistants.md](docs/assistants.md)).
+- **Sign up in one step:** "Continue with Facebook" or "Continue with Google" creates a trial account (campaigns stay PAUSED on the studio's own page until the operator lifts the trial); Stripe Checkout runs in test mode on the sandbox.
+- **Your own clip:** a short vertical phone video (from the brief page or sent on WhatsApp) becomes the ad's 9:16 video; it is probed, cut to 15 s and signed by hash like every image.
 - **WhatsApp:** notices (approval waiting → link to sign in the browser, new leads, ad disapproved) and voice-note briefs that become a Brief v1 draft; links only, nothing signed or run from WhatsApp ([docs/whatsapp.md](docs/whatsapp.md)).
 - **3-minute video:** <!-- VIDEO_URL -->
 - **Built during the event:** first commit 2026-10-27; solo.
@@ -104,6 +106,9 @@ replays that flow headless. `make test` runs the suite offline, `make eval` rege
 | Audiences | Advantage+ audience by default, hints resolved to Meta ids by the targeting search and shown before signing, exclusions, the owner's custom audiences, lookalikes from the owner's source audience; no user data uploaded | the owner |
 | Formats | feed and stories images, carousel (2–10 cards), 9:16 video, copy A/B (dynamic creative where supported, else separate ads) | both reviewers check every creative and variant, then the owner signs |
 | Measurement | results and cost per result for the objective, reach, frequency, CPM, spend, CTR, link clicks, by age and gender, placement and region, with the attribution setting; hourly `insights.snapshot` receipts; code-rule recommendations | a budget change or pause runs only after a new signature |
+| Creative angles | three copy variants written from three different reasons to buy (not personas), checked by code for word overlap before signing (`creative_diversity` in the signed payload), so Advantage+ has real choices | code measures; the owner sees it before signing |
+| Reach estimate | Meta's own `delivery_estimate` for the draft's audience and goal, interpolated at the owner's daily budget next to the budget advice | Meta estimates; the owner sets the budget |
+| Brand scan | before drafting, the owner's site (named in the brief) is read: up to 4 same-site pages, offers, prices, tone and linked social profiles, inside the untrusted-content envelope as suggestions the owner confirms | the owner confirms every fact |
 | Currency | budgets in the ad account's currency (read from the account), minor units by Meta's offsets | the ad account |
 
 Development used **Muse Code** for the Muse-specific modules and prompt tuning; see
@@ -179,8 +184,11 @@ Tools, receipts and limits: [docs/mcp.md](docs/mcp.md).
 ## Honest status
 
 - Meta writes go through `META_ADAPTER=graph` (Marketing API v25.0, own ad account,
-  PAUSED-only) or the mock adapter; the sandbox always runs the mock and never holds a Meta
-  token. On 2026-10-29 a live run on the Muse Studio Lite ad account (after the app went
+  PAUSED-only) or the mock adapter. **The sandbox runs the graph adapter**
+  (`STUDIO_SANDBOX_LIVE_META=1`): a judge's signature creates a real campaign, ad set,
+  creative and ad in the studio's own ad account, all PAUSED, with every link on the
+  studio's landing host; activation and any other live write are refused for the `judge`
+  account, and an hourly reset clears the demo data (receipts are kept). On 2026-10-29 a live run on the Muse Studio Lite ad account (after the app went
   Live) created a real campaign (52566255666766), ad set (52566255672966) and ad
   (52566255715566), all PAUSED, daily budget 6 GBP, with the EU DSA beneficiary and payor
   fields sent; the ad preview needed `business.facebook.com`, which is now accepted. The
@@ -199,8 +207,14 @@ Tools, receipts and limits: [docs/mcp.md](docs/mcp.md).
 - The second-opinion reviewer needs `BASETEN_API_KEY` (the recorded runs include it); without
   it the screen says "unavailable".
 - Accounts: judges share the `judge` demo account (two-step sign-in and deletion are off
-  on it); other accounts are created by the operator (`studio account create`), with optional
-  TOTP two-step sign-in, sessions, export and deletion at `/account`. No billing yet.
+  on it). Anyone can sign up with Facebook or Google: a new account starts as a **trial**
+  (it sees no one's personal data, its campaigns stay PAUSED) until the operator promotes
+  it (`studio account promote`); operator-made accounts (`studio account create`) start
+  full. Optional TOTP two-step sign-in, sessions, export and deletion at `/account`.
+  Billing: Stripe Checkout and the customer portal, a signature-checked webhook; the
+  sandbox uses Stripe test mode only, and a test-mode payment never lifts a trial.
+- The studio is single-tenant today: one operator's ad account, page and pixel; leads and
+  comments are masked for trial and demo accounts. Per-client tenancy is the next step.
 - Day-by-day changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Screens and the cast
