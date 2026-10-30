@@ -149,12 +149,15 @@ def test_checkout_sends_the_account_to_stripe(tmp_path):
         c.post("/login", data={"username": "ola", "password": PASSWORD, "csrf": csrf(c)})
         page = c.get("/account").text
         assert 'id="billing"' in page and "4242 4242 4242 4242" in page
-        r = c.post("/account/billing/checkout", data={"csrf": csrf(c)},
+        r = c.post("/account/billing/checkout",
+                   data={"csrf": csrf(c), "buyer": "person", "recurring_consent": "1",
+                         "immediate_start": "1"},
                    follow_redirects=False)
         assert r.status_code == 303 and r.headers["location"].startswith(
             "https://checkout.stripe.com/")
         assert c.post("/account/billing/checkout", data={"csrf": "x"},
                       follow_redirects=False).status_code == 403
+    seen = [r for r in seen if r.method == "POST"]  # the account page reads the price
     form = parse_qs(seen[0].content.decode())
     assert form["client_reference_id"] == [ola.id] and form["mode"] == ["subscription"]
     assert form["line_items[0][price]"] == ["price_123"]

@@ -6,7 +6,7 @@ from studio.ui import legal_texts
 from tests.test_app import app, client  # noqa: F401 - fixtures (login required)
 
 
-@pytest.mark.parametrize("path", ["/privacy", "/data-deletion"])
+@pytest.mark.parametrize("path", ["/privacy", "/data-deletion", "/terms"])
 @pytest.mark.parametrize("lang", ["en", "pl"])
 def test_legal_pages_are_public_in_both_languages(client, path, lang):  # noqa: F811
     r = client.get(f"{path}?lang={lang}", headers={"accept": "text/html"},

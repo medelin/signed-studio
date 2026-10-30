@@ -144,7 +144,29 @@ def pull(adapter: Any, external_id: str, spec: Mapping[str, Any]) -> dict[str, A
             {"key": " · ".join(str(r.get(k, "")) for k in _KEYS[name]),
              **normalize(r, spec["result"])}
             for r in (body.get("data") or [])[:50] if isinstance(r, Mapping)]
+    snap["spend_by_day"] = spend_by_day(adapter, external_id)
     return snap
+
+
+def spend_by_day(adapter: Any, external_id: str) -> dict[str, float]:
+    """The campaign's spend per day of the last 7 (``insights`` with ``time_increment=1``),
+    in account-currency units: what the ad-spend fee is computed from
+    (``studio.billing.report_spend``). Empty when the adapter cannot tell."""
+    from studio.meta.adapter import AdapterError
+
+    daily = getattr(adapter, "insights", None)
+    if daily is None:
+        return {}
+    try:
+        body = daily(external_id)
+    except AdapterError:
+        return {}
+    out: dict[str, float] = {}
+    for row in body.get("data") or []:
+        if isinstance(row, Mapping) and isinstance(row.get("date_start"), str) and (
+                row.get("date_stop") in (None, row["date_start"])):
+            out[row["date_start"][:10]] = round(_num(row.get("spend")), 2)
+    return out
 
 
 def run_id_for(campaign_id: str) -> str:

@@ -188,6 +188,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "billing_test": not settings.billing.live,
             "billing_error": request.query_params.get("billing_error", "")[:40],
             "billing_until": _day(bill.period_end) if bill else "",
+            "billing_access_until": _day(bill.access_until)
+            if bill and bill.access_until > time.time() else "",
+            # plans, prices and consent texts (studio.routes_billing); cached prices only:
+            # page() also answers async handlers (GET /account warms the cache)
+            **(app.state.billing_view(request, account)
+               if settings.billing.enabled and not account.is_demo else {}),
             "min_password": accounts.MIN_PASSWORD_LEN,
             "identities": store.identities(account.id), "social": settings.social.enabled,
             "first_password": not account.has_password and routes_social.external_fresh(
@@ -252,6 +258,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         me = current(request)
         if me is None:
             return RedirectResponse("/login?next=/account", 303)
+        if settings.billing.enabled:
+            app.state.price.warm()  # Stripe at most every 12 h per plan (studio.pricing)
         return page(request, *me)
 
     @app.get("/account/export.json")

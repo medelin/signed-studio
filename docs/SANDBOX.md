@@ -198,11 +198,23 @@ A provider is offered on `/login` when both of its variables are set; set `STUDI
 | Variable | Meaning |
 |---|---|
 | `STRIPE_SECRET_KEY` | a test key (`sk_test_`/`rk_test_`); a live key is refused unless `STUDIO_BILLING_LIVE=1` |
-| `STRIPE_WEBHOOK_SECRET` | the `whsec_` secret of the endpoint `<STUDIO_PUBLIC_URL>/webhooks/stripe` (events: `checkout.session.completed`, `customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed`) |
+| `STRIPE_WEBHOOK_SECRET` | the `whsec_` secret of the endpoint `<STUDIO_PUBLIC_URL>/webhooks/stripe` (events: `checkout.session.completed`, `customer.subscription.created/updated/deleted`, `invoice.paid`, `invoice.payment_failed`, `invoice.upcoming`) |
 | `STRIPE_PRICE_ID` | the monthly price (`price_…`) Checkout sells |
+| `STRIPE_PRICE_3M`, `STRIPE_PRICE_6M`, `STRIPE_PRICE_12M` | optional: recurring prices billed every 3, 6, 12 months upfront (`interval=month`, `interval_count` 3/6/12); unset = plan hidden. The "months free" badge is computed from the amounts |
+| `STRIPE_PRICE_ONCE` | optional: a one-time price for one month (30 days) of access paid once (Checkout `mode=payment`, invoice created) |
+| `STRIPE_SPEND_PRICE_ID` | optional: the metered price of the ad-spend fee (1 minor unit per unit, on a Billing Meter); added to every subscription Checkout |
+| `STRIPE_SPEND_METER_EVENT` | the meter's event name (default `muse_ad_spend`) |
+| `STUDIO_SPEND_FEE_PCT` | the ad-spend fee in percent (default `5`, `0` = none); the pages state it only when the metered price is set and it is above 0 |
+| `STUDIO_PRICE_DISPLAY` | optional: the monthly amount shown when Stripe's price cannot be read (e.g. `£9`) |
+| `STUDIO_FAIR_USE_RUNS` | campaign runs a month the plans cover (default 60; shown on /pricing and /terms) |
+| `STUDIO_SELLER_NAME`, `STUDIO_SELLER_NUMBER`, `STUDIO_SELLER_ADDRESS` | the seller on /pricing and /terms (default name "Dwarven Stronghold Ltd"; a missing number or address is left out) |
 | `STUDIO_BRAND_SCAN` | `1`: before drafting, read the advertiser's website named in the brief (`studio.brand_scan`, at most 4 same-site pages, https and public addresses only) |
 
 All three Stripe variables or none. Stripe issues every invoice (the seller's name, address and "not registered for VAT" footer live in the Stripe invoice settings); the studio stores ids, status and dates, and mails the owner when a subscription starts or ends and when a payment succeeds or fails. With a test key a subscription never lifts a trial account: a test card must not unlock the operator's live ad account.
+
+Before Checkout the owner picks a plan, says whether they buy as a private person or for a company, and ticks the payment consent (and, as a private person, the immediate-start acknowledgement that limits the 14-day right to cancel); a `billing.consent` receipt records the plan, the Terms date and digest. `invoice.upcoming` mails a renewal reminder once per renewal of a 3-, 6- or 12-month plan: set Stripe's "upcoming renewal events" to 7 days, as the Terms promise.
+
+The ad-spend fee: `studio billing report-usage [--day YYYY-MM-DD]` (default yesterday, UTC; `deploy/muse-studio-billing-usage.timer` runs it daily, not enabled by `remote-install.sh`) sums, per account with an active subscription, that day's spend of the campaigns the account signed (from the daily spend each insights snapshot now stores), computes the fee in the ad account's minor units and sends one meter event (`identifier` = `account_id:day`, sent once). The meter's price is in one currency: keep the ad account's currency and the price's currency the same. The fee for the one-off month is not invoiced yet.
 
 JMAP flow: `GET` the session (accountId from `primaryAccounts` for `urn:ietf:params:jmap:submission`), one setup call (`Identity/get` to pick the identity whose e-mail is the from address, `Mailbox/query` role `sent`; cached per process), then one `POST` per mail with `Email/set` (created in Sent, `$seen`) and `EmailSubmission/set` (`onSuccessUpdateEmail` drops `$draft`). No redirects are followed with the credentials; timeout 10 s.
 

@@ -40,6 +40,32 @@ ACCOUNT_ENTRIES: tuple[tuple[str, str, str, dict[str, str], dict[str, str]], ...
                "<a href=\"/account#billing\">Rozliczenia</a>: kartę przyjmuje Stripe i "
                "wystawia każdą fakturę. Jury używa wspólnego konta <code>judge</code>."},
     ),
+    (  # studio/pricing.py, studio/routes_billing.py, legal_texts "terms"
+        "pricing", "diego", "budget",
+        {"en": "How much does it cost?",
+         "pl": "Ile to kosztuje?"},
+        {"en": "Pay monthly, for 3, 6 or 12 months upfront (the longer plans include free "
+               "months), or once for one month that does not renew. The current plans and "
+               "prices are on the <a href=\"/pricing\">Pricing</a> page. Every plan covers "
+               "the studio and its model costs for normal use. Your Meta ad spend is not "
+               "part of it: you pay Meta directly, on Meta's invoices; where the operator "
+               "set an ad-spend fee, the Pricing page states its percentage. Before paying "
+               "you choose the plan on your account page, say whether you buy as a private "
+               "person or for a company, and agree to the payment and the "
+               "<a href=\"/terms\">Terms</a>. Cancel any time in the Stripe customer "
+               "portal; the plan then does not renew and runs to the end of the paid period.",
+         "pl": "Płać co miesiąc, z góry za 3, 6 lub 12 miesięcy (dłuższe plany mają miesiące "
+               "gratis) albo jednorazowo za jeden miesiąc, który się nie odnawia. Aktualne "
+               "plany i ceny są w <a href=\"/pricing\">Cenniku</a>. Każdy plan obejmuje "
+               "studio i koszty modeli przy zwykłym użyciu. Budżet reklamowy w Mecie nie "
+               "wchodzi w cenę: płacisz go bezpośrednio Mecie, na jej fakturach; jeśli "
+               "operator ustawił opłatę od wydatków na reklamy, Cennik podaje jej procent. "
+               "Przed płatnością wybierasz na stronie konta plan, wskazujesz, czy kupujesz "
+               "jako osoba prywatna, czy dla firmy, i akceptujesz płatność oraz "
+               "<a href=\"/terms\">Regulamin</a>. Zrezygnujesz w każdej chwili w portalu "
+               "klienta Stripe; plan się wtedy nie odnowi i działa do końca opłaconego "
+               "okresu."},
+    ),
     (
         "two-step-sign-in", "priya", "signed",
         {"en": "How does two-step sign-in work?",

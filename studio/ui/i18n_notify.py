@@ -30,6 +30,11 @@ EN_NOTIFY: dict[str, str] = {
     "notify.payment_failed.subject": "Your payment did not go through",
     "notify.payment_failed.body": "The payment for your subscription failed. Update your "
                                   "card on your account page, under Billing.",
+    "notify.renewal_reminder.subject": "Your Muse Studio Lite plan renews soon",
+    "notify.renewal_reminder.body": "Your plan renews for the same period in about a week, "
+                                    "and the card on file will be charged in advance for "
+                                    "it. To stop the renewal, cancel before the renewal "
+                                    "date on your account page, under Billing.",
     "notify.footer_security": "This is a security notice about your Muse Studio Lite account "
                               "and cannot be turned off. If it was not you, change your "
                               "password and sign out the other sessions.",
@@ -107,6 +112,11 @@ PL_NOTIFY: dict[str, str] = {
     "notify.payment_failed.subject": "Płatność się nie powiodła",
     "notify.payment_failed.body": "Płatność za subskrypcję nie przeszła. Zmień kartę na "
                                   "stronie konta, w części Rozliczenia.",
+    "notify.renewal_reminder.subject": "Twój plan Muse Studio Lite wkrótce się odnowi",
+    "notify.renewal_reminder.body": "Twój plan odnowi się na ten sam okres za mniej więcej "
+                                    "tydzień, a zapisana karta zostanie obciążona z góry. "
+                                    "Aby zatrzymać odnowienie, zrezygnuj przed datą "
+                                    "odnowienia na stronie konta, w części Rozliczenia.",
     "notify.footer_security": "To powiadomienie o bezpieczeństwie Twojego konta Muse Studio "
                               "Lite i nie da się go wyłączyć. Jeśli to nie Ty, zmień hasło "
                               "i wyloguj pozostałe sesje.",
