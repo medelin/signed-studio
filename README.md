@@ -24,6 +24,8 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - **How it works in 1 minute:** https://muse.udun.eu/start
 - **From your own assistant:** with your own account (tokens are off for `judge`), make a token on `/account#assistants`, then `claude mcp add --transport http muse https://muse.udun.eu/mcp --header "Authorization: Bearer …"` (or the HTTPS API, `/api/v1/openapi.json`); it drafts and runs, a human still signs every send ([docs/assistants.md](docs/assistants.md)).
 - **Sign up in one step:** "Continue with Facebook" or "Continue with Google" creates a trial account (campaigns stay PAUSED on the studio's own page until the operator lifts the trial); Stripe Checkout runs in test mode on the sandbox.
+- **A short check, not a long form:** after "Draft my brief" the owner sees a six-sentence summary of what the studio understood, and an assistant asks only what is missing or unconfirmed, one question at a time with one-click answers (countries, page, budget); the full Brief v1 form is folded under "All details".
+- **Business profile:** website, the countries you sell in and your pixel (picked from the ad account's list) are saved once in Account → Profile; every draft starts from them, marked "from your profile".
 - **Your own clip:** a short vertical phone video (from the brief page or sent on WhatsApp) becomes the ad's 9:16 video; it is probed, cut to 15 s and signed by hash like every image.
 - **WhatsApp:** notices (approval waiting → link to sign in the browser, new leads, ad disapproved) and voice-note briefs that become a Brief v1 draft; links only, nothing signed or run from WhatsApp ([docs/whatsapp.md](docs/whatsapp.md)).
 - **3-minute video:** <!-- VIDEO_URL -->
