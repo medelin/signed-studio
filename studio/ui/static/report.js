@@ -1,4 +1,5 @@
-// Muse Studio Lite — report: one long-context analyst call, optional screenshot upload.
+// Muse Studio Lite — report: fresh numbers from Meta's insights API, then one long-context
+// analyst call. No screenshots: the report reads the platform's own data.
 "use strict";
 
 (() => {
@@ -43,18 +44,14 @@
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const btn = document.getElementById("report-button");
-    const file = document.getElementById("shot").files[0];
-    if (file && file.size > 5 * 1024 * 1024) { st.textContent = T("shot_too_big"); return; }
     btn.disabled = true;
+    // the latest numbers first (read-only Meta insights); an outage there still lets the
+    // analyst write from the snapshots already stored
+    st.textContent = T("ms_pulling");
+    try { await Signer.postJSON("/api/insights/pull", {}); } catch (_) { /* stored data */ }
     st.textContent = T("analyst_reading");
-    const r = await fetch("/api/reports", {
-      method: "POST", credentials: "same-origin",
-      headers: { "Content-Type": file ? file.type : "application/json" },
-      body: file ? file : "{}",
-    });
-    let data = {};
-    try { data = await r.json(); } catch (_) { /* empty */ }
-    if (!r.ok) { st.textContent = T("report_failed", { error: E(data, r.status) }); btn.disabled = false; return; }
+    const r = await Signer.postJSON("/api/reports", {});
+    if (!r.ok) { st.textContent = T("report_failed", { error: E(r.data, r.status) }); btn.disabled = false; return; }
     location.reload();
   });
 })();

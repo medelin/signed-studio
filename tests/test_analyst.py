@@ -120,9 +120,12 @@ def test_report_route_runs_once_and_redacts_for_visitors(tmp_path):
         login(c)
         assert c.post("/api/reports", content=b"x", headers={
             "content-type": "text/plain", "x-csrf-token": csrf(c)}).status_code == 415
-        r = c.post("/api/reports", content=SHOT, headers={"content-type": "image/png"})
+        # no screenshots: the report reads Meta's insights API only
+        assert c.post("/api/reports", content=SHOT, headers={"content-type": "image/png"}
+                      ).json()["error"] == "screenshots_not_used"
+        r = c.post("/api/reports", json={})
         assert r.status_code == 200, r.text
-        assert r.json()["screenshot"] is True
+        assert r.json()["screenshot"] is False
         assert "lead.one@example.com" in c.get("/api/reports/latest").text
     with TestClient(a, base_url="https://testserver") as anon:
         latest = anon.get("/api/reports/latest").text + anon.get("/report").text
@@ -192,7 +195,7 @@ def test_screenshot_metadata_is_removed_before_the_model(shot, secret):
     assert not img.getexif() and not getattr(img, "text", {})
 
 
-def test_report_route_tells_a_bad_screenshot_from_an_oversized_context(tmp_path, monkeypatch):
+def test_report_route_refuses_screenshots_and_reports_an_oversized_context(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
 
     from studio.app import create_app
@@ -206,11 +209,11 @@ def test_report_route_tells_a_bad_screenshot_from_an_oversized_context(tmp_path,
         login(c)
         bad = c.post("/api/reports", content=b"\x89PNG\r\n\x1a\nnot really",
                      headers={"content-type": "image/png"})
-        assert bad.status_code == 400 and bad.json()["error"] == "invalid_screenshot"
+        assert bad.status_code == 415 and bad.json()["error"] == "screenshots_not_used"
 
         def too_big(*args, **kwargs):
             raise analyst.ContextTooLarge("insights and summary alone exceed the budget")
 
         monkeypatch.setattr(analyst, "report", too_big)
-        r = c.post("/api/reports", content=SHOT, headers={"content-type": "image/png"})
+        r = c.post("/api/reports", json={})
         assert r.status_code == 413 and r.json()["error"] == "context_too_large"

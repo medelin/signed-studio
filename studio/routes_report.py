@@ -1,14 +1,13 @@
-"""Report routes: the analyst reads the whole ledger (plus insights and an optional
-screenshot) in one long-context call.
+"""Report routes: the analyst reads the whole ledger plus Meta's insights in one
+long-context call. No screenshots: the numbers come from the platform's API.
 
 - ``GET /report`` (public, read-only) shows the latest report with the token counter;
   visitors without a session get every string redacted (``public_view``).
 - ``POST /api/reports`` (session, same-origin, writable) runs the analyst. Body: empty or
-  JSON for no screenshot, or a raw ``image/png`` / ``image/jpeg`` Ads Manager screenshot
-  (≤ 5 MB), re-encoded without metadata before use (400 ``invalid_screenshot`` if it is
-  not a readable image; 413 ``context_too_large`` if the insights alone overflow the
-  prompt). One report at a time; the call is capped at ``MAX_COST_USD`` and the
-  remaining daily budget.
+  JSON; an image is refused (415 ``screenshots_not_used``); 413 ``context_too_large`` if
+  the insights alone overflow the prompt. The page pulls fresh insights first
+  (``/api/insights/pull``). One report at a time; the call is capped at ``MAX_COST_USD``
+  and the remaining daily budget.
 """
 
 from __future__ import annotations
@@ -29,14 +28,12 @@ from studio.agents import analyst
 from studio.google import store as google_store
 from studio.meta import measurement
 from studio.muse.client import MuseError
-from studio.muse.vision import strip_metadata
 from studio.receipts import Ledger
 from studio.routes_inbox import public_view
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
 INSIGHTS_FIXTURE = (Path(__file__).resolve().parent.parent / "fixtures" / "meta"
                     / "insights.SYNTHETIC.json")
-MAX_SCREENSHOT = 5 * 1024 * 1024
 Guard = Callable[[Request], "JSONResponse | str"]
 
 
@@ -94,18 +91,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         guard = write_guard(request)
         if isinstance(guard, JSONResponse):
             return guard
+        # The report reads Meta's own numbers (the insights API), never screenshots: an
+        # image is refused, a JSON body (or none) is the only request.
         ctype = request.headers.get("content-type", "").split(";")[0].strip().lower()
         body = await request.body()
-        shot: bytes | None = None
-        if ctype in ("image/png", "image/jpeg"):
-            if len(body) > MAX_SCREENSHOT:
-                return JSONResponse({"error": "screenshot_too_large"}, 413)
-            try:
-                shot = await run_in_threadpool(strip_metadata, body)
-            except ValueError as exc:
-                return JSONResponse({"error": "invalid_screenshot",
-                                     "detail": str(exc)[:200]}, 400)
-        elif body.strip() and ctype != "application/json":
+        if ctype.startswith("image/"):
+            return JSONResponse({"error": "screenshots_not_used"}, 415)
+        if body.strip() and ctype != "application/json":
             return JSONResponse({"error": "unsupported_media_type"}, 415)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
@@ -121,7 +113,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             if muse.budget is not None:
                 cap = min(cap, muse.budget.remaining())
             made = analyst.report(
-                muse, ledger.export_jsonl(), insights(), shot, run_id=run_id,
+                muse, ledger.export_jsonl(), insights(), None, run_id=run_id,
                 summary={**analyst.inbox_summary(conn),
                          "measurement": measurement.summary(conn)}, max_cost_usd=cap)
             return analyst.save(conn, ledger, run_id, made), made

@@ -91,7 +91,7 @@ replays that flow headless. `make test` runs the suite offline, `make eval` rege
 
 | Model id | Where | How |
 |---|---|---|
-| `muse-spark-1.3` | Producer, compliance reviewer (vision), community triage, lead rationale, analyst | Responses API with function tools, `parallel_tool_calls`, `reasoning.summary`, `previous_response_id`; strict JSON schemas; images in user messages; the analyst reads the whole ledger (long context) plus an Ads Manager screenshot |
+| `muse-spark-1.3` | Producer, compliance reviewer (vision), community triage, lead rationale, analyst | Responses API with function tools, `parallel_tool_calls`, `reasoning.summary`, `previous_response_id`; strict JSON schemas; images in user messages; the analyst reads the whole ledger (long context) plus Meta's insights API (no screenshots) |
 | `muse-spark-1.3-contributor` | Copywriter and image-prompt writer | chosen by code only when the input has no personal data (`pii.choose_tier`); the reason is in every receipt |
 | `muse-image-1.0` | Art director | first placement as a Responses turn with the cut-out, the others (and up to 10 carousel cards) via `/images/edits` with the cut-out and the first image, so the series matches |
 | `sam-3.1` | Art director | product cut-out from the photo, then a fidelity check of every generated image (product + `person`: silhouette IoU, area, edges → rules S1/S2): streamed transport, batch parse (`meta_sam_parser`) |

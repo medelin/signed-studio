@@ -8,8 +8,6 @@
   <p class="hint">{{ t("report.lead_html") }}</p>
   {% if logged_in and not read_only %}
   <form id="report-form" class="inline">
-    <label for="shot">{{ t("report.shot") }}</label>
-    <input id="shot" type="file" accept="image/png,image/jpeg">
     <button type="submit" id="report-button">{{ t("report.write") }}</button>
   </form>
   {% endif %}

@@ -205,12 +205,11 @@ EN: dict[str, str] = {
     # report
     "report.title": "Report",
     "report.lead_html": "The analyst (Muse Spark 1.3, reasoning effort high) reads the whole "
-                        "studio ledger — every receipt — plus the ad insights and, if you add "
-                        "one, an Ads Manager screenshot, in <strong>one prompt</strong>. "
+                        "studio ledger — every receipt — plus fresh numbers from Meta's "
+                        "insights API (no screenshots), in <strong>one prompt</strong>. "
                         "Evidence links are receipt ids that were in that prompt; anything "
                         "else the model cites is listed as unverified.",
-    "report.shot": "Ads Manager screenshot (PNG/JPEG, optional, ≤ 5 MB)",
-    "report.write": "Write the report",
+    "report.write": "Get the latest Meta numbers and write the report",
     "report.read": "Read {tokens} tokens in one prompt",
     "report.cached": "cached", "report.context": "context", "report.receipts": "receipts",
     "report.dropped": "oldest left out", "report.screenshot": "screenshot",
@@ -430,8 +429,7 @@ EN: dict[str, str] = {
     "err.model_error": "The model returned an error.",
     "err.too_many_streams": "Too many live streams are open; close another tab.",
     "err.invalid_signature_format": "The signature is not in the expected format.",
-    "err.screenshot_too_large": "The screenshot is larger than 5 MB.",
-    "err.invalid_screenshot": "The screenshot could not be read as PNG or JPEG.",
+    "err.screenshots_not_used": "The report reads Meta's own numbers; no screenshot is needed.",
     "err.report_in_progress": "A report is already being written.",
     "err.comment_closed": "This comment was already answered or hidden; it is not re-triaged.",
     "err.context_too_large": "The ledger is too large for one prompt.",
@@ -651,13 +649,12 @@ PL: dict[str, str] = {
                    "Muse Spark).",
     "report.title": "Raport",
     "report.lead_html": "Analityk (Muse Spark 1.3, wysoki wysiłek rozumowania) czyta cały "
-                        "rejestr studia — każde pokwitowanie — razem z danymi reklam i, jeśli "
-                        "dodasz, zrzutem ekranu z Ads Managera, w <strong>jednym promptcie"
+                        "rejestr studia — każde pokwitowanie — razem ze świeżymi danymi z API "
+                        "Meta (bez zrzutów ekranu), w <strong>jednym promptcie"
                         "</strong>. Dowody to identyfikatory pokwitowań, które były w tym "
                         "promptcie; wszystko inne, na co powoła się model, jest oznaczone jako "
                         "niezweryfikowane.",
-    "report.shot": "Zrzut ekranu z Ads Managera (PNG/JPEG, opcjonalnie, ≤ 5 MB)",
-    "report.write": "Napisz raport",
+    "report.write": "Pobierz najnowsze dane z Meta i napisz raport",
     "report.read": "Przeczytano {tokens} tokenów w jednym promptcie",
     "report.cached": "z pamięci podręcznej", "report.context": "kontekst",
     "report.receipts": "pokwitowań", "report.dropped": "najstarszych pominięto",
@@ -887,8 +884,7 @@ PL: dict[str, str] = {
     "err.model_error": "Model zwrócił błąd.",
     "err.too_many_streams": "Otwarto zbyt wiele strumieni na żywo; zamknij inną kartę.",
     "err.invalid_signature_format": "Podpis nie ma oczekiwanego formatu.",
-    "err.screenshot_too_large": "Zrzut ekranu jest większy niż 5 MB.",
-    "err.invalid_screenshot": "Nie udało się odczytać zrzutu ekranu jako PNG ani JPEG.",
+    "err.screenshots_not_used": "Raport czyta dane prosto z Meta; zrzut ekranu nie jest potrzebny.",
     "err.report_in_progress": "Raport jest już w trakcie pisania.",
     "err.comment_closed": "Ten komentarz ma już odpowiedź albo jest ukryty; nie jest "
                           "ponownie oceniany.",

@@ -65,8 +65,8 @@ else changes in existing tables.
   before the body is read, short capped global pause). Override with
   `STUDIO_IP_REQUESTS_PER_MIN`, `STUDIO_IP_WRITES_PER_MIN`, `STUDIO_SESSION_WRITES_PER_MIN`,
   `STUDIO_SESSION_WRITES_PER_HOUR`.
-- **Body limits.** Caddy and the app both cap bodies: 33 MB voice brief, 7 MB report
-  screenshot, 128 KB (Caddy) / 64 KB (app) for everything else; 413 beyond.
+- **Body limits.** Caddy and the app both cap bodies: 33 MB voice brief, 7 MB report request
+  (no screenshots any more; the report reads the insights API), 128 KB (Caddy) / 64 KB (app) for everything else; 413 beyond.
 - **Hourly reset** (`STUDIO_RESET_INTERVAL_S=3600`). Demo data (briefs, creatives,
   campaigns, comments, leads, tasks, reports, pending approvals) is wiped and re-seeded with
   the synthetic fixtures. Kept: receipts and runs (the chain stays verifiable), consumed
