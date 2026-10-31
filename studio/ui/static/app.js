@@ -587,10 +587,11 @@ function follow(runId, retry = 0) {
   });
   source.onerror = () => {
     status("run-status", T("connection_lost"), true);
-    // the browser retries a dropped stream by itself, but not one the server refused or
-    // closed; follow again a few times (the stream replays the run from its start)
-    if (source.readyState === EventSource.CLOSED && retry < 5) {
-      setTimeout(() => follow(runId, retry + 1), 3000);
+    // the browser retries a dropped stream by itself, but not one the server refused
+    // (busy: too many streams) or closed; follow again for several minutes with growing
+    // waits, so a run is never left half-shown (the stream replays it from its start)
+    if (source.readyState === EventSource.CLOSED && retry < 40) {
+      setTimeout(() => follow(runId, retry + 1), Math.min(10000, 2000 + retry * 1000));
     }
   };
 }

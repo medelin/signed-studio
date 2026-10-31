@@ -137,7 +137,7 @@ VOICE_TYPES = frozenset({"audio/webm", "audio/ogg", "audio/wav", "audio/x-wav", 
                          "audio/mp4", "audio/mpeg", "audio/aac"})
 SSE_POLL_S = 0.5
 SSE_MAX_S = 20 * 60
-MAX_STREAMS = 8
+MAX_STREAMS = 32  # live run views at once (judges share the sandbox)
 
 Guard = Callable[[Request], "JSONResponse | str"]
 
