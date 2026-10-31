@@ -124,6 +124,8 @@ RECOVERY_CODES = 10
 TOTP_PERIOD_S = 30
 TOTP_DIGITS = 6
 TOTP_WINDOW = 1  # steps either side of now (clock skew)
+ACCOUNT_SESSIONS = 10  # live sessions per account (the shared demo account: per client
+# prefix, so one judge never ends another's session); a new one ends the oldest
 TOUCH_EVERY_S = 60.0  # last_seen is written at most this often per session
 # Wrong second-factor codes per account, whatever the client or challenge: after
 # FREE_CODE_FAILURES, every further failure locks code checks for BASE * 2**(n - FREE) s,
@@ -222,6 +224,11 @@ class TwoFactorState(AccountError):
 
 class SecondFactorLocked(AccountError):
     code = "second_factor_locked"
+
+
+class StaleCredentials(AccountError):
+    """The password, second factor or status changed after the credential was checked."""
+    code = "stale_credentials"
 
 
 @dataclass(frozen=True)
@@ -452,7 +459,8 @@ def short_agent(header: str) -> str:
 
 
 class BaseSessions(Protocol):
-    def issue(self, now: float | None = None) -> str: ...
+    def issue(self, now: float | None = None, *, owner: str = "", limit: int = 0,
+              on_evict: Callable[[str], None] | None = None) -> str: ...
 
     def check(self, value: str | None, now: float | None = None) -> str | None: ...
 
@@ -584,12 +592,15 @@ class Accounts:
     def create_external(self, provider: str, subject: str, *, email: str = "",
                         display_name: str = "") -> Account:
         """A new ``trial`` account for a provider identity: no password, a user name made
-        from the e-mail's local part and a random suffix."""
-        local = re.sub(r"[^a-z0-9._-]", "", normalize_username(email.split("@")[0]))[:20]
+        from the e-mail's local part (or the provider's name) and a random suffix; it
+        always matches ``USERNAME`` (a letter or digit first)."""
+        local = re.sub(r"[^a-z0-9._-]", "", normalize_username(email.split("@")[0]))
+        local = local.lstrip("._-")[:20]
         profile = _clean_profile({"display_name": display_name[:80], "email": email[:254]})
         now = self.clock()
         for _ in range(8):
             name = f"{local or provider}-{secrets.token_hex(2)}"
+            assert USERNAME.fullmatch(name), name
             aid = "acct_" + secrets.token_hex(8)
             try:
                 with transaction(self.conn) as c:
@@ -692,26 +703,46 @@ class Accounts:
 
     def authenticate(self, username: str, password: str) -> Account | None:
         """The account for a correct user name and password, if it is active; otherwise
-        None. One argon2 verification either way (a dummy hash for unknown names)."""
+        None (see ``authenticate_gen``)."""
+        found = self.authenticate_gen(username, password)
+        return found[0] if found else None
+
+    def authenticate_gen(self, username: str, password: str) -> tuple[Account, int] | None:
+        """The account for a correct user name and password, with the credential generation
+        the password was checked against; None otherwise. One argon2 verification either
+        way (a dummy hash for unknown names). The verification runs outside any lock (and
+        may run in a thread), so the hash, generation and status are read again afterwards
+        and must not have changed: a password change or a disable during the check wins."""
         name = normalize_username(username)
         row = None
         if USERNAME.fullmatch(name):
             with self._read() as c:
-                row = c.execute("SELECT id, password_hash, status FROM accounts "
-                                "WHERE username = ?", (name,)).fetchone()
+                row = c.execute("SELECT id, password_hash, status, credential_gen "
+                                "FROM accounts WHERE username = ?", (name,)).fetchone()
         if len(password) > MAX_PASSWORD_LEN:
             password = password[:MAX_PASSWORD_LEN] + "\x00"  # never matches; same work
         stored = row[1] if row and row[1] else _dummy_hash()
         ok = verify_password(stored, password)
         if not (row and ok and row[2] == "active"):
             return None
-        if _HASHER.check_needs_rehash(stored):
-            with transaction(self.conn) as c:
-                c.execute("UPDATE accounts SET password_hash = ? WHERE id = ?",
-                          (hash_password(password), row[0]))
-        return self.get(row[0])
+        fresh = hash_password(password) if _HASHER.check_needs_rehash(stored) else ""
+        with transaction(self.conn) as c:
+            now = c.execute("SELECT password_hash, status, credential_gen FROM accounts "
+                            "WHERE id = ?", (row[0],)).fetchone()
+            if now is None or tuple(now) != (stored, "active", row[3]):
+                return None
+            if fresh:  # only over the hash that was checked
+                c.execute("UPDATE accounts SET password_hash = ? WHERE id = ? AND "
+                          "password_hash = ?", (fresh, row[0], stored))
+        account = self.get(row[0])
+        return (account, int(row[3])) if account is not None else None
 
-    def _check_password(self, stored: str, password: str) -> None:
+    def _check_password(self, stored: str, password: str, *, external_fresh: bool = False
+                        ) -> None:
+        """The password, or, for an account without one (registered with a provider), a
+        provider sign-in less than ``EXTERNAL_PASSWORD_WINDOW_S`` ago (``external_fresh``)."""
+        if not stored and external_fresh:
+            return
         if not verify_password(stored or _dummy_hash(), password[:MAX_PASSWORD_LEN + 1]):
             raise WrongPassword("the password is not correct")
 
@@ -746,30 +777,41 @@ class Accounts:
                             (account_id,)).fetchone()
         return int(row[0]) if row else -1
 
-    def _code_gate(self, account_id: str) -> None:
-        """Refuse any code check while the account's code lock runs."""
-        with self._read() as c:
+    @contextmanager
+    def _code_attempt(self, account_id: str) -> Iterator[sqlite3.Connection]:
+        """One ``BEGIN IMMEDIATE`` transaction around a code check: refused while the
+        account's code lock runs; a ``WrongCode`` raised inside is counted (and the count
+        committed) before it propagates. Gate, check and count share the write lock, so
+        parallel requests cannot all pass the gate before any failure is recorded."""
+        wrong: WrongCode | None = None
+        with transaction(self.conn) as c:
             row = c.execute("SELECT code_locked_until FROM accounts WHERE id = ?",
                             (account_id,)).fetchone()
-        if row and self.clock() < row[0]:
-            raise SecondFactorLocked("too many wrong codes; wait and try again")
+            if row and self.clock() < row[0]:
+                raise SecondFactorLocked("too many wrong codes; wait and try again")
+            try:
+                yield c
+            except WrongCode as exc:  # nothing was written before it: count and commit
+                wrong = exc
+                self._count_failure(c, account_id)
+        if wrong is not None:
+            raise wrong
 
-    def _code_failed(self, account_id: str) -> None:
-        """Count a wrong code for the account (own transaction: the failed check rolled
-        back) and lock code checks once the free attempts are used up."""
+    def _count_failure(self, c: sqlite3.Connection, account_id: str) -> None:
+        """Count a wrong code for the account and lock code checks once the free attempts
+        are used up."""
         now = self.clock()
-        with transaction(self.conn) as c:
-            row = c.execute("SELECT code_failures FROM accounts WHERE id = ?",
-                            (account_id,)).fetchone()
-            if row is None:
-                return
-            failures = int(row[0]) + 1
-            locked = 0.0
-            if failures > FREE_CODE_FAILURES:
-                exponent = min(failures - FREE_CODE_FAILURES - 1, 16)
-                locked = now + min(CODE_LOCK_BASE_S * 2 ** exponent, CODE_LOCK_MAX_S)
-            c.execute("UPDATE accounts SET code_failures = ?, code_locked_until = ? "
-                      "WHERE id = ?", (failures, locked, account_id))
+        row = c.execute("SELECT code_failures FROM accounts WHERE id = ?",
+                        (account_id,)).fetchone()
+        if row is None:
+            return
+        failures = int(row[0]) + 1
+        locked = 0.0
+        if failures > FREE_CODE_FAILURES:
+            exponent = min(failures - FREE_CODE_FAILURES - 1, 16)
+            locked = now + min(CODE_LOCK_BASE_S * 2 ** exponent, CODE_LOCK_MAX_S)
+        c.execute("UPDATE accounts SET code_failures = ?, code_locked_until = ? "
+                  "WHERE id = ?", (failures, locked, account_id))
 
     def code_lock_remaining(self, account_id: str) -> float:
         with self._read() as c:
@@ -790,17 +832,13 @@ class Accounts:
         ``gen`` (the credential generation when the challenge was opened) is stale, the
         account is not active, or its code lock runs; a wrong code counts per account."""
         try:
-            self._code_gate(account_id)
-            with transaction(self.conn) as c:
+            with self._code_attempt(account_id) as c:
                 row = self._require(c, account_id)
                 current = c.execute("SELECT credential_gen FROM accounts WHERE id = ?",
                                     (account_id,)).fetchone()[0]
                 if row[2] != "active" or not row[4] or (gen is not None and gen != current):
                     raise TwoFactorState("the challenge is stale")
                 self._checked_code(c, account_id, row[4], row[6], code)
-        except WrongCode:
-            self._code_failed(account_id)
-            return False
         except AccountError:
             return False
         return True
@@ -845,15 +883,17 @@ class Accounts:
 
     # -- second factor ---------------------------------------------------------------------
 
-    def totp_begin(self, account_id: str, password: str) -> str:
-        """Start an enrolment: a new secret, sealed as pending until a code confirms it."""
+    def totp_begin(self, account_id: str, password: str, *, external_fresh: bool = False
+                   ) -> str:
+        """Start an enrolment: a new secret, sealed as pending until a code confirms it.
+        Needs the password (or a fresh provider sign-in for an account without one)."""
         with self._read() as c:
             row = self._require(c, account_id)
         if row[3]:
             raise DemoAccount("two-step sign-in stays off for the shared demo account")
         if row[4]:
             raise TwoFactorState("two-step sign-in is already on")
-        self._check_password(row[1], password)
+        self._check_password(row[1], password, external_fresh=external_fresh)
         secret = new_totp_secret()
         with transaction(self.conn) as c:
             c.execute("UPDATE accounts SET totp_pending = ?, updated_ts = ? WHERE id = ?",
@@ -899,15 +939,10 @@ class Accounts:
         if not row[4]:
             raise TwoFactorState("two-step sign-in is off")
         self._check_password(row[1], password)
-        self._code_gate(account_id)
-        try:
-            with transaction(self.conn) as c:
-                row = self._require(c, account_id)
-                self._checked_code(c, account_id, row[4], row[6], code)
-                self._clear_totp(c, account_id)
-        except WrongCode:
-            self._code_failed(account_id)
-            raise
+        with self._code_attempt(account_id) as c:
+            row = self._require(c, account_id)
+            self._checked_code(c, account_id, row[4], row[6], code)
+            self._clear_totp(c, account_id)
 
     def recovery_codes_left(self, account_id: str) -> int:
         with self._read() as c:
@@ -923,10 +958,19 @@ class Accounts:
 
     # -- sessions --------------------------------------------------------------------------
 
-    def record_session(self, sid: str, account_id: str, expires_ts: int, user_agent: str
-                       ) -> None:
+    def record_session(self, sid: str, account_id: str, expires_ts: int, user_agent: str,
+                       gen: int | None = None) -> None:
+        """The session's row. With ``gen`` (the credential generation the sign-in was
+        checked against), refused with ``StaleCredentials`` unless it is still current or
+        the account is no longer active: checked in the same transaction as the insert, so
+        a credential change either sees this row (and revokes it) or refuses it."""
         now = self.clock()
         with transaction(self.conn) as c:
+            if gen is not None:
+                row = c.execute("SELECT credential_gen, status FROM accounts WHERE id = ?",
+                                (account_id,)).fetchone()
+                if row is None or tuple(row) != (gen, "active"):
+                    raise StaleCredentials("the credentials changed during the sign-in")
             c.execute("INSERT OR REPLACE INTO account_sessions (sid_sha256, account_id, "
                       "created_ts, last_seen_ts, expires_ts, user_agent) "
                       "VALUES (?, ?, ?, ?, ?, ?)",
@@ -1017,29 +1061,26 @@ class Accounts:
 
     # -- deletion and export ---------------------------------------------------------------
 
-    def delete(self, account_id: str, *, confirm: str, password: str, code: str = "") -> None:
-        """Typed confirmation (the user name) + password (+ a code with 2FA on). Erases the
+    def delete(self, account_id: str, *, confirm: str, password: str, code: str = "",
+               external_fresh: bool = False) -> None:
+        """Password (or a fresh provider sign-in for an account without one) + typed
+        confirmation (the user name) (+ a code with 2FA on). Erases the
         personal fields and the second factor, revokes every session and approver key; the
         row stays as a tombstone so receipts keep resolving to a pseudonymous id."""
         with self._read() as c:
             row = self._require(c, account_id)
         if row[3]:
             raise DemoAccount("the shared demo account cannot be deleted")
+        # first: no other error answers before it
+        self._check_password(row[1], password, external_fresh=external_fresh)
         if not hmac.compare_digest(normalize_username(confirm).encode(), row[0].encode()):
             raise ConfirmationMismatch("type your user name to confirm")
-        self._check_password(row[1], password)
         now = self.clock()
-        if row[4]:
-            self._code_gate(account_id)
-        try:
-            with transaction(self.conn) as c:
-                row = self._require(c, account_id)
-                if row[4]:
-                    self._check_code(c, account_id, row[4], row[6], code)
-                self._erase(c, account_id, now)
-        except WrongCode:
-            self._code_failed(account_id)
-            raise
+        with self._code_attempt(account_id) as c:  # no lock without a second factor
+            row = self._require(c, account_id)
+            if row[4]:
+                self._check_code(c, account_id, row[4], row[6], code)
+            self._erase(c, account_id, now)
 
     def _erase(self, c: sqlite3.Connection, account_id: str, now: float) -> None:
         """Revoke every session and key, erase every personal field, keep the tombstone."""
@@ -1190,12 +1231,26 @@ class AccountSessions:
         self.base = base
         self.accounts = accounts
 
-    def issue(self, now: float | None = None, *, account_id: str = "", user_agent: str = ""
-              ) -> str:
-        value = self.base.issue(now)
-        if account_id:
-            sid, exp, _ = value.split(".")
-            self.accounts.record_session(sid, account_id, int(exp), user_agent)
+    def issue(self, now: float | None = None, *, account_id: str = "", user_agent: str = "",
+              client: str = "", gen: int | None = None) -> str:
+        """A session for ``account_id``: at most ``ACCOUNT_SESSIONS`` per account, the
+        oldest ending first; for the shared demo account the cap is per ``client`` (its
+        limiter prefix), so a judge only ever ends their own older sessions. With ``gen``,
+        ``StaleCredentials`` (and no session) unless the account's credential generation
+        still equals it."""
+        if not account_id:
+            return self.base.issue(now)
+        account = self.accounts.get(account_id)
+        owner = f"{account_id}|{client}" if account is not None and account.is_demo \
+            else account_id
+        value = self.base.issue(now, owner=owner, limit=ACCOUNT_SESSIONS,
+                                on_evict=self.accounts.revoke_sid)  # its row and keys too
+        sid, exp, _ = value.split(".")
+        try:
+            self.accounts.record_session(sid, account_id, int(exp), user_agent, gen)
+        except StaleCredentials:
+            self.base.revoke(value)
+            raise
         return value
 
     def check(self, value: str | None, now: float | None = None) -> str | None:
@@ -1225,6 +1280,7 @@ class Challenge:
     expires: float
     gen: int = 0  # the account's credential generation when the password step passed
     failures: int = 0
+    provider: bool = False  # the first step was a provider sign-in, not a password
 
 
 class Challenges:
@@ -1239,12 +1295,13 @@ class Challenges:
         self._items: OrderedDict[str, Challenge] = OrderedDict()
         self._lock = threading.Lock()
 
-    def open(self, account_id: str, nxt: str, now: float | None = None, *, gen: int = 0
-             ) -> str:
+    def open(self, account_id: str, nxt: str, now: float | None = None, *, gen: int = 0,
+             provider: bool = False) -> str:
         t = time.time() if now is None else now
         token = secrets.token_urlsafe(32)
         with self._lock:
-            self._items[sha256_hex(token)] = Challenge(account_id, nxt, t + self.TTL_S, gen)
+            self._items[sha256_hex(token)] = Challenge(account_id, nxt, t + self.TTL_S, gen,
+                                                       provider=provider)
             while len(self._items) > self.MAX:
                 self._items.popitem(last=False)
         return token

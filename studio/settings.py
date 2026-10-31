@@ -413,14 +413,15 @@ def _landing_url(e: Mapping[str, str], adapter: str) -> str:
         if adapter == "graph":
             raise ConfigError("META_LANDING_URL is required when META_ADAPTER=graph")
         return "https://example.com/"  # mock adapter only: nothing is published
-    try:
+    message = "META_LANDING_URL must be an https URL with a host"
+    try:  # an unparsable URL (a bad IPv6 literal or port) is the same named error
         parts = urlsplit(url)
-        host = parts.hostname
-    except ValueError:
-        host = None
+        host, _ = parts.hostname, parts.port
+    except ValueError as exc:
+        raise ConfigError(message) from exc
     if (parts.scheme != "https" or not host or "@" in parts.netloc
             or any(c.isspace() or ord(c) < 0x20 for c in url)):
-        raise ConfigError("META_LANDING_URL must be an https URL with a host")
+        raise ConfigError(message)
     return url
 
 

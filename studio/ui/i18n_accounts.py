@@ -204,6 +204,9 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.unknown_session": "That session is not active any more.",
     "err.second_factor_locked": "Too many wrong codes for this account; wait a while and try "
                                 "again.",
+    "err.stale_credentials": "The account's password or sign-in settings changed meanwhile; "
+                             "sign in again.",
+    "err.too_many_sessions": "Too many people are signed in right now; try again in a minute.",
     "account.section.billing": "Billing",
     "account.done.billing": "Thank you. Your subscription appears here once Stripe confirms "
                             "the payment, usually within a minute.",
@@ -439,6 +442,9 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.unknown_session": "Ta sesja nie jest już aktywna.",
     "err.second_factor_locked": "Za dużo błędnych kodów dla tego konta; odczekaj chwilę i "
                                 "spróbuj ponownie.",
+    "err.stale_credentials": "W międzyczasie zmieniło się hasło lub ustawienia logowania "
+                             "konta; zaloguj się ponownie.",
+    "err.too_many_sessions": "Zalogowanych jest teraz zbyt wiele osób; spróbuj za minutę.",
     "account.section.billing": "Rozliczenia",
     "account.done.billing": "Dziękujemy. Subskrypcja pojawi się tu, gdy Stripe potwierdzi "
                             "płatność, zwykle w ciągu minuty.",

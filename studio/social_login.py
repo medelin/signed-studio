@@ -21,7 +21,7 @@ import hmac
 import secrets
 import threading
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from html import escape
@@ -99,25 +99,50 @@ class Pending:
     expires: float
 
 
+class TooManyStarts(Exception):
+    """This client (limiter prefix) started more sign-ins than ``States.STARTS`` per
+    ``STATE_TTL_S``: refused for this client only."""
+
+
 class States:
-    """Started sign-ins by ``state``, each usable once; bounded and expiring."""
+    """Started sign-ins by ``state``, each usable once; bounded and expiring. A client
+    (its limiter prefix) may start ``STARTS`` per ``STATE_TTL_S`` and holds at most
+    ``PER_CLIENT`` (a new one ends its own oldest). When ``LIMIT`` live ones exist, the
+    client holding the most loses its oldest: nobody is refused because of others, and
+    whoever floods the table pays for it first."""
 
     LIMIT = 2000
+    PER_CLIENT = 10
+    STARTS = 30
 
     def __init__(self) -> None:
-        self._items: OrderedDict[str, Pending] = OrderedDict()
+        self._items: OrderedDict[str, tuple[Pending, str]] = OrderedDict()  # -> client
+        self._starts: dict[str, list[float]] = {}  # client -> recent start times
         self._lock = threading.Lock()
 
     def open(self, provider: str, nxt: str, link_account: str = "",
-             now: float | None = None) -> tuple[str, Pending]:
+             now: float | None = None, *, client: str = "") -> tuple[str, Pending]:
         now = time.time() if now is None else now
         state = secrets.token_urlsafe(32)
         pending = Pending(provider, secrets.token_urlsafe(48), nxt, link_account,
                           now + STATE_TTL_S)
         with self._lock:
-            self._items[state] = pending
-            while len(self._items) > self.LIMIT:
-                self._items.popitem(last=False)
+            for key in [k for k, (p, _) in self._items.items() if p.expires < now]:
+                del self._items[key]
+            for c in [c for c, ts in self._starts.items() if ts[-1] <= now - STATE_TTL_S]:
+                del self._starts[c]
+            starts = [t for t in self._starts.get(client, []) if t > now - STATE_TTL_S]
+            if len(starts) >= self.STARTS:
+                self._starts[client] = starts
+                raise TooManyStarts("too many sign-ins started")
+            self._starts[client] = [*starts, now]
+            mine = [k for k, (_, c) in self._items.items() if c == client]
+            for key in mine[:max(0, len(mine) - self.PER_CLIENT + 1)]:
+                del self._items[key]
+            while self._items and len(self._items) >= self.LIMIT:
+                top = Counter(c for _, c in self._items.values()).most_common(1)[0][0]
+                del self._items[next(k for k, (_, c) in self._items.items() if c == top)]
+            self._items[state] = (pending, client)
         return state, pending
 
     def take(self, state: str | None, cookie: str | None, provider: str,
@@ -126,7 +151,8 @@ class States:
             return None
         now = time.time() if now is None else now
         with self._lock:
-            pending = self._items.pop(state, None)
+            item = self._items.pop(state, None)
+        pending = item[0] if item is not None else None
         if pending is None or pending.provider != provider or pending.expires < now:
             return None
         return pending

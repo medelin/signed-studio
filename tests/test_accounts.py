@@ -404,3 +404,127 @@ def test_older_accounts_tables_get_the_new_columns(tmp_path):
     db.init(conn)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(accounts)")}
     assert {"credential_gen", "code_failures", "code_locked_until"} <= cols
+
+
+# -- review fixes (31 Oct): the code lock is one transaction --------------------------
+
+
+@pytest.mark.parametrize("operation", ["login", "disable", "delete"])
+def test_parallel_wrong_codes_cannot_all_pass_the_lock(store, monkeypatch, operation):
+    """Gate, code check and failure count run in one transaction: with one free attempt
+    left, parallel wrong codes get one check; the others meet the lock it set."""
+    import threading
+    import time
+
+    a = store.create("ola", PASSWORD)
+    secret, _ = enrol(store, a)
+    with store.conn.lock:
+        store.conn.execute("UPDATE accounts SET code_failures = ? WHERE id = ?",
+                           (accounts.FREE_CODE_FAILURES, a.id))
+    checks = []
+    real = store._check_code
+
+    def slow_check(*args):
+        checks.append(1)
+        time.sleep(0.05)
+        return real(*args)
+
+    monkeypatch.setattr(store, "_check_code", slow_check)
+    bad = wrong(secret)
+
+    def attempt():
+        try:
+            if operation == "login":
+                store.verify_second_factor(a.id, bad)
+            elif operation == "disable":
+                store.totp_disable(a.id, PASSWORD, bad)
+            else:
+                store.delete(a.id, confirm="ola", password=PASSWORD, code=bad)
+        except accounts.AccountError:
+            pass
+
+    threads = [threading.Thread(target=attempt) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(checks) == 1
+    row = store.conn.execute("SELECT code_failures FROM accounts WHERE id = ?",
+                             (a.id,)).fetchone()
+    assert row[0] == accounts.FREE_CODE_FAILURES + 1
+    assert store.code_lock_remaining(a.id) > 0
+
+
+# -- review fixes (31 Oct): a credential change during the password check wins ----------
+
+
+@pytest.mark.parametrize("change", ["password", "disable", "gen"])
+def test_a_change_during_the_password_check_refuses_the_sign_in(store, monkeypatch, change):
+    a = store.create("ola", PASSWORD)
+    real = accounts.verify_password
+
+    def verify_then_change(stored, password):
+        ok = real(stored, password)
+        with store.conn.lock:  # what another request commits meanwhile
+            if change == "password":
+                store.conn.execute("UPDATE accounts SET password_hash = ?, credential_gen = "
+                                   "credential_gen + 1 WHERE id = ?",
+                                   (accounts.hash_password("Other-pass-2027y"), a.id))
+            elif change == "disable":
+                store.conn.execute("UPDATE accounts SET status = 'disabled' WHERE id = ?",
+                                   (a.id,))
+            else:
+                store.conn.execute("UPDATE accounts SET credential_gen = credential_gen + 1 "
+                                   "WHERE id = ?", (a.id,))
+        return ok
+
+    monkeypatch.setattr(accounts, "verify_password", verify_then_change)
+    assert store.authenticate_gen("ola", PASSWORD) is None
+
+
+def test_a_rehash_never_overwrites_a_newer_hash(store, monkeypatch):
+    a = store.create("ola", PASSWORD)
+    from argon2 import PasswordHasher
+
+    class Always(PasswordHasher):
+        def check_needs_rehash(self, hash: str) -> bool:  # noqa: A002 - argon2's name
+            return True
+
+    monkeypatch.setattr(accounts, "_HASHER", Always())
+    real = accounts.verify_password
+    newer = accounts.hash_password("Other-pass-2027y")
+
+    def verify_then_change(stored, password):
+        ok = real(stored, password)
+        with store.conn.lock:  # a password change commits during the check
+            store.conn.execute("UPDATE accounts SET password_hash = ? WHERE id = ?",
+                               (newer, a.id))
+        return ok
+
+    monkeypatch.setattr(accounts, "verify_password", verify_then_change)
+    assert store.authenticate_gen("ola", PASSWORD) is None
+    stored = store.conn.execute("SELECT password_hash FROM accounts WHERE id = ?",
+                                (a.id,)).fetchone()[0]
+    assert stored == newer
+
+
+def test_a_session_is_refused_when_the_generation_moved_after_the_check(store):
+    from studio.app import Sessions
+
+    a = store.create("ola", PASSWORD)
+    _, gen = store.authenticate_gen("ola", PASSWORD)
+    store.change_password(a.id, PASSWORD, "Fresh-pass-2026x", "Fresh-pass-2026x",
+                          keep_sid="")  # between the check and the session
+    sessions = accounts.AccountSessions(Sessions(b"k" * 32), store)
+    with pytest.raises(accounts.StaleCredentials):
+        sessions.issue(account_id=a.id, gen=gen)
+    assert store.sessions(a.id) == [] and len(sessions.base._active) == 0
+    _, gen = store.authenticate_gen("ola", "Fresh-pass-2026x")
+    assert sessions.check(sessions.issue(account_id=a.id, gen=gen)) is not None
+
+
+@pytest.mark.parametrize("email", ["_ola@example.com", "..x@example.com", "-@example.com",
+                                   "Ółá@example.com", "", "a" * 40 + "@example.com"])
+def test_a_provider_account_gets_a_valid_user_name(store, email):
+    a = store.create_external("google", "sub-" + secrets.token_hex(4), email=email)
+    assert accounts.USERNAME.fullmatch(a.username), a.username

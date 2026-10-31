@@ -166,11 +166,10 @@ def test_first_password_only_right_after_a_provider_sign_in(tmp_path):
     new = "Ola-" + "x9" * 10
     with TestClient(app, base_url="https://testserver") as c:
         account = app.state.sessions.account_of(_sign_in(c).cookies[COOKIE])
-        app.state.external_signins[account.id] = 0.0  # long ago
+        app.state.external_signins.update(dict.fromkeys(app.state.external_signins, 0.0))
         r = c.post("/account/password", data={"csrf": csrf(c), "current": "", "new": new,
                                               "confirm": new})
         assert not app.state.accounts.get(account.id).has_password
-        app.state.external_signins.pop(account.id)
         _sign_in(c)
         r = c.post("/account/password", data={"csrf": csrf(c), "current": "", "new": new,
                                               "confirm": new}, follow_redirects=False)
@@ -211,3 +210,142 @@ def test_studio_events_reach_full_accounts_only(tmp_path):
         app.state.notifier.event("lead_new")
         app.state.notifier.flush()
     assert [m.to for m in app.state.notifier.outbox] == ["owner@example.com"]
+
+
+# -- review fixes (31 Oct): started sign-ins are bounded per client --------------------
+
+
+def test_started_sign_ins_are_capped_per_client_and_a_flood_pays_first():
+    states = social_login.States()
+    states.LIMIT = 6
+    states.PER_CLIENT = 3
+    other, _ = states.open("google", "/", client="198.51.100.7")
+    mine = [states.open("google", "/", client="203.0.113.9")[0] for _ in range(5)]
+    assert [states.take(s, s, "google") is not None for s in mine] == [False, False, True,
+                                                                        True, True]
+    flood = [states.open("google", "/", client="203.0.113.9")[0] for _ in range(3)]
+    for i in range(4):  # the table fills: the biggest holder (the flood) loses its oldest
+        states.open("google", "/", client=f"192.0.2.{i}")
+    assert states.take(other, other, "google") is not None  # a single start survives
+    assert states.take(flood[0], flood[0], "google") is None
+    expired = social_login.States()
+    expired.LIMIT = 1
+    old, _ = expired.open("google", "/", now=0.0)
+    expired.open("google", "/")  # the expired one is dropped, not counted
+
+
+def test_a_client_starting_too_many_sign_ins_is_refused(tmp_path):
+    app, _ = _app(tmp_path, GOOGLE)
+    app.state.social_states.STARTS = 2
+    with TestClient(app, base_url="https://testserver") as c:
+        for _ in range(2):
+            r = c.get("/auth/google/start", follow_redirects=False)
+            assert "accounts.google.com" in r.headers["location"]
+        r = c.get("/auth/google/start", follow_redirects=False)
+    assert r.status_code == 303 and "social_error=" in r.headers["location"]
+
+
+# -- review fixes (31 Oct): a provider account without a password -----------------------
+
+
+def test_a_passwordless_account_turns_on_two_step_and_deletes_after_a_fresh_sign_in(tmp_path):
+    app, _ = _app(tmp_path, GOOGLE)
+    with TestClient(app, base_url="https://testserver") as c:
+        account = app.state.sessions.account_of(_sign_in(c).cookies[COOKIE])
+        # long ago: a password is needed
+        app.state.external_signins.update(dict.fromkeys(app.state.external_signins, 0.0))
+        r = c.post("/account/2fa/start", data={"csrf": csrf(c), "password": ""},
+                   follow_redirects=False)
+        assert r.status_code == 400
+        _sign_in(c)
+        r = c.post("/account/2fa/start", data={"csrf": csrf(c), "password": ""},
+                   follow_redirects=False)
+        assert r.status_code == 303, r.text
+        c.post("/account/2fa/cancel", data={"csrf": csrf(c)})
+        r = c.post("/account/delete", data={"csrf": csrf(c), "confirm": account.username,
+                                            "password": ""}, follow_redirects=False)
+        assert r.status_code == 200, r.text
+    assert app.state.accounts.get(account.id).status == "deleted"
+
+
+def test_a_password_account_still_needs_its_password_after_a_provider_sign_in(tmp_path):
+    from studio import accounts
+
+    app, _ = _app(tmp_path, GOOGLE)
+    store = app.state.accounts
+    ola = store.create("ola", PASSWORD)
+    with pytest.raises(accounts.WrongPassword):
+        store.totp_begin(ola.id, "", external_fresh=True)
+    with pytest.raises(accounts.WrongPassword):
+        store.delete(ola.id, confirm="ola", password="", external_fresh=True)
+
+
+def test_a_fresh_provider_sign_in_authorises_only_its_own_session(tmp_path):
+    """A stolen cookie of another session cannot delete the account or start the second
+    factor because the owner signed in with the provider elsewhere."""
+    app, _ = _app(tmp_path, GOOGLE)
+    with TestClient(app, base_url="https://testserver") as owner:
+        account = app.state.sessions.account_of(_sign_in(owner).cookies[COOKIE])
+        with TestClient(app, base_url="https://testserver") as thief:
+            thief.cookies.set(COOKIE, app.state.sessions.issue(account_id=account.id))
+            for path, data in (("/account/2fa/start", {"password": ""}),
+                               ("/account/delete", {"confirm": account.username,
+                                                    "password": ""})):
+                r = thief.post(path, data={"csrf": csrf(thief), **data},
+                               follow_redirects=False)
+                assert r.status_code == 400, path
+    assert app.state.accounts.get(account.id).status == "active"
+
+
+def test_linking_a_provider_is_no_re_authentication(tmp_path):
+    app, _ = _app(tmp_path, GOOGLE)
+    app.state.accounts.create("ola", PASSWORD)
+    with TestClient(app, base_url="https://testserver") as c:
+        assert c.post("/login", data={"username": "ola", "password": PASSWORD,
+                                      "csrf": csrf(c)}).status_code == 200
+        _sign_in(c, nxt="/account")
+        sid = app.state.sessions.check(c.cookies.get(COOKIE))
+    from studio import routes_social
+    assert not routes_social.external_fresh(app, sid)
+    assert app.state.external_signins == {}
+    with TestClient(app, base_url="https://testserver") as c:  # the linked identity again
+        assert c.post("/login", data={"username": "ola", "password": PASSWORD,
+                                      "csrf": csrf(c)}).status_code == 200
+        other = app.state.sessions.check(c.cookies.get(COOKIE))
+        _sign_in(c, nxt="/account")
+        mine = app.state.sessions.check(c.cookies.get(COOKIE))
+    assert routes_social.external_fresh(app, mine) and not routes_social.external_fresh(
+        app, sid)
+    assert other == mine
+
+
+def test_a_provider_sign_in_with_two_step_is_fresh_only_after_the_code(tmp_path):
+    from studio import accounts, routes_social
+
+    app, _ = _app(tmp_path, GOOGLE)
+    with TestClient(app, base_url="https://testserver") as c:
+        account = app.state.sessions.account_of(_sign_in(c).cookies[COOKIE])
+    store = app.state.accounts
+    secret = store.totp_begin(account.id, "", external_fresh=True)
+    store.totp_confirm(account.id, accounts.totp_code(secret, accounts.totp_step()))
+    app.state.external_signins.clear()
+    with TestClient(app, base_url="https://testserver") as c:
+        _sign_in(c)
+        assert app.state.external_signins == {}  # the second step is still to come
+        code = accounts.totp_code(secret, accounts.totp_step() + 1)
+        r = c.post("/login/2fa", data={"code": code, "csrf": csrf(c)},
+                   follow_redirects=False)
+        assert r.status_code == 200, r.text
+        assert routes_social.external_fresh(app, app.state.sessions.check(c.cookies.get(COOKIE)))
+
+
+def test_provider_sign_ins_count_in_the_client_budget(tmp_path):
+    app, _ = _app(tmp_path, GOOGLE)
+    app.state.limiter.max_signins = 2
+    with TestClient(app, base_url="https://testserver") as c:
+        assert COOKIE in _sign_in(c).cookies
+        c.cookies.clear()
+        assert COOKIE in _sign_in(c).cookies
+        c.cookies.clear()
+        r = _sign_in(c)
+    assert r.status_code == 303 and "social_error=" in r.headers["location"]

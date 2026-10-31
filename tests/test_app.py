@@ -497,3 +497,124 @@ def test_login_failures_metric_is_not_public(app, client):
     login(client, "nope")
     assert "login_failures_24h" not in client.get("/healthz").json()
     assert app.state.limiter.failures_24h() == 1
+
+
+# -- review fixes (31 Oct): sessions are capped per account, never evicted globally -----
+
+
+def test_sessions_are_capped_per_owner_and_evict_only_that_owners_oldest():
+    from studio.app import Sessions
+
+    sessions = Sessions(b"k" * 32, max_sessions=50, per_owner=3)
+    other = sessions.issue(owner="acct_other")
+    evicted: list[str] = []
+    mine = [sessions.issue(owner="acct_me", on_evict=evicted.append) for _ in range(5)]
+    assert sessions.check(other) is not None  # another account's session never goes
+    assert [sessions.check(v) is not None for v in mine] == [False, False, True, True, True]
+    assert evicted == [mine[0].split(".")[0], mine[1].split(".")[0]]
+    judge = [sessions.issue(owner="acct_judge", limit=10) for _ in range(5)]
+    assert all(sessions.check(v) for v in judge)  # a larger limit for the shared account
+
+
+def test_a_full_session_table_ends_the_biggest_holders_oldest_session():
+    from studio.app import Sessions, SessionsFull
+
+    sessions = Sessions(b"k" * 32, max_sessions=6, per_owner=4)
+    alone = [sessions.issue(owner=f"acct_{i}") for i in range(2)]
+    bulk = [sessions.issue(owner="acct_bulk") for _ in range(4)]
+    evicted: list[str] = []
+    newcomer = sessions.issue(owner="acct_new", on_evict=evicted.append)
+    assert sessions.check(newcomer) is not None
+    assert all(sessions.check(v) for v in alone)  # nobody's only session goes
+    assert sessions.check(bulk[0]) is None and all(sessions.check(v) for v in bulk[1:])
+    assert evicted == [bulk[0].split(".")[0]]
+    singles = Sessions(b"k" * 32, max_sessions=2)
+    firsts = [singles.issue(owner="acct_a"), singles.issue(owner="acct_b")]
+    with pytest.raises(SessionsFull):  # only when every owner holds a single session
+        singles.issue(owner="acct_c")
+    assert all(singles.check(v) for v in firsts)
+    expired = Sessions(b"k" * 32, max_sessions=1)
+    expired.issue(now=time.time() - 9 * 3600)
+    expired.issue()  # an expired entry is dropped, not counted
+
+
+def test_a_full_session_table_answers_503_and_keeps_the_old_session(tmp_path):
+    app = create_app(settings(tmp_path))
+    base = app.state.sessions.base
+    with TestClient(app, base_url="https://testserver") as c:
+        assert c.post("/login", json={"username": "judge", "password": PASSWORD}).json() \
+            == {"ok": True}
+        old = c.cookies.get("studio_session")
+        for i in range(3):  # other owners, one session each: none may be ended
+            base._active[f"sid{i}"] = (int(time.time()) + 999, f"acct_{i}")
+        base._max = len(base._active)
+        app.state.limiter.clear("testclient")
+        r = c.post("/login", json={"username": "judge", "password": PASSWORD})
+        assert r.status_code == 503 and r.json() == {"error": "too_many_sessions"}
+        assert app.state.sessions.check(old) is not None  # revoked only after a new one
+
+
+def test_demo_sessions_are_capped_per_client(tmp_path):
+    from studio import app as app_module
+
+    app = create_app(settings(tmp_path))
+    judge = app.state.accounts.by_username("judge")
+    sessions = app.state.sessions
+    first = sessions.issue(account_id=judge.id, client="198.51.100.7")
+    mine = [sessions.issue(account_id=judge.id, client="203.0.113.9")
+            for _ in range(app_module.ACCOUNT_SESSIONS + 3)]
+    assert sessions.check(first) is not None  # another judge keeps theirs
+    assert sessions.check(mine[0]) is None and sessions.check(mine[-1]) is not None
+
+
+def test_an_evicted_account_session_row_is_revoked(tmp_path):
+    from studio import app as app_module
+
+    app = create_app(settings(tmp_path))
+    store = app.state.accounts
+    ola = store.create("ola", "Lp4-" + secrets.token_hex(12))
+    values = [app.state.sessions.issue(account_id=ola.id)
+              for _ in range(app_module.ACCOUNT_SESSIONS + 2)]
+    assert len(store.sessions(ola.id)) == app_module.ACCOUNT_SESSIONS
+    assert app.state.sessions.check(values[0]) is None
+    assert app.state.sessions.check(values[-1]) is not None
+
+
+def test_successful_logins_count_toward_the_client_rate(client, app):
+    for _ in range(app.state.limiter.max_signins):
+        client.cookies.clear()
+        assert client.post("/login", json={"username": "judge", "password": PASSWORD}
+                           ).status_code == 200
+    client.cookies.clear()
+    r = client.post("/login", json={"username": "judge", "password": PASSWORD})
+    assert r.status_code == 429
+
+
+def test_a_login_whose_credentials_change_before_the_session_gets_none(app, monkeypatch):
+    store = app.state.accounts
+    real = store.record_session
+
+    def bump_first(sid, account_id, expires_ts, user_agent, gen=None):
+        with store.conn.lock:
+            store.conn.execute("UPDATE accounts SET credential_gen = credential_gen + 1 "
+                               "WHERE id = ?", (account_id,))
+        return real(sid, account_id, expires_ts, user_agent, gen)
+
+    monkeypatch.setattr(store, "record_session", bump_first)
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.post("/login", json={"username": "judge", "password": PASSWORD})
+        assert r.status_code == 401 and "studio_session" not in r.cookies
+
+
+def test_a_visitor_sees_no_meta_ids_not_even_the_extra_ads(app, client):
+    conn = app.state.conn
+    with conn.lock:
+        conn.execute("INSERT INTO campaigns (id, name, objective, daily_budget_minor, adapter, "
+                     "external_id, adset_external_id, ad_external_id, created_ts, more_ad_ids) "
+                     "VALUES ('item_1', 'n', 'OUTCOME_TRAFFIC', 100, 'graph', '120001', "
+                     "'120002', '120003', 0, ?)", (json.dumps(["120004", "120005"]),))
+    body = client.get("/api/campaigns/item_1").json()
+    for raw in ("120001", "120002", "120003", "120004", "120005"):
+        assert raw not in json.dumps(body)
+    assert all(v.startswith("sha256:") for v in body["more_ad_external_ids"])
+    assert body["external_id"].startswith("sha256:")

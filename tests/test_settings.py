@@ -300,3 +300,9 @@ def test_meta_token_transport_and_app_secret():
     assert s.meta_token_transport == "bearer" and "as-hidden-1" not in repr(s)
     with pytest.raises(ConfigError, match="META_TOKEN_TRANSPORT"):
         Settings.load({"META_TOKEN_TRANSPORT": "query"})
+
+
+@pytest.mark.parametrize("url", ["https://[::1", "https://shop.test:99999/"])
+def test_an_unparsable_landing_url_is_a_named_config_error(url):
+    with pytest.raises(ConfigError, match="META_LANDING_URL"):
+        Settings.load({"META_LANDING_URL": url})

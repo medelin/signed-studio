@@ -4,8 +4,10 @@ login's second step ``/login/2fa``.
 Every form is a plain server-rendered HTML form (no JavaScript needed). Every ``POST`` is
 same-origin (``Origin`` here, ``Sec-Fetch-Site`` in the Gate), carries the CSRF token as the
 ``csrf`` field (checked here: ``auth.FORM_CHECKED_PREFIXES``), needs a live session and is
-refused in read-only mode. Forms that check a password or a code also count against the
-login limiter (a stolen session cookie must not become a password oracle). Responses are
+refused in read-only mode. Password hashing runs in the threadpool, never on the event
+loop. Forms that check a password or a code also count against the
+login limiter (a stolen session cookie must not become a password oracle); only a real
+success clears the client's attempts, any other form error leaves them counted. Responses are
 ``Cache-Control: no-store``: recovery codes and the enrolment QR must not be cached.
 """
 
@@ -19,6 +21,7 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -42,6 +45,8 @@ GROUPS = (("profile", ("profile", "billing")),
           ("assistants", ("assistants",)), ("notifications", ("notifications",)),
           ("data", ("export", "delete")))
 NO_STORE = {"Cache-Control": "no-store"}
+# the errors of a wrong guess (they count as failed sign-ins in the login limiter)
+CREDENTIAL_ERRORS = (accounts.WrongPassword, accounts.WrongCode, accounts.SecondFactorLocked)
 MAX_FIELDS = 20
 
 
@@ -77,16 +82,26 @@ def _pref_cookies(response: Response, account: Account, secure: bool) -> None:
                                 secure=secure, path="/")
 
 
-def start_session(app: FastAPI, request: Request, response: Response, account: Account) -> None:
-    """A new session for ``account`` (never the one the browser brought: no fixation)."""
-    from studio.app import COOKIE, SESSION_TTL_S
+def start_session(app: FastAPI, request: Request, response: Response, account: Account, *,
+                  provider: bool = False, gen: int | None = None) -> None:
+    """A new session for ``account`` (never the one the browser brought: no fixation).
+    ``provider``: the sign-in was a provider's, complete (second step included); this
+    session alone may then act without a password for a while (``external_fresh``).
+    ``gen``: the credential generation the sign-in was checked against; a change since
+    raises ``accounts.StaleCredentials`` and no session is made."""
+    from studio.app import COOKIE, SESSION_TTL_S, client_ip, limiter_key
 
     settings: Settings = app.state.settings
+    value = app.state.sessions.issue(
+        account_id=account.id, user_agent=request.headers.get("user-agent", ""),
+        client=limiter_key(client_ip(request, settings.trusted_proxies)), gen=gen)
+    if provider:
+        from studio import routes_social  # it imports this module
+
+        routes_social.record_external(app, value.split(".")[0])
     old = request.cookies.get(COOKIE)
-    if old:
+    if old:  # only once the new one exists: a refused sign-in keeps the old session
         app.state.sessions.revoke(old)  # its row and its approver keys too
-    value = app.state.sessions.issue(account_id=account.id,
-                                     user_agent=request.headers.get("user-agent", ""))
     secure = _secure(request, settings)
     response.set_cookie(COOKIE, value, max_age=SESSION_TTL_S, httponly=True,
                         samesite="strict", secure=secure, path="/")
@@ -96,12 +111,11 @@ def start_session(app: FastAPI, request: Request, response: Response, account: A
     app.state.notifier.security("signin", account)
 
 
-def second_step(app: FastAPI, request: Request, account: Account, nxt: str, html: bool
-                ) -> Response:
+def second_step(app: FastAPI, request: Request, account: Account, nxt: str, html: bool,
+                gen: int) -> Response:
     """The password was right and the account has two-step sign-in: no session yet, only a
     short-lived challenge cookie for ``/login/2fa``."""
-    token = app.state.challenges.open(account.id, nxt,
-                                      gen=app.state.accounts.credential_gen(account.id))
+    token = app.state.challenges.open(account.id, nxt, gen=gen)  # as when checked
     response: Response = (RedirectResponse("/login/2fa", 303) if html
                           else JSONResponse({"two_factor": True, "next": "/login/2fa"}))
     response.set_cookie(CHALLENGE_COOKIE, token, max_age=int(accounts.Challenges.TTL_S),
@@ -197,7 +211,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "min_password": accounts.MIN_PASSWORD_LEN,
             "identities": store.identities(account.id), "social": settings.social.enabled,
             "first_password": not account.has_password and routes_social.external_fresh(
-                app, account.id),
+                app, sid),
             "notify_prefs": notify.preferences(conn, account.id),
             "whatsapp_prefs": whatsapp.preferences(conn, account.id),
             "whatsapp_enabled": settings.whatsapp.enabled,
@@ -239,6 +253,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         """Reserve a password/code attempt in the login limiter (the client's prefix)."""
         ip = client_ip(request, settings.trusted_proxies)
         return ip, bool(app.state.limiter.reserve(ip))
+
+    def refused_attempt(ip: str, exc: AccountError) -> None:
+        """Settle a form's failed attempt: a wrong password or code counts as a login
+        failure, any other error does not; neither clears the client's attempts (only a
+        real success does, so a form error cannot reset a password guesser's count)."""
+        app.state.limiter.settle(ip, not isinstance(exc, CREDENTIAL_ERRORS), clear=False)
 
     def refused(request: Request, sid: str, account: Account, form: str, ip: str) -> Response:
         r = page(request, sid, account, status=429,
@@ -305,12 +325,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         from studio import routes_social  # it imports this module
 
         try:
-            store.change_password(account.id, fields.get("current", ""),
-                                  fields.get("new", ""), fields.get("confirm", ""),
-                                  keep_sid=sid,
-                                  external_fresh=routes_social.external_fresh(app, account.id))
+            await run_in_threadpool(  # argon2: never on the event loop
+                store.change_password, account.id, fields.get("current", ""),
+                fields.get("new", ""), fields.get("confirm", ""), keep_sid=sid,
+                external_fresh=routes_social.external_fresh(app, sid))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, accounts.WrongPassword))
+            refused_attempt(ip, exc)
             field = "current" if isinstance(exc, accounts.WrongPassword) else "new"
             return page(request, sid, account, status=400,
                         errors={"password": ("err." + exc.code, field)})
@@ -329,9 +349,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not ok:
             return refused(request, sid, account, "two_factor", ip)
         try:
-            store.totp_begin(account.id, fields.get("password", ""))
+            from studio import routes_social  # it imports this module
+
+            await run_in_threadpool(
+                store.totp_begin, account.id, fields.get("password", ""),
+                external_fresh=routes_social.external_fresh(app, sid))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, accounts.WrongPassword))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"two_factor": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
@@ -349,7 +373,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             codes = store.totp_confirm(account.id, fields.get("code", ""))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, accounts.WrongCode))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"two_factor": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
@@ -377,10 +401,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not ok:
             return refused(request, sid, account, "two_factor", ip)
         try:
-            store.totp_disable(account.id, fields.get("password", ""), fields.get("code", ""))
+            await run_in_threadpool(store.totp_disable, account.id,
+                                    fields.get("password", ""), fields.get("code", ""))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, (
-                accounts.WrongPassword, accounts.WrongCode, accounts.SecondFactorLocked)))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"two_factor": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
@@ -459,12 +483,15 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         ip, ok = limited(request)
         if not ok:
             return refused(request, sid, account, "delete", ip)
+        from studio import routes_social  # it imports this module
+
         try:
-            store.delete(account.id, confirm=fields.get("confirm", ""),
-                         password=fields.get("password", ""), code=fields.get("code", ""))
+            await run_in_threadpool(store.delete, account.id, confirm=fields.get("confirm", ""),
+                                    password=fields.get("password", ""),
+                                    code=fields.get("code", ""),
+                                    external_fresh=routes_social.external_fresh(app, sid))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, (
-                accounts.WrongPassword, accounts.WrongCode, accounts.SecondFactorLocked)))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"delete": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
@@ -520,7 +547,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         challenge = app.state.challenges.get(token)
         ok = challenge is not None and store.verify_second_factor(
             challenge.account_id, fields.get("code", ""), gen=challenge.gen)
-        if not app.state.limiter.settle(ip, ok):
+        if not app.state.limiter.settle(ip, ok, signin=ok):  # a session follows
             return fail("too_many_attempts", 429, app.state.limiter.retry_after(ip))
         if not ok or challenge is None:
             app.state.challenges.fail(token)
@@ -532,5 +559,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         nxt = auth.safe_next(challenge.next)
         response: Response = (RedirectResponse(nxt, 303) if html
                               else JSONResponse({"ok": True}))
-        start_session(app, request, response, account)
+        try:
+            start_session(app, request, response, account, provider=challenge.provider,
+                          gen=challenge.gen)
+        except accounts.StaleCredentials:
+            return fail("invalid_code", 401)
         return response
