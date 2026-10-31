@@ -207,6 +207,29 @@ class GraphAdapter:
                                graph_code=code)
         raise AdapterError("Graph API retries exhausted", code="graph_error", transient=True)
 
+    def _paged(self, path: str, params: Mapping[str, Any], *, pages: int,
+               page: bool = False) -> list[Any]:
+        """Every ``data`` item of a list edge: while the body has ``paging.next``, the next
+        page is asked for with its ``after`` cursor (the ``next`` URL itself is never
+        requested: Graph puts the access token in it). More than ``pages`` pages is an
+        error (``too_many_pages``), never a silently cut list: a caller that keeps a
+        high-water mark must not move it past items it never read."""
+        out: list[Any] = []
+        query = dict(params)
+        for _ in range(pages):
+            body = self._request("GET", path, params=query, page=page)
+            out += list(body.get("data") or [])
+            paging = body.get("paging")
+            paging = paging if isinstance(paging, dict) else {}
+            cursors = paging.get("cursors")
+            after = cursors.get("after") if isinstance(cursors, dict) else None
+            if not paging.get("next"):
+                return out
+            if not isinstance(after, str) or not after:
+                raise AdapterError("Graph API paging without a cursor", code="bad_response")
+            query = {**query, "after": after}
+        raise AdapterError(f"more than {pages} pages", code="too_many_pages")
+
     def _post(self, path: str, fields: Mapping[str, Any], *, page: bool = False
               ) -> dict[str, Any]:
         return self._request("POST", path, data=fields, page=page)
@@ -437,6 +460,8 @@ class GraphAdapter:
         return self._id(self._post(f"{self.page_id}/leadgen_forms", form, page=True))
 
     LEAD_FIELDS = "id,created_time,field_data,ad_id,form_id"
+    LEAD_PAGES = 50  # at most 50 x 100 leads per form and poll
+    COMMENT_PAGES = 20  # at most 20 x 50 comments per object and poll
 
     @staticmethod
     def _lead(raw: Any, form_id: str) -> Any:
@@ -459,14 +484,16 @@ class GraphAdapter:
                           str(raw.get("ad_id") or ""))
 
     def list_leads(self, form_id: str, since: float = 0.0) -> list[Any]:
-        """``GET /{form_id}/leads`` (lead retrieval guide), newer than ``since``."""
+        """``GET /{form_id}/leads`` (lead retrieval guide), newer than ``since``, every page
+        (``_paged``): ``leadads.poll`` moves the form's ``polled_ts`` only after this
+        returns, so a failed or cut read leaves it where it was."""
         params: dict[str, Any] = {"fields": self.LEAD_FIELDS, "limit": "100"}
         if since:
             params["filtering"] = json.dumps([{"field": "time_created",
                                                "operator": "GREATER_THAN",
                                                "value": int(since)}])
-        body = self._request("GET", f"{_oid(form_id)}/leads", params=params, page=True)
-        return [x for x in (self._lead(r, form_id) for r in body.get("data") or []) if x]
+        rows = self._paged(f"{_oid(form_id)}/leads", params, pages=self.LEAD_PAGES, page=True)
+        return [x for x in (self._lead(r, form_id) for r in rows) if x]
 
     def get_lead(self, lead_id: str) -> Any:
         body = self._request("GET", _oid(lead_id), params={"fields": self.LEAD_FIELDS},
@@ -568,9 +595,10 @@ class GraphAdapter:
                                   "limit": "50"}
         if since:
             params["since"] = str(int(since))
-        body = self._request("GET", f"{_oid(object_id)}/comments", params=params, page=True)
+        rows = self._paged(f"{_oid(object_id)}/comments", params, pages=self.COMMENT_PAGES,
+                           page=True)
         out = []
-        for c in body.get("data") or []:
+        for c in rows:
             if not isinstance(c, dict) or not isinstance(c.get("id"), str):
                 continue
             try:

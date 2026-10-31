@@ -9,6 +9,7 @@ import pytest
 
 from studio import db, leadads
 from studio.meta import objectives
+from studio.meta.adapter import AdapterError
 from tests.approve import approve
 from tests.cassettes import load
 from tests.contract.test_graph import PAGE_TOKEN, Replay, adapter
@@ -57,3 +58,61 @@ def test_leads_are_read_with_the_page_token_and_parsed(env):
     assert flt == [{"field": "time_created", "operator": "GREATER_THAN", "value": 1761600000}]
     lead = adapter(Replay(CASSETTE["lead"])).get_lead("140000000000000602")
     assert lead.form_id == "130000000000000505" and lead.fields["email"] == "two@example.com"
+
+
+class Pages:
+    """Graph list pages: each body as given; a ``None`` body is a fatal Graph error."""
+
+    def __init__(self, bodies):
+        self.bodies = list(bodies)
+        self.sent = []
+
+    def __call__(self, request):
+        import httpx
+
+        self.sent.append(request)
+        body = self.bodies.pop(0)
+        if body is None:
+            return httpx.Response(400, json={"error": {"code": 100, "message": "x"}})
+        return httpx.Response(200, json=body)
+
+
+def _lead(n):
+    return {"id": f"14000000000000{n:04d}", "created_time": "2026-10-30T10:00:00+0000",
+            "form_id": "130000000000000505",
+            "field_data": [{"name": "email", "values": [f"p{n}@example.com"]}]}
+
+
+def _page(items, after=""):
+    paging = {"cursors": {"after": after},
+              "next": "https://graph.facebook.com/v25.0/x?access_token=SECRET&after=" + after
+              } if after else {"cursors": {"after": "end"}}
+    return {"data": items, "paging": paging}
+
+
+def test_leads_and_comments_follow_every_page_without_the_next_url(env):
+    """Review fix E8: a form with more leads than one page (and a post with more comments)
+    is read to the end, by cursor; the ``next`` URL (it carries a token) is never used."""
+    replay = Pages([_page([_lead(1), _lead(2)], "c1"), _page([_lead(3)])])
+    leads = adapter(replay).list_leads("130000000000000505")
+    assert [x.fields["email"] for x in leads] == [f"p{n}@example.com" for n in (1, 2, 3)]
+    assert replay.sent[1].url.params["after"] == "c1"
+    assert all("SECRET" not in str(r.url) for r in replay.sent)
+    comment = {"id": "1_2", "message": "hi", "created_time": "2026-10-30T10:00:00+0000"}
+    replay = Pages([_page([comment], "k1"), _page([{**comment, "id": "1_3"}])])
+    got = adapter(replay).list_comments("600000000000001_1")
+    assert [c.external_id for c in got] == ["1_2", "1_3"]
+
+
+def test_a_failed_page_leaves_the_forms_poll_mark(env):
+    conn, ledger = env
+    leadads.record_form(conn, "130000000000000505", "cmp_x", "run_x", "graph")
+    replay = Pages([_page([_lead(1)], "c1"), None])
+    with pytest.raises(AdapterError):
+        leadads.poll(conn, ledger, adapter(replay), now=2_000_000_000)
+    assert leadads.forms(conn, "graph") == [("130000000000000505", 0.0)]
+    with conn.lock:
+        assert conn.execute("SELECT count(*) FROM leads").fetchone()[0] == 0
+    g = adapter(Pages([_page([_lead(1)], "c1"), _page([_lead(2)])]))
+    assert leadads.poll(conn, ledger, g, now=2_000_000_000)["new"] == 2
+    assert leadads.forms(conn, "graph") == [("130000000000000505", 2_000_000_000.0)]
