@@ -655,7 +655,12 @@
       btn.disabled = false;
     }
     if (r.status === 422 && r.data.fields) { showErrors(r.data.fields); status("confirm-status", T("brief_errors", { n: Object.keys(r.data.fields).length }), true); return; }
-    if (r.status === 409 && r.data.run_id) { Studio.follow(r.data.run_id); return; }
+    if (r.status === 409 && r.data.run_id) {  // the studio runs one at a time: say so, show it
+      status("confirm-status", T("brief_run_busy"), true);
+      say(T("brief_run_busy"));
+      Studio.follow(r.data.run_id);
+      return;
+    }
     if (!r.ok) { status("confirm-status", T("cannot_start", { error: E(r.data, r.status) }), true); return; }
     clearErrors();
     for (const li of $("brief-steps").querySelectorAll("li")) { li.dataset.state = "done"; li.removeAttribute("aria-current"); }

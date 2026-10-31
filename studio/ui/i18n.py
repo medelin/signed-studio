@@ -1071,6 +1071,8 @@ EN_BRIEF: dict[str, str] = {
                           "at work now: plan, copy, images and two reviews, about 3–5 "
                           "minutes, shown below. Then you sign the campaign here; "
                           "nothing is spent before.",
+    "js.brief_run_busy": "Another run is in progress (the studio runs one at a time); it is "
+                         "shown below. Confirm again when it has finished.",
     "js.brief_errors": "{n} fields need attention; the list is at the top of the form.",
     "js.brief_reading": "Reading the brief aloud…",
     "js.brief_err_required": "This field is required.",
@@ -1242,6 +1244,8 @@ PL_BRIEF: dict[str, str] = {
                           "pracują: plan, teksty, grafiki i dwie recenzje, ok. 3–5 minut, "
                           "postęp poniżej. Potem podpisujesz kampanię tutaj; wcześniej nic "
                           "nie jest wydawane.",
+    "js.brief_run_busy": "Trwa inny przebieg (studio prowadzi jeden naraz); widać go poniżej. "
+                         "Potwierdź ponownie, gdy się skończy.",
     "js.brief_errors": "Pola wymagające uwagi: {n}; lista jest na górze formularza.",
     "js.brief_reading": "Czytam brief na głos…",
     "js.brief_err_required": "To pole jest wymagane.",
