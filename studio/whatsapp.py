@@ -706,7 +706,11 @@ def messages(event: Any, phone_id: str) -> list[Inbound]:
 
 
 class SenderLimiter:
-    """At most ``RATE_MAX`` messages per sender per ``RATE_WINDOW_S`` (process memory)."""
+    """At most ``RATE_MAX`` messages per sender per ``RATE_WINDOW_S`` (process memory),
+    for at most ``MAX_SENDERS`` senders: past that, senders whose window has closed are
+    forgotten, then the longest idle ones."""
+
+    MAX_SENDERS = 10_000
 
     def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.clock = clock
@@ -722,10 +726,18 @@ class SenderLimiter:
             if len(q) >= RATE_MAX:
                 return False
             q.append(now)
-            if len(self._seen) > 10_000:  # forget idle senders
-                for k in [k for k, v in self._seen.items() if not v]:
-                    del self._seen[k]
+            if len(self._seen) > self.MAX_SENDERS:
+                self._forget(now)
             return True
+
+    def _forget(self, now: float) -> None:
+        """Drop senders idle for a whole window, then the longest idle ones (bounded)."""
+        for k in [k for k, v in self._seen.items() if not v or now - v[-1] > RATE_WINDOW_S]:
+            del self._seen[k]
+        extra = len(self._seen) - self.MAX_SENDERS
+        if extra > 0:
+            for k in sorted(self._seen, key=lambda k: self._seen[k][-1])[:extra]:
+                del self._seen[k]
 
 
 @dataclass(frozen=True)
@@ -795,10 +807,10 @@ class Inbox:
         for m in messages(event, self.client.cfg.phone_id):
             if not self._first_time(m.message_id):
                 continue  # a retry of a message already handled
-            if m.kind == "text" and CODE_RE.search(m.text):
-                self._verify(m)
-                continue
             who = account_by_sender(self.conn, m.sender)
+            if m.kind == "text" and CODE_RE.search(m.text) and \
+                    self._verify(m, linked=who is not None):
+                continue
             if who is None:
                 self._receipt(m, "ignored_unknown_sender")
                 continue
@@ -819,20 +831,25 @@ class Inbox:
             queued += 1
         return queued
 
-    def _verify(self, m: Inbound) -> None:
-        """A verification code: link the sender's number to the code's account."""
+    def _verify(self, m: Inbound, *, linked: bool = False) -> bool:
+        """A verification code: link the sender's number to the code's account. False
+        when a ``linked`` owner's text matched no live code: it is then an ordinary
+        message (a brief may well quote a ``MUSE-123456``-like code)."""
         if not self.limiter.allow(number_hash(m.sender, self.key)):
             self._receipt(m, "rate_limited")
-            return
+            return True
         got = verify_code(self.conn, m.sender, m.text, now=self.clock())
+        if got is None and linked:
+            return False
         if got is None:
             self._receipt(m, "verification_failed")  # no reply: the number proved nothing
-            return
+            return True
         self._receipt(m, "verified", got.account_id)
         for other in got.unlinked:
             self._receipt(m, "unlinked", other)
         who = Linked(got.account_id, "+" + re.sub(r"[^0-9]", "", m.sender), got.lang)
         self._submit(partial(self._answer, who, m, "whatsapp.reply.verified", {}))
+        return True
 
     def _work(self, who: Linked, m: Inbound) -> None:
         audio: bytes | None = None

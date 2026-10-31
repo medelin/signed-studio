@@ -237,3 +237,47 @@ def test_the_mcp_account_sees_no_brief_another_accounts_token_drafted(tmp_path):
     assert "run_f1" not in str(studio.call(CLIENT, "list_campaigns", {})["runs"])
     got = studio.call(CLIENT, "read_receipts", {"run_id": "run_f1"})
     assert got["matched"] == 0
+
+
+# -- WhatsApp webhook (routes_whatsapp, whatsapp.Inbox) ------------------------------------
+
+
+def test_a_chunked_whatsapp_body_over_the_cap_is_refused(tmp_path):
+    from studio import whatsapp
+    from tests.test_whatsapp import make
+
+    app = make(tmp_path)
+
+    def chunks():
+        for _ in range(3):
+            yield b"x" * whatsapp.MAX_WEBHOOK_BODY  # no Content-Length: streamed
+
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.post("/webhooks/whatsapp", content=chunks(),
+                   headers={"content-type": "application/json"})
+        assert r.status_code == 413
+
+
+def test_the_sender_limiter_forgets_idle_senders():
+    from studio import whatsapp
+
+    now = [1000.0]
+    lim = whatsapp.SenderLimiter(clock=lambda: now[0])
+    for i in range(whatsapp.SenderLimiter.MAX_SENDERS + 50):
+        assert lim.allow(f"s{i}")
+    assert len(lim._seen) <= whatsapp.SenderLimiter.MAX_SENDERS
+    now[0] += whatsapp.RATE_WINDOW_S + 1
+    lim.allow("fresh")
+    assert len(lim._seen) == 1  # every idle sender's window has closed
+
+
+def test_a_linked_owners_text_with_a_code_like_string_is_a_brief(tmp_path):
+    from tests.test_whatsapp import deliver, event, make, text, wa_receipts
+
+    app = make(tmp_path)
+    with TestClient(app, base_url="https://testserver") as c:
+        r = deliver(c, event(text("Promo for the weekend, code MUSE-123456 at checkout")))
+        assert r.json()["queued"] == 1
+    app.state.whatsapp_inbox.flush()
+    statuses = [r.details.get("status") for r in wa_receipts(app)]
+    assert "verification_failed" not in statuses and "accepted" in statuses
