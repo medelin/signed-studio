@@ -963,6 +963,17 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             raise _NoPayload
         return pending, json.loads(row[0])
 
+    def run_owned(run_id: str, owner: str | None) -> bool:
+        """The caller may see and sign the approvals of ``run_id`` unless the run is
+        another account's: a brief another account's token drafted (``foreign_runs``) or
+        another account's WhatsApp brief (``owns``). Call under ``conn.lock``."""
+        svc = getattr(app.state, "assistants", None)
+        if svc is not None and run_id in svc.foreign_runs(owner or ""):
+            return False
+        row = conn.execute("SELECT channel, account_id FROM briefs WHERE run_id = ? OR "
+                           "draft_run_id = ? LIMIT 1", (run_id, run_id)).fetchone()
+        return row is None or owns(row[0], row[1], owner)
+
     @app.get("/api/approvals/{approval_id}/payload")
     def approval_payload(approval_id: str, request: Request) -> Response:
         if app.state.sessions.check(request.cookies.get("studio_session")) is None:
@@ -974,6 +985,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             pending, payload = _pending_and_payload(approval_id)
         except (ApprovalError, _NoPayload):
             return JSONResponse({"error": "not_found"}, 404)
+        owner = owner_of(request)
+        with conn.lock:
+            # another account's run, or another account's mandate, stays unseen
+            if not run_owned(pending.run_id, owner) or (
+                    pending.action == mandates.GRANT
+                    and not mandates.signer_may_sign(conn, approval_id, owner)):
+                return JSONResponse({"error": "not_found"}, 404)
         with conn.lock:
             status = conn.execute("SELECT status FROM approvals WHERE id = ?",
                                   (approval_id,)).fetchone()[0]
@@ -995,7 +1013,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if isinstance(guard, JSONResponse):
             return guard
         try:
-            _, payload = _pending_and_payload(approval_id)
+            pending, payload = _pending_and_payload(approval_id)
+            with conn.lock:
+                if not run_owned(pending.run_id, owner_of(request)):
+                    raise _NoPayload
             fresh, renewed = renew_approval(conn, approval_id, payload, ledger=ledger)
         except _NoPayload:
             return JSONResponse({"error": "not_found"}, 404)
@@ -1041,6 +1062,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             with db.transaction(conn):
                 pending = Pending.load(conn, approval_id)
+                if not run_owned(pending.run_id, account.id if account else None):
+                    raise _NoPayload  # another account's run: as if it did not exist
                 if limited and demo_refused(
                         pending.action, meta_adapter=settings.meta_adapter,
                         google_adapter=settings.google_adapter):
