@@ -14,11 +14,12 @@ strings, as in the reference's cURL examples.
   hex HMAC-SHA256(key=app secret, message=the access token used), per "Securing Graph
   API Requests" (form field on writes, query parameter on reads; it does not reveal the
   token).
-- Retry matrix: Graph error codes 4, 17, 32, 613 (throttling), 80000-80014 (business use
-  case rate limits) and any error with ``is_transient: true`` are retried with backoff (at
-  most ``RETRIES`` times); 10, 100, 190 and anything else are fatal. A
-  network error on a POST is not retried (the write may have happened; a duplicate PAUSED
-  object is better found by a human than created twice silently).
+- Retry matrix, reads (GET) only: Graph error codes 4, 17, 32, 613 (throttling),
+  80000-80014 (business use case rate limits), any error with ``is_transient: true`` and
+  a network error are retried with backoff (at most ``RETRIES`` times); 10, 100, 190 and
+  anything else are fatal. A write (POST: a create, a status or budget change, a reply) is
+  never sent twice: a transient error is raised with ``transient=True`` (the write may
+  have happened; a duplicate object is better found by a human than created silently).
 - ``pixel_check`` is read-only (Graph GETs and the SSRF-safe landing-page fetch of
   ``pixel.Fetcher``); with an injected Graph ``transport`` (tests, replay) and no
   ``fetcher`` the landing page is not fetched at all (``pixel.Offline``).
@@ -199,13 +200,38 @@ class GraphAdapter:
             code = int(err.get("code", 0)) if isinstance(err, dict) and isinstance(
                 err.get("code"), int) else 0
             transient = _transient(code, err)
-            if transient and attempt < RETRIES:
+            if transient and method == "GET" and attempt < RETRIES:
                 self._sleep(2 ** attempt)
                 continue
             raise AdapterError(f"Graph API error {code or resp.status_code}",
                                code="graph_error", transient=transient,
                                graph_code=code)
         raise AdapterError("Graph API retries exhausted", code="graph_error", transient=True)
+
+    def _paged(self, path: str, params: Mapping[str, Any], *, pages: int,
+               page: bool = False, strict: bool = True) -> list[Any]:
+        """Every ``data`` item of a list edge: while the body has ``paging.next``, the next
+        page is asked for with its ``after`` cursor (the ``next`` URL itself is never
+        requested: Graph puts the access token in it). More than ``pages`` pages is an
+        error (``too_many_pages``) when ``strict`` (a caller that keeps a high-water mark
+        must not move it past items it never read), else the first ``pages`` pages."""
+        out: list[Any] = []
+        query = dict(params)
+        for _ in range(pages):
+            body = self._request("GET", path, params=query, page=page)
+            out += list(body.get("data") or [])
+            paging = body.get("paging")
+            paging = paging if isinstance(paging, dict) else {}
+            cursors = paging.get("cursors")
+            after = cursors.get("after") if isinstance(cursors, dict) else None
+            if not paging.get("next"):
+                return out
+            if not isinstance(after, str) or not after:
+                raise AdapterError("Graph API paging without a cursor", code="bad_response")
+            query = {**query, "after": after}
+        if not strict:
+            return out
+        raise AdapterError(f"more than {pages} pages", code="too_many_pages")
 
     def _post(self, path: str, fields: Mapping[str, Any], *, page: bool = False
               ) -> dict[str, Any]:
@@ -437,6 +463,9 @@ class GraphAdapter:
         return self._id(self._post(f"{self.page_id}/leadgen_forms", form, page=True))
 
     LEAD_FIELDS = "id,created_time,field_data,ad_id,form_id"
+    LEAD_PAGES = 10  # at most 10 x 100 leads per read of one time window
+    LEAD_SPLITS = 40  # a window too big for one read is halved at most this many times
+    COMMENT_PAGES = 20  # the newest 20 x 50 comments per object and poll
 
     @staticmethod
     def _lead(raw: Any, form_id: str) -> Any:
@@ -459,14 +488,52 @@ class GraphAdapter:
                           str(raw.get("ad_id") or ""))
 
     def list_leads(self, form_id: str, since: float = 0.0) -> list[Any]:
-        """``GET /{form_id}/leads`` (lead retrieval guide), newer than ``since``."""
-        params: dict[str, Any] = {"fields": self.LEAD_FIELDS, "limit": "100"}
-        if since:
-            params["filtering"] = json.dumps([{"field": "time_created",
-                                               "operator": "GREATER_THAN",
-                                               "value": int(since)}])
-        body = self._request("GET", f"{_oid(form_id)}/leads", params=params, page=True)
-        return [x for x in (self._lead(r, form_id) for r in body.get("data") or []) if x]
+        """``GET /{form_id}/leads`` (lead retrieval guide), newer than ``since``: the
+        leads of ``lead_window``."""
+        return self.lead_window(form_id, since)[0]
+
+    def lead_window(self, form_id: str, since: float = 0.0) -> tuple[list[Any], float | None]:
+        """The leads created after ``since``, every page of them, and ``until``: ``None``
+        when that is every lead up to now, else the last second fully read. A backlog too
+        big for ``LEAD_PAGES`` pages is read as the oldest window that fits (the window up
+        to now halved until it does), so ``leadads.poll`` moves the form's ``polled_ts``
+        to ``until`` and reads on from there the next time: every poll makes progress and
+        no lead is skipped, whatever order Graph returns them in."""
+        low, high = int(since), None  # (low, high]: GREATER_THAN low, LESS_THAN high + 1
+        upper = int(self._clock()) + 1
+        rows: list[Any] = []
+        done: int | None = None  # every lead up to this second is in ``rows``
+        for _ in range(self.LEAD_SPLITS + 1):
+            rules = ([{"field": "time_created", "operator": "GREATER_THAN", "value": low}]
+                     if low else [])
+            if high is not None:
+                rules.append({"field": "time_created", "operator": "LESS_THAN",
+                              "value": high + 1})
+            params: dict[str, Any] = {"fields": self.LEAD_FIELDS, "limit": "100"}
+            if rules:
+                params["filtering"] = json.dumps(rules)
+            try:
+                rows += self._paged(f"{_oid(form_id)}/leads", params,
+                                    pages=self.LEAD_PAGES, page=True)
+            except AdapterError as exc:
+                if exc.code != "too_many_pages":
+                    raise
+                top = upper if high is None else high
+                if top - low <= 1:
+                    break  # more than the cap within one second: cannot split further
+                high = low + (top - low) // 2
+                continue
+            if high is None:
+                return self._leads_of(rows, form_id), None
+            done, low, high = high, high, None  # read on from there, up to now
+            if len(rows) >= self.LEAD_PAGES * 100:
+                break
+        if done is None:
+            raise AdapterError("too many leads in one second", code="too_many_pages")
+        return self._leads_of(rows, form_id), float(done)
+
+    def _leads_of(self, rows: list[Any], form_id: str) -> list[Any]:
+        return [x for x in (self._lead(r, form_id) for r in rows) if x]
 
     def get_lead(self, lead_id: str) -> Any:
         body = self._request("GET", _oid(lead_id), params={"fields": self.LEAD_FIELDS},
@@ -568,9 +635,10 @@ class GraphAdapter:
                                   "limit": "50"}
         if since:
             params["since"] = str(int(since))
-        body = self._request("GET", f"{_oid(object_id)}/comments", params=params, page=True)
+        rows = self._paged(f"{_oid(object_id)}/comments", params, pages=self.COMMENT_PAGES,
+                           page=True, strict=False)  # newest first; no mark kept
         out = []
-        for c in body.get("data") or []:
+        for c in rows:
             if not isinstance(c, dict) or not isinstance(c.get("id"), str):
                 continue
             try:

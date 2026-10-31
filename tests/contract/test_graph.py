@@ -124,6 +124,25 @@ def test_campaign_sequence_is_paused_in_every_creation_body(env):
     _assert_token_transport(replay)
 
 
+def test_a_signed_schedule_reaches_the_ad_set(env):
+    """Review fix E6: a lifetime budget's dates go to Meta as the ad set's start and end."""
+    conn, ledger = env
+    p = payload(schedule={"start": "2026-11-03", "end": "2026-11-16"})
+    v = approve(conn, ledger, "campaign.create", "cmp_g3", p, "run_m1")
+    replay = Replay(CASSETTE["interactions"])
+    g = adapter(replay)
+    g.upload_image(PNG, p, v)
+    g.create_adset_paused(g.create_campaign_paused(p, v), p, v)
+    (form,) = [f for r, f in replay.sent if r.url.path.endswith("/adsets")]
+    assert (form["start_time"], form["end_time"]) == ("2026-11-03T00:00:00",
+                                                      "2026-11-16T23:59:59")
+    assert form["daily_budget"] == "3000"
+    bad = payload(schedule={"start": "2026-11-03", "end": "soon"})
+    v = approve(conn, ledger, "campaign.create", "cmp_g4", bad, "run_m1")
+    with pytest.raises(NotApproved):
+        adapter(Replay([])).create_adset_paused("120200000000000101", bad, v)
+
+
 def test_activation_needs_the_activate_approval(env):
     conn, ledger = env
     create = payload()
@@ -161,25 +180,44 @@ def test_no_request_without_approval_or_with_active_payload(env):
     assert replay.sent == []
 
 
+def _graph_error(code, **extra):
+    return {"status": 400, "json": {"error": {"message": "x", "type": "OAuthException",
+                                              "code": code, **extra}}}
+
+
+AD = "120200000000000404"
+REVIEW = {"request": {"method": "GET", "path": f"/v25.0/{AD}"},
+          "response": {"status": 200, "json": {"id": AD, "effective_status": "ACTIVE"}}}
+
+
 @pytest.mark.parametrize("error", ["throttled", "rate_limit"])
-def test_transient_codes_are_retried_with_backoff(env, error):
-    conn, ledger = env
-    p = payload()
-    v = approve(conn, ledger, "campaign.create", "cmp_g4", p, "run_m1")
+def test_transient_codes_are_retried_with_backoff_on_reads(env, error):
     sleeps = []
-    replay = Replay(CASSETTE["interactions"][1:2], errors=[CASSETTE["errors"][error]] * 2)
-    assert adapter(replay, sleeps).create_campaign_paused(p, v) == "120200000000000101"
+    replay = Replay([REVIEW], errors=[CASSETTE["errors"][error]] * 2)
+    assert adapter(replay, sleeps).ad_review(AD)["effective_status"] == "ACTIVE"
     assert sleeps == [1, 2] and len(replay.sent) == 3
 
 
 def test_transient_codes_give_up_after_the_retries(env):
+    replay = Replay([], errors=[CASSETTE["errors"]["throttled"]] * 4)
+    with pytest.raises(AdapterError) as exc:
+        adapter(replay).ad_review(AD)
+    assert exc.value.transient and exc.value.graph_code == 17 and len(replay.sent) == 4
+
+
+@pytest.mark.parametrize("error", [CASSETTE["errors"]["throttled"], _graph_error(80004),
+                                   _graph_error(2, is_transient=True)])
+def test_a_write_is_never_retried(env, error):
+    """Review fix E9: a create or a status change that failed transiently may still have
+    happened; it is reported (``transient``), never sent a second time."""
     conn, ledger = env
     p = payload()
     v = approve(conn, ledger, "campaign.create", "cmp_g5", p, "run_m1")
-    replay = Replay([], errors=[CASSETTE["errors"]["throttled"]] * 4)
+    sleeps = []
+    replay = Replay(CASSETTE["interactions"][1:2], errors=[error])
     with pytest.raises(AdapterError) as exc:
-        adapter(replay).create_campaign_paused(p, v)
-    assert exc.value.transient and exc.value.graph_code == 17 and len(replay.sent) == 4
+        adapter(replay, sleeps).create_campaign_paused(p, v)
+    assert exc.value.transient and len(replay.sent) == 1 and sleeps == []
 
 
 @pytest.mark.parametrize("error", ["expired_token", "invalid_param"])
@@ -336,20 +374,12 @@ def test_token_never_in_errors_or_logs(env, mode, caplog):
     assert not [r for r in ledger.receipts() if TOKEN in json.dumps(r.details)]
 
 
-def _graph_error(code, **extra):
-    return {"status": 400, "json": {"error": {"message": "x", "type": "OAuthException",
-                                              "code": code, **extra}}}
-
-
 @pytest.mark.parametrize("error", [_graph_error(80000), _graph_error(80004),
                                    _graph_error(80014), _graph_error(2, is_transient=True)])
 def test_business_use_case_throttling_and_is_transient_are_retried(env, error):
-    conn, ledger = env
-    p = payload()
-    v = approve(conn, ledger, "campaign.create", "cmp_g12", p, "run_m1")
     sleeps = []
-    replay = Replay(CASSETTE["interactions"][1:2], errors=[error])
-    assert adapter(replay, sleeps).create_campaign_paused(p, v) == "120200000000000101"
+    replay = Replay([REVIEW], errors=[error])
+    assert adapter(replay, sleeps).ad_review(AD)["effective_status"] == "ACTIVE"
     assert sleeps == [1]
 
 

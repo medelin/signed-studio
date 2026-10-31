@@ -267,6 +267,10 @@ def campaign_payload(run: RunResult, variant_index: int,
                       "automatic_placements": brief.placements.automatic,
                       "facts": len(brief.confirmed_facts)},
         })
+        if brief.budget.kind == "lifetime":
+            # the daily budget is the lifetime amount spread over these days: the ad set
+            # must stop on the last one (``adset_fields``: ``start_time``/``end_time``)
+            payload["schedule"] = {"start": brief.budget.start, "end": brief.budget.end}
         au = brief.audience
         res = resolved or audience.Resolved()
         payload["targeting"] = audience.targeting(

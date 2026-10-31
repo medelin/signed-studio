@@ -17,7 +17,9 @@
   payload. Activation sets ``ACTIVE`` on the ad, the ad set, then the campaign, one
   ``tool_call`` receipt per level, all under that one approval; the ceiling
   (``STUDIO_MAX_DAILY_BUDGET``, in the ad account's currency) is checked again at
-  execution time.
+  execution time. On a live (ACTIVE) campaign the one thing ``request_activation`` offers
+  is a replacement ad still PAUSED (``studio.disapprovals``): an approval of kind
+  ``replacement_ad`` that sets ``ACTIVE`` on that ad only.
 
 Nothing here is reachable from a model: there is no tool for it (``skills.yaml`` marks
 both actions external), and every entry point starts with ``executor.authorize``.
@@ -41,6 +43,7 @@ from studio.meta.adapter import (
     ACTIVATION_KEYS,
     ACTIVATION_ORDER,
     PAUSED,
+    REPLACEMENT_AD,
     Adapter,
     PausedOnly,
     activation_levels,
@@ -212,7 +215,7 @@ def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
     if c is None:
         raise BuyError("no such campaign", "not_found")
     if c["status"] != PAUSED:
-        raise BuyError("campaign is not PAUSED", "not_paused")
+        return _request_replacement(conn, ledger, c)
     if not all(c[ACTIVATION_KEYS[level]] for level in ACTIVATION_ORDER):
         raise BuyError("campaign, ad set or ad id missing", "incomplete")
     currency = c["currency"]
@@ -236,9 +239,85 @@ def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
     return pending, payload
 
 
+def _save_pending(conn: sqlite3.Connection, pending: Pending, payload: dict[str, Any]) -> None:
+    with transaction(conn):
+        pending.save(conn)
+        conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
+                     "VALUES (?, ?, ?, ?)",
+                     (pending.id, pending.run_id, canonical(payload).decode(), time.time()))
+
+
+def _request_replacement(conn: sqlite3.Connection, ledger: Ledger,
+                         c: dict[str, Any]) -> tuple[Pending, dict[str, Any]]:
+    """A live campaign: a pending ``campaign.activate`` of kind ``replacement_ad`` for the
+    PAUSED ad a signed replacement created (``studio.disapprovals``). It names that one
+    ad; the ad set, the campaign and the budget are not touched."""
+    from studio import disapprovals
+
+    waiting = disapprovals.paused_replacement(conn, c["id"])
+    if c["status"] != "ACTIVE" or waiting is None or waiting[1] not in c[
+            "more_ad_external_ids"]:
+        raise BuyError("campaign is not PAUSED", "not_paused")
+    did, ad_id = waiting
+    payload = {"action": "campaign.activate", "kind": REPLACEMENT_AD, "campaign_id": c["id"],
+               "ad_external_id": ad_id, "adset_external_id": c["adset_external_id"],
+               "external_id": c["external_id"], "adapter": c["adapter"],
+               "currency": c["currency"], "disapproval_id": did, "run_id": c["run_id"]}
+    pending = Pending.create("campaign.activate", c["id"], payload, ledger=ledger,
+                             run_id=c["run_id"])
+    _save_pending(conn, pending, payload)
+    return pending, payload
+
+
+def _activate_replacement(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter,
+                          v: Verified, payload: dict[str, Any]) -> dict[str, Any]:
+    """Execute a signed ``replacement_ad`` activation: ``ACTIVE`` on that ad only, while
+    the campaign is live and the ad is still the PAUSED replacement the payload names."""
+    from studio import disapprovals
+
+    c = campaign(conn, v.item_id)
+    waiting = disapprovals.paused_replacement(conn, v.item_id)
+    problem = ""
+    if c is None or c["status"] != "ACTIVE":
+        problem = "not_active"
+    elif [c["external_id"], c["adset_external_id"], c["adapter"], c["currency"]] != [
+            payload.get("external_id"), payload.get("adset_external_id"), adapter.name,
+            payload.get("currency")] or waiting is None or list(waiting) != [
+            payload.get("disapproval_id"), payload.get("ad_external_id")] or \
+            payload.get("ad_external_id") not in c["more_ad_external_ids"]:
+        problem = "campaign_changed"
+    if problem:
+        executor.finish(conn, v, "failed", {"error": problem})
+        executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="activate",
+                             status="rejected", details={"reason": problem})
+        raise BuyError(f"activation refused: {problem}", problem)
+    ad_id = str(payload["ad_external_id"])
+    try:
+        adapter.activate("ad", payload, v)
+    except Exception as exc:
+        error = getattr(exc, "code", type(exc).__name__)
+        executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name,
+                             step="activate_ad", status="error", details={"error": error})
+        executor.finish(conn, v, "failed", {"error": error, "activated": []})
+        raise
+    executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="activate_ad",
+                         status="ok", details={"object": executor.safe_id(ad_id),
+                                               "object_status": "ACTIVE"})
+    executor.record_write(ledger, v, agent=AGENT, adapter=adapter.name, details={
+        "status": "ok", "object_status": "ACTIVE", "activated": ["ad"],
+        "kind": REPLACEMENT_AD})
+    disapprovals.mark_active(conn, v.item_id, [ad_id])
+    result = {"adapter": adapter.name, "status": "ACTIVE", "campaign_item_id": v.item_id,
+              "kind": REPLACEMENT_AD, "ad_id": ad_id}
+    executor.finish(conn, v, "done", result)
+    return result
+
+
 def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
              payload: dict[str, Any], ceiling: int) -> dict[str, Any]:
     v: Verified = executor.authorize(conn, verified, "campaign.activate", payload)
+    if payload.get("kind") == REPLACEMENT_AD:
+        return _activate_replacement(conn, ledger, adapter, v, payload)
     c = campaign(conn, v.item_id)
     problem = ""
     if c is None or c["status"] != PAUSED:
@@ -283,6 +362,10 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
         "daily_budget_minor": payload["daily_budget_minor"]})
     with transaction(conn):
         conn.execute("UPDATE campaigns SET status = 'ACTIVE' WHERE id = ?", (v.item_id,))
+    from studio import disapprovals
+
+    # a replacement ad made while the campaign was PAUSED went live with every other ad
+    disapprovals.mark_active(conn, v.item_id, list(c["more_ad_external_ids"]) if c else [])
     result = {"adapter": adapter.name, "status": "ACTIVE", "campaign_item_id": v.item_id}
     executor.finish(conn, v, "done", result)
     return result

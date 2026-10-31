@@ -18,8 +18,12 @@ has a credential.
   carry ``status: PAUSED`` from a literal. Activation is one mutate that enables the ad,
   the ad group and the campaign (the parent last) behind a ``google.activate`` approval.
 - Reads (the customer's currency, insights by day) are ``googleAds:search`` with GAQL.
-- Retries: HTTP 429/500/503 are retried with backoff (at most ``RETRIES`` times); a
-  network error on a POST is not (the write may have happened).
+- Retries: a read (``googleAds:search``) answered HTTP 429/500/503 is retried with
+  backoff (at most ``RETRIES`` times). A mutate is never sent twice: a transient error or
+  a network error is raised (``transient`` for 429/500/503), as the write may have
+  happened. A 401 refreshes the access token once (nothing was done).
+- ``googleAds:search`` pages have a fixed size (``pageSize`` is not sent: the API refuses
+  it); every page is read by ``nextPageToken``.
 """
 
 from __future__ import annotations
@@ -136,7 +140,9 @@ class RestAdapter:
                     return status, f"{k}.{v}"[:80]
         return status, ""
 
-    def _post(self, path: str, body: Mapping[str, Any]) -> dict[str, Any]:
+    def _post(self, path: str, body: Mapping[str, Any], *, retry: bool = False
+              ) -> dict[str, Any]:
+        """One POST; ``retry`` (reads only) retries 429/500/503 with backoff."""
         refreshed = False
         for attempt in range(RETRIES + 1):
             token = self._token()
@@ -156,7 +162,7 @@ class RestAdapter:
                 continue
             if resp.status_code < 400 and isinstance(data, dict):
                 return data
-            if resp.status_code in TRANSIENT and attempt < RETRIES:
+            if retry and resp.status_code in TRANSIENT and attempt < RETRIES:
                 self._sleep(2 ** attempt)
                 continue
             status, code = self._error(data)
@@ -168,9 +174,9 @@ class RestAdapter:
 
     def _search(self, query: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
-        body: dict[str, Any] = {"query": query, "pageSize": 1000}
+        body: dict[str, Any] = {"query": query}
         for _ in range(20):
-            data = self._post("googleAds:search", body)
+            data = self._post("googleAds:search", body, retry=True)
             out += [r for r in data.get("results") or [] if isinstance(r, dict)]
             token = data.get("nextPageToken")
             if not isinstance(token, str) or not token:

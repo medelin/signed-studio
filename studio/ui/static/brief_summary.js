@@ -294,7 +294,7 @@
     const shell = cardShell(path, code, lifetime ? T("brief_ask_amount_total") : T("brief_ask_amount"));
     const currency = valueOf("budget.currency") || d.currency || "PLN";
     const a = d.budget_advice;
-    if (a && !lifetime) {
+    if (a && a.estimate !== false && !lifetime) {
       const chips = el("div", null, "bv-chips");
       chips.setAttribute("role", "group");
       chips.setAttribute("aria-labelledby", shell.h.id);

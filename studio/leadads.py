@@ -48,10 +48,12 @@ CREATE TABLE IF NOT EXISTS lead_forms (
     polled_ts REAL NOT NULL DEFAULT 0
 );
 """
-# Meta's field_data names for the prefill questions → the lead scorer's rule inputs.
+# Meta's field_data names for the prefill questions → the lead scorer's rule inputs. A
+# lead's field name is the question's ``key``: ``form_spec`` sets it to the lower-cased
+# type (``phone`` for PHONE); Meta's default keys (``phone_number``) are accepted too.
 FIELD_MAP = {"full_name": "name", "first_name": "name", "email": "email",
-             "phone_number": "phone", "city": "city", "company_name": "company",
-             "country": "country"}
+             "phone": "phone", "phone_number": "phone", "city": "city",
+             "company_name": "company", "country": "country"}
 MAX_FIELD = 200
 
 
@@ -173,20 +175,36 @@ def ingest(conn: sqlite3.Connection, ledger: Ledger, client: Any, lead: RemoteLe
 def poll(conn: sqlite3.Connection, ledger: Ledger, adapter: Any, client: Any = None,
          now: float | None = None) -> dict[str, int]:
     """``GET /{form_id}/leads`` for every form this adapter created; new leads are stored
-    and scored. One ``leadgen.poll`` receipt per form (counts only)."""
+    and scored. One ``leadgen.poll`` receipt per form (counts only). A form's
+    ``polled_ts`` moves only past leads that were read: to now, or, when the adapter read
+    a backlog in part (``lead_window``), to the last second it read in full. A form whose
+    read fails keeps its mark and does not stop the others (``failed``)."""
+    from studio.meta.adapter import AdapterError
+
     clock = time.time() if now is None else now
     total = {"forms": 0, "fetched": 0, "new": 0}
+    window = getattr(adapter, "lead_window", None)
     for form_id, since in forms(conn, adapter.name):
-        fetched = adapter.list_leads(form_id, since)
+        try:
+            fetched, until = window(form_id, since) if window else (
+                adapter.list_leads(form_id, since), None)
+        except AdapterError as exc:
+            ledger.append(run_id_for(form_id), agent=AGENT, kind="tool_call",
+                          provider=f"meta-{adapter.name}",
+                          details={"tool": "leadgen.poll", "status": "error",
+                                   "side_effects": "read", "error": exc.code})
+            total["failed"] = total.get("failed", 0) + 1
+            continue
         new = sum(ingest(conn, ledger, client, lead, via="poll") is not None
                   for lead in fetched)
         with transaction(conn):
             conn.execute("UPDATE lead_forms SET polled_ts = ? WHERE form_id = ?",
-                         (clock, form_id))
+                         (clock if until is None else max(since, until), form_id))
         ledger.append(run_id_for(form_id), agent=AGENT, kind="tool_call",
                       provider=f"meta-{adapter.name}",
                       details={"tool": "leadgen.poll", "status": "ok", "side_effects": "read",
-                               "fetched": len(fetched), "new": new})
+                               "fetched": len(fetched), "new": new,
+                               **({"partial": True} if until is not None else {})})
         total["forms"] += 1
         total["fetched"] += len(fetched)
         total["new"] += new

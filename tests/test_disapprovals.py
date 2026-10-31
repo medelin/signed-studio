@@ -351,3 +351,148 @@ def test_a_visitor_sees_only_the_public_view(tmp_path):
         (full,) = c.get("/api/disapprovals").json()["disapprovals"]
         assert full["approval_id"] == "APPROVAL-ID-X" and "SECRET-HEADLINE" in c.get(
             "/inbox").text
+
+
+# -- the whole recovery flow (review fixes E1-E5) -----------------------------------------
+
+def _sign(conn, ledger, pending_id, payload):
+    """The owner signs one existing pending approval (as the browser does)."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+    from studio.approvals import Approval, Pending, verify_and_consume
+    from studio.receipts import public_key_raw
+    from tests.approve import SESSION
+
+    key = Ed25519PrivateKey.generate()
+    with db.transaction(conn):
+        approver = Keys.register(conn, SESSION, public_key_raw(key.public_key()))
+        pending = Pending.load(conn, pending_id)
+    approval = Approval(pending_id=pending.id, action=pending.action, item_id=pending.item_id,
+                        content_sha256=pending.content_sha256, chain_head=pending.chain_head,
+                        approver=approver, nonce=pending.nonce, ts=pending.ts,
+                        signature=key.sign(pending.message(approver)).hex(),
+                        brief_sha256=pending.brief_sha256, spec_sha256=pending.spec_sha256)
+    with db.transaction(conn):
+        return verify_and_consume(conn, approval, payload, ledger=ledger, session_id=SESSION)
+
+
+def _confirm_brief(conn, ledger):
+    """The run's confirmed Brief v1, stored as the confirm step stores it (``as_json``)."""
+    from studio import brief as brief_v1
+    from studio.receipts import BRIEF_KIND
+    from tests.test_brief import sample
+
+    brief = sample(open_questions=[])
+    digest = brief_v1.brief_sha256(brief)
+    with conn.lock, conn:
+        conn.execute("INSERT INTO briefs (id, run_id, text, created_ts, brief_v1, brief_sha256) "
+                     "VALUES ('br_dp1', ?, 'a mug', 0, ?, ?)",
+                     (RUN, json.dumps(brief_v1.as_json(brief)), digest))
+    ledger.append(RUN, agent="owner", kind=BRIEF_KIND, output_sha256=digest,
+                  details={"schema": brief_v1.SCHEMA, "brief_sha256": digest,
+                           **brief_v1.counts(brief, 0, 0)})
+    return brief
+
+
+def _expire(conn, approval_id):
+    from studio.approvals import TTL_S
+
+    with conn.lock, conn:
+        conn.execute("UPDATE approvals SET ts = ts - ? WHERE id = ?", (TTL_S + 60, approval_id))
+
+
+def test_the_whole_recovery_flow_on_a_live_campaign(env):
+    """Disapproved ad on an ACTIVE campaign with a confirmed brief → propose → the window
+    closes and the approval is renewed → sign → replace → a separate signed activation of
+    just the new ad. Everything verifies."""
+    from studio import approvals
+
+    conn, ledger, mock, tmp, ad, _ = env
+    pending, p = media_buyer.request_activation(conn, ledger, "cmp_dp1", 50)
+    media_buyer.activate(conn, ledger, mock, _sign(conn, ledger, pending.id, p), p, 50)
+    assert media_buyer.campaign(conn, "cmp_dp1")["status"] == "ACTIVE"
+    _confirm_brief(conn, ledger)
+    mock.disapprove(ad)
+    measurement.pull_all(conn, ledger, mock, 50)
+    (d,) = disapprovals.listing(conn, full=True)
+    out = disapprovals.propose(conn, ledger, FakeModel(ledger), None, d["id"], tmp)
+    assert out["status"] == "requested" and out["content"]["brief_sha256"]
+    _expire(conn, out["approval_id"])
+    fresh, renewed = approvals.renew(conn, out["approval_id"], out["content"], ledger=ledger)
+    assert renewed
+    v = _sign(conn, ledger, fresh.id, out["content"])
+    result = media_buyer.update(conn, ledger, mock, v, out["content"], 50, tmp)
+    new_ad = result["ad_id"]
+    assert mock.objects[new_ad]["status"] == "PAUSED"
+    assert disapprovals.listing(conn, full=True)[0]["status"] == "replaced"
+    others = {k: o.get("status") for k, o in mock.objects.items() if k != new_ad}
+    pending, p = media_buyer.request_activation(conn, ledger, "cmp_dp1", 50)
+    assert p["kind"] == "replacement_ad" and p["ad_external_id"] == new_ad
+    with pytest.raises(ExecutionRefused):  # nothing without the owner's signature
+        media_buyer.activate(conn, ledger, mock, None, p, 50)
+    out = media_buyer.activate(conn, ledger, mock, _sign(conn, ledger, pending.id, p), p, 50)
+    assert out["status"] == "ACTIVE" and mock.objects[new_ad]["status"] == "ACTIVE"
+    assert {k: o.get("status") for k, o in mock.objects.items() if k != new_ad} == others
+    assert mock.calls[-1] == ("activate_ad", new_ad)
+    with pytest.raises(media_buyer.BuyError) as exc:  # the replacement is live already
+        media_buyer.request_activation(conn, ledger, "cmp_dp1", 50)
+    assert exc.value.code == "not_paused"
+    export = tmp / "flow.jsonl"
+    export.write_text(ledger.export_jsonl())
+    assert verify(export, ledger.public_key, approver_keys=Keys.registry(conn)).ok
+
+
+def test_a_stored_brief_with_its_schema_key_loads(env):
+    conn, ledger, *_ = env
+    brief = _confirm_brief(conn, ledger)
+    assert disapprovals._brief(conn, RUN)[0] == brief
+
+
+def test_an_activation_for_a_paused_replacement_names_only_that_ad(env):
+    """A replacement-ad activation cannot be turned into a whole-campaign one: the signed
+    payload names one ad, and the executor activates that ad only."""
+    from studio.meta.adapter import activation_levels
+
+    assert activation_levels({"kind": "replacement_ad", "ad_external_id": "1",
+                              "adset_external_id": "2", "external_id": "3"}) == ["ad"]
+
+
+def test_a_failed_or_expired_replacement_can_be_proposed_again(env):
+    conn, ledger, mock, tmp, ad, _ = env
+    d, out = _proposed(env)
+    with pytest.raises(disapprovals.DisapprovalError):  # still open for a signature
+        disapprovals.propose(conn, ledger, FakeModel(ledger), None, d["id"], tmp)
+    _expire(conn, out["approval_id"])
+    again = disapprovals.propose(conn, ledger, FakeModel(ledger), None, d["id"], tmp)
+    assert again["status"] == "requested" and again["approval_id"] != out["approval_id"]
+    with conn.lock, conn:
+        conn.execute("UPDATE disapprovals SET status = 'failed' WHERE id = ?", (d["id"],))
+    third = disapprovals.propose(conn, ledger, FakeModel(ledger), None, d["id"], tmp)
+    assert third["status"] == "requested"
+    # the superseded proposal cannot be executed any more
+    v = _sign(conn, ledger, again["approval_id"], again["content"])
+    with pytest.raises(media_buyer.BuyError) as exc:
+        media_buyer.update(conn, ledger, mock, v, again["content"], 50, tmp)
+    assert exc.value.code == "not_proposed"
+
+
+@pytest.mark.parametrize("variant", [
+    CopyVariant(primary_text="A calm break with a mug\u202e that keeps tea warm.",
+                headline="A calm tea break", description="Stoneware", cta="SHOP_NOW"),
+    CopyVariant(primary_text="A calm break with a mug that keeps tea warm.",
+                headline="A calm tea break", description="[FACT]", cta="SHOP_NOW"),
+])
+def test_a_variant_the_producer_would_refuse_is_not_proposed(env, monkeypatch, variant):
+    conn, ledger, mock, tmp, ad, _ = env
+    monkeypatch.setattr(copywriter, "write", lambda *a, **k: (
+        CopyPack(variants=[variant, NEW, NEW], risks=[]), None))
+    d, out = _proposed(env)
+    assert out["status"] == "blocked" and "approval_id" not in out
+
+
+def test_a_pack_reporting_unfilled_facts_is_not_proposed(env, monkeypatch):
+    conn, ledger, mock, tmp, ad, _ = env
+    monkeypatch.setattr(copywriter, "write", lambda *a, **k: (
+        CopyPack(variants=[NEW, NEW, NEW], risks=[], unfilled_facts=1), None))
+    d, out = _proposed(env)
+    assert out["status"] == "blocked"

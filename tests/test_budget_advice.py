@@ -23,9 +23,37 @@ def test_the_account_floor_wins_over_a_tiny_estimate():
     assert a["minimum"] == 5 and a["suggested"] == 5
 
 
-def test_an_unknown_goal_or_currency_still_gives_an_estimate():
-    a = advise("something", "XYZ", ceiling=10)
+def test_an_unknown_goal_still_gives_an_estimate():
+    a = advise("something", "GBP", ceiling=10)
     assert a["estimate"] is True and a["suggested"] >= 1
+
+
+def test_an_unknown_currency_gives_no_advice_and_says_why():
+    """Review fix E13: no GBP scale is assumed for a currency the table does not know."""
+    for code in ("XYZ", "BRL", "pln!"):
+        a = advise("traffic", code, ceiling=10, amount=5)
+        assert a["estimate"] is False and a["reason"] == "unknown_currency"
+        assert "suggested" not in a and "learning" not in a
+
+
+def test_minor_units_follow_the_currency_offset():
+    """Review fix E13: JPY and HUF have no minor units on Meta (offset 1)."""
+    from studio.budget_advice import with_estimate
+
+    jpy = advise("awareness", "JPY", ceiling=50_000, min_daily_minor=500, amount=4000)
+    assert jpy["minimum"] == 500  # ¥500, not ¥5
+    curve = [{"spend_minor": 1000, "reach": 1000, "results": 10},
+             {"spend_minor": 10_000, "reach": 5000, "results": 50}]
+    out = with_estimate(jpy, {"curve": curve})
+    assert out["meta"]["amount_reach"] == _between(4000, curve)
+    gbp = advise("awareness", "GBP", ceiling=20, min_daily_minor=500)
+    assert gbp["minimum"] == 5
+
+
+def _between(spend, curve):
+    a, b = curve
+    return int(a["reach"] + (b["reach"] - a["reach"]) * (spend - a["spend_minor"])
+               / (b["spend_minor"] - a["spend_minor"]))
 
 
 def test_metas_curve_gives_reach_and_results_for_both_amounts():
