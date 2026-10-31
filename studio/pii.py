@@ -21,6 +21,7 @@ digit runs then stay on open weights and never reach the hosted Model API.
 
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -28,7 +29,7 @@ from typing import Any
 
 STANDARD_MODEL = "muse-spark-1.3"
 CONTRIBUTOR_MODEL = "muse-spark-1.3-contributor"
-OPEN_MODEL = "meta-models/muse-spark-open"
+OPEN_MODEL = os.environ.get("BASETEN_MODEL", "").strip() or "meta-models/muse-spark-open"
 TIERS = ("standard", "contributor", "open")
 CUSTOMER_SOURCES = frozenset({"comment", "lead", "transcript"})
 

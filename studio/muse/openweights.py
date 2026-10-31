@@ -16,6 +16,7 @@ false and the reviewer reports "second opinion unavailable" instead of failing.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -26,9 +27,12 @@ from studio.receipts import Ledger
 from studio.settings import Settings
 
 BASE_URL = "https://inference.baseten.co/v1"
-MODEL = "meta-models/muse-spark-open"
+DEFAULT_MODEL = "meta-models/muse-spark-open"
+# the hackathon's Baseten key serves only its dated deployment: BASETEN_MODEL picks it
+HACKATHON_MODEL = "meta-models/muse-spark-open-1026"
+MODEL = os.environ.get("BASETEN_MODEL", "").strip() or DEFAULT_MODEL
 PROVIDER = "baseten"
-MODELS = frozenset({MODEL})
+MODELS = frozenset({DEFAULT_MODEL, HACKATHON_MODEL, MODEL})
 # USD per 1M tokens (input, cached input, output), Baseten pricing page, 2026-10-28
 PRICE = (1.25, 0.15, 4.25)
 
