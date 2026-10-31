@@ -57,7 +57,7 @@ def install(app: FastAPI, settings: Settings, conn: Any) -> None:
     box = SecretBox(db.load_or_create_ledger_key(settings.data_dir / "ledger.key"))
     store = Accounts(conn, box)
     store.seed_demo(settings.judge_password)
-    store.revoke_all_sessions()  # sessions live in process memory: earlier rows are dead
+    store.end_dead_sessions()  # sessions outlive a restart; only ended ones are revoked
     app.state.accounts = store
     app.state.sessions = AccountSessions(app.state.sessions, store)
     app.state.challenges = accounts.Challenges()

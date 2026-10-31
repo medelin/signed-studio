@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 from fastapi.testclient import TestClient
 
 from studio.app import LoginLimiter, client_ip, create_app
-from studio.receipts import public_key_raw, verify
+from studio.receipts import public_key_raw, sha256_hex, verify
 from studio.settings import ConfigError, Settings
 from tests.forms import csrf
 
@@ -322,7 +322,7 @@ def test_key_works_while_session_active(app, client):
     _approve_with(app, key, approver, _sid(client))
 
 
-def test_keys_from_previous_process_are_inactive(tmp_path):
+def test_keys_follow_their_session_across_a_restart(tmp_path):
     from studio import approvals as ap
 
     first = create_app(settings(tmp_path))
@@ -330,10 +330,13 @@ def test_keys_from_previous_process_are_inactive(tmp_path):
         login(c)
         key = Ed25519PrivateKey.generate()
         approver = _register(c, key).json()["approver"]
-        sid = _sid(c)
-    second = create_app(settings(tmp_path))  # sessions live in process memory
+        sid, cookie = _sid(c), c.cookies.get("studio_session")
+    second = create_app(settings(tmp_path))  # sessions are kept in the database
+    _approve_with(second, key, approver, sid)
+    second.state.sessions.base.revoke(cookie)  # the session ends without its keys (a crash)
+    third = create_app(settings(tmp_path))
     with pytest.raises(ap.KeyInactive):
-        _approve_with(second, key, approver, sid)
+        _approve_with(third, key, approver, sid)
 
 
 def test_ipv6_addresses_in_one_64_share_the_limit(app):
@@ -511,7 +514,7 @@ def test_sessions_are_capped_per_owner_and_evict_only_that_owners_oldest():
     mine = [sessions.issue(owner="acct_me", on_evict=evicted.append) for _ in range(5)]
     assert sessions.check(other) is not None  # another account's session never goes
     assert [sessions.check(v) is not None for v in mine] == [False, False, True, True, True]
-    assert evicted == [mine[0].split(".")[0], mine[1].split(".")[0]]
+    assert evicted == [sha256_hex(mine[0].split(".")[0]), sha256_hex(mine[1].split(".")[0])]
     judge = [sessions.issue(owner="acct_judge", limit=10) for _ in range(5)]
     assert all(sessions.check(v) for v in judge)  # a larger limit for the shared account
 
@@ -527,7 +530,7 @@ def test_a_full_session_table_ends_the_biggest_holders_oldest_session():
     assert sessions.check(newcomer) is not None
     assert all(sessions.check(v) for v in alone)  # nobody's only session goes
     assert sessions.check(bulk[0]) is None and all(sessions.check(v) for v in bulk[1:])
-    assert evicted == [bulk[0].split(".")[0]]
+    assert evicted == [sha256_hex(bulk[0].split(".")[0])]
     singles = Sessions(b"k" * 32, max_sessions=2)
     firsts = [singles.issue(owner="acct_a"), singles.issue(owner="acct_b")]
     with pytest.raises(SessionsFull):  # only when every owner holds a single session
@@ -538,6 +541,32 @@ def test_a_full_session_table_ends_the_biggest_holders_oldest_session():
     expired.issue()  # an expired entry is dropped, not counted
 
 
+def test_session_rows_hold_only_hashes_and_outlive_the_instance(tmp_path):
+    from studio import db
+    from studio.app import Sessions
+
+    conn = db.connect(tmp_path / "s.db")
+    first = Sessions(b"k" * 32, conn, per_owner=2)
+    value = first.issue(owner="acct_judge|203.0.113.0")
+    sid = value.split(".")[0]
+    dump = "\n".join(conn.iterdump())
+    assert sid not in dump and value.split(".")[2] not in dump and "203.0.113" not in dump
+    assert sha256_hex(sid) in dump and "acct_judge" not in dump  # the owner is keyed too
+    second = Sessions(b"k" * 32, conn, per_owner=2)  # a restart on the same database
+    assert second.check(value) == sid
+    evicted: list[str] = []
+    later = [second.issue(owner="acct_judge|203.0.113.0", on_evict=evicted.append)
+             for _ in range(2)]
+    assert evicted == [sha256_hex(sid)] and second.check(value) is None  # caps persist
+    second.revoke(later[0])
+    assert first.check(later[0]) is None and first.check(later[1]) is not None
+    second.issue(now=time.time() - 9 * 3600)  # expired at once
+    assert second.count() == 2
+    assert Sessions(b"k" * 32, conn).count() == 1  # expired rows are purged at start
+    other = Sessions(b"j" * 32, conn)  # another signing secret: every earlier row is dead
+    assert other.count() == 0 and second.check(later[1]) is None
+
+
 def test_a_full_session_table_answers_503_and_keeps_the_old_session(tmp_path):
     app = create_app(settings(tmp_path))
     base = app.state.sessions.base
@@ -545,9 +574,12 @@ def test_a_full_session_table_answers_503_and_keeps_the_old_session(tmp_path):
         assert c.post("/login", json={"username": "judge", "password": PASSWORD}).json() \
             == {"ok": True}
         old = c.cookies.get("studio_session")
-        for i in range(3):  # other owners, one session each: none may be ended
-            base._active[f"sid{i}"] = (int(time.time()) + 999, f"acct_{i}")
-        base._max = len(base._active)
+        with base.conn.lock:  # other owners, one session each: none may be ended
+            for i in range(3):
+                base.conn.execute("INSERT INTO web_sessions (sid_sha256, owner, expires_ts, "
+                                  "secret_id) VALUES (?, ?, ?, ?)",
+                                  (f"h{i}", f"acct_{i}", int(time.time()) + 999, base.secret_id))
+        base._max = base.count()
         app.state.limiter.clear("testclient")
         r = c.post("/login", json={"username": "judge", "password": PASSWORD})
         assert r.status_code == 503 and r.json() == {"error": "too_many_sessions"}

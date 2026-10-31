@@ -291,8 +291,11 @@ class Keys:
         return cur.rowcount
 
     @staticmethod
-    def revoke_all(conn: sqlite3.Connection, now: float | None = None) -> int:
-        cur = conn.execute("UPDATE keys SET revoked_ts = ? WHERE revoked_ts IS NULL",
+    def revoke_without_session(conn: sqlite3.Connection, now: float | None = None) -> int:
+        """Revoke every key whose session has no server side left (``web_sessions``): at
+        start, the keys of sessions that ended while the app was down."""
+        cur = conn.execute("UPDATE keys SET revoked_ts = ? WHERE revoked_ts IS NULL AND "
+                           "session_sha256 NOT IN (SELECT sid_sha256 FROM web_sessions)",
                            (int(time.time() if now is None else now),))
         return cur.rowcount
 

@@ -115,6 +115,17 @@ CREATE TABLE IF NOT EXISTS account_sessions (
 );
 CREATE INDEX IF NOT EXISTS account_sessions_account ON account_sessions (account_id);
 """
+# the server side of every session cookie (``studio.app.Sessions``), kept across restarts:
+# the hash of the session id (= ``account_sessions.sid_sha256``), never the id itself
+SESSIONS_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS web_sessions ("
+    " seq INTEGER PRIMARY KEY AUTOINCREMENT,"  # issue order: an owner's oldest goes first
+    " sid_sha256 TEXT NOT NULL UNIQUE,"
+    " owner TEXT NOT NULL,"  # HMAC of the owner (account, or demo account + client prefix)
+    " expires_ts INTEGER NOT NULL,"
+    " secret_id TEXT NOT NULL)",  # the signing secret's id: another secret's rows are dead
+    "CREATE INDEX IF NOT EXISTS web_sessions_owner ON web_sessions (owner, seq)",
+)
 
 DEMO_USER = "judge"
 USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{1,31}")
@@ -302,6 +313,8 @@ EXTERNAL_PASSWORD_WINDOW_S = 15 * 60  # a first password, this soon after a prov
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    for statement in SESSIONS_SCHEMA:
+        conn.execute(statement)
     have = {row[1] for row in conn.execute("PRAGMA table_info(accounts)")}
     for name, ddl in _LATER_COLUMNS.items():
         if name not in have:
@@ -633,7 +646,8 @@ class Accounts:
     def seed_demo(self, password: str) -> Account | None:
         """The judge demo account follows ``JUDGE_PASSWORD``: created or re-hashed when it is
         set (the hash is replaced only when the password changed), disabled when empty. Its
-        second factor stays off."""
+        second factor stays off. A new password or a disabling ends every judge session and
+        key (sessions outlive a restart, so this is where a rotation takes effect)."""
         current = self.by_username(DEMO_USER)
         now = self.clock()
         if not password:
@@ -641,6 +655,7 @@ class Accounts:
                 with transaction(self.conn) as c:
                     c.execute("UPDATE accounts SET status = 'disabled', updated_ts = ? "
                               "WHERE id = ?", (now, current.id))
+                    self._revoke_sessions(c, current.id, keep="", now=now)
             return None
         if current is None:
             return self.create(DEMO_USER, password, display_name="Judge", demo=True)
@@ -655,6 +670,8 @@ class Accounts:
                       "ELSE ? END, updated_ts = ? WHERE id = ?",
                       (fresh, fresh, fresh, now, current.id))
             c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (current.id,))
+            if fresh:
+                self._revoke_sessions(c, current.id, keep="", now=now)
         return self.get(current.id)
 
     def _operator_target(self, username: str) -> Account:
@@ -1029,15 +1046,23 @@ class Accounts:
             return self._revoke_sessions(c, account_id, keep=current_sid, now=self.clock())
 
     def revoke_sid(self, sid: str) -> None:
-        with transaction(self.conn) as c:
-            self._revoke_hashes(c, [sha256_hex(sid)], self.clock())
+        self.revoke_hash(sha256_hex(sid))
 
-    def revoke_all_sessions(self) -> None:
-        """At start: sessions live in process memory, so every earlier row is dead."""
+    def revoke_hash(self, sid_sha256: str) -> None:
+        """Revoke the session with this id hash (its row and its approver keys)."""
+        with transaction(self.conn) as c:
+            self._revoke_hashes(c, [sid_sha256], self.clock())
+
+    def end_dead_sessions(self) -> None:
+        """At start: revoke every row (and its approver keys) whose cookie no longer has a
+        server side in ``web_sessions`` (expired, revoked, or signed with another secret);
+        live sessions stay signed in across the restart."""
         now = self.clock()
         with transaction(self.conn) as c:
-            c.execute("UPDATE account_sessions SET revoked_ts = ? WHERE revoked_ts IS NULL",
-                      (now,))
+            rows = c.execute("SELECT sid_sha256 FROM account_sessions WHERE revoked_ts IS NULL "
+                             "AND sid_sha256 NOT IN (SELECT sid_sha256 FROM web_sessions)"
+                             ).fetchall()
+            self._revoke_hashes(c, [d for (d,) in rows], now)
             # rows no key refers to are useless after they end: keep the table small
             c.execute("DELETE FROM account_sessions WHERE expires_ts < ? AND sid_sha256 NOT IN "
                       "(SELECT session_sha256 FROM keys)", (now - 30 * 86400,))
@@ -1053,7 +1078,9 @@ class Accounts:
 
     @staticmethod
     def _revoke_hashes(c: sqlite3.Connection, digests: list[str], now: float) -> None:
+        """Revoke the rows and approver keys, and drop the cookies' server side."""
         for digest in digests:
+            c.execute("DELETE FROM web_sessions WHERE sid_sha256 = ?", (digest,))
             c.execute("UPDATE account_sessions SET revoked_ts = ? WHERE sid_sha256 = ? AND "
                       "revoked_ts IS NULL", (now, digest))
             c.execute("UPDATE keys SET revoked_ts = ? WHERE session_sha256 = ? AND "
@@ -1244,7 +1271,7 @@ class AccountSessions:
         owner = f"{account_id}|{client}" if account is not None and account.is_demo \
             else account_id
         value = self.base.issue(now, owner=owner, limit=ACCOUNT_SESSIONS,
-                                on_evict=self.accounts.revoke_sid)  # its row and keys too
+                                on_evict=self.accounts.revoke_hash)  # its row and keys too
         sid, exp, _ = value.split(".")
         try:
             self.accounts.record_session(sid, account_id, int(exp), user_agent, gen)
