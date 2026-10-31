@@ -9,6 +9,8 @@ from studio.pii import (
     contains_pii,
     find_phone,
     long_digit_run,
+    redact,
+    redact_digit_runs,
 )
 
 # Checksums: NIP 5260250274 (weights 6,5,7,2,3,4,5,6,7), PESEL 44051401359 / 02270803624.
@@ -203,3 +205,112 @@ def test_padding_between_digits_cannot_stretch_the_window(sep):
                                   "Od 150 zł dostawa gratis, 350 ml, rocznik 2026."])
 def test_a_sentence_with_a_price_and_a_year_stays_on_contributor(text):
     assert choose_tier(text, "contributor")[0] == "contributor"
+
+
+# Review fix (31 Oct): digit runs glued to letters, and Unicode e-mail addresses.
+GLUED = [("tel600123456", "phone"), ("PESEL44051401359", "pesel"),
+         ("nip5260250274 dzięki", "nip"), ("kontakt:tel+48600123456!", "phone"),
+         ("zadzwoń_600123456", "phone")]
+
+
+@pytest.mark.parametrize(("text", "kind"), GLUED)
+def test_a_number_glued_to_letters_is_found_and_masked(text, kind):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == kind, (text, m)
+    masked = redact(text)
+    assert f"[{kind}]" in masked and not any(ch.isdigit() for ch in masked), masked
+    assert not any(ch.isdigit() for ch in receipt_redact(text)), receipt_redact(text)
+    assert choose_tier(text, "contributor")[0] == "standard"
+
+
+def test_glued_hex_ids_and_short_numbers_stay():
+    from studio.receipts import redact as receipt_redact
+
+    for text in ("3f9a1234567890bbb", "run_3fa9c2b1d4e5f607", "an_ab600123456cdef0",
+                 "kubek350ml za 89zł", "model X200"):
+        assert contains_pii(text) is None, text
+        assert receipt_redact(text) == text, text
+    assert contains_pii("id 550e8400-e29b-41d4-a716-446655440000") is None
+
+
+@pytest.mark.parametrize("text", ["napisz: kontakt@sklep-żabka.pl", "zofia.łęcka@poczta.pl",
+                                  "info@例え.jp"])
+def test_unicode_email_addresses_are_found_and_masked(text):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == "email", text
+    assert "@" not in redact(text) and "@" not in receipt_redact(text)
+
+
+# Security review of the fix: hex letters, separators, long runs, decomposed e-mails.
+@pytest.mark.parametrize("text", ["abc600123456", "a44051401359", "a44051401458",
+                                  "tel600-123-456", "tel600 123 456", "tel(600)123456",
+                                  "tel600123456789012345", "fax+48600123456x"])
+def test_glued_runs_with_hex_letters_separators_or_any_length_are_masked(text):
+    from studio.receipts import redact as receipt_redact
+
+    for masked in (redact(text), receipt_redact(text)):
+        assert sum(ch.isdigit() for ch in masked) < 9, (text, masked)
+    assert choose_tier(text, "contributor")[0] == "standard"
+
+
+@pytest.mark.parametrize(("text", "kind"), [("abc600123456", "phone"),
+                                            ("a44051401359", "pesel"),
+                                            ("tel600-123-456", "phone"),
+                                            ("tel600 123 456 dzięki", "phone")])
+def test_glued_runs_are_classified(text, kind):
+    m = contains_pii(text)
+    assert m is not None and m.kind == kind, (text, m)
+
+
+@pytest.mark.parametrize("text", ["kontakt@sklep-z\u0307abka.pl", "zofia.l\u0301ecka@poczta.pl",
+                                  "kontakt@sklep\u200b.pl", "pisz: jan@firma", "a@b"])
+def test_decomposed_or_bare_addresses_count_as_email(text):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == "email", text
+    assert "@" not in redact(text) and "@" not in receipt_redact(text), text
+
+
+@pytest.mark.parametrize("text", ["jan.kowalski@example.com", "x@.example.com",
+                                  "jan@-b.pl", "x@a..pl", "A_B@Sub.Domain.co.uk",
+                                  "100%+tag@mail-1.example.org"])
+def test_new_email_pattern_covers_every_address_the_old_one_caught(text):
+    from studio.receipts import _EMAIL as OLD
+    from studio.receipts import redact as receipt_redact
+
+    assert OLD.search(text), text
+    out = receipt_redact(f"pisz: {text} teraz")
+    assert "@" not in out and not OLD.search(out), out
+
+
+@pytest.mark.parametrize("text", ["abcdef-600-123-456-abcdef", "abcdef600-123-456abcdef0000",
+                                  "deadbeef 600.123.456cafe0000000000"])
+def test_hex_letters_with_separators_are_not_an_id(text):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == "phone", text
+    for masked in (redact(text), receipt_redact(text)):
+        assert "600" not in masked, (text, masked)
+
+
+def test_real_uuids_and_digests_stay_intact():
+    import hashlib
+    import uuid
+
+    from studio.receipts import redact as receipt_redact
+
+    digest = "3f9a" + "600123456" + "b" * 51
+    ids = [digest, "550e8400-e29b-41d4-a716-446655440000",
+           "123e4567-e89b-12d3-a456-426614174000", "n_" + "1" * 32,
+           hashlib.sha256(b"x").hexdigest(), uuid.UUID(int=600123456).hex]
+    for value in ids:
+        assert contains_pii(value) is None, value
+        if "-" not in value:  # a UUID's last group stands alone: the long-run rule masks it
+            assert redact_digit_runs(value) == value, value
+    assert receipt_redact(digest) == digest

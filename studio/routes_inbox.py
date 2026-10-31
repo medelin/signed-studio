@@ -157,10 +157,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not COMMENT_ID.fullmatch(comment_id):
             return JSONResponse({"error": "not_found"}, 404)
         with conn.lock:
-            row = conn.execute("SELECT text FROM comments WHERE id = ?",
+            row = conn.execute("SELECT text, status FROM comments WHERE id = ?",
                                (comment_id,)).fetchone()
         if row is None:
             return JSONResponse({"error": "not_found"}, 404)
+        if row[1] in community.TERMINAL:  # replied or hidden: a human already acted
+            return JSONResponse({"error": "comment_closed", "status": row[1]}, 409)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         client = app.state.inbox_client()

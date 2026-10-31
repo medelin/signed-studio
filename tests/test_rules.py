@@ -97,3 +97,30 @@ def test_tips_are_not_disagreements():
     a = _review("OK", ("P5", "tip"))
     b = _review("OK")
     assert reviewer.reconcile(reviewer.normalize(a), reviewer.normalize(b)).disagreements == []
+
+
+@pytest.mark.parametrize(("verdict", "severity"), [("BLOCK", "info"), ("BLOCK", "tip"),
+                                                    ("WARN", "info"), ("BLOCK", "warn")])
+def test_a_finding_level_never_lowers_the_model_verdict(verdict, severity):
+    """Prompt injection in the copy: the model says BLOCK but files the P1 finding as a
+    note. Only the table's cap (P1 may block) bounds the verdict, not the model's tag."""
+    out = reviewer.normalize(_review(verdict, ("P1", severity)))
+    assert out.verdict == verdict
+    assert out.findings[0].severity == severity
+
+
+def test_the_table_cap_still_lowers_a_verdict_on_tip_only_rules():
+    assert reviewer.normalize(_review("BLOCK", ("P9", "block"))).verdict == "OK"
+    assert reviewer.normalize(_review("BLOCK", ("P5", "info"), ("P1", "info"))).verdict \
+        == "BLOCK"
+
+
+def test_code_findings_never_lower_a_model_block():
+    tip = Finding(rule="P5", severity="tip", evidence="code")
+    unexplained = reviewer.normalize(_review("BLOCK"))
+    assert reviewer.with_findings(unexplained, [tip]).verdict == "BLOCK"
+    injected = reviewer.normalize(_review("BLOCK", ("P1", "info")))
+    assert reviewer.with_findings(injected, [tip]).verdict == "BLOCK"
+    copy = CopyVariant(primary_text="Załóż spółkę z nami", headline="x", description="x",
+                       cta="SHOP_NOW")
+    assert reviewer.with_policy_net(_review("BLOCK"), copy).verdict == "BLOCK"

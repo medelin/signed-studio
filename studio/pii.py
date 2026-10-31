@@ -3,7 +3,9 @@
 ``contains_pii`` finds e-mail addresses, Polish and UK phone numbers (spaced, dashed,
 bracketed, slashed or contiguous, with or without +48/+44 or 0048/0044), and NIP/PESEL
 numbers whose checksum is valid. Every digit run is split into groups and every contiguous
-sub-sequence of groups is classified, so a number next to a price or a year is still found.
+sub-sequence of groups is classified, so a number next to a price or a year is still found;
+a run glued to letters (``tel600123456``) is classified whole. E-mail addresses may hold
+Unicode letters (``kontakt@sklep-żabka.pl``).
 
 ``choose_tier`` fails closed: it never selects the Contributor tier for text with PII, for
 text holding 9+ digits (any script) within any 20 letters-and-digits characters ("long
@@ -30,9 +32,20 @@ OPEN_MODEL = "meta-models/muse-spark-open"
 TIERS = ("standard", "contributor", "open")
 CUSTOMER_SOURCES = frozenset({"comment", "lead", "transcript"})
 
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
-# A run of digits with the separators people type; classified after normalisation.
-_RUN = re.compile(r"(?<![\w+])(?:\+|00)?\(?\d[\d \-()./]{5,}\d(?!\w)")
+# Combining marks and invisible format characters, so a decomposed (NFD) or padded
+# address is still one match.
+_MARKS = "\u0300-\u036f\u1ab0-\u1aff\u1dc0-\u1dff\u20d0-\u20ff\ufe20-\ufe2f" \
+    "\u00ad\u200b-\u200f\u2060\ufeff"
+# Fail closed: any ``@`` between word characters is an address (Unicode letters, no
+# top-level domain needed); a strict superset of the ASCII pattern in ``receipts``.
+_EMAIL = re.compile(rf"[\w.%+\-{_MARKS}]+@[\w.\-{_MARKS}]*[\w\-{_MARKS}]")
+# A run of digits with the separators people type; classified after normalisation. It may
+# touch letters (``tel600-123-456``) unless it is part of an id (``_is_id``).
+_RUN = re.compile(r"(?<![\d+])(?:\+|00)?\(?\d[\d \-()./]{5,}\d(?!\d)")
+_HEX = frozenset("0123456789abcdefABCDEF")
+ID_MIN = 16  # a digest or token_hex: 16+ contiguous hex characters
+_UUID = re.compile(r"(?<![0-9A-Za-z])[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                   r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![0-9A-Za-z])")
 # Fail-closed rule: LONG_RUN_DIGITS digits (any script) within any LONG_RUN_WINDOW
 # characters, whatever lies between them.
 LONG_RUN_DIGITS = 9
@@ -106,6 +119,8 @@ def _phones(text: str) -> list[tuple[str, int, int]]:
     digit run, that classifies as a phone, NIP or PESEL (ordered by start)."""
     out = []
     for run in _RUN.finditer(text):
+        if _is_id(text, run.start(), run.end()):
+            continue
         raw = run.group()
         groups = list(_GROUP.finditer(raw))
         for i in range(len(groups)):
@@ -121,6 +136,38 @@ def _phones(text: str) -> list[tuple[str, int, int]]:
                         start -= 1
                     out.append((kind, run.start() + start, run.start() + groups[j].end()))
     return sorted(out, key=lambda m: (m[1], m[2]))
+
+
+def _glued(text: str, start: int, end: int) -> bool:
+    """True if ``text[start:end]`` touches a letter or ``_``."""
+    return any(c.isalpha() or c == "_" for c in (text[start - 1:start], text[end:end + 1]))
+
+
+def _is_id(text: str, start: int, end: int) -> bool:
+    """A digit run glued inside an opaque id, with a real id shape: inside a canonical
+    UUID (8-4-4-4-12 hex), or a run of digits only whose letters-and-digits word is
+    ``ID_MIN``+ hex characters (a digest, ``token_hex``). ``abc600123456`` is too short,
+    ``abcdef-600-123-456-abcdef`` has separators: both are classified and masked."""
+    if not _glued(text, start, end):
+        return False
+    if any(u.start() <= start and end <= u.end() for u in _UUID.finditer(text)):
+        return True
+    if not text[start:end].isdigit():
+        return False
+    lo, hi = start, end
+    while lo > 0 and text[lo - 1].isascii() and text[lo - 1].isalnum():
+        lo -= 1
+    while hi < len(text) and text[hi].isascii() and text[hi].isalnum():
+        hi += 1
+    return hi - lo >= ID_MIN and all(c in _HEX for c in text[lo:hi])
+
+
+def _glued_runs(text: str) -> list[tuple[int, int]]:
+    """Digit runs that touch a letter, hold ``LONG_RUN_DIGITS``+ digits and are not part
+    of an id: masked whole, whatever they classify as (``tel600123456789012``)."""
+    return [run.span() for run in _RUN.finditer(text)
+            if _glued(text, *run.span()) and not _is_id(text, *run.span())
+            and sum(c.isdigit() for c in run.group()) >= LONG_RUN_DIGITS]
 
 
 def fold(text: str) -> str:
@@ -195,8 +242,17 @@ def long_digit_run(text: str) -> bool:
 
 
 def redact_digit_runs(text: str, mark: str = "[phone]") -> str:
-    """Every long digit span (``letters_break``) replaced by ``mark``."""
-    for start, end in reversed(long_digit_spans(text, letters_break=True)):
+    """Every long digit span (``letters_break``) and every phone/NIP/PESEL glued to a
+    letter (``tel600123456``, ``_glued_runs``) replaced by ``mark``."""
+    spans = sorted([*_glued_runs(fold(text)),
+                    *long_digit_spans(text, letters_break=True)])
+    merged: list[tuple[int, int]] = []
+    for start, end in spans:
+        if merged and start < merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+    for start, end in reversed(merged):
         text = text[:start] + mark + text[end:]
     return text
 
@@ -212,6 +268,11 @@ def contains_pii(text: str) -> Match | None:
         kind, start, end = phones[0]
         found.append(Match(kind, start, end))
     return min(found, key=lambda x: x.start) if found else None
+
+
+def redact_emails(text: str, mark: str = "[email]") -> str:
+    """Every e-mail address (Unicode letters included) replaced by ``mark``."""
+    return _EMAIL.sub(mark, text)
 
 
 def redact(text: str) -> str:

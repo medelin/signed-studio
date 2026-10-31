@@ -15,8 +15,10 @@ P10 block.
 Every finding's level (block / warn / tip) and source come from one table in code
 (``rules.RULES``), by rule and by the channels the copy will run on: the models tag a
 level and a source, ``normalize`` caps the level and sets the source, and the verdict is
-derived from the capped findings (a tip never raises it). P9 is a Google Ads policy: a
-block only when the brief also runs on Google Search, a tip on Meta.
+derived from the capped findings (a tip never raises it); the model's own verdict is a
+floor that only the table's caps can lower, never a finding's self-assigned level.
+P9 is a Google Ads policy: a block only when the brief also runs on Google Search, a tip
+on Meta.
 
 Rules S1 (product fidelity) and S2 (no people) are code too, from SAM 3.1 on each
 generated image (``sam_findings``): the product missing is a block; a silhouette that
@@ -196,10 +198,11 @@ def sam_findings(placement: str, check: SamCheck | None) -> list[Finding]:
 
 def with_findings(review: Review, extra: list[Finding],
                   channels: tuple[str, ...] = (rules.META,)) -> Review:
+    """The review plus code findings; the verdict never drops below the review's own
+    (normalized) verdict, so an unexplained BLOCK survives a code tip joining it."""
     if not extra:
         return review
-    return normalize(Review(verdict=review.verdict, findings=[*review.findings, *extra],
-                            summary=review.summary), channels)
+    return _merged(review, extra, channels)
 
 
 def with_policy_net(review: Review, copy: CopyVariant,
@@ -212,8 +215,20 @@ def with_policy_net(review: Review, copy: CopyVariant,
     top = rules.cap("P9", channels)
     if not net or any(f.rule == "P9" and f.severity == top for f in capped.findings):
         return capped
-    return normalize(Review(verdict=review.verdict, findings=[*review.findings, *net],
-                            summary=review.summary), channels)
+    return _merged(review, net, channels)
+
+
+def _merged(review: Review, extra: list[Finding], channels: tuple[str, ...]) -> Review:
+    """``review`` with code findings joined, normalized; the verdict is the worse of the
+    review's own normalized verdict and the merged one (code never lowers it)."""
+    base = normalize(review, channels)
+    out = normalize(Review(verdict=base.verdict, findings=[*base.findings, *extra],
+                           summary=review.summary), channels)
+    return out.model_copy(update={"verdict": _worst(base.verdict, out.verdict)})
+
+
+def _worst(a: str, b: str) -> str:
+    return a if _RANK[a] >= _RANK[b] else b
 
 
 @dataclass(frozen=True)
@@ -260,16 +275,22 @@ def canonical_rules(review: Review) -> Review:
 def normalize(review: Review, channels: tuple[str, ...] = (rules.META,)) -> Review:
     """Code has the final say: rule ids mapped (``canonical_rules``), each level capped by
     the table for the channels the copy runs on and its source set from the table
-    (``rules``); the verdict is the worst capped level (tips and notes never raise it).
-    A model verdict that names no finding at all is kept as the model gave it (fail
-    closed: an unexplained BLOCK still blocks)."""
+    (``rules``). The verdict is the worse of the capped levels and the model's own
+    verdict, the latter lowered only to the highest cap among the rules it cites (a
+    WARN citing only P5, a tip by the table, becomes OK). A finding's self-assigned
+    level never lowers the model's verdict (fail closed: a BLOCK citing P1 at ``info``
+    still blocks, and a verdict that names no finding is kept as the model gave it)."""
+    canon = canonical_rules(review).findings
     findings = [Finding(rule=f.rule, evidence=f.evidence,
                         severity=rules.level(f.rule, f.severity, channels),  # type: ignore[arg-type]
                         source=rules.source(f.rule, f.evidence, channels))
-                for f in canonical_rules(review).findings]
-    verdict = rules.verdict(f.severity for f in findings)
-    if not findings:
-        verdict = review.verdict  # fail closed: never milder than an unexplained verdict
+                for f in canon]
+    floor: str = review.verdict
+    if canon:
+        top = max((rules.cap(f.rule, channels) for f in canon),
+                  key=rules.LEVEL_RANK.__getitem__)
+        floor = min(floor, rules.VERDICT_OF[top], key=_RANK.__getitem__)
+    verdict = _worst(rules.verdict(f.severity for f in findings), floor)
     return Review(verdict=verdict, findings=findings,  # type: ignore[arg-type]
                   summary=review.summary[:1000])
 

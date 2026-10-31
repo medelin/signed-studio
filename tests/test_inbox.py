@@ -223,3 +223,44 @@ def test_one_pending_reply_per_comment(tmp_path, monkeypatch):
     later = _time.time() + TTL_S + 5
     monkeypatch.setattr(community.time, "time", lambda: later)
     community.request(conn, ledger, "c-1", "reply.post", "Fresh, after expiry.")
+
+
+@pytest.mark.parametrize("status", ["replied", "hidden"])
+def test_a_replied_or_hidden_comment_is_never_re_triaged(app, status):
+    from studio.agents import community
+
+    conn = app.state.conn
+    conn.execute("UPDATE comments SET status = ? WHERE id = 'c-1'", (status,))
+    with client(app) as c:
+        login(c)
+        r = c.post("/api/comments/c-1/triage")
+        assert r.status_code == 409 and r.json()["error"] == "comment_closed"
+    assert app.state.sent == []  # no model call
+    # save itself never reopens a closed comment (a triage that raced the reply)
+    t = community.Triaged(community.Triage.model_validate(TRIAGE))
+    community.save(conn, app.state.ledger, "c-1", t)
+    row = conn.execute("SELECT status FROM comments WHERE id = 'c-1'").fetchone()
+    assert row[0] == status
+
+
+@pytest.mark.parametrize(("draft", "flagged"), [
+    ("Kubek kosztuje 89 PLN.", False),
+    ("Kubek: PLN 89, dostawa gratis od 150 zł.", False),
+    ("A mug is 89,00 zł.", False),
+    ("A mug is $20.", True),
+    ("Kubek tylko PLN 49!", True),
+    ("Now €15 off.", True),
+    ("Kubek za 49 zł.", True),
+    ("A mug is $89.", True),
+    ("Kubek kosztuje 49.", True),
+    ("Kubek kosztuje 89, 350 ml.", False),
+])
+def test_prices_are_checked_as_amount_and_currency_in_either_order(draft, flagged):
+    from studio.agents import community
+    from studio.agents.schemas import Triage
+
+    t = Triage(intent="price", sentiment="neutral", risk="low", requires_human=False,
+               draft=draft, reason="r", confidence=0.9)
+    checked, flags = community.enforce(t, "Ile kosztuje kubek?")
+    assert ("unapproved_price" in flags) is flagged, (draft, flags)
+    assert checked.requires_human or not flagged
