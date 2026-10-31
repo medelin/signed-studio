@@ -357,3 +357,14 @@ def test_caddy_allows_the_microphone_and_the_leads_import_body(path):
     m = re.search(r"request_body @import \{\s*max_size (\d+)MB", text)
     assert m and int(m.group(1)) * 1_000_000 >= routes_export.IMPORT_BODY_LIMIT
     assert "@import path /leads/import" in text
+
+
+def test_the_brief_form_fields_carry_their_attributes_unescaped(tmp_path):
+    app = create_app(settings(tmp_path))
+    with TestClient(app, base_url="https://testserver") as c:
+        login(c)
+        html = c.get("/studio").text
+    assert 'id="bf-budget-amount"' in html
+    assert 'min="0" step="any" inputmode="decimal"' in html
+    assert 'min="1" max="10" inputmode="numeric"' in html
+    assert "&#34;" not in html and "&quot;0&quot;" not in html

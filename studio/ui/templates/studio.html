@@ -21,14 +21,15 @@
 </section>
 
 {%- macro err(id) -%}<p class="field-error" id="err-{{ id }}" hidden></p>{%- endmacro -%}
+{#- attrs: literal attribute text written in this template only (never data): rendered unescaped -#}
 {%- macro field(path, key, kind="text", hint=None, dictate=True, attrs="") -%}
 {%- set id = "bf-" ~ path | replace(".", "-") -%}
 <div class="bf-field" data-field="{{ path }}">
   <label for="{{ id }}">{{ t("brief.f." ~ key) }}</label>
   {% if hint %}<p class="hint" id="hint-{{ id }}">{{ t(hint) }}</p>{% endif %}
-  {% if kind == "lines" %}<textarea id="{{ id }}" name="{{ path }}" data-path="{{ path }}" data-kind="lines" rows="3" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}hint-lines err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
-  {% elif kind == "area" %}<textarea id="{{ id }}" name="{{ path }}" data-path="{{ path }}" rows="2" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}></textarea>
-  {% else %}<input id="{{ id }}" name="{{ path }}" data-path="{{ path }}" type="{{ kind }}" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs }}>{% endif %}
+  {% if kind == "lines" %}<textarea id="{{ id }}" name="{{ path }}" data-path="{{ path }}" data-kind="lines" rows="3" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}hint-lines err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs|safe }}></textarea>
+  {% elif kind == "area" %}<textarea id="{{ id }}" name="{{ path }}" data-path="{{ path }}" rows="2" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs|safe }}></textarea>
+  {% else %}<input id="{{ id }}" name="{{ path }}" data-path="{{ path }}" type="{{ kind }}" aria-describedby="{% if hint %}hint-{{ id }} {% endif %}err-{{ id }}"{% if dictate %} data-dictate{% endif %} {{ attrs|safe }}>{% endif %}
   {{ err(id) }}
 </div>
 {%- endmacro -%}
