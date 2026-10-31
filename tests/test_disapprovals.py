@@ -477,7 +477,7 @@ def test_a_failed_or_expired_replacement_can_be_proposed_again(env):
 
 
 @pytest.mark.parametrize("variant", [
-    CopyVariant(primary_text="A calm break with a mug‮ that keeps tea warm.",
+    CopyVariant(primary_text="A calm break with a mug\u202e that keeps tea warm.",
                 headline="A calm tea break", description="Stoneware", cta="SHOP_NOW"),
     CopyVariant(primary_text="A calm break with a mug that keeps tea warm.",
                 headline="A calm tea break", description="[FACT]", cta="SHOP_NOW"),
