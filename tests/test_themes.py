@@ -95,3 +95,59 @@ def test_the_form_works_without_javascript_and_keeps_the_page_query(client):
     assert 'name="theme"' in form and 'name="palette"' in form and 'type="submit"' in form
     for name in prefs.PALETTES:
         assert f'<option value="{name}"' in form
+
+
+NEW_PALETTES = ("ocean", "plum", "sand", "night")
+
+
+def test_more_palettes_are_offered_and_the_default_is_unchanged():
+    assert prefs.PALETTES[0] == "graphite" and prefs.CHOICES["palette"][1] == "graphite"
+    assert set(NEW_PALETTES) <= set(prefs.PALETTES)
+    assert len(set(prefs.PALETTES)) == len(prefs.PALETTES) == 8
+
+
+def test_every_palette_sets_every_token_of_the_others():
+    css = TOKENS.read_text()
+    blocks = {}
+    for name in prefs.PALETTES[1:]:
+        block = css[css.index(f':root[data-palette="{name}"] {{'):]
+        blocks[name] = set(re.findall(r"--([a-z0-9-]+):", block[:block.index("\n}")]))
+    assert all(tokens == blocks["warm"] for tokens in blocks.values()), blocks
+
+
+@pytest.mark.parametrize("lang", ["en", "pl"])
+def test_every_palette_has_a_name_in_both_languages(lang):
+    from studio.ui import i18n
+    for name in prefs.PALETTES:
+        label = i18n.CATALOGS[lang].get(f"palette.{name}")
+        assert label, (lang, name)
+
+
+@pytest.mark.parametrize("name", NEW_PALETTES)
+def test_new_palette_cookie_is_honoured_and_a_bad_one_falls_back(client, name):
+    client.cookies.set("palette", name)
+    assert f'data-palette="{name}"' in client.get("/help").text
+    client.cookies.set("palette", name.upper())
+    assert 'data-palette="graphite"' in client.get("/help").text
+
+
+@pytest.mark.parametrize("lang", ["en", "pl"])
+def test_header_lists_the_new_palettes_with_their_names(client, lang):
+    from studio.ui import i18n
+    html = client.get(f"/help?lang={lang}").text
+    select = re.search(r'<select id="pref-palette".*?</select>', html, re.S).group(0)
+    for name in prefs.PALETTES:
+        assert f'<option value="{name}"' in select
+        assert f">{i18n.CATALOGS[lang]['palette.' + name]}</option>" in select
+
+
+def test_open_display_panel_floats_above_the_page():
+    """The open panel sits in the header; the header is its own stacking layer above
+    <main>, whose panels are positioned and clipped (clip-path) and would otherwise
+    paint over it."""
+    static = TOKENS.parent
+    style = static.joinpath("style.css").read_text()
+    top = re.search(r"\n\.top \{(.*?)\}", style, re.S).group(1)
+    assert "position: relative" in top and re.search(r"z-index: *\d+", top)
+    js = static.joinpath("theme.js").read_text()
+    assert '"Escape"' in js and "removeAttribute(\"open\")" in js

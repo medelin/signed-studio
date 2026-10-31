@@ -305,7 +305,12 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9
 .display-prefs > summary::-webkit-details-marker { display: none; }
 .display-prefs[open] > .theme-form { position: absolute; right: 0; top: 1.8rem; z-index: 20;
   display: grid; gap: .35rem; padding: .7rem; background: var(--bg-raised); border: 1px solid var(--rule);
-  box-shadow: 0 6px 18px rgb(0 0 0 / .15); min-width: 12rem; }
+  box-shadow: 0 6px 18px rgb(0 0 0 / .15); min-width: 12rem; max-width: calc(100vw - 2rem); }
+/* phones: the panel spans the header inside its 1rem gutter instead of hanging off the edge */
+@media (max-width: 760px) {
+  .display-prefs { position: static; }
+  .display-prefs[open] > .theme-form { left: 1rem; right: 1rem; top: auto; margin-top: .4rem; min-width: 0; max-width: none; }
+}
 /* cast.rotation: one person per slot at a time, cross-faded by rotate.js */
 .il-rotate .turn { opacity: 0; transition: opacity .9s ease; }
 .il-rotate .turn.on { opacity: 1; }

@@ -14,7 +14,8 @@ a:hover { text-decoration-thickness: 2px; }
 .top {
   display: flex; gap: .25rem 1.1rem; align-items: baseline; flex-wrap: wrap;
   padding: .9rem 1.5rem; border-bottom: 1px solid var(--rule); background: var(--bg-raised);
-  position: relative;
+  /* its own layer above <main>: the open display panel must cover the (clipped) panels */
+  position: relative; z-index: 10;
 }
 .brand { font-weight: 700; color: var(--ink); text-decoration: none; letter-spacing: .01em; }
 .brand::before { content: "⌖ "; color: var(--signal); }
