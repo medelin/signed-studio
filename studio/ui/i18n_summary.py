@@ -69,6 +69,30 @@ EN_SUMMARY: dict[str, str] = {
     "js.brief_ask_generic": "Please fill in: {label}",
     "js.brief_ask_your_answer": "Your answer",
     "js.brief_ask_show": "Show this in the form",
+    # no website, or a website without a pixel: switch the objective (brief_summary.js)
+    "js.brief_needs_website": "{label} — needs your website",
+    "js.brief_sum_leads_nosite": "You have no website: the ad keeps people on Facebook and "
+                                 "Instagram.",
+    "js.brief_sum_goal_no_website": "This goal sends people to a website, and you have none. "
+                                    "Switch to:",
+    "js.brief_sum_goal_no_pixel": "This goal counts purchases or sign-ups through a Meta "
+                                  "Pixel, and none is set. Switch to:",
+    "js.brief_ask_no_website": "Without a website, how should people reach you?",
+    "js.brief_ask_no_website_why": "The goal in the draft sends people to a website. Pick "
+                                   "one that keeps them in the ad: messages, an instant "
+                                   "form or engagement with the post.",
+    "js.brief_ask_no_pixel": "How should the ad count its results?",
+    "js.brief_ask_no_pixel_why": "This goal counts purchases or sign-ups on your website "
+                                 "through a Meta Pixel (dataset ID), and none is set. "
+                                 "Switch with one click, or type the ID.",
+    "js.brief_ask_pixel_label": "Dataset ID (Meta Pixel)",
+    "js.brief_switch_traffic": "Traffic to your website (clicks, no pixel needed)",
+    "js.brief_switch_form": "Instant form (people leave their details in the ad)",
+    "js.brief_switch_messenger": "Messages on Messenger",
+    "js.brief_switch_whatsapp": "Messages on WhatsApp",
+    "js.brief_switch_instagram": "Messages on Instagram",
+    "js.brief_switch_engagement": "Engagement with the post",
+    "js.brief_switched": "The goal is now: {choice}.",
 }
 
 PL_SUMMARY: dict[str, str] = {
@@ -137,4 +161,27 @@ PL_SUMMARY: dict[str, str] = {
     "js.brief_ask_generic": "Uzupełnij: {label}",
     "js.brief_ask_your_answer": "Twoja odpowiedź",
     "js.brief_ask_show": "Pokaż to w formularzu",
+    "js.brief_needs_website": "{label} — wymaga Twojej strony",
+    "js.brief_sum_leads_nosite": "Nie masz strony: reklama zatrzymuje ludzi na Facebooku i "
+                                 "Instagramie.",
+    "js.brief_sum_goal_no_website": "Ten cel kieruje ludzi na stronę, a Ty jej nie masz. "
+                                    "Zmień na:",
+    "js.brief_sum_goal_no_pixel": "Ten cel liczy zakupy lub zapisy przez Pixel Meta, a "
+                                  "żaden nie jest ustawiony. Zmień na:",
+    "js.brief_ask_no_website": "Bez strony: jak ludzie mają się z Tobą skontaktować?",
+    "js.brief_ask_no_website_why": "Cel w szkicu kieruje ludzi na stronę. Wybierz taki, "
+                                   "który zatrzymuje ich w reklamie: wiadomości, formularz "
+                                   "błyskawiczny albo zaangażowanie w post.",
+    "js.brief_ask_no_pixel": "Jak reklama ma liczyć wyniki?",
+    "js.brief_ask_no_pixel_why": "Ten cel liczy zakupy lub zapisy na Twojej stronie przez "
+                                 "Pixel Meta (ID zbioru danych), a żaden nie jest ustawiony. "
+                                 "Zmień cel jednym kliknięciem albo wpisz ID.",
+    "js.brief_ask_pixel_label": "ID zbioru danych (Pixel Meta)",
+    "js.brief_switch_traffic": "Ruch na Twoją stronę (kliknięcia, bez pixela)",
+    "js.brief_switch_form": "Formularz błyskawiczny (ludzie zostawiają dane w reklamie)",
+    "js.brief_switch_messenger": "Wiadomości w Messengerze",
+    "js.brief_switch_whatsapp": "Wiadomości na WhatsAppie",
+    "js.brief_switch_instagram": "Wiadomości na Instagramie",
+    "js.brief_switch_engagement": "Zaangażowanie w post",
+    "js.brief_switched": "Cel to teraz: {choice}.",
 }

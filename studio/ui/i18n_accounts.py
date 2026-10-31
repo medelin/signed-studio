@@ -82,14 +82,17 @@ EN_ACCOUNTS: dict[str, str] = {
     "account.profile.sell_countries": "Countries you sell in",
     "account.profile.sell_countries_hint": "Two-letter country codes, separated by commas, "
                                            "for example: PL, DE. At most 10.",
-    "account.profile.pixel_id": "Meta pixel",
+    "account.profile.pixel_id": "Dataset ID (Meta Pixel)",
     "account.profile.no_pixel": "No pixel",
     "account.profile.pixel_unnamed": "Pixel without a name",
     "account.profile.pixel_saved": "Saved pixel",
-    "account.profile.pixel_hint_html": 'Used for campaigns that count sign-ups or sales on '
-                                       'your website. The studio does not create pixels: '
-                                       '<a href="' + PIXEL_HELP + '" rel="noopener '
-                                       'noreferrer" target="_blank">create one in Meta</a>, '
+    "account.profile.pixel_hint_html": 'Needed only when your ads send people to your '
+                                       'website and you want to measure purchases or '
+                                       'sign-ups there. On Shopify, WooCommerce, Wix, '
+                                       'Squarespace or WordPress, set it up with Meta\'s '
+                                       'official integration. The studio does not create '
+                                       'one: <a href="' + PIXEL_HELP + '" rel="noopener '
+                                       'noreferrer" target="_blank">set it up in Meta</a>, '
                                        'then enter its number here.',
     # password
     "account.password.lead": "Changing the password signs out every other session and "
@@ -327,15 +330,18 @@ PL_ACCOUNTS: dict[str, str] = {
     "account.profile.sell_countries": "Kraje, w których sprzedajesz",
     "account.profile.sell_countries_hint": "Dwuliterowe kody krajów rozdzielone przecinkami, "
                                            "na przykład: PL, DE. Najwyżej 10.",
-    "account.profile.pixel_id": "Pixel Meta",
+    "account.profile.pixel_id": "ID zbioru danych (Pixel Meta)",
     "account.profile.no_pixel": "Bez pixela",
     "account.profile.pixel_unnamed": "Pixel bez nazwy",
     "account.profile.pixel_saved": "Zapisany pixel",
-    "account.profile.pixel_hint_html": 'Potrzebny w kampaniach, które liczą zapisy lub '
-                                       'sprzedaż na Twojej stronie. Studio nie tworzy '
-                                       'pixeli: <a href="' + PIXEL_HELP + '" '
-                                       'rel="noopener noreferrer" target="_blank">utwórz go '
-                                       'w Mecie</a>, potem wpisz tu jego numer.',
+    "account.profile.pixel_hint_html": 'Potrzebny tylko wtedy, gdy reklamy kierują ludzi '
+                                       'na Twoją stronę i chcesz mierzyć tam zakupy lub '
+                                       'zapisy. Na Shopify, WooCommerce, Wix, Squarespace '
+                                       'lub WordPressie skonfiguruj go oficjalną integracją '
+                                       'Meta. Studio go nie tworzy: <a href="' + PIXEL_HELP
+                                       + '" rel="noopener noreferrer" target="_blank">'
+                                       'skonfiguruj go w Mecie</a>, potem wpisz tu jego '
+                                       'numer.',
     "account.password.lead": "Zmiana hasła wylogowuje wszystkie inne sesje i unieważnia ich "
                              "klucze do podpisu.",
     "account.password.current": "Obecne hasło",

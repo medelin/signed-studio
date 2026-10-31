@@ -38,3 +38,25 @@
   show(fromPage());
   if (waCode) waCode.scrollIntoView({ block: "center" });
 })();
+
+// Profile → Your business online: the Meta Pixel (a dataset id) matters only for ads that
+// send people to the owner's website, so its field shows once a website is typed (a full
+// https address) and hides again when the website is emptied. A pixel already chosen or
+// typed stays visible, so it can be cleared. Without JavaScript the server decides the same
+// way from the saved values.
+(() => {
+  const site = document.getElementById("pf-website");
+  const field = document.getElementById("pf-pixel-field");
+  const pixel = document.getElementById("pf-pixel");
+  if (!site || !field || !pixel) return;
+  function https(value) {
+    try {
+      const u = new URL(value.trim());
+      return u.protocol === "https:" && u.hostname.includes(".");
+    } catch (_) { return false; }
+  }
+  function sync() { field.hidden = !https(site.value) && !pixel.value.trim(); }
+  site.addEventListener("input", sync);
+  pixel.addEventListener("change", sync);
+  sync();
+})();

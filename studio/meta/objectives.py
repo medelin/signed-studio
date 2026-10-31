@@ -126,6 +126,17 @@ DYNAMIC_CREATIVE_GOALS = frozenset({"OFFSITE_CONVERSIONS", "APP_INSTALLS"})
 OBJECTIVES = frozenset(r.objective for r in TABLE.values())
 
 
+# Where an owner without a website, or with one but no pixel, can go instead (the studio
+# offers these as one-click switches; ``studio.brief.destination``). Traffic without a
+# pixel is link clicks: Meta counts a landing-page view only through a pixel on the page.
+NO_WEBSITE_SWITCHES: tuple[tuple[str, str], ...] = (
+    ("engagement", "messenger"), ("engagement", "whatsapp"),
+    ("engagement", "instagram_direct"), ("leads", "instant_form"),
+    ("engagement", "post_engagement"))
+NO_PIXEL_SWITCHES: tuple[tuple[str, str], ...] = (("traffic", "link_clicks"),
+                                                  ("leads", "instant_form"))
+
+
 class DeliveryError(ValueError):
     """A delivery block that is not a valid row of ``TABLE``."""
 
@@ -138,6 +149,20 @@ def row(goal: str, sub: str = "") -> Row:
     if key not in TABLE:
         raise DeliveryError(f"{sub!r} is not a sub-choice of {goal!r}")
     return TABLE[key]
+
+
+def needs_website(goal: str, sub: str = "") -> bool:
+    """The ad sends people to the advertiser's own website (destination ``WEBSITE``):
+    traffic, leads and sales on the website, catalog sales."""
+    return row(goal, sub).destination_type == "WEBSITE"
+
+
+def needs_pixel(goal: str, sub: str = "") -> bool:
+    """The objective counts its results through the advertiser's pixel (a dataset id): a
+    website conversion (the row needs ``pixel_id``) or landing-page views (Meta counts a
+    view only when the pixel on the page fires). Link clicks need none."""
+    r = row(goal, sub)
+    return "pixel_id" in r.needs or r.optimization_goal == "LANDING_PAGE_VIEWS"
 
 
 def _https(url: str) -> bool:

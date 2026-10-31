@@ -104,9 +104,54 @@
     const r = v1.querySelector('input[name="' + name + '"]:checked');
     return r ? r.parentElement.textContent.trim() : "";
   }
-  function selectedText(id) {
-    const s = $(id);
-    return s && s.value && s.selectedIndex >= 0 ? s.options[s.selectedIndex].text : "";
+
+  // the visible names of the goal and sub-choice, without the "needs your website" reason
+  function goalText() {
+    const s = $("bf-objective-goal");
+    const o = s && s.selectedIndex >= 0 ? s.options[s.selectedIndex] : null;
+    return o && s.value ? (o.dataset.label !== undefined ? o.dataset.label : o.text) : "";
+  }
+  function subText() {
+    const s = $("bf-objective-sub");
+    const o = s && s.value && s.selectedIndex >= 0 ? s.options[s.selectedIndex] : null;
+    return o ? (o.dataset.label !== undefined ? o.dataset.label : o.text) : "";
+  }
+
+  // -- switching the objective when the owner has no website, or no pixel -------------
+  // studio/brief.py destination() sends the switches; each one is a (goal, sub) row of
+  // studio/meta/objectives.py. Traffic without a pixel is link clicks, never
+  // landing-page views (Meta counts those only through a pixel).
+  const SWITCH_LABELS = {
+    "traffic:link_clicks": () => T("brief_switch_traffic"),
+    "leads:instant_form": () => T("brief_switch_form"),
+    "engagement:messenger": () => T("brief_switch_messenger"),
+    "engagement:whatsapp": () => T("brief_switch_whatsapp"),
+    "engagement:instagram_direct": () => T("brief_switch_instagram"),
+    "engagement:post_engagement": () => T("brief_switch_engagement"),
+  };
+  // the summary offers one clear choice: an instant form or messages (no website), or
+  // traffic or an instant form (no pixel)
+  const SUMMARY_SWITCHES = ["leads:instant_form", "engagement:messenger", "traffic:link_clicks"];
+  function switchesFor(issue) {
+    return F.switches(issue).map(([g, s]) => g + ":" + s).filter((k) => SWITCH_LABELS[k]);
+  }
+  function summaryChoice(issue) {
+    return switchesFor(issue).filter((k) => SUMMARY_SWITCHES.includes(k));
+  }
+  let lastData = {};
+  function switchTo(key, from) {
+    const [goal, sub] = key.split(":");
+    const label = SWITCH_LABELS[key]();
+    setField("objective.goal", goal);
+    setField("objective.sub", sub);
+    for (const p of ["objective.sub", "promotion.pixel_id", "promotion.product_catalog_id", "promotion.product_set_id", "advertiser.landing_url"]) clearFieldError(p);
+    F.say(T("brief_switched", { choice: label }));
+    renderSummary();
+    buildAssistant(lastData, from === "assistant");
+    if (from === "summary") {
+      const change = $("bv-summary-list").querySelector('[data-topic="objective.goal"] .bv-sum-change');
+      if (change) change.focus();
+    }
   }
 
   function sentences() {
@@ -135,10 +180,13 @@
       missing: !places,
       text: places ? (langs ? T("brief_sum_whom", { ...age, places, languages: langs }) : T("brief_sum_whom_nolang", { ...age, places }))
         : T("brief_sum_whom_noplace", age) });
-    const goal = selectedText("bf-objective-goal");
-    const sub = selectedText("bf-objective-sub");
-    out.push({ topic: T("brief_sum_t_goal"), path: "objective.goal", paths: ["objective.goal", "objective.sub", "objective.kpi"], missing: !goal,
-      text: sub ? T("brief_sum_goal_sub", { goal, sub }) : T("brief_sum_goal", { goal }) });
+    const goal = goalText();
+    const sub = subText();
+    const issue = F.siteIssue();
+    out.push({ topic: T("brief_sum_t_goal"), path: "objective.goal", paths: ["objective.goal", "objective.sub", "objective.kpi"], missing: !goal || Boolean(issue),
+      text: sub ? T("brief_sum_goal_sub", { goal, sub }) : T("brief_sum_goal", { goal }),
+      note: issue === "no_website" ? T("brief_sum_goal_no_website") : issue === "no_pixel" ? T("brief_sum_goal_no_pixel") : "",
+      choice: issue ? summaryChoice(issue) : [] });
     const bu = b.budget;
     let budget = T("brief_sum_budget_missing");
     if (bu.amount > 0) {
@@ -150,6 +198,11 @@
     out.push({ topic: T("brief_sum_t_budget"), path: "budget.amount", paths: ["budget.amount", "budget.kind", "budget.currency", "budget.start", "budget.end"],
       missing: !(bu.amount > 0), text: budget, note: advice && !advice.hidden ? advice.textContent : "" });
     const host = hostOf(a.landing_url);
+    if (!F.hasWebsite()) {  // no website: the ad keeps people on Facebook and Instagram
+      out.push({ topic: T("brief_sum_t_leads"), path: "advertiser.landing_url", paths: ["advertiser.landing_url"], missing: false,
+        text: T("brief_sum_leads_nosite") });
+      return out;
+    }
     out.push({ topic: T("brief_sum_t_leads"), path: "advertiser.landing_url", paths: ["advertiser.landing_url"], missing: !host,
       text: host ? T("brief_sum_leads", { host }) : T("brief_sum_leads_missing") });
     return out;
@@ -160,10 +213,27 @@
     const list = $("bv-summary-list");
     const items = sentences().map((s) => {
       const li = el("li", null, "bv-sum" + (s.missing ? " is-missing" : ""));
+      li.dataset.topic = s.path;
       const p = el("p", s.text, "bv-sum-text");
       if (s.paths.some((x) => fromProfile.has(x))) p.append(" ", el("span", T("brief_sum_profile"), "badge bv-sum-badge"));
       li.append(p);
-      if (s.note) li.append(el("p", s.note, "hint"));
+      if (s.note) {
+        const note = el("p", s.note, "hint");
+        note.id = "bv-sum-note-" + F.idOf(s.path);
+        li.append(note);
+        if (s.choice && s.choice.length) {
+          const group = el("div", null, "bv-chips");
+          group.setAttribute("role", "group");
+          group.setAttribute("aria-labelledby", note.id);
+          for (const key of s.choice) {
+            const b = button(SWITCH_LABELS[key](), "secondary bv-chip");
+            b.dataset.switch = key;
+            b.addEventListener("click", () => switchTo(key, "summary"));
+            group.append(b);
+          }
+          li.append(group);
+        }
+      }
       const change = button(T("brief_sum_change"), "secondary bv-sum-change");
       change.setAttribute("aria-label", T("brief_sum_change_label", { what: s.topic }));
       change.addEventListener("click", () => F.focusField(s.path));
@@ -376,6 +446,62 @@
     return item;
   }
 
+  // one card instead of the website or pixel questions: switch the objective with one
+  // click, or (no pixel) type the pixel's dataset id
+  function switchCard(issue) {
+    const path = "objective.switch";
+    const noSite = issue === "no_website";
+    const shell = cardShell(path, "required_for_objective", noSite ? T("brief_ask_no_website") : T("brief_ask_no_pixel"));
+    const why = () => (noSite ? T("brief_ask_no_website_why") : T("brief_ask_no_pixel_why"));
+    shell.why.textContent = why();
+    const chips = el("div", null, "bv-chips");
+    chips.setAttribute("role", "group");
+    chips.setAttribute("aria-labelledby", shell.h.id);
+    for (const key of switchesFor(issue)) {
+      const b = button(SWITCH_LABELS[key](), "secondary bv-chip");
+      b.dataset.switch = key;
+      b.addEventListener("click", () => switchTo(key, "assistant"));
+      chips.append(b);
+    }
+    shell.li.append(chips);
+    let node = null;
+    if (!noSite && F.controlOf("promotion.pixel_id")) {  // entering the id stays possible
+      node = input(shell, "text", T("brief_ask_pixel_label"), valueOf("promotion.pixel_id"));
+      node.setAttribute("inputmode", "numeric");
+      node.setAttribute("autocomplete", "off");
+      node.addEventListener("input", () => { setField("promotion.pixel_id", node.value.trim()); showErr(shell, ""); });
+    }
+    shell.li.append(shell.err);
+    return { kind: "ask", li: shell.li, path, shell, focus: chips.querySelector("button") || node,
+      sync: () => { if (node && document.activeElement !== node) node.value = valueOf("promotion.pixel_id"); },
+      resolved: () => F.siteIssue() !== issue, need: why };
+  }
+
+  // a server problem still worth asking about: not an id the objective no longer uses
+  // (after a switch), not the website or pixel the switch card stands for, and never a
+  // landing page when the owner has no website
+  function stillAsked(path, issue) {
+    if (path === "advertiser.landing_url" && !F.hasWebsite()) return false;
+    if (path.startsWith("promotion.")) {
+      if (issue === "no_website" || (issue === "no_pixel" && path === "promotion.pixel_id")) return false;
+      const c = F.controlOf(path);
+      const box = c && c.closest("[data-needs]");
+      if (box && !box.dataset.needs.split(" ").includes(F.rowKey())) return false;
+    }
+    return true;
+  }
+  // the ids the objective as it stands needs and the form still lacks (after a switch:
+  // an instant form needs the privacy-policy page)
+  function newlyNeeded(problems) {
+    const out = {};
+    for (const box of v1.querySelectorAll("[data-needs]")) {
+      if (!box.dataset.needs.split(" ").includes(F.rowKey())) continue;
+      const c = box.querySelector("input[data-path]:not([type=checkbox])");
+      if (c && !c.value.trim() && !(c.dataset.path in problems)) out[c.dataset.path] = "required_for_objective";
+    }
+    return out;
+  }
+
   function askItem(path, code) {
     if (path === "advertiser.countries") return countriesCard(code);
     if (path === "advertiser.landing_url") return urlCard(code);
@@ -387,26 +513,31 @@
     return textCard(path, code, q);
   }
 
-  function buildAssistant(data) {
+  function buildAssistant(data, focus) {
+    lastData = data;
     items = F.questions().map(factItem);
     const asks = [];
-    const problems = data.problems || {};
-    const paths = Object.keys(problems).filter((p) => !p.startsWith("open_questions"));
+    const issue = F.siteIssue();
+    const problems = { ...(data.problems || {}) };
+    Object.assign(problems, newlyNeeded(problems));
+    const paths = Object.keys(problems).filter((p) => !p.startsWith("open_questions") && stillAsked(p, issue));
     paths.sort((x, y) => {  // the ones with a quick answer first, then form order
       const ix = SPECIAL.indexOf(x), iy = SPECIAL.indexOf(y);
       return (ix < 0 ? 99 : ix) - (iy < 0 ? 99 : iy);
     });
+    if (issue) asks.push(switchCard(issue));
     for (const path of paths) asks.push(askItem(path, problems[path]));
     $("bv-ask-list").replaceChildren(...asks.map((x) => x.li));
     items = items.concat(asks);
     cur = 0;
     atEnd = false;
-    if (!items.length) { finish(false); return; }
+    if (!items.length) { finish(Boolean(focus)); return; }
     // start on the first card that still needs an answer
     const first = items.findIndex((x) => !x.resolved());
-    if (first < 0) { finish(false); return; }
+    if (first < 0) { finish(Boolean(focus)); return; }
     cur = first;
-    render(false);
+    $("bv-ask-next").hidden = false;
+    render(Boolean(focus));
   }
 
   const left = () => items.filter((x) => !x.resolved()).length;
@@ -531,7 +662,7 @@
       $("bv-ask-list").hidden = false;
       $("bv-ask-next").hidden = false;
       if (details) details.open = false;
-      buildAssistant(data);
+      buildAssistant(data, false);
       renderSummary();
     } catch (e) { fallback(e); }
   });

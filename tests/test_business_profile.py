@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from studio import accounts
 from studio import brief as bv
+from studio.app import UI
 from studio.meta.adapter import AdapterError
 from studio.meta.graph import GraphAdapter
 from studio.meta.mock import MockAdapter
@@ -168,6 +169,50 @@ def test_the_fieldset_has_labels_and_hints(client):
         assert f'aria-describedby="{hint}"' in page.split(f'id="{fid}"', 1)[1][:400]
     assert "Your business online" in page
     assert "The studio reads this site before drafting, to suggest facts you confirm." in page
+
+
+def _pixel_field(page):
+    """The opening tag of the pixel's container (label, field and hint)."""
+    return page.split('<div class="pf-pixel" id="pf-pixel-field"', 1)[1].split(">", 1)[0]
+
+
+def test_the_pixel_field_waits_for_a_website(app, client):
+    """The Meta Pixel (a dataset id) matters only for ads that send people to a website:
+    hidden while the profile has none, shown once one is saved; account.js shows it as
+    soon as a valid https address is typed (no inline script: CSP)."""
+    page = client.get("/account").text
+    tag = _pixel_field(page)
+    assert "hidden" in tag and "data-needs-website" in tag
+    assert '<label for="pf-pixel">Dataset ID (Meta Pixel)</label>' in page
+    assert 'aria-describedby="pf-pixel-hint"' in page.split('id="pf-pixel"', 1)[1][:200]
+    assert save(client, website="https://glina.example/").status_code == 303
+    assert "hidden" not in _pixel_field(client.get("/account").text)
+    assert "<script>" not in page and '<script src="/static/account.js" defer>' in page
+    js = (UI / "static" / "account.js").read_text()
+    for needle in ('getElementById("pf-pixel-field")', 'getElementById("pf-website")',
+                   '"https:"', "field.hidden ="):
+        assert needle in js, needle
+
+
+def test_a_saved_pixel_without_a_website_stays_visible_to_be_cleared(app, client):
+    assert save(client, website="", pixel_id="4242").status_code == 303
+    assert "hidden" not in _pixel_field(client.get("/account").text)
+    assert save(client, website="", pixel_id="").status_code == 303  # cleared as before
+    assert ola(app).pixel_id == ""
+    assert "hidden" in _pixel_field(client.get("/account").text)
+
+
+@pytest.mark.parametrize(("lang", "label", "words"), [
+    ("en", "Dataset ID (Meta Pixel)", ("send people to your website", "Shopify",
+                                       "WooCommerce", "Wix", "Squarespace", "WordPress")),
+    ("pl", "ID zbioru danych (Pixel Meta)", ("kierują ludzi na Twoją stronę", "Shopify",
+                                             "WooCommerce", "Wix", "Squarespace")),
+])
+def test_the_pixel_is_named_a_dataset_id_in_both_languages(lang, label, words):
+    from studio.ui import i18n
+    assert i18n.CATALOGS[lang]["account.profile.pixel_id"] == label
+    hint = i18n.CATALOGS[lang]["account.profile.pixel_hint_html"]
+    assert all(w in hint for w in words), hint
 
 
 # -- graph: the ad account's pixels -----------------------------------------------------
