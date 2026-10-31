@@ -95,3 +95,15 @@ def test_the_form_works_without_javascript_and_keeps_the_page_query(client):
     assert 'name="theme"' in form and 'name="palette"' in form and 'type="submit"' in form
     for name in prefs.PALETTES:
         assert f'<option value="{name}"' in form
+
+
+def test_open_display_panel_floats_above_the_page():
+    """The open panel sits in the header; the header is its own stacking layer above
+    <main>, whose panels are positioned and clipped (clip-path) and would otherwise
+    paint over it."""
+    static = TOKENS.parent
+    style = static.joinpath("style.css").read_text()
+    top = re.search(r"\n\.top \{(.*?)\}", style, re.S).group(1)
+    assert "position: relative" in top and re.search(r"z-index: *\d+", top)
+    js = static.joinpath("theme.js").read_text()
+    assert '"Escape"' in js and "removeAttribute(\"open\")" in js
