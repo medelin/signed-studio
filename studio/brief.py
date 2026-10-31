@@ -433,13 +433,53 @@ def numbers(text: str) -> set[str]:
     return set(_DIGITS.findall(_fold(text)))
 
 
+# A numeric token: an optional currency before it, the number (a decimal with ``.`` or
+# ``,`` and 1-2 digits after it, thousands grouped by ``.``/``,``/space, or a digit run),
+# then an optional ``%`` or currency. A dotted date (``31.10.2026``) stays separate runs.
+_CUR = r"(?:z[łl]|pln|eur|€|usd|\$|gbp|£)"
+_NUM = re.compile(
+    rf"(?:(?P<pre>[€$£]|pln|eur|usd|gbp)\s?)?"
+    r"(?P<n>\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![.,]?\d)"
+    r"|\d+[.,]\d{3}(?![.,]?\d)"
+    r"|\d+[.,]\d{1,2}(?![.,]?\d)"
+    r"|\d+)"
+    rf"(?:\s?(?P<post>%|{_CUR}(?![^\W\d_])))?",
+    re.IGNORECASE)
+_CURRENCY_OF = {"zł": "PLN", "zl": "PLN", "pln": "PLN", "€": "EUR", "eur": "EUR",
+                "$": "USD", "usd": "USD", "£": "GBP", "gbp": "GBP"}
+
+
+def _tokens(text: str) -> list[tuple[str, str, str]]:
+    """``(value, unit, as written)`` for each numeric token: ``"19,99 zł"`` →
+    ``("19.99", "PLN", "19,99 zł")``, ``"50 %"`` → ``("50", "%", "50 %")``, ``"1 500"`` →
+    ``("1500", "", "1 500")``. Thousands groups are joined, a decimal comma is a dot."""
+    out = []
+    for m in _NUM.finditer(_fold(text)):
+        n = m.group("n")
+        if re.fullmatch(r"\d+[.,]\d{1,2}", n):
+            value = n.replace(",", ".")
+        else:
+            value = re.sub(r"\D", "", n)
+        unit = (m.group("post") or m.group("pre") or "").casefold()
+        unit = "%" if unit == "%" else _CURRENCY_OF.get(unit, "")
+        out.append((value, unit, m.group().strip()))
+    return out
+
+
 def ungrounded_numbers(text: str, corpus: str) -> list[str]:
-    """The numbers in ``text`` that never appear in ``corpus``, in order of appearance."""
-    known = numbers(corpus)
+    """The numeric tokens of ``text`` (as written) the owner never confirmed in
+    ``corpus``, in order of appearance. Whole tokens are compared, never digit runs:
+    ``19.99`` needs ``19.99`` (or ``19,99``), not ``19`` and ``99``; ``50%`` needs a
+    ``50%`` (``50 PLN`` is not a discount); ``$20`` needs 20 in dollars or a bare 20. A
+    bare number in ``text`` is grounded by the same number with any unit."""
+    known = {(v, u) for v, u, _ in _tokens(corpus)}
+    values = {v for v, _ in known}
     seen: list[str] = []
-    for n in _DIGITS.findall(_fold(text)):
-        if n not in known and n not in seen:
-            seen.append(n)
+    for value, unit, written in _tokens(text):
+        ok = ((value, unit) in known or (not unit and value in values)
+              or (unit not in ("", "%") and (value, "") in known))
+        if not ok and written not in seen:
+            seen.append(written)
     return seen
 
 

@@ -140,7 +140,20 @@ def test_ground_draft_moves_numbers_the_owner_never_wrote_into_questions():
 
 def test_numbers_fold_lookalike_digits():
     assert bv.ungrounded_numbers("now ５０ PLN", "price 50 PLN") == []
-    assert bv.ungrounded_numbers("now 49 PLN, 50% off", "price 50 PLN") == ["49"]
+    assert bv.ungrounded_numbers("now 49 PLN, 50% off", "price 50 PLN") == ["49 PLN", "50%"]
+
+
+@pytest.mark.parametrize(("text", "corpus", "missing"), [
+    ("Only 19.99 zł", "19 colours, 99 sizes", ["19.99 zł"]),
+    ("50% off", "50 PLN voucher", ["50%"]),
+    ("now $20", "price 20 zł", ["$20"]),
+    ("tylko 19,99 zł, -50 %", "cena 19.99 PLN, rabat 50%", []),
+    ("1 500 PLN", "budżet 1500 zł", []),
+    ("od 10:00 do 31.10.2026", "Saturdays at 10:00, until 31 Oct 2026", []),
+    ("89 zł", "kubek za 89", []),
+])
+def test_grounding_compares_whole_numeric_tokens(text, corpus, missing):
+    assert bv.ungrounded_numbers(text, corpus) == missing
 
 
 def test_daily_budget_from_daily_or_lifetime():
