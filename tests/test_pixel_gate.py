@@ -186,8 +186,17 @@ def test_an_instant_form_campaign_needs_no_check(env):
 # -- signing gate ---------------------------------------------------------------------
 
 
+def studio_brief(conn, run_id=RUN):
+    """The run's brief, typed in the studio: whoever is signed in may sign its approvals
+    (``routes_studio.approval_owner``)."""
+    with db.transaction(conn):
+        conn.execute("INSERT OR IGNORE INTO briefs (id, run_id, text, source, created_ts) "
+                     "VALUES (?, ?, 'brief', 'text', ?)", ("b_" + run_id, run_id, time.time()))
+
+
 def _pending(app, p, item):
     conn, ledger = app.state.conn, app.state.ledger
+    studio_brief(conn)
     ledger.append(RUN, agent="producer", kind="model_call")
     pending = Pending.create("campaign.create", item, p, ledger=ledger, run_id=RUN)
     with db.transaction(conn):

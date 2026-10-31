@@ -426,7 +426,12 @@ def test_only_the_mandates_own_account_can_sign_it(tmp_path):
     other = TestClient(app, base_url=BASE)
     login(other, app, "intruder")
     key, approver = register(other)
-    _, r = sign(other, key, approver, approval_id)
+    # another account's mandate is not shown; a signature made without it is refused
+    assert other.get(f"/api/approvals/{approval_id}/payload",
+                     params={"approver": approver}).status_code == 404
+    message = Pending.load(app.state.conn, approval_id).message(approver)
+    r = other.post(f"/api/approvals/{approval_id}",
+                   json={"approver": approver, "signature": key.sign(message).hex()})
     assert r.status_code == 403 and r.json()["error"] == "mandate_not_yours"
     assert app.state.conn.execute("SELECT status FROM approvals WHERE id = ?",
                                   (approval_id,)).fetchone()[0] == "pending"

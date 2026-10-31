@@ -115,6 +115,19 @@ def demo_destinations_ok(payload: Any, landing_url: str) -> bool:
         urls += [policy.get("url") if isinstance(policy, dict) else None,
                  form.get("follow_up_action_url")]
     return all(demo_link_ok(u, landing_url) for u in urls)
+
+
+def demo_google_ok(payload: Any, landing_url: str) -> bool:
+    """Every address a limited account's live ``google.create`` would send: the payload's
+    ``link`` and the Search ad's final URL (``google.ad.final_url``), on the operator's
+    landing host (``demo_link_ok``)."""
+    if not isinstance(payload, dict):
+        return False
+    spec = payload.get("google")
+    ad = spec.get("ad") if isinstance(spec, dict) else None
+    if not isinstance(ad, dict):
+        return False
+    return all(demo_link_ok(u, landing_url) for u in (payload.get("link"), ad.get("final_url")))
 BRIEF_ID = re.compile(r"b_[0-9a-f]{16}")
 _CREATIVE_NAMES = ("feed_1x1", "feed_4x5", "story_9x16", *(f"card_{i}" for i in range(1, 11)))
 # every creative, its SAM mask overlay (``<name>_mask``), the cut-out and the video poster
@@ -252,6 +265,44 @@ def owns(channel: str, account_id: str, owner: str | None) -> bool:
     if channel != "whatsapp":
         return True
     return bool(owner) and bool(account_id) and secrets.compare_digest(account_id, owner or "")
+
+
+STUDIO = ""  # ``approval_owner``: the studio's own work, for every signed-in caller
+INBOX_ACTIONS = frozenset({"reply.post", "comment.hide"})
+
+
+def approval_owner(conn: Any, pending: Any,
+                   api_owner: Callable[[str], str | None]) -> str | None:
+    """Who an approval belongs to: an account id, ``STUDIO`` (the operator's shared
+    studio: a brief typed or spoken in the UI, a comment on the operator's Page), or None
+    when no owner can be found. A mandate grant is its mandate's account; a run is its
+    brief's (``briefs.run_id`` or ``draft_run_id``): the account whose token drafted it
+    (``api_owner``, ``studio.assistants``), the account a WhatsApp brief was sent for, or
+    the studio; a campaign whose run has no brief (the demo seed) is the studio's. Call
+    under ``conn.lock``."""
+    if pending.action == mandates.GRANT:
+        row = conn.execute("SELECT payload FROM pending_payloads WHERE approval_id = ?",
+                           (pending.id,)).fetchone()
+        body = json.loads(row[0]).get(mandates.MANDATE_FIELD) if row else None
+        aid = body.get("account_id") if isinstance(body, dict) else None
+        return aid if isinstance(aid, str) and aid else None
+    if pending.action in INBOX_ACTIONS:
+        return STUDIO
+    row = conn.execute("SELECT id, channel, account_id FROM briefs WHERE run_id = ? OR "
+                       "draft_run_id = ? LIMIT 1", (pending.run_id, pending.run_id)
+                       ).fetchone() if pending.run_id else None
+    if row is None:
+        # a campaign with no brief behind it is the operator's (the demo seed's)
+        known = conn.execute("SELECT 1 FROM campaigns WHERE id = ? UNION ALL "
+                             "SELECT 1 FROM google_campaigns WHERE id = ?",
+                             (pending.item_id, pending.item_id)).fetchone()
+        return STUDIO if known else None
+    by_token = api_owner(row[0])
+    if by_token:
+        return by_token
+    if row[1] == "whatsapp":
+        return str(row[2]) or None
+    return STUDIO
 
 
 def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
@@ -518,6 +569,18 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "open_weights_unavailable"}, 503)
         return on
 
+    def release_run(run_id: str, error: BaseException | None = None) -> None:
+        """Free the one run slot claimed for ``run_id`` when its worker did not start;
+        with ``error``, its committed ``running`` state is marked ``failed`` too."""
+        if error is not None:
+            try:
+                producer.mark_failed(conn, run_id, type(error).__name__)
+            except Exception as exc:  # noqa: BLE001 - the slot is freed regardless
+                LOG.warning("run %s not marked failed: %s", run_id, type(exc).__name__)
+        with app.state.run_lock:
+            if app.state.active_run == run_id:
+                app.state.active_run = None
+
     def confirm_and_start(body: dict[str, Any], owner: str | None = None, *,
                           agent: str = "owner", untrusted: bool = False,
                           token_id: str = "") -> Response:
@@ -544,17 +607,22 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 return JSONResponse({"error": "run_in_progress",
                                      "run_id": app.state.active_run}, 409)
             app.state.active_run = c.run_id
+        committed = False
         try:
             commit_confirmation(conn, ledger, c, agent=agent)
+            committed = True
+            thread = threading.Thread(target=worker, daemon=True, name=f"producer-{c.run_id}",
+                                      args=(c.run_id, brief_v1.render(c.brief), c.source,
+                                            c.brief, c.digest, mode, token_id))
+            app.state.last_thread = thread
+            thread.start()
         except Refused as exc:
-            with app.state.run_lock:
-                app.state.active_run = None
+            release_run(c.run_id)
             return JSONResponse(exc.body, exc.status)
-        thread = threading.Thread(target=worker, daemon=True, name=f"producer-{c.run_id}",
-                                  args=(c.run_id, brief_v1.render(c.brief), c.source,
-                                        c.brief, c.digest, mode, token_id))
-        app.state.last_thread = thread
-        thread.start()
+        except BaseException as exc:
+            # the worker never ran: its finally cannot free the slot
+            release_run(c.run_id, exc if committed else None)
+            raise
         return JSONResponse({"run_id": c.run_id, "brief_sha256": c.digest, **c.counts}, 202)
 
     app.state.confirm_and_start = confirm_and_start  # the assistants API starts runs here
@@ -749,22 +817,29 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                      "run_id": app.state.active_run}, 409)
             run_id = producer.new_run_id()
             app.state.active_run = run_id
-        with db.transaction(conn):
-            if brief_id is not None:
-                conn.execute("UPDATE briefs SET run_id = ?, text = ? WHERE id = ? AND "
-                             "source = 'voice' AND run_id = ''", (run_id, brief, brief_id))
-            else:
-                conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "
-                             "VALUES (?, ?, ?, 'text', ?)",
-                             ("b_" + run_id[4:], run_id, brief, time.time()))
-            conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
-                         "VALUES (?, 'running', '{}', ?)", (run_id, time.time()))
-        source = "transcript" if brief_id is not None else "operator"
-        thread = threading.Thread(target=worker, args=(run_id, brief, source, None, "", mode),
-                                  daemon=True,
-                                  name=f"producer-{run_id}")
-        app.state.last_thread = thread
-        thread.start()
+        committed = False
+        try:
+            with db.transaction(conn):
+                if brief_id is not None:
+                    conn.execute("UPDATE briefs SET run_id = ?, text = ? WHERE id = ? AND "
+                                 "source = 'voice' AND run_id = ''", (run_id, brief, brief_id))
+                else:
+                    conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "
+                                 "VALUES (?, ?, ?, 'text', ?)",
+                                 ("b_" + run_id[4:], run_id, brief, time.time()))
+                conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
+                             "VALUES (?, 'running', '{}', ?)", (run_id, time.time()))
+            committed = True
+            source = "transcript" if brief_id is not None else "operator"
+            thread = threading.Thread(target=worker,
+                                      args=(run_id, brief, source, None, "", mode),
+                                      daemon=True, name=f"producer-{run_id}")
+            app.state.last_thread = thread
+            thread.start()
+        except BaseException as exc:
+            # the worker never ran: its finally cannot free the slot
+            release_run(run_id, exc if committed else None)
+            raise
         return JSONResponse({"run_id": run_id}, 202)
 
     def clip_allowed(request: Request) -> str | None:
@@ -950,6 +1025,25 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             raise _NoPayload
         return pending, json.loads(row[0])
 
+    def approval_refusal(pending: Pending, account: Any) -> str | None:
+        """Whether the caller (``account``, None when unresolved) may see, renew and sign
+        ``pending``: None when it may, else the refusal code. Call under ``conn.lock``.
+        The approval's owner is found per kind (``approval_owner``); an approval of
+        another account is ``mandate_not_yours`` (a mandate) or ``not_found``; one whose
+        owner cannot be found is for a full account only (deny by default)."""
+        owner = account.id if account is not None else None
+        svc = getattr(app.state, "assistants", None)
+        found = approval_owner(conn, pending,
+                               svc.owner_of if svc is not None else lambda _b: None)
+        if found is None:
+            full = account is not None and account.sees_personal_data
+            return None if full else "not_found"
+        if found == STUDIO:
+            return None
+        if owner and secrets.compare_digest(found, owner):
+            return None
+        return "mandate_not_yours" if pending.action == mandates.GRANT else "not_found"
+
     @app.get("/api/approvals/{approval_id}/payload")
     def approval_payload(approval_id: str, request: Request) -> Response:
         if app.state.sessions.check(request.cookies.get("studio_session")) is None:
@@ -961,6 +1055,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             pending, payload = _pending_and_payload(approval_id)
         except (ApprovalError, _NoPayload):
             return JSONResponse({"error": "not_found"}, 404)
+        with conn.lock:
+            # another account's run, or another account's mandate, stays unseen
+            if approval_refusal(pending, profile_of(request)) is not None:
+                return JSONResponse({"error": "not_found"}, 404)
         with conn.lock:
             status = conn.execute("SELECT status FROM approvals WHERE id = ?",
                                   (approval_id,)).fetchone()[0]
@@ -982,7 +1080,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if isinstance(guard, JSONResponse):
             return guard
         try:
-            _, payload = _pending_and_payload(approval_id)
+            pending, payload = _pending_and_payload(approval_id)
+            with conn.lock:
+                if approval_refusal(pending, profile_of(request)) is not None:
+                    raise _NoPayload
             fresh, renewed = renew_approval(conn, approval_id, payload, ledger=ledger)
         except _NoPayload:
             return JSONResponse({"error": "not_found"}, 404)
@@ -1028,6 +1129,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             with db.transaction(conn):
                 pending = Pending.load(conn, approval_id)
+                refusal = approval_refusal(pending, account)
+                if refusal == "mandate_not_yours":
+                    raise _NotOwnMandate
+                if refusal is not None:
+                    raise _NoPayload  # another account's: as if it did not exist
                 if limited and demo_refused(
                         pending.action, meta_adapter=settings.meta_adapter,
                         google_adapter=settings.google_adapter):
@@ -1045,6 +1151,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                         and pending.action == "campaign.create"
                         and not demo_destinations_ok(json.loads(row[0]),
                                                      settings.landing_url)):
+                    raise _DemoLanding
+                if (limited and settings.google_adapter != "mock"
+                        and pending.action == "google.create"
+                        and not demo_google_ok(json.loads(row[0]), settings.landing_url)):
                     raise _DemoLanding
                 if pending.action == "campaign.create":
                     # a failed pixel check cannot be signed (nothing is consumed)

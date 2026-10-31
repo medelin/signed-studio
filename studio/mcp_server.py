@@ -260,12 +260,31 @@ class StudioMcp:
 # -- tools ----------------------------------------------------------------------------
 
 
+def foreign_brief(s: StudioMcp, brief_id: str) -> bool:
+    """A brief another account's token drafted (``studio.assistants``): as over HTTP,
+    it is that account's only. Call under ``s.conn.lock``."""
+    row = s.conn.execute("SELECT 1 FROM api_briefs WHERE brief_id = ? AND account_id != ?",
+                         (brief_id, s.account_id)).fetchone()
+    return row is not None
+
+
+def foreign_runs(s: StudioMcp) -> set[str]:
+    """Runs (and draft runs) of briefs another account's token drafted: hidden from this
+    server's account, as ``Assistants.foreign_runs`` hides them over HTTP."""
+    with s.conn.lock:
+        rows = s.conn.execute(
+            "SELECT b.run_id, b.draft_run_id FROM briefs b JOIN api_briefs a ON "
+            "a.brief_id = b.id WHERE a.account_id != ?", (s.account_id,)).fetchall()
+    return {r for row in rows for r in row if r}
+
+
 def list_briefs(s: StudioMcp, agent: str, limit: int = 20) -> dict[str, Any]:
     with s.conn.lock:
         rows = s.conn.execute(
             "SELECT id, run_id, source, created_ts, draft_run_id, draft != '', brief_sha256 "
-            "FROM briefs WHERE channel != 'whatsapp' OR account_id = ? "  # another's: hidden
-            "ORDER BY created_ts DESC LIMIT ?", (s.account_id, limit)).fetchall()
+            "FROM briefs WHERE (channel != 'whatsapp' OR account_id = ?) "  # another's: hidden
+            "AND id NOT IN (SELECT brief_id FROM api_briefs WHERE account_id != ?) "
+            "ORDER BY created_ts DESC LIMIT ?", (s.account_id, s.account_id, limit)).fetchall()
     return {"briefs": [{
         "brief_id": r[0], "run_id": r[1], "source": r[2], "created_ts": r[3],
         "draft_run_id": r[4],
@@ -278,7 +297,8 @@ def read_brief(s: StudioMcp, agent: str, brief_id: str) -> dict[str, Any]:
         row = s.conn.execute("SELECT id, run_id, source, text, draft, brief_v1, brief_sha256, "
                              "draft_run_id, channel, account_id FROM briefs WHERE id = ?",
                              (brief_id,)).fetchone()
-    if row is None or not routes_studio.owns(row[8], row[9], s.account_id):
+        foreign = foreign_brief(s, brief_id)
+    if row is None or foreign or not routes_studio.owns(row[8], row[9], s.account_id):
         raise McpRefused("not_found")
     out: dict[str, Any] = {"brief_id": row[0], "run_id": row[1], "source": row[2],
                            "text": row[3], "draft_run_id": row[7], "brief_sha256": row[6]}
@@ -305,14 +325,17 @@ def list_campaigns(s: StudioMcp, agent: str, limit: int = 20) -> dict[str, Any]:
             (limit,)).fetchall()
     keys = ("item_id", "run_id", "name", "objective", "status", "daily_budget_minor",
             "currency", "adapter", "created_ts")
+    foreign = foreign_runs(s)
     return {"runs": [{"run_id": r[0], "status": r[1], "updated_ts": r[2],
                       **({"approval_url": s.page_url(r[0])}
-                         if r[1] == "awaiting_approval" else {})} for r in runs],
-            "campaigns": [dict(zip(keys, r, strict=True)) for r in rows]}
+                         if r[1] == "awaiting_approval" else {})}
+                     for r in runs if r[0] not in foreign],
+            "campaigns": [dict(zip(keys, r, strict=True)) for r in rows
+                          if r[1] not in foreign]}
 
 
 def read_run(s: StudioMcp, agent: str, run_id: str) -> dict[str, Any]:
-    if not routes_studio.RUN_ID.fullmatch(run_id):
+    if not routes_studio.RUN_ID.fullmatch(run_id) or run_id in foreign_runs(s):
         raise McpRefused("not_found")
     found = routes_studio.run_state(s.conn, run_id)
     if found is None:
@@ -325,7 +348,7 @@ def read_run(s: StudioMcp, agent: str, run_id: str) -> dict[str, Any]:
 
 def read_campaign(s: StudioMcp, agent: str, item_id: str) -> dict[str, Any]:
     c = media_buyer.campaign(s.conn, item_id) if _CAMPAIGN_ID.fullmatch(item_id) else None
-    if c is None:
+    if c is None or c["run_id"] in foreign_runs(s):
         raise McpRefused("not_found")
     c["item_id"] = c.pop("id")
     created = c.pop("created")
@@ -370,6 +393,9 @@ def run_pipeline(s: StudioMcp, agent: str, brief_id: str, resolutions: list[dict
     """Confirm a drafted Brief v1 (one resolution per open question; ``brief`` replaces
     the stored draft as the UI's edits do) with the UI's checks, then run the producer:
     plan, copy, images, reviews, and a pending approval that only a human can sign."""
+    with s.conn.lock:
+        if foreign_brief(s, brief_id):
+            raise McpRefused("unknown_draft")
     if brief is None:
         with s.conn.lock:
             row = s.conn.execute("SELECT draft, channel, account_id FROM briefs WHERE id = ?",
@@ -386,12 +412,12 @@ def run_pipeline(s: StudioMcp, agent: str, brief_id: str, resolutions: list[dict
         raise McpRefused("run_in_progress")
     try:
         routes_studio.commit_confirmation(s.conn, s.ledger, c, agent=agent)
-        muse, open_weights = s.clients()
-        ctx = routes_studio.run_context(s.settings, s.conn, muse, open_weights, s.meta,
-                                        currency=s.currency(), brief_source=c.source,
-                                        confirmed=c.brief, digest=c.digest,
-                                        google=s.google)
-        try:
+        try:  # from here the run is "running": any failure must mark it failed
+            muse, open_weights = s.clients()
+            ctx = routes_studio.run_context(s.settings, s.conn, muse, open_weights, s.meta,
+                                            currency=s.currency(), brief_source=c.source,
+                                            confirmed=c.brief, digest=c.digest,
+                                            google=s.google)
             producer.run(ctx, brief_v1.render(c.brief), run_id=c.run_id)
         except Exception as exc:  # noqa: BLE001 - as the UI's worker: recorded, reported
             LOG.warning("run %s failed: %s", c.run_id, type(exc).__name__)
@@ -408,14 +434,16 @@ def run_pipeline(s: StudioMcp, agent: str, brief_id: str, resolutions: list[dict
 def request_launch(s: StudioMcp, agent: str, run_id: str) -> dict[str, Any]:
     """What an agent calls to send or turn on a campaign: it sends nothing and signs
     nothing, it says which human signature is missing and where to give it."""
-    if not routes_studio.RUN_ID.fullmatch(run_id):
+    if not routes_studio.RUN_ID.fullmatch(run_id) or run_id in foreign_runs(s):
         raise McpRefused("not_found")
     return s.signature(run_id)
 
 
 def read_receipts(s: StudioMcp, agent: str, run_id: str = "", kind: str = "",
                   limit: int = MAX_LIST) -> dict[str, Any]:
-    rows = [r for r in s.ledger.receipts(run_id or None) if not kind or r.kind == kind]
+    foreign = foreign_runs(s)
+    rows = [r for r in s.ledger.receipts(run_id or None)
+            if (not kind or r.kind == kind) and r.run_id not in foreign]
     return {"seq": s.ledger.seq(), "epoch": s.ledger.epoch, "matched": len(rows),
             "receipts": [asdict(r) for r in rows[-limit:]]}
 

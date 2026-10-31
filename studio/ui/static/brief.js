@@ -91,10 +91,15 @@
       active = null;
       status("confirm-status", T("transcribing"));
       const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
-      const r = await fetch("/api/briefs/voice?purpose=field&lang=" + lang, {
-        method: "POST", credentials: "same-origin",
-        headers: { "Content-Type": blob.type || "audio/webm" }, body: blob,
-      });
+      let r;
+      try {
+        r = await fetch("/api/briefs/voice?purpose=field&lang=" + lang, {
+          method: "POST", credentials: "same-origin",
+          headers: { "Content-Type": blob.type || "audio/webm" }, body: blob,
+        });
+      } catch (_) {
+        r = { ok: false, status: 0, json: async () => ({ error: "network" }) };
+      }
       let data = {};
       try { data = await r.json(); } catch (_) { /* empty */ }
       if (!r.ok) { status("confirm-status", T("transcription_failed", { error: E(data, r.status) }), true); target.focus(); return; }
@@ -479,8 +484,14 @@
     if (voiceId) body.brief_id = voiceId;
     const clipId = Studio.clipId();  // the owner's phone clip becomes the ad's video
     if (clipId) body.clip_id = clipId;
-    const r = await Signer.postJSON("/api/briefs/draft", body);
-    btn.disabled = false;
+    let r;
+    try {
+      r = await Signer.postJSON("/api/briefs/draft", body);
+    } catch (_) {  // offline or the connection dropped: the button comes back
+      r = { ok: false, status: 0, data: { error: "network" } };
+    } finally {
+      btn.disabled = false;
+    }
     if (!r.ok) {
       const msg = T("brief_draft_failed", { error: E(r.data, r.status) });
       status("run-status", msg, true);
@@ -567,8 +578,14 @@
     btn.disabled = true;
     status("confirm-status", T("brief_confirming"));
     const ow = $("open-weights-run");
-    const r = await Signer.postJSON("/api/runs", { brief_id: draft.brief_id, brief_v1: brief, resolutions, dictated, open_weights: !!(ow && ow.checked) });
-    btn.disabled = false;
+    let r;
+    try {
+      r = await Signer.postJSON("/api/runs", { brief_id: draft.brief_id, brief_v1: brief, resolutions, dictated, open_weights: !!(ow && ow.checked) });
+    } catch (_) {  // offline or the connection dropped: the button comes back
+      r = { ok: false, status: 0, data: { error: "network" } };
+    } finally {
+      btn.disabled = false;
+    }
     if (r.status === 422 && r.data.fields) { showErrors(r.data.fields); status("confirm-status", T("brief_errors", { n: Object.keys(r.data.fields).length }), true); return; }
     if (r.status === 409 && r.data.run_id) { Studio.follow(r.data.run_id); return; }
     if (!r.ok) { status("confirm-status", T("cannot_start", { error: E(r.data, r.status) }), true); return; }
