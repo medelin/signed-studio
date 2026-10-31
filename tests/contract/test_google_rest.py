@@ -268,3 +268,42 @@ def test_from_settings_uses_the_env_names():
     a = make(s)
     assert isinstance(a, RestAdapter) and a.customer_id == CID
     assert SECRET not in repr(a) and REFRESH not in repr(a)
+
+
+def test_a_mutate_is_never_retried(env):
+    """Review fix E9: a create that failed with 429/500/503 may have happened; it is
+    reported (``transient``), never sent twice."""
+    conn, ledger, _, _ = env
+    p = payload()
+    v = approve(conn, ledger, "google.create", "gcmp_aaaaaa222222", p, RUN)
+    sleeps = []
+    with respx.mock() as router:
+        ok_token(router)
+        route = router.post(MUTATE).mock(side_effect=[
+            httpx.Response(503, json={"error": {"status": "UNAVAILABLE"}}),
+            httpx.Response(200, json={"mutateOperationResponses": []})])
+        with pytest.raises(AdapterError) as exc:
+            RestAdapter("client-id", SECRET, REFRESH, CID, login_customer_id=MANAGER,
+                        sleep=sleeps.append, conn=conn).create_search_campaign(
+                p, _claimed(conn, v))
+    assert route.call_count == 1 and exc.value.transient and sleeps == []
+
+
+def test_search_sends_no_page_size_and_follows_the_page_token():
+    """Review fix E10: googleAds:search has a fixed page size (``pageSize`` is refused);
+    every page is read by ``nextPageToken``."""
+    sent = []
+
+    def answer(request):
+        body = json.loads(request.content)
+        sent.append(body)
+        if "pageToken" not in body:
+            return httpx.Response(200, json={"results": [{"a": 1}], "nextPageToken": "t2"})
+        return httpx.Response(200, json={"results": [{"a": 2}]})
+
+    with respx.mock() as router:
+        ok_token(router)
+        router.post(SEARCH).mock(side_effect=answer)
+        rows = adapter()._search("SELECT campaign.id FROM campaign")
+    assert rows == [{"a": 1}, {"a": 2}]
+    assert all("pageSize" not in b for b in sent) and sent[1]["pageToken"] == "t2"
