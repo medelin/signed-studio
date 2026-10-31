@@ -588,3 +588,19 @@ def test_successful_logins_count_toward_the_client_rate(client, app):
     client.cookies.clear()
     r = client.post("/login", json={"username": "judge", "password": PASSWORD})
     assert r.status_code == 429
+
+
+def test_a_login_whose_credentials_change_before_the_session_gets_none(app, monkeypatch):
+    store = app.state.accounts
+    real = store.record_session
+
+    def bump_first(sid, account_id, expires_ts, user_agent, gen=None):
+        with store.conn.lock:
+            store.conn.execute("UPDATE accounts SET credential_gen = credential_gen + 1 "
+                               "WHERE id = ?", (account_id,))
+        return real(sid, account_id, expires_ts, user_agent, gen)
+
+    monkeypatch.setattr(store, "record_session", bump_first)
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.post("/login", json={"username": "judge", "password": PASSWORD})
+        assert r.status_code == 401 and "studio_session" not in r.cookies

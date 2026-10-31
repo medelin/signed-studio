@@ -83,16 +83,18 @@ def _pref_cookies(response: Response, account: Account, secure: bool) -> None:
 
 
 def start_session(app: FastAPI, request: Request, response: Response, account: Account, *,
-                  provider: bool = False) -> None:
+                  provider: bool = False, gen: int | None = None) -> None:
     """A new session for ``account`` (never the one the browser brought: no fixation).
     ``provider``: the sign-in was a provider's, complete (second step included); this
-    session alone may then act without a password for a while (``external_fresh``)."""
+    session alone may then act without a password for a while (``external_fresh``).
+    ``gen``: the credential generation the sign-in was checked against; a change since
+    raises ``accounts.StaleCredentials`` and no session is made."""
     from studio.app import COOKIE, SESSION_TTL_S, client_ip, limiter_key
 
     settings: Settings = app.state.settings
     value = app.state.sessions.issue(
         account_id=account.id, user_agent=request.headers.get("user-agent", ""),
-        client=limiter_key(client_ip(request, settings.trusted_proxies)))
+        client=limiter_key(client_ip(request, settings.trusted_proxies)), gen=gen)
     if provider:
         from studio import routes_social  # it imports this module
 
@@ -109,12 +111,11 @@ def start_session(app: FastAPI, request: Request, response: Response, account: A
     app.state.notifier.security("signin", account)
 
 
-def second_step(app: FastAPI, request: Request, account: Account, nxt: str, html: bool
-                ) -> Response:
+def second_step(app: FastAPI, request: Request, account: Account, nxt: str, html: bool,
+                gen: int) -> Response:
     """The password was right and the account has two-step sign-in: no session yet, only a
     short-lived challenge cookie for ``/login/2fa``."""
-    token = app.state.challenges.open(account.id, nxt,
-                                      gen=app.state.accounts.credential_gen(account.id))
+    token = app.state.challenges.open(account.id, nxt, gen=gen)  # as when checked
     response: Response = (RedirectResponse("/login/2fa", 303) if html
                           else JSONResponse({"two_factor": True, "next": "/login/2fa"}))
     response.set_cookie(CHALLENGE_COOKIE, token, max_age=int(accounts.Challenges.TTL_S),
@@ -558,5 +559,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         nxt = auth.safe_next(challenge.next)
         response: Response = (RedirectResponse(nxt, 303) if html
                               else JSONResponse({"ok": True}))
-        start_session(app, request, response, account, provider=challenge.provider)
+        try:
+            start_session(app, request, response, account, provider=challenge.provider,
+                          gen=challenge.gen)
+        except accounts.StaleCredentials:
+            return fail("invalid_code", 401)
         return response

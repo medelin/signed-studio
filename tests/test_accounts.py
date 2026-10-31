@@ -453,3 +453,71 @@ def test_parallel_wrong_codes_cannot_all_pass_the_lock(store, monkeypatch, opera
                              (a.id,)).fetchone()
     assert row[0] == accounts.FREE_CODE_FAILURES + 1
     assert store.code_lock_remaining(a.id) > 0
+
+
+# -- review fixes (31 Oct): a credential change during the password check wins ----------
+
+
+@pytest.mark.parametrize("change", ["password", "disable", "gen"])
+def test_a_change_during_the_password_check_refuses_the_sign_in(store, monkeypatch, change):
+    a = store.create("ola", PASSWORD)
+    real = accounts.verify_password
+
+    def verify_then_change(stored, password):
+        ok = real(stored, password)
+        with store.conn.lock:  # what another request commits meanwhile
+            if change == "password":
+                store.conn.execute("UPDATE accounts SET password_hash = ?, credential_gen = "
+                                   "credential_gen + 1 WHERE id = ?",
+                                   (accounts.hash_password("Other-pass-2027y"), a.id))
+            elif change == "disable":
+                store.conn.execute("UPDATE accounts SET status = 'disabled' WHERE id = ?",
+                                   (a.id,))
+            else:
+                store.conn.execute("UPDATE accounts SET credential_gen = credential_gen + 1 "
+                                   "WHERE id = ?", (a.id,))
+        return ok
+
+    monkeypatch.setattr(accounts, "verify_password", verify_then_change)
+    assert store.authenticate_gen("ola", PASSWORD) is None
+
+
+def test_a_rehash_never_overwrites_a_newer_hash(store, monkeypatch):
+    a = store.create("ola", PASSWORD)
+    from argon2 import PasswordHasher
+
+    class Always(PasswordHasher):
+        def check_needs_rehash(self, hash: str) -> bool:  # noqa: A002 - argon2's name
+            return True
+
+    monkeypatch.setattr(accounts, "_HASHER", Always())
+    real = accounts.verify_password
+    newer = accounts.hash_password("Other-pass-2027y")
+
+    def verify_then_change(stored, password):
+        ok = real(stored, password)
+        with store.conn.lock:  # a password change commits during the check
+            store.conn.execute("UPDATE accounts SET password_hash = ? WHERE id = ?",
+                               (newer, a.id))
+        return ok
+
+    monkeypatch.setattr(accounts, "verify_password", verify_then_change)
+    assert store.authenticate_gen("ola", PASSWORD) is None
+    stored = store.conn.execute("SELECT password_hash FROM accounts WHERE id = ?",
+                                (a.id,)).fetchone()[0]
+    assert stored == newer
+
+
+def test_a_session_is_refused_when_the_generation_moved_after_the_check(store):
+    from studio.app import Sessions
+
+    a = store.create("ola", PASSWORD)
+    _, gen = store.authenticate_gen("ola", PASSWORD)
+    store.change_password(a.id, PASSWORD, "Fresh-pass-2026x", "Fresh-pass-2026x",
+                          keep_sid="")  # between the check and the session
+    sessions = accounts.AccountSessions(Sessions(b"k" * 32), store)
+    with pytest.raises(accounts.StaleCredentials):
+        sessions.issue(account_id=a.id, gen=gen)
+    assert store.sessions(a.id) == [] and len(sessions.base._active) == 0
+    _, gen = store.authenticate_gen("ola", "Fresh-pass-2026x")
+    assert sessions.check(sessions.issue(account_id=a.id, gen=gen)) is not None

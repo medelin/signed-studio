@@ -226,6 +226,11 @@ class SecondFactorLocked(AccountError):
     code = "second_factor_locked"
 
 
+class StaleCredentials(AccountError):
+    """The password, second factor or status changed after the credential was checked."""
+    code = "stale_credentials"
+
+
 @dataclass(frozen=True)
 class Account:
     id: str
@@ -695,24 +700,39 @@ class Accounts:
 
     def authenticate(self, username: str, password: str) -> Account | None:
         """The account for a correct user name and password, if it is active; otherwise
-        None. One argon2 verification either way (a dummy hash for unknown names)."""
+        None (see ``authenticate_gen``)."""
+        found = self.authenticate_gen(username, password)
+        return found[0] if found else None
+
+    def authenticate_gen(self, username: str, password: str) -> tuple[Account, int] | None:
+        """The account for a correct user name and password, with the credential generation
+        the password was checked against; None otherwise. One argon2 verification either
+        way (a dummy hash for unknown names). The verification runs outside any lock (and
+        may run in a thread), so the hash, generation and status are read again afterwards
+        and must not have changed: a password change or a disable during the check wins."""
         name = normalize_username(username)
         row = None
         if USERNAME.fullmatch(name):
             with self._read() as c:
-                row = c.execute("SELECT id, password_hash, status FROM accounts "
-                                "WHERE username = ?", (name,)).fetchone()
+                row = c.execute("SELECT id, password_hash, status, credential_gen "
+                                "FROM accounts WHERE username = ?", (name,)).fetchone()
         if len(password) > MAX_PASSWORD_LEN:
             password = password[:MAX_PASSWORD_LEN] + "\x00"  # never matches; same work
         stored = row[1] if row and row[1] else _dummy_hash()
         ok = verify_password(stored, password)
         if not (row and ok and row[2] == "active"):
             return None
-        if _HASHER.check_needs_rehash(stored):
-            with transaction(self.conn) as c:
-                c.execute("UPDATE accounts SET password_hash = ? WHERE id = ?",
-                          (hash_password(password), row[0]))
-        return self.get(row[0])
+        fresh = hash_password(password) if _HASHER.check_needs_rehash(stored) else ""
+        with transaction(self.conn) as c:
+            now = c.execute("SELECT password_hash, status, credential_gen FROM accounts "
+                            "WHERE id = ?", (row[0],)).fetchone()
+            if now is None or tuple(now) != (stored, "active", row[3]):
+                return None
+            if fresh:  # only over the hash that was checked
+                c.execute("UPDATE accounts SET password_hash = ? WHERE id = ? AND "
+                          "password_hash = ?", (fresh, row[0], stored))
+        account = self.get(row[0])
+        return (account, int(row[3])) if account is not None else None
 
     def _check_password(self, stored: str, password: str, *, external_fresh: bool = False
                         ) -> None:
@@ -935,10 +955,19 @@ class Accounts:
 
     # -- sessions --------------------------------------------------------------------------
 
-    def record_session(self, sid: str, account_id: str, expires_ts: int, user_agent: str
-                       ) -> None:
+    def record_session(self, sid: str, account_id: str, expires_ts: int, user_agent: str,
+                       gen: int | None = None) -> None:
+        """The session's row. With ``gen`` (the credential generation the sign-in was
+        checked against), refused with ``StaleCredentials`` unless it is still current or
+        the account is no longer active: checked in the same transaction as the insert, so
+        a credential change either sees this row (and revokes it) or refuses it."""
         now = self.clock()
         with transaction(self.conn) as c:
+            if gen is not None:
+                row = c.execute("SELECT credential_gen, status FROM accounts WHERE id = ?",
+                                (account_id,)).fetchone()
+                if row is None or tuple(row) != (gen, "active"):
+                    raise StaleCredentials("the credentials changed during the sign-in")
             c.execute("INSERT OR REPLACE INTO account_sessions (sid_sha256, account_id, "
                       "created_ts, last_seen_ts, expires_ts, user_agent) "
                       "VALUES (?, ?, ?, ?, ?, ?)",
@@ -1200,10 +1229,12 @@ class AccountSessions:
         self.accounts = accounts
 
     def issue(self, now: float | None = None, *, account_id: str = "", user_agent: str = "",
-              client: str = "") -> str:
+              client: str = "", gen: int | None = None) -> str:
         """A session for ``account_id``: at most ``ACCOUNT_SESSIONS`` per account, the
         oldest ending first; for the shared demo account the cap is per ``client`` (its
-        limiter prefix), so a judge only ever ends their own older sessions."""
+        limiter prefix), so a judge only ever ends their own older sessions. With ``gen``,
+        ``StaleCredentials`` (and no session) unless the account's credential generation
+        still equals it."""
         if not account_id:
             return self.base.issue(now)
         account = self.accounts.get(account_id)
@@ -1212,7 +1243,11 @@ class AccountSessions:
         value = self.base.issue(now, owner=owner, limit=ACCOUNT_SESSIONS,
                                 on_evict=self.accounts.revoke_sid)  # its row and keys too
         sid, exp, _ = value.split(".")
-        self.accounts.record_session(sid, account_id, int(exp), user_agent)
+        try:
+            self.accounts.record_session(sid, account_id, int(exp), user_agent, gen)
+        except StaleCredentials:
+            self.base.revoke(value)
+            raise
         return value
 
     def check(self, value: str | None, now: float | None = None) -> str | None:

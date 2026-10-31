@@ -74,7 +74,7 @@ from studio import (
     sandbox,
     whatsapp,
 )
-from studio.accounts import ACCOUNT_SESSIONS
+from studio.accounts import ACCOUNT_SESSIONS, StaleCredentials
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
@@ -746,7 +746,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return fail("csrf", 403)
         # argon2id (no user enumeration) in the threadpool: the event loop keeps serving.
         # The attempt was reserved above, so a request waiting here is already counted.
-        account = await run_in_threadpool(app.state.accounts.authenticate, username, password)
+        found = await run_in_threadpool(app.state.accounts.authenticate_gen, username, password)
+        account, gen = found if found else (None, -1)
         two_step = account is not None and account.totp_enabled
         # a session follows a success without a second step: it counts as a sign-in
         if not app.state.limiter.settle(ip, account is not None, clear=not two_step,
@@ -755,10 +756,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if account is None:
             return fail("invalid_credentials", 401)
         if two_step:
-            return routes_account.second_step(app, request, account, auth.safe_next(nxt), html)
+            return routes_account.second_step(app, request, account, auth.safe_next(nxt), html,
+                                              gen)
         response: Response = (RedirectResponse(auth.safe_next(nxt), 303) if html
                               else JSONResponse({"ok": True}))
-        routes_account.start_session(app, request, response, account)  # always a new session
+        try:  # always a new session, and only for the credential that was checked
+            routes_account.start_session(app, request, response, account, gen=gen)
+        except StaleCredentials:
+            return fail("invalid_credentials", 401)
         return response
 
     @app.post("/logout")
