@@ -10,6 +10,7 @@ from studio.pii import (
     find_phone,
     long_digit_run,
     redact,
+    redact_digit_runs,
 )
 
 # Checksums: NIP 5260250274 (weights 6,5,7,2,3,4,5,6,7), PESEL 44051401359 / 02270803624.
@@ -285,3 +286,31 @@ def test_new_email_pattern_covers_every_address_the_old_one_caught(text):
     assert OLD.search(text), text
     out = receipt_redact(f"pisz: {text} teraz")
     assert "@" not in out and not OLD.search(out), out
+
+
+@pytest.mark.parametrize("text", ["abcdef-600-123-456-abcdef", "abcdef600-123-456abcdef0000",
+                                  "deadbeef 600.123.456cafe0000000000"])
+def test_hex_letters_with_separators_are_not_an_id(text):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == "phone", text
+    for masked in (redact(text), receipt_redact(text)):
+        assert "600" not in masked, (text, masked)
+
+
+def test_real_uuids_and_digests_stay_intact():
+    import hashlib
+    import uuid
+
+    from studio.receipts import redact as receipt_redact
+
+    digest = "3f9a" + "600123456" + "b" * 51
+    ids = [digest, "550e8400-e29b-41d4-a716-446655440000",
+           "123e4567-e89b-12d3-a456-426614174000", "n_" + "1" * 32,
+           hashlib.sha256(b"x").hexdigest(), uuid.UUID(int=600123456).hex]
+    for value in ids:
+        assert contains_pii(value) is None, value
+        if "-" not in value:  # a UUID's last group stands alone: the long-run rule masks it
+            assert redact_digit_runs(value) == value, value
+    assert receipt_redact(digest) == digest

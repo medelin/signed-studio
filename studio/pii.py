@@ -42,9 +42,10 @@ _EMAIL = re.compile(rf"[\w.%+\-{_MARKS}]+@[\w.\-{_MARKS}]*[\w\-{_MARKS}]")
 # A run of digits with the separators people type; classified after normalisation. It may
 # touch letters (``tel600-123-456``) unless it is part of an id (``_is_id``).
 _RUN = re.compile(r"(?<![\d+])(?:\+|00)?\(?\d[\d \-()./]{5,}\d(?!\d)")
-_ID_CHAR = re.compile(r"[0-9A-Za-z-]")
-_HEX = frozenset("abcdefABCDEF")
-ID_MIN = 16  # a digest, token_hex or UUID: 16+ hex characters (and dashes)
+_HEX = frozenset("0123456789abcdefABCDEF")
+ID_MIN = 16  # a digest or token_hex: 16+ contiguous hex characters
+_UUID = re.compile(r"(?<![0-9A-Za-z])[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+                   r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![0-9A-Za-z])")
 # Fail-closed rule: LONG_RUN_DIGITS digits (any script) within any LONG_RUN_WINDOW
 # characters, whatever lies between them.
 LONG_RUN_DIGITS = 9
@@ -143,20 +144,22 @@ def _glued(text: str, start: int, end: int) -> bool:
 
 
 def _is_id(text: str, start: int, end: int) -> bool:
-    """A digit run glued inside an opaque id: the token of ``[0-9A-Za-z-]`` around it is at
-    least ``ID_MIN`` characters and every letter in it is a hex digit (a digest,
-    ``token_hex``, a UUID, a test nonce of digits). ``abc600123456`` is too short."""
-    if not _glued(text, start, end) or not _ID_CHAR.fullmatch(text[start]):
+    """A digit run glued inside an opaque id, with a real id shape: inside a canonical
+    UUID (8-4-4-4-12 hex), or a run of digits only whose letters-and-digits word is
+    ``ID_MIN``+ hex characters (a digest, ``token_hex``). ``abc600123456`` is too short,
+    ``abcdef-600-123-456-abcdef`` has separators: both are classified and masked."""
+    if not _glued(text, start, end):
+        return False
+    if any(u.start() <= start and end <= u.end() for u in _UUID.finditer(text)):
+        return True
+    if not text[start:end].isdigit():
         return False
     lo, hi = start, end
-    while lo > 0 and _ID_CHAR.fullmatch(text[lo - 1]):
+    while lo > 0 and text[lo - 1].isascii() and text[lo - 1].isalnum():
         lo -= 1
-    while hi < len(text) and _ID_CHAR.fullmatch(text[hi]):
+    while hi < len(text) and text[hi].isascii() and text[hi].isalnum():
         hi += 1
-    token = text[lo:hi]
-    letters = {c for c in token if c.isalpha()}
-    return (hi - lo >= ID_MIN and letters <= _HEX
-            and all(_ID_CHAR.fullmatch(c) for c in text[start:end]))
+    return hi - lo >= ID_MIN and all(c in _HEX for c in text[lo:hi])
 
 
 def _glued_runs(text: str) -> list[tuple[int, int]]:
