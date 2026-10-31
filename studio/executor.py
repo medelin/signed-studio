@@ -14,7 +14,6 @@ receipt that ``studio verify`` links back to the approval (``approval_id``, ``ac
 from __future__ import annotations
 
 import json
-import logging
 import sqlite3
 import time
 from collections.abc import Mapping
@@ -22,8 +21,6 @@ from typing import Any
 
 from studio.approvals import TTL_S, Verified, payload_sha256, transaction
 from studio.receipts import MANDATE_APPROVER, Ledger, Receipt
-
-LOG = logging.getLogger("studio.executor")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS executions (
@@ -52,12 +49,21 @@ ONCE_INDEX = ("CREATE UNIQUE INDEX IF NOT EXISTS executions_campaign_once ON exe
               "AND status IN ('running', 'done')")
 
 
+class SchemaError(RuntimeError):
+    """The database cannot carry a safety index: the studio refuses to start."""
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
+    """The executions table and its one-campaign-per-item index. Without the index a
+    renewed approval could create a second campaign, so a database whose rows prevent it
+    (an older one with duplicates) stops the start instead of running unguarded."""
     conn.executescript(SCHEMA)
     try:
         conn.execute(ONCE_INDEX)
-    except sqlite3.IntegrityError:  # an older database already holds duplicates
-        LOG.warning("executions: duplicate campaign.create rows; unique index not created")
+    except sqlite3.IntegrityError as exc:
+        raise SchemaError("executions: duplicate running/done campaign.create rows for one "
+                          "item; resolve them (mark all but one 'failed') before starting"
+                          ) from exc
 
 
 def authorize(conn: sqlite3.Connection, verified: Any, action: str,
