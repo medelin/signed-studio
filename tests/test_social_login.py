@@ -211,3 +211,33 @@ def test_studio_events_reach_full_accounts_only(tmp_path):
         app.state.notifier.event("lead_new")
         app.state.notifier.flush()
     assert [m.to for m in app.state.notifier.outbox] == ["owner@example.com"]
+
+
+# -- review fixes (31 Oct): started sign-ins are bounded per client --------------------
+
+
+def test_started_sign_ins_are_capped_per_client_and_refused_when_full():
+    states = social_login.States()
+    states.LIMIT = 6
+    states.PER_CLIENT = 2
+    other, _ = states.open("google", "/", client="198.51.100.7")
+    mine = [states.open("google", "/", client="203.0.113.9")[0] for _ in range(4)]
+    assert states.take(other, other, "google") is not None  # another client's state stays
+    assert [states.take(s, s, "google") is not None for s in mine] == [False, False, True,
+                                                                        True]
+    for i in range(6):
+        states.open("google", "/", client=f"192.0.2.{i}")
+    with pytest.raises(social_login.StatesFull):
+        states.open("google", "/", client="192.0.2.99")
+    expired = social_login.States()
+    expired.LIMIT = 1
+    expired.open("google", "/", now=0.0)
+    expired.open("google", "/")  # the expired one is dropped, not counted
+
+
+def test_a_full_state_table_refuses_the_start(tmp_path):
+    app, _ = _app(tmp_path, GOOGLE)
+    app.state.social_states.LIMIT = 0
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.get("/auth/google/start", follow_redirects=False)
+    assert r.status_code == 303 and "social_error=" in r.headers["location"]

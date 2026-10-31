@@ -4,11 +4,14 @@ Security notes:
 - the login attempt is reserved in the per-prefix limiter *before* the body is awaited, so
   concurrent requests cannot all slip past the check; the body must arrive within
   ``LOGIN_BODY_TIMEOUT_S``; only completed attempts count towards the short, capped global
-  pause (see ``LoginLimiter``); success clears the client's bucket;
+  pause (see ``LoginLimiter``); success clears the client's failures, while successful
+  sign-ins have their own per-prefix budget;
 - passwords are verified with argon2id (``studio.accounts``); an unknown user name costs the
   same verification against a dummy hash (non-ASCII input is a 401, not a 500);
 - sessions are HMAC-signed with the dedicated ``SESSION_SECRET`` and also tracked server
   side, so ``POST /logout`` revokes them; cookies are HttpOnly, SameSite=Strict, Secure;
+  an account holds a bounded number of sessions (its oldest ends) and a full table refuses
+  new sign-ins (503) instead of ending other users' sessions;
 - ``X-Forwarded-For`` is used only when the direct peer is a ``TRUSTED_PROXY``, and then
   only its rightmost element (the address that proxy saw);
 - request bodies are capped (413), state-changing requests must be same-origin, and the
@@ -70,6 +73,7 @@ from studio import (
     sandbox,
     whatsapp,
 )
+from studio.accounts import ACCOUNT_SESSIONS, DEMO_SESSIONS  # noqa: F401 - re-exported
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
@@ -88,6 +92,7 @@ UPLOAD_LIMITS = {"/api/briefs/voice": 32 * 1024 * 1024, "/api/reports": 6 * 1024
                  **routes_api.UPLOAD_LIMITS}
 JUDGE_USER = "judge"
 MAX_KEYS_PER_SESSION = 5
+MAX_SESSIONS = 1000  # live sessions in all; beyond it a sign-in is refused, nobody evicted
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
@@ -147,6 +152,9 @@ class LoginLimiter:
       global limit is a slow rate limit (at most 20 guesses per pause), not a hard lockout:
       however long a failure storm lasts, a correct login gets through at most
       ``MAX_LOCK_S`` after it stops;
+    - successful sign-ins are counted too, in their own per-prefix budget
+      (``max_signins`` per window): a success clears the failures, never the sign-ins, so
+      one client cannot mint sessions without bound;
     - under table pressure, expired then low-count unblocked entries are evicted; blocked
       prefixes are never evicted, and when only blocked entries remain, new clients are
       refused (fail closed).
@@ -159,8 +167,11 @@ class LoginLimiter:
     STRIKE_DECAY_S = 900.0
     DAILY_WARN_FAILURES = 500  # failures per 24 h before a loud warning (never a lock)
 
-    def __init__(self, max_attempts: int = 5, window_s: float = 900, max_clients: int = 10_000):
+    def __init__(self, max_attempts: int = 5, window_s: float = 900, max_clients: int = 10_000,
+                 max_signins: int = 10):
         self.max_attempts = max_attempts
+        self.max_signins = max_signins
+        self._signins: dict[str, list[float]] = {}  # successful sign-ins per prefix
         self.window_s = window_s
         self.max_clients = max_clients
         self._hits: dict[str, list[float]] = {}
@@ -211,7 +222,8 @@ class LoginLimiter:
             if key not in self._hits and not self._make_room(t):
                 return False
             hits = self._recent(self._hits.get(key, []), t)
-            if len(hits) >= self.max_attempts:
+            if len(hits) >= self.max_attempts or len(
+                    self._recent(self._signins.get(key, []), t)) >= self.max_signins:
                 self._hits[key] = hits
                 return False
             hits.append(t)
@@ -226,20 +238,31 @@ class LoginLimiter:
             hits = self._recent(self._hits.get(limiter_key(ip), []), t)
             if len(hits) >= self.max_attempts:
                 waits.append(hits[0] + self.window_s - t)
+            signins = self._recent(self._signins.get(limiter_key(ip), []), t)
+            if len(signins) >= self.max_signins:
+                waits.append(signins[0] + self.window_s - t)
         return max(1, math.ceil(max(waits)))
 
-    def settle(self, ip: str, ok: bool, now: float | None = None, *, clear: bool = True
-               ) -> bool:
+    def settle(self, ip: str, ok: bool, now: float | None = None, *, clear: bool = True,
+               signin: bool = False) -> bool:
         """Record a completed attempt. False (429, nothing recorded) while paused. A success
         clears the client's bucket unless ``clear=False`` (a password step with a second step
-        still to come keeps its attempts counted)."""
+        still to come, or a form error that is no credential check, keeps its attempts
+        counted); ``signin`` counts it in the client's sign-in budget (a session follows)."""
         t = time.time() if now is None else now
+        key = limiter_key(ip)
         with self._lock:
             if t < self.locked_until:
                 return False
             if ok:
                 if clear:
-                    self._hits.pop(limiter_key(ip), None)
+                    self._hits.pop(key, None)
+                if signin:
+                    if len(self._signins) >= self.max_clients:
+                        for k in [k for k, v in self._signins.items()
+                                  if not self._recent(v, t)]:
+                            del self._signins[k]
+                    self._signins[key] = [*self._recent(self._signins.get(key, []), t), t]
                 return True
             self._failures = [f for f in self._failures if t - f < self.GLOBAL_WINDOW_S]
             self._failures.append(t)
@@ -266,32 +289,62 @@ class LoginLimiter:
     def clear(self, ip: str) -> None:
         with self._lock:
             self._hits.pop(limiter_key(ip), None)
+            self._signins.pop(limiter_key(ip), None)
 
 
 # -- sessions ---------------------------------------------------------------------------
 
 
-class Sessions:
-    """HMAC-signed session cookies (``sid.exp.mac``) plus a server-side revocation set."""
+class SessionsFull(Exception):
+    """Every session slot is taken by live sessions: a new sign-in is refused (503) rather
+    than ending someone else's session."""
 
-    def __init__(self, secret: bytes, max_sessions: int = 1000) -> None:
+
+class Sessions:
+    """HMAC-signed session cookies (``sid.exp.mac``) plus a server-side revocation set.
+
+    Bounded without letting one user end another's session: an owner (account) holds at
+    most ``limit`` live sessions (``per_owner`` by default) and a new one ends that owner's
+    oldest; when ``max_sessions`` live sessions exist, a new one is refused
+    (``SessionsFull``). Expired entries are dropped first."""
+
+    def __init__(self, secret: bytes, max_sessions: int = MAX_SESSIONS,
+                 per_owner: int = ACCOUNT_SESSIONS) -> None:
         if len(secret) < 32:
             raise ValueError("session secret too short")
         self._secret = secret
-        self._active: OrderedDict[str, float] = OrderedDict()
+        self._active: OrderedDict[str, tuple[int, str]] = OrderedDict()  # sid -> exp, owner
         self._max = max_sessions
+        self._per_owner = per_owner
         self._lock = threading.Lock()
 
     def _mac(self, sid: str, exp: int) -> str:
         return hmac.new(self._secret, f"v1|{sid}|{exp}".encode(), hashlib.sha256).hexdigest()
 
-    def issue(self, now: float | None = None) -> str:
-        exp = int((time.time() if now is None else now) + SESSION_TTL_S)
+    def issue(self, now: float | None = None, *, owner: str = "", limit: int = 0,
+              on_evict: Callable[[str], None] | None = None) -> str:
+        """A new session cookie. With ``owner``, that owner's oldest sessions beyond
+        ``limit - 1`` end first (``on_evict`` gets each ended session id); raises
+        ``SessionsFull`` when the table is full of live sessions."""
+        t = time.time() if now is None else now
+        exp = int(t + SESSION_TTL_S)
         sid = secrets.token_urlsafe(24)
+        evicted: list[str] = []
         with self._lock:
-            self._active[sid] = exp
-            while len(self._active) > self._max:
-                self._active.popitem(last=False)
+            for old in [k for k, (e, _) in self._active.items() if e <= t]:
+                del self._active[old]
+            if owner:
+                mine = [k for k, (_, o) in self._active.items() if o == owner]
+                while mine and len(mine) >= (limit or self._per_owner):
+                    oldest = mine.pop(0)
+                    del self._active[oldest]
+                    evicted.append(oldest)
+            if len(self._active) >= self._max:
+                raise SessionsFull("too many sessions")
+            self._active[sid] = (exp, owner)
+        for old in evicted:
+            if on_evict is not None:
+                on_evict(old)
         return f"{sid}.{exp}.{self._mac(sid, exp)}"
 
     def check(self, value: str | None, now: float | None = None) -> str | None:
@@ -307,7 +360,8 @@ class Sessions:
         if exp <= (time.time() if now is None else now):
             return None
         with self._lock:
-            return sid if self._active.get(sid) == exp else None
+            entry = self._active.get(sid)
+            return sid if entry is not None and entry[0] == exp else None
 
     @staticmethod
     def expiry(value: str) -> int:
@@ -462,6 +516,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # unversioned URLs: revalidate by ETag (304) so a deploy shows on the next load
             response.headers["Cache-Control"] = "no-cache"
         return response
+
+    @app.exception_handler(SessionsFull)
+    async def sessions_full(request: Request, exc: SessionsFull) -> Response:
+        LOG.warning("session table full: a sign-in was refused")
+        return JSONResponse({"error": "too_many_sessions"}, 503, headers={"Retry-After": "60"})
 
     def session_of(request: Request) -> str | None:
         return app.state.sessions.check(request.cookies.get(COOKIE))  # type: ignore[no-any-return]
@@ -660,7 +719,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # No await from here to settle(): the global count is exact, never "in flight".
         account = app.state.accounts.authenticate(username, password)  # argon2id, no enum
         two_step = account is not None and account.totp_enabled
-        if not app.state.limiter.settle(ip, account is not None, clear=not two_step):
+        # a session follows a success without a second step: it counts as a sign-in
+        if not app.state.limiter.settle(ip, account is not None, clear=not two_step,
+                                        signin=account is not None and not two_step):
             return fail("too_many_attempts", 429, app.state.limiter.retry_after(ip))
         if account is None:
             return fail("invalid_credentials", 401)

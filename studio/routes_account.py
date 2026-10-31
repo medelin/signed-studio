@@ -527,7 +527,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         challenge = app.state.challenges.get(token)
         ok = challenge is not None and store.verify_second_factor(
             challenge.account_id, fields.get("code", ""), gen=challenge.gen)
-        if not app.state.limiter.settle(ip, ok):
+        if not app.state.limiter.settle(ip, ok, signin=ok):  # a session follows
             return fail("too_many_attempts", 429, app.state.limiter.retry_after(ip))
         if not ok or challenge is None:
             app.state.challenges.fail(token)

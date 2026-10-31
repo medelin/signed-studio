@@ -99,25 +99,39 @@ class Pending:
     expires: float
 
 
+class StatesFull(Exception):
+    """Every slot holds a live started sign-in: a new start is refused, none is evicted."""
+
+
 class States:
-    """Started sign-ins by ``state``, each usable once; bounded and expiring."""
+    """Started sign-ins by ``state``, each usable once; bounded and expiring. A client
+    (its limiter prefix) holds at most ``PER_CLIENT`` and a new one ends its own oldest;
+    when ``LIMIT`` live ones exist a new start is refused (``StatesFull``), so nobody can
+    push other people's sign-ins out."""
 
     LIMIT = 2000
+    PER_CLIENT = 10
 
     def __init__(self) -> None:
-        self._items: OrderedDict[str, Pending] = OrderedDict()
+        self._items: OrderedDict[str, tuple[Pending, str]] = OrderedDict()  # -> client
         self._lock = threading.Lock()
 
     def open(self, provider: str, nxt: str, link_account: str = "",
-             now: float | None = None) -> tuple[str, Pending]:
+             now: float | None = None, *, client: str = "") -> tuple[str, Pending]:
         now = time.time() if now is None else now
         state = secrets.token_urlsafe(32)
         pending = Pending(provider, secrets.token_urlsafe(48), nxt, link_account,
                           now + STATE_TTL_S)
         with self._lock:
-            self._items[state] = pending
-            while len(self._items) > self.LIMIT:
-                self._items.popitem(last=False)
+            for key in [k for k, (p, _) in self._items.items() if p.expires < now]:
+                del self._items[key]
+            if client:
+                mine = [k for k, (_, c) in self._items.items() if c == client]
+                for key in mine[:max(0, len(mine) - self.PER_CLIENT + 1)]:
+                    del self._items[key]
+            if len(self._items) >= self.LIMIT:
+                raise StatesFull("too many sign-ins in progress")
+            self._items[state] = (pending, client)
         return state, pending
 
     def take(self, state: str | None, cookie: str | None, provider: str,
@@ -126,7 +140,8 @@ class States:
             return None
         now = time.time() if now is None else now
         with self._lock:
-            pending = self._items.pop(state, None)
+            item = self._items.pop(state, None)
+        pending = item[0] if item is not None else None
         if pending is None or pending.provider != provider or pending.expires < now:
             return None
         return pending

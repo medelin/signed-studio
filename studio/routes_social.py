@@ -43,9 +43,15 @@ def register(app: FastAPI, settings: Settings) -> None:
         pair = client(provider)
         if pair is None or settings.read_only:
             return failed(request, "unavailable")
+        from studio.app import client_ip, limiter_key
+
         current = signed_in(request)
-        state, pending = states.open(provider, auth.safe_next(next),
-                                     current.id if current else "")
+        try:
+            state, pending = states.open(
+                provider, auth.safe_next(next), current.id if current else "",
+                client=limiter_key(client_ip(request, settings.trusted_proxies)))
+        except social_login.StatesFull:
+            return failed(request, "busy")
         response = RedirectResponse(social_login.authorize_url(
             provider, pair[0], _redirect_uri(request, settings, provider), state, pending), 303)
         response.set_cookie(social_login.STATE_COOKIE, state,

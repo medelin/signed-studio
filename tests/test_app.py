@@ -497,3 +497,81 @@ def test_login_failures_metric_is_not_public(app, client):
     login(client, "nope")
     assert "login_failures_24h" not in client.get("/healthz").json()
     assert app.state.limiter.failures_24h() == 1
+
+
+# -- review fixes (31 Oct): sessions are capped per account, never evicted globally -----
+
+
+def test_sessions_are_capped_per_owner_and_evict_only_that_owners_oldest():
+    from studio.app import Sessions
+
+    sessions = Sessions(b"k" * 32, max_sessions=50, per_owner=3)
+    other = sessions.issue(owner="acct_other")
+    evicted: list[str] = []
+    mine = [sessions.issue(owner="acct_me", on_evict=evicted.append) for _ in range(5)]
+    assert sessions.check(other) is not None  # another account's session never goes
+    assert [sessions.check(v) is not None for v in mine] == [False, False, True, True, True]
+    assert evicted == [mine[0].split(".")[0], mine[1].split(".")[0]]
+    judge = [sessions.issue(owner="acct_judge", limit=10) for _ in range(5)]
+    assert all(sessions.check(v) for v in judge)  # a larger limit for the shared account
+
+
+def test_a_full_session_table_refuses_new_sessions_instead_of_evicting():
+    from studio.app import Sessions, SessionsFull
+
+    sessions = Sessions(b"k" * 32, max_sessions=4, per_owner=1)
+    first = [sessions.issue(owner=f"acct_{i}") for i in range(4)]
+    with pytest.raises(SessionsFull):
+        sessions.issue(owner="acct_attacker")
+    assert all(sessions.check(v) for v in first)
+    sessions.issue(owner="acct_0")  # an owner's own session can still make room for itself
+    sessions.revoke(first[1])
+    sessions.issue(owner="acct_new")  # a free slot is used
+    expired = Sessions(b"k" * 32, max_sessions=1)
+    expired.issue(now=time.time() - 9 * 3600)
+    expired.issue()  # an expired entry is dropped, not counted
+
+
+def test_a_full_session_table_answers_503_to_a_sign_in(tmp_path):
+    from studio import app as app_module
+
+    app = create_app(settings(tmp_path))
+    base = app.state.sessions.base
+    with TestClient(app, base_url="https://testserver") as c:
+        cookies = []
+        for _ in range(app_module.ACCOUNT_SESSIONS + 1):
+            app.state.limiter.clear("testclient")
+            c.cookies.clear()
+            assert c.post("/login", json={"username": "judge", "password": PASSWORD}).json() \
+                == {"ok": True}
+            cookies.append(c.cookies.get("studio_session"))
+    judge = app.state.accounts.by_username("judge")
+    assert len(app.state.accounts.sessions(judge.id)) <= app_module.DEMO_SESSIONS
+    base._max = len(base._active)  # full: a new sign-in is refused, nobody is evicted
+    with TestClient(app, base_url="https://testserver") as c:
+        app.state.limiter.clear("testclient")
+        r = c.post("/login", json={"username": "judge", "password": PASSWORD})
+        assert r.status_code == 503 and r.json() == {"error": "too_many_sessions"}
+
+
+def test_an_evicted_account_session_row_is_revoked(tmp_path):
+    from studio import app as app_module
+
+    app = create_app(settings(tmp_path))
+    store = app.state.accounts
+    ola = store.create("ola", "Lp4-" + secrets.token_hex(12))
+    values = [app.state.sessions.issue(account_id=ola.id)
+              for _ in range(app_module.ACCOUNT_SESSIONS + 2)]
+    assert len(store.sessions(ola.id)) == app_module.ACCOUNT_SESSIONS
+    assert app.state.sessions.check(values[0]) is None
+    assert app.state.sessions.check(values[-1]) is not None
+
+
+def test_successful_logins_count_toward_the_client_rate(client, app):
+    for _ in range(app.state.limiter.max_signins):
+        client.cookies.clear()
+        assert client.post("/login", json={"username": "judge", "password": PASSWORD}
+                           ).status_code == 200
+    client.cookies.clear()
+    r = client.post("/login", json={"username": "judge", "password": PASSWORD})
+    assert r.status_code == 429

@@ -124,6 +124,8 @@ RECOVERY_CODES = 10
 TOTP_PERIOD_S = 30
 TOTP_DIGITS = 6
 TOTP_WINDOW = 1  # steps either side of now (clock skew)
+ACCOUNT_SESSIONS = 10  # live sessions per account; a new one ends the account's oldest
+DEMO_SESSIONS = 100  # the shared judge account: many judges, each with a session
 TOUCH_EVERY_S = 60.0  # last_seen is written at most this often per session
 # Wrong second-factor codes per account, whatever the client or challenge: after
 # FREE_CODE_FAILURES, every further failure locks code checks for BASE * 2**(n - FREE) s,
@@ -452,7 +454,8 @@ def short_agent(header: str) -> str:
 
 
 class BaseSessions(Protocol):
-    def issue(self, now: float | None = None) -> str: ...
+    def issue(self, now: float | None = None, *, owner: str = "", limit: int = 0,
+              on_evict: Callable[[str], None] | None = None) -> str: ...
 
     def check(self, value: str | None, now: float | None = None) -> str | None: ...
 
@@ -1188,10 +1191,16 @@ class AccountSessions:
 
     def issue(self, now: float | None = None, *, account_id: str = "", user_agent: str = ""
               ) -> str:
-        value = self.base.issue(now)
-        if account_id:
-            sid, exp, _ = value.split(".")
-            self.accounts.record_session(sid, account_id, int(exp), user_agent)
+        """A session for ``account_id``: at most ``ACCOUNT_SESSIONS`` per account
+        (``DEMO_SESSIONS`` for the shared judge account), the oldest ending first."""
+        if not account_id:
+            return self.base.issue(now)
+        account = self.accounts.get(account_id)
+        limit = DEMO_SESSIONS if account is not None and account.is_demo else ACCOUNT_SESSIONS
+        value = self.base.issue(now, owner=account_id, limit=limit,
+                                on_evict=self.accounts.revoke_sid)  # its row and keys too
+        sid, exp, _ = value.split(".")
+        self.accounts.record_session(sid, account_id, int(exp), user_agent)
         return value
 
     def check(self, value: str | None, now: float | None = None) -> str | None:
