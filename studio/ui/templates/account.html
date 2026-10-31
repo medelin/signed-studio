@@ -77,6 +77,10 @@
       <label for="pf-sells">{{ t("account.profile.sell_countries") }}</label>
       <input id="pf-sells" name="sell_countries" maxlength="60" autocomplete="off" autocapitalize="characters" spellcheck="false" value="{{ values.sell_countries.split(',') | map('trim') | reject('equalto', '') | join(', ') }}"{{ invalid("profile", "profile-error", "sell_countries", "pf-sells-hint") }}>
       <p class="hint" id="pf-sells-hint">{{ t("account.profile.sell_countries_hint") }}</p>
+      {# the pixel (a dataset id) matters only for ads that send people to the website:
+         hidden until a website is filled in (account.js shows it as one is typed); a
+         saved pixel stays visible so it can be cleared #}
+      <div class="pf-pixel" id="pf-pixel-field" data-needs-website{% if not values.website and not values.pixel_id %} hidden{% endif %}>
       <label for="pf-pixel">{{ t("account.profile.pixel_id") }}</label>
       {% if pixels %}
       <select id="pf-pixel" name="pixel_id"{{ invalid("profile", "profile-error", "pixel_id", "pf-pixel-hint") }}>
@@ -88,6 +92,7 @@
       <input id="pf-pixel" name="pixel_id" inputmode="numeric" maxlength="20" autocomplete="off" spellcheck="false" value="{{ values.pixel_id }}"{{ invalid("profile", "profile-error", "pixel_id", "pf-pixel-hint") }}>
       {% endif %}
       <p class="hint" id="pf-pixel-hint">{{ t("account.profile.pixel_hint_html") }}</p>
+      </div>
     </fieldset>
     <button type="submit"{% if read_only %} disabled{% endif %}>{{ t("account.profile.save") }}</button>
   </form>
