@@ -130,6 +130,16 @@ def test_field_mapping_to_the_scorer_inputs():
     assert "+15 UK" in hits and "+10 business" in hits
 
 
+def test_every_question_the_form_asks_reaches_the_scorer():
+    """Review fix E7: the form names each question's field ``key`` (``form_spec``), and
+    Meta returns that key as the lead's field name: every key must be mapped."""
+    form = leadads.form_spec("F", list(objectives.LEAD_FIELDS), "https://e.com/p", "https://e.com/")
+    keys = [q["key"] for q in form["questions"]]
+    lead = leadads.RemoteLead("1", "2", 0.0, {k: f"v-{k}" for k in keys})
+    row = leadads.lead_row(lead)
+    assert row["phone"] == "v-phone" and all(k in leadads.FIELD_MAP for k in keys)
+
+
 def _sign(body: bytes, secret: str = SECRET) -> str:
     return "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
 

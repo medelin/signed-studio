@@ -48,10 +48,12 @@ CREATE TABLE IF NOT EXISTS lead_forms (
     polled_ts REAL NOT NULL DEFAULT 0
 );
 """
-# Meta's field_data names for the prefill questions → the lead scorer's rule inputs.
+# Meta's field_data names for the prefill questions → the lead scorer's rule inputs. A
+# lead's field name is the question's ``key``: ``form_spec`` sets it to the lower-cased
+# type (``phone`` for PHONE); Meta's default keys (``phone_number``) are accepted too.
 FIELD_MAP = {"full_name": "name", "first_name": "name", "email": "email",
-             "phone_number": "phone", "city": "city", "company_name": "company",
-             "country": "country"}
+             "phone": "phone", "phone_number": "phone", "city": "city",
+             "company_name": "company", "country": "country"}
 MAX_FIELD = 200
 
 
