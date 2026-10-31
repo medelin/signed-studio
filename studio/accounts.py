@@ -592,12 +592,15 @@ class Accounts:
     def create_external(self, provider: str, subject: str, *, email: str = "",
                         display_name: str = "") -> Account:
         """A new ``trial`` account for a provider identity: no password, a user name made
-        from the e-mail's local part and a random suffix."""
-        local = re.sub(r"[^a-z0-9._-]", "", normalize_username(email.split("@")[0]))[:20]
+        from the e-mail's local part (or the provider's name) and a random suffix; it
+        always matches ``USERNAME`` (a letter or digit first)."""
+        local = re.sub(r"[^a-z0-9._-]", "", normalize_username(email.split("@")[0]))
+        local = local.lstrip("._-")[:20]
         profile = _clean_profile({"display_name": display_name[:80], "email": email[:254]})
         now = self.clock()
         for _ in range(8):
             name = f"{local or provider}-{secrets.token_hex(2)}"
+            assert USERNAME.fullmatch(name), name
             aid = "acct_" + secrets.token_hex(8)
             try:
                 with transaction(self.conn) as c:

@@ -521,3 +521,10 @@ def test_a_session_is_refused_when_the_generation_moved_after_the_check(store):
     assert store.sessions(a.id) == [] and len(sessions.base._active) == 0
     _, gen = store.authenticate_gen("ola", "Fresh-pass-2026x")
     assert sessions.check(sessions.issue(account_id=a.id, gen=gen)) is not None
+
+
+@pytest.mark.parametrize("email", ["_ola@example.com", "..x@example.com", "-@example.com",
+                                   "Ółá@example.com", "", "a" * 40 + "@example.com"])
+def test_a_provider_account_gets_a_valid_user_name(store, email):
+    a = store.create_external("google", "sub-" + secrets.token_hex(4), email=email)
+    assert accounts.USERNAME.fullmatch(a.username), a.username
