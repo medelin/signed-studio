@@ -124,8 +124,8 @@ RECOVERY_CODES = 10
 TOTP_PERIOD_S = 30
 TOTP_DIGITS = 6
 TOTP_WINDOW = 1  # steps either side of now (clock skew)
-ACCOUNT_SESSIONS = 10  # live sessions per account; a new one ends the account's oldest
-DEMO_SESSIONS = 100  # the shared judge account: many judges, each with a session
+ACCOUNT_SESSIONS = 10  # live sessions per account (the shared demo account: per client
+# prefix, so one judge never ends another's session); a new one ends the oldest
 TOUCH_EVERY_S = 60.0  # last_seen is written at most this often per session
 # Wrong second-factor codes per account, whatever the client or challenge: after
 # FREE_CODE_FAILURES, every further failure locks code checks for BASE * 2**(n - FREE) s,
@@ -1199,15 +1199,17 @@ class AccountSessions:
         self.base = base
         self.accounts = accounts
 
-    def issue(self, now: float | None = None, *, account_id: str = "", user_agent: str = ""
-              ) -> str:
-        """A session for ``account_id``: at most ``ACCOUNT_SESSIONS`` per account
-        (``DEMO_SESSIONS`` for the shared judge account), the oldest ending first."""
+    def issue(self, now: float | None = None, *, account_id: str = "", user_agent: str = "",
+              client: str = "") -> str:
+        """A session for ``account_id``: at most ``ACCOUNT_SESSIONS`` per account, the
+        oldest ending first; for the shared demo account the cap is per ``client`` (its
+        limiter prefix), so a judge only ever ends their own older sessions."""
         if not account_id:
             return self.base.issue(now)
         account = self.accounts.get(account_id)
-        limit = DEMO_SESSIONS if account is not None and account.is_demo else ACCOUNT_SESSIONS
-        value = self.base.issue(now, owner=account_id, limit=limit,
+        owner = f"{account_id}|{client}" if account is not None and account.is_demo \
+            else account_id
+        value = self.base.issue(now, owner=owner, limit=ACCOUNT_SESSIONS,
                                 on_evict=self.accounts.revoke_sid)  # its row and keys too
         sid, exp, _ = value.split(".")
         self.accounts.record_session(sid, account_id, int(exp), user_agent)
@@ -1240,6 +1242,7 @@ class Challenge:
     expires: float
     gen: int = 0  # the account's credential generation when the password step passed
     failures: int = 0
+    provider: bool = False  # the first step was a provider sign-in, not a password
 
 
 class Challenges:
@@ -1254,12 +1257,13 @@ class Challenges:
         self._items: OrderedDict[str, Challenge] = OrderedDict()
         self._lock = threading.Lock()
 
-    def open(self, account_id: str, nxt: str, now: float | None = None, *, gen: int = 0
-             ) -> str:
+    def open(self, account_id: str, nxt: str, now: float | None = None, *, gen: int = 0,
+             provider: bool = False) -> str:
         t = time.time() if now is None else now
         token = secrets.token_urlsafe(32)
         with self._lock:
-            self._items[sha256_hex(token)] = Challenge(account_id, nxt, t + self.TTL_S, gen)
+            self._items[sha256_hex(token)] = Challenge(account_id, nxt, t + self.TTL_S, gen,
+                                                       provider=provider)
             while len(self._items) > self.MAX:
                 self._items.popitem(last=False)
         return token

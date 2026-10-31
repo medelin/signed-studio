@@ -516,42 +516,55 @@ def test_sessions_are_capped_per_owner_and_evict_only_that_owners_oldest():
     assert all(sessions.check(v) for v in judge)  # a larger limit for the shared account
 
 
-def test_a_full_session_table_refuses_new_sessions_instead_of_evicting():
+def test_a_full_session_table_ends_the_biggest_holders_oldest_session():
     from studio.app import Sessions, SessionsFull
 
-    sessions = Sessions(b"k" * 32, max_sessions=4, per_owner=1)
-    first = [sessions.issue(owner=f"acct_{i}") for i in range(4)]
-    with pytest.raises(SessionsFull):
-        sessions.issue(owner="acct_attacker")
-    assert all(sessions.check(v) for v in first)
-    sessions.issue(owner="acct_0")  # an owner's own session can still make room for itself
-    sessions.revoke(first[1])
-    sessions.issue(owner="acct_new")  # a free slot is used
+    sessions = Sessions(b"k" * 32, max_sessions=6, per_owner=4)
+    alone = [sessions.issue(owner=f"acct_{i}") for i in range(2)]
+    bulk = [sessions.issue(owner="acct_bulk") for _ in range(4)]
+    evicted: list[str] = []
+    newcomer = sessions.issue(owner="acct_new", on_evict=evicted.append)
+    assert sessions.check(newcomer) is not None
+    assert all(sessions.check(v) for v in alone)  # nobody's only session goes
+    assert sessions.check(bulk[0]) is None and all(sessions.check(v) for v in bulk[1:])
+    assert evicted == [bulk[0].split(".")[0]]
+    singles = Sessions(b"k" * 32, max_sessions=2)
+    firsts = [singles.issue(owner="acct_a"), singles.issue(owner="acct_b")]
+    with pytest.raises(SessionsFull):  # only when every owner holds a single session
+        singles.issue(owner="acct_c")
+    assert all(singles.check(v) for v in firsts)
     expired = Sessions(b"k" * 32, max_sessions=1)
     expired.issue(now=time.time() - 9 * 3600)
     expired.issue()  # an expired entry is dropped, not counted
 
 
-def test_a_full_session_table_answers_503_to_a_sign_in(tmp_path):
-    from studio import app as app_module
-
+def test_a_full_session_table_answers_503_and_keeps_the_old_session(tmp_path):
     app = create_app(settings(tmp_path))
     base = app.state.sessions.base
     with TestClient(app, base_url="https://testserver") as c:
-        cookies = []
-        for _ in range(app_module.ACCOUNT_SESSIONS + 1):
-            app.state.limiter.clear("testclient")
-            c.cookies.clear()
-            assert c.post("/login", json={"username": "judge", "password": PASSWORD}).json() \
-                == {"ok": True}
-            cookies.append(c.cookies.get("studio_session"))
-    judge = app.state.accounts.by_username("judge")
-    assert len(app.state.accounts.sessions(judge.id)) <= app_module.DEMO_SESSIONS
-    base._max = len(base._active)  # full: a new sign-in is refused, nobody is evicted
-    with TestClient(app, base_url="https://testserver") as c:
+        assert c.post("/login", json={"username": "judge", "password": PASSWORD}).json() \
+            == {"ok": True}
+        old = c.cookies.get("studio_session")
+        for i in range(3):  # other owners, one session each: none may be ended
+            base._active[f"sid{i}"] = (int(time.time()) + 999, f"acct_{i}")
+        base._max = len(base._active)
         app.state.limiter.clear("testclient")
         r = c.post("/login", json={"username": "judge", "password": PASSWORD})
         assert r.status_code == 503 and r.json() == {"error": "too_many_sessions"}
+        assert app.state.sessions.check(old) is not None  # revoked only after a new one
+
+
+def test_demo_sessions_are_capped_per_client(tmp_path):
+    from studio import app as app_module
+
+    app = create_app(settings(tmp_path))
+    judge = app.state.accounts.by_username("judge")
+    sessions = app.state.sessions
+    first = sessions.issue(account_id=judge.id, client="198.51.100.7")
+    mine = [sessions.issue(account_id=judge.id, client="203.0.113.9")
+            for _ in range(app_module.ACCOUNT_SESSIONS + 3)]
+    assert sessions.check(first) is not None  # another judge keeps theirs
+    assert sessions.check(mine[0]) is None and sessions.check(mine[-1]) is not None
 
 
 def test_an_evicted_account_session_row_is_revoked(tmp_path):

@@ -82,16 +82,24 @@ def _pref_cookies(response: Response, account: Account, secure: bool) -> None:
                                 secure=secure, path="/")
 
 
-def start_session(app: FastAPI, request: Request, response: Response, account: Account) -> None:
-    """A new session for ``account`` (never the one the browser brought: no fixation)."""
-    from studio.app import COOKIE, SESSION_TTL_S
+def start_session(app: FastAPI, request: Request, response: Response, account: Account, *,
+                  provider: bool = False) -> None:
+    """A new session for ``account`` (never the one the browser brought: no fixation).
+    ``provider``: the sign-in was a provider's, complete (second step included); this
+    session alone may then act without a password for a while (``external_fresh``)."""
+    from studio.app import COOKIE, SESSION_TTL_S, client_ip, limiter_key
 
     settings: Settings = app.state.settings
+    value = app.state.sessions.issue(
+        account_id=account.id, user_agent=request.headers.get("user-agent", ""),
+        client=limiter_key(client_ip(request, settings.trusted_proxies)))
+    if provider:
+        from studio import routes_social  # it imports this module
+
+        routes_social.record_external(app, value.split(".")[0])
     old = request.cookies.get(COOKIE)
-    if old:
+    if old:  # only once the new one exists: a refused sign-in keeps the old session
         app.state.sessions.revoke(old)  # its row and its approver keys too
-    value = app.state.sessions.issue(account_id=account.id,
-                                     user_agent=request.headers.get("user-agent", ""))
     secure = _secure(request, settings)
     response.set_cookie(COOKIE, value, max_age=SESSION_TTL_S, httponly=True,
                         samesite="strict", secure=secure, path="/")
@@ -202,7 +210,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "min_password": accounts.MIN_PASSWORD_LEN,
             "identities": store.identities(account.id), "social": settings.social.enabled,
             "first_password": not account.has_password and routes_social.external_fresh(
-                app, account.id),
+                app, sid),
             "notify_prefs": notify.preferences(conn, account.id),
             "whatsapp_prefs": whatsapp.preferences(conn, account.id),
             "whatsapp_enabled": settings.whatsapp.enabled,
@@ -319,7 +327,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             await run_in_threadpool(  # argon2: never on the event loop
                 store.change_password, account.id, fields.get("current", ""),
                 fields.get("new", ""), fields.get("confirm", ""), keep_sid=sid,
-                external_fresh=routes_social.external_fresh(app, account.id))
+                external_fresh=routes_social.external_fresh(app, sid))
         except AccountError as exc:
             refused_attempt(ip, exc)
             field = "current" if isinstance(exc, accounts.WrongPassword) else "new"
@@ -344,7 +352,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
             await run_in_threadpool(
                 store.totp_begin, account.id, fields.get("password", ""),
-                external_fresh=routes_social.external_fresh(app, account.id))
+                external_fresh=routes_social.external_fresh(app, sid))
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
@@ -480,7 +488,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             await run_in_threadpool(store.delete, account.id, confirm=fields.get("confirm", ""),
                                     password=fields.get("password", ""),
                                     code=fields.get("code", ""),
-                                    external_fresh=routes_social.external_fresh(app, account.id))
+                                    external_fresh=routes_social.external_fresh(app, sid))
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
@@ -550,5 +558,5 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         nxt = auth.safe_next(challenge.next)
         response: Response = (RedirectResponse(nxt, 303) if html
                               else JSONResponse({"ok": True}))
-        start_session(app, request, response, account)
+        start_session(app, request, response, account, provider=challenge.provider)
         return response

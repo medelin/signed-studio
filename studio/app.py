@@ -10,8 +10,8 @@ Security notes:
   same verification against a dummy hash (non-ASCII input is a 401, not a 500);
 - sessions are HMAC-signed with the dedicated ``SESSION_SECRET`` and also tracked server
   side, so ``POST /logout`` revokes them; cookies are HttpOnly, SameSite=Strict, Secure;
-  an account holds a bounded number of sessions (its oldest ends) and a full table refuses
-  new sign-ins (503) instead of ending other users' sessions;
+  an account holds a bounded number of sessions (its oldest ends; the shared demo account
+  per client prefix) and a full table ends the oldest session of the biggest holder;
 - ``X-Forwarded-For`` is used only when the direct peer is a ``TRUSTED_PROXY``, and then
   only its rightmost element (the address that proxy saw);
 - request bodies are capped (413), state-changing requests must be same-origin, and the
@@ -32,7 +32,7 @@ import math
 import secrets
 import threading
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import Awaitable, Callable, MutableMapping
 from pathlib import Path
 from typing import Any
@@ -74,7 +74,7 @@ from studio import (
     sandbox,
     whatsapp,
 )
-from studio.accounts import ACCOUNT_SESSIONS, DEMO_SESSIONS  # noqa: F401 - re-exported
+from studio.accounts import ACCOUNT_SESSIONS
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
@@ -287,6 +287,21 @@ class LoginLimiter:
                 self._failures = []
             return True
 
+    def signin(self, ip: str, now: float | None = None) -> bool:
+        """Count a sign-in without a password (a provider's) in the client's sign-in budget;
+        False when that budget is used up. The password pause does not apply."""
+        t = time.time() if now is None else now
+        key = limiter_key(ip)
+        with self._lock:
+            recent = self._recent(self._signins.get(key, []), t)
+            if len(recent) >= self.max_signins:
+                return False
+            if len(self._signins) >= self.max_clients:
+                for k in [k for k, v in self._signins.items() if not self._recent(v, t)]:
+                    del self._signins[k]
+            self._signins[key] = [*recent, t]
+            return True
+
     def clear(self, ip: str) -> None:
         with self._lock:
             self._hits.pop(limiter_key(ip), None)
@@ -297,17 +312,19 @@ class LoginLimiter:
 
 
 class SessionsFull(Exception):
-    """Every session slot is taken by live sessions: a new sign-in is refused (503) rather
-    than ending someone else's session."""
+    """Every live session belongs to a different owner (each its only one): a new sign-in
+    is refused (503) rather than ending someone's only session."""
 
 
 class Sessions:
     """HMAC-signed session cookies (``sid.exp.mac``) plus a server-side revocation set.
 
-    Bounded without letting one user end another's session: an owner (account) holds at
-    most ``limit`` live sessions (``per_owner`` by default) and a new one ends that owner's
-    oldest; when ``max_sessions`` live sessions exist, a new one is refused
-    (``SessionsFull``). Expired entries are dropped first."""
+    Bounded without letting one user end another's session cheaply: an owner (an account,
+    or the shared demo account per client prefix) holds at most ``limit`` live sessions
+    (``per_owner`` by default) and a new one ends that owner's oldest. When
+    ``max_sessions`` live sessions exist, the owner holding the most loses its oldest, so
+    whoever mints sessions in bulk pays for it; only when every owner holds a single
+    session is a new one refused (``SessionsFull``). Expired entries are dropped first."""
 
     def __init__(self, secret: bytes, max_sessions: int = MAX_SESSIONS,
                  per_owner: int = ACCOUNT_SESSIONS) -> None:
@@ -322,26 +339,36 @@ class Sessions:
     def _mac(self, sid: str, exp: int) -> str:
         return hmac.new(self._secret, f"v1|{sid}|{exp}".encode(), hashlib.sha256).hexdigest()
 
+    def _make_room(self, owner: str, limit: int) -> list[str]:
+        """Under the lock: end ``owner``'s oldest beyond ``limit - 1``, then, while the table
+        is full, the oldest session of the owner holding the most (never anyone's only
+        one). Returns the ended session ids."""
+        evicted: list[str] = []
+        mine = [k for k, (_, o) in self._active.items() if o == owner]
+        while mine and len(mine) >= limit:
+            evicted.append(mine.pop(0))
+            del self._active[evicted[-1]]
+        while len(self._active) >= self._max:
+            counts = Counter(o for _, o in self._active.values())
+            top, held = counts.most_common(1)[0] if counts else ("", 0)
+            if held < 2:
+                raise SessionsFull("too many sessions")
+            oldest = next(k for k, (_, o) in self._active.items() if o == top)
+            del self._active[oldest]
+            evicted.append(oldest)
+        return evicted
+
     def issue(self, now: float | None = None, *, owner: str = "", limit: int = 0,
               on_evict: Callable[[str], None] | None = None) -> str:
-        """A new session cookie. With ``owner``, that owner's oldest sessions beyond
-        ``limit - 1`` end first (``on_evict`` gets each ended session id); raises
-        ``SessionsFull`` when the table is full of live sessions."""
+        """A new session cookie for ``owner`` (see the class); ``on_evict`` gets each
+        session id that ended to make room."""
         t = time.time() if now is None else now
         exp = int(t + SESSION_TTL_S)
         sid = secrets.token_urlsafe(24)
-        evicted: list[str] = []
         with self._lock:
             for old in [k for k, (e, _) in self._active.items() if e <= t]:
                 del self._active[old]
-            if owner:
-                mine = [k for k, (_, o) in self._active.items() if o == owner]
-                while mine and len(mine) >= (limit or self._per_owner):
-                    oldest = mine.pop(0)
-                    del self._active[oldest]
-                    evicted.append(oldest)
-            if len(self._active) >= self._max:
-                raise SessionsFull("too many sessions")
+            evicted = self._make_room(owner, limit or self._per_owner)
             self._active[sid] = (exp, owner)
         for old in evicted:
             if on_evict is not None:
