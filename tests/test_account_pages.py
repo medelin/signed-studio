@@ -523,17 +523,74 @@ def test_login_works_without_judge_password_when_an_account_exists(tmp_path):
         assert c.get("/account").status_code == 200
 
 
-def test_sessions_do_not_survive_a_restart(tmp_path):
-    secret = secrets.token_urlsafe(32)  # the same signing secret: only the revocation acts
+def _accepted(app, cookie):
+    with client_for(app) as c:
+        c.cookies.set("studio_session", cookie)
+        return c.get("/account", headers=HTML).status_code == 200
+
+
+def test_sessions_survive_a_restart_and_stay_revocable(tmp_path):
+    secret = secrets.token_urlsafe(32)  # the same signing secret across the restarts
+    first = make_app(tmp_path, SESSION_SECRET=secret)
+    ola = first.state.accounts.create("ola", PASSWORD)
+    cookies = []
+    for _ in range(3):
+        with client_for(first) as c:
+            login(c)
+            cookies.append(c.cookies.get("studio_session"))
+    with client_for(first) as c:
+        c.cookies.set("studio_session", cookies[2])
+        post(c, "/logout")  # signed out before the restart: stays signed out
+    second_app = make_app(tmp_path, SESSION_SECRET=secret)
+    assert [_accepted(second_app, v) for v in cookies] == [True, True, False]
+    with client_for(second_app) as c:
+        c.cookies.set("studio_session", cookies[0])
+        assert post(c, "/account/sessions/revoke-others").status_code == 303
+    assert [_accepted(second_app, v) for v in cookies[:2]] == [True, False]
+    third = make_app(tmp_path, SESSION_SECRET=secret)
+    assert _accepted(third, cookies[0])
+    new = "Fresh-pass-" + secrets.token_hex(8)  # a credential change ends it, restart or not
+    third.state.accounts.change_password(ola.id, PASSWORD, new, new, keep_sid="")
+    assert not _accepted(third, cookies[0])
+    assert not _accepted(make_app(tmp_path, SESSION_SECRET=secret), cookies[0])
+
+
+def test_a_restart_keeps_approver_keys_of_live_sessions_only(tmp_path):
+    from studio.approvals import Keys
+
+    secret = secrets.token_urlsafe(32)
     first = make_app(tmp_path, SESSION_SECRET=secret)
     first.state.accounts.create("ola", PASSWORD)
-    with client_for(first) as c:
-        login(c)
-        cookie = c.cookies.get("studio_session")
+    approvers = []
+    for _ in range(2):
+        with client_for(first) as c:
+            login(c)
+            r = _register(c, Ed25519PrivateKey.generate())
+            approvers.append((r.json()["approver"], c.cookies.get("studio_session")))
+    first.state.sessions.base.revoke(approvers[1][1])  # ended without its keys (as a crash)
     second_app = make_app(tmp_path, SESSION_SECRET=secret)
-    with client_for(second_app) as c:
-        c.cookies.set("studio_session", cookie)
-        assert c.get("/account", headers=HTML).status_code == 303
+    conn = second_app.state.conn
+    assert Keys.is_active(conn, approvers[0][0]) and not Keys.is_active(conn, approvers[1][0])
+    other = make_app(tmp_path, SESSION_SECRET=secrets.token_urlsafe(32))  # a new secret
+    assert not _accepted(other, approvers[0][1])
+    assert not Keys.is_active(other.state.conn, approvers[0][0])
+    assert other.state.accounts.sessions(
+        other.state.accounts.by_username("ola").id) == []
+
+
+def test_demo_per_client_caps_count_sessions_from_before_a_restart(tmp_path):
+    secret = secrets.token_urlsafe(32)
+    first = make_app(tmp_path, SESSION_SECRET=secret)
+    judge = first.state.accounts.by_username("judge")
+    old = [first.state.sessions.issue(account_id=judge.id, client="203.0.113.0")
+           for _ in range(accounts.ACCOUNT_SESSIONS)]
+    other = first.state.sessions.issue(account_id=judge.id, client="198.51.100.0")
+    second_app = make_app(tmp_path, SESSION_SECRET=secret)
+    second_app.state.sessions.issue(account_id=judge.id, client="203.0.113.0")
+    assert second_app.state.sessions.check(old[0]) is None  # that client's oldest ended
+    assert second_app.state.sessions.check(old[1]) is not None
+    assert second_app.state.sessions.check(other) is not None  # another judge's stays
+    assert len(second_app.state.accounts.sessions(judge.id)) == accounts.ACCOUNT_SESSIONS + 1
 
 
 def test_two_step_login_and_account_forms_work_in_the_sandbox(tmp_path, monkeypatch):

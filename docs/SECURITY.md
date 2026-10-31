@@ -134,9 +134,12 @@ injected Graph transport (tests, replay) nothing is fetched at all.
   writes are tested against hand-written cassettes.
 - **Second-opinion reviewer** is unavailable without `BASETEN_API_KEY`; the approval screen
   says so.
-- **Sessions live in process memory**: a restart signs everyone out and revokes their keys
-  (past approvals stay verifiable). Pending second steps are in memory too: a restart between
-  the two steps means signing in again.
+- **Sessions are kept in SQLite** (`web_sessions`: the SHA-256 of the session id, an HMAC of
+  its owner, its expiry, never the cookie), so a restart or deploy signs nobody out. Changing
+  `SESSION_SECRET` (or running without one: a process-random secret) ends every session and
+  revokes its approver keys at the next start (past approvals stay verifiable). Pending second
+  steps and the "fresh provider sign-in" marks live in process memory: a restart between the
+  two steps means signing in again.
 - **TOTP secrets depend on the ledger key.** Replacing `ledger.key` (possible only while the
   ledger is empty) makes every sealed secret unreadable: those users cannot finish the second
   step until the operator runs `studio account reset-password <user> --clear-2fa`.

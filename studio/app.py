@@ -30,9 +30,9 @@ import json
 import logging
 import math
 import secrets
+import sqlite3
 import threading
 import time
-from collections import Counter, OrderedDict
 from collections.abc import Awaitable, Callable, MutableMapping
 from pathlib import Path
 from typing import Any
@@ -74,7 +74,7 @@ from studio import (
     sandbox,
     whatsapp,
 )
-from studio.accounts import ACCOUNT_SESSIONS, StaleCredentials
+from studio.accounts import ACCOUNT_SESSIONS, SESSIONS_SCHEMA, StaleCredentials
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
@@ -317,59 +317,77 @@ class SessionsFull(Exception):
 
 
 class Sessions:
-    """HMAC-signed session cookies (``sid.exp.mac``) plus a server-side revocation set.
+    """HMAC-signed session cookies (``sid.exp.mac``) whose server side lives in SQLite
+    (``web_sessions``), so a restart or a deploy signs nobody out.
 
-    Bounded without letting one user end another's session cheaply: an owner (an account,
-    or the shared demo account per client prefix) holds at most ``limit`` live sessions
-    (``per_owner`` by default) and a new one ends that owner's oldest. When
-    ``max_sessions`` live sessions exist, the owner holding the most loses its oldest, so
-    whoever mints sessions in bulk pays for it; only when every owner holds a single
-    session is a new one refused (``SessionsFull``). Expired entries are dropped first."""
+    A row holds the SHA-256 of the session id (never the id or the cookie), an HMAC of its
+    owner (an account id, or the shared demo account plus a client prefix), its expiry and
+    the id of the secret that signed it. Rows signed with another secret and expired rows
+    are purged when the store opens; expired rows also before every new session. Revoking
+    deletes the row, so a revoked cookie stays dead after a restart.
 
-    def __init__(self, secret: bytes, max_sessions: int = MAX_SESSIONS,
-                 per_owner: int = ACCOUNT_SESSIONS) -> None:
+    Bounded without letting one user end another's session cheaply: an owner holds at most
+    ``limit`` live sessions (``per_owner`` by default) and a new one ends that owner's
+    oldest. When ``max_sessions`` live sessions exist, the owner holding the most loses its
+    oldest, so whoever mints sessions in bulk pays for it; only when every owner holds a
+    single session is a new one refused (``SessionsFull``)."""
+
+    def __init__(self, secret: bytes, conn: sqlite3.Connection | None = None,
+                 max_sessions: int = MAX_SESSIONS, per_owner: int = ACCOUNT_SESSIONS) -> None:
         if len(secret) < 32:
             raise ValueError("session secret too short")
         self._secret = secret
-        self._active: OrderedDict[str, tuple[int, str]] = OrderedDict()  # sid -> exp, owner
+        self.conn = conn if conn is not None else db.connect(":memory:")
+        self.secret_id = self._keyed("secret-id")[:16]
         self._max = max_sessions
         self._per_owner = per_owner
-        self._lock = threading.Lock()
+        with db.transaction(self.conn) as c:
+            for statement in SESSIONS_SCHEMA:
+                c.execute(statement)
+            c.execute("DELETE FROM web_sessions WHERE secret_id != ? OR expires_ts <= ?",
+                      (self.secret_id, int(time.time())))
+
+    def _keyed(self, label: str) -> str:
+        return hmac.new(self._secret, f"v1|{label}".encode(), hashlib.sha256).hexdigest()
 
     def _mac(self, sid: str, exp: int) -> str:
         return hmac.new(self._secret, f"v1|{sid}|{exp}".encode(), hashlib.sha256).hexdigest()
 
-    def _make_room(self, owner: str, limit: int) -> list[str]:
-        """Under the lock: end ``owner``'s oldest beyond ``limit - 1``, then, while the table
-        is full, the oldest session of the owner holding the most (never anyone's only
-        one). Returns the ended session ids."""
-        evicted: list[str] = []
-        mine = [k for k, (_, o) in self._active.items() if o == owner]
-        while mine and len(mine) >= limit:
-            evicted.append(mine.pop(0))
-            del self._active[evicted[-1]]
-        while len(self._active) >= self._max:
-            counts = Counter(o for _, o in self._active.values())
-            top, held = counts.most_common(1)[0] if counts else ("", 0)
-            if held < 2:
+    def _make_room(self, c: sqlite3.Connection, owner: str, limit: int) -> list[str]:
+        """In the issuing transaction: end ``owner``'s oldest beyond ``limit - 1``, then,
+        while the table is full, the oldest session of the owner holding the most (never
+        anyone's only one). Returns the ended session hashes."""
+        mine = [d for (d,) in c.execute("SELECT sid_sha256 FROM web_sessions WHERE owner = ? "
+                                        "ORDER BY seq", (owner,))]
+        evicted = mine[:max(0, len(mine) - limit + 1)]
+        total = c.execute("SELECT count(*) FROM web_sessions").fetchone()[0] - len(evicted)
+        for digest in evicted:
+            c.execute("DELETE FROM web_sessions WHERE sid_sha256 = ?", (digest,))
+        while total >= self._max:
+            top = c.execute("SELECT owner, count(*) AS n FROM web_sessions GROUP BY owner "
+                            "ORDER BY n DESC, min(seq) LIMIT 1").fetchone()
+            if top is None or top[1] < 2:
                 raise SessionsFull("too many sessions")
-            oldest = next(k for k, (_, o) in self._active.items() if o == top)
-            del self._active[oldest]
+            (oldest,) = c.execute("SELECT sid_sha256 FROM web_sessions WHERE owner = ? "
+                                  "ORDER BY seq LIMIT 1", (top[0],)).fetchone()
+            c.execute("DELETE FROM web_sessions WHERE sid_sha256 = ?", (oldest,))
             evicted.append(oldest)
+            total -= 1
         return evicted
 
     def issue(self, now: float | None = None, *, owner: str = "", limit: int = 0,
               on_evict: Callable[[str], None] | None = None) -> str:
-        """A new session cookie for ``owner`` (see the class); ``on_evict`` gets each
-        session id that ended to make room."""
+        """A new session cookie for ``owner`` (see the class); ``on_evict`` gets the hash
+        of each session that ended to make room."""
         t = time.time() if now is None else now
         exp = int(t + SESSION_TTL_S)
         sid = secrets.token_urlsafe(24)
-        with self._lock:
-            for old in [k for k, (e, _) in self._active.items() if e <= t]:
-                del self._active[old]
-            evicted = self._make_room(owner, limit or self._per_owner)
-            self._active[sid] = (exp, owner)
+        with db.transaction(self.conn) as c:
+            c.execute("DELETE FROM web_sessions WHERE expires_ts <= ?", (t,))
+            keyed = self._keyed(f"owner|{owner}")[:32]
+            evicted = self._make_room(c, keyed, limit or self._per_owner)
+            c.execute("INSERT INTO web_sessions (sid_sha256, owner, expires_ts, secret_id) "
+                      "VALUES (?, ?, ?, ?)", (sha256_hex(sid), keyed, exp, self.secret_id))
         for old in evicted:
             if on_evict is not None:
                 on_evict(old)
@@ -387,9 +405,15 @@ class Sessions:
             return None
         if exp <= (time.time() if now is None else now):
             return None
-        with self._lock:
-            entry = self._active.get(sid)
-            return sid if entry is not None and entry[0] == exp else None
+        with self.conn.lock:  # type: ignore[attr-defined]
+            row = self.conn.execute("SELECT expires_ts FROM web_sessions WHERE sid_sha256 = ?",
+                                    (sha256_hex(sid),)).fetchone()
+        return sid if row is not None and row[0] == exp else None
+
+    def count(self) -> int:
+        """Rows in the table (live, or expired and not yet purged)."""
+        with self.conn.lock:  # type: ignore[attr-defined]
+            return int(self.conn.execute("SELECT count(*) FROM web_sessions").fetchone()[0])
 
     @staticmethod
     def expiry(value: str) -> int:
@@ -397,8 +421,9 @@ class Sessions:
 
     def revoke(self, value: str | None) -> None:
         if value and value.count(".") == 2:
-            with self._lock:
-                self._active.pop(value.split(".")[0], None)
+            with db.transaction(self.conn) as c:
+                c.execute("DELETE FROM web_sessions WHERE sid_sha256 = ?",
+                          (sha256_hex(value.split(".")[0]),))
 
 
 # every field of a campaign that holds Meta object ids (one id or a list of them): a
@@ -506,8 +531,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ledger = db.open_ledger(conn, data_dir / "ledger.key")
     if conn.execute("SELECT count(*) FROM comments").fetchone()[0] == 0:
         db.seed(conn)  # synthetic demo inbox and leads on a fresh database
-    with db.transaction(conn):
-        Keys.revoke_all(conn)  # sessions live in process memory: earlier keys are dead
 
     app = FastAPI(title="Muse Studio Lite", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
@@ -519,7 +542,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.notifier = notify.Notifier(
         conn, ledger, settings.mail, settings.public_url,
         whatsapp=whatsapp.Channel(conn, app.state.whatsapp) if app.state.whatsapp else None)
-    app.state.sessions = Sessions(settings.session_secret)
+    app.state.sessions = Sessions(settings.session_secret, conn)  # kept across restarts
+    with db.transaction(conn):  # keys of sessions that ended while the app was down
+        Keys.revoke_without_session(conn)
     routes_account.install(app, settings, conn)  # accounts, judge demo account, 2FA state
     templates = Jinja2Templates(directory=str(UI / "templates"))
     templates.env.globals["replay"] = settings.replay

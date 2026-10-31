@@ -518,7 +518,7 @@ def test_a_session_is_refused_when_the_generation_moved_after_the_check(store):
     sessions = accounts.AccountSessions(Sessions(b"k" * 32), store)
     with pytest.raises(accounts.StaleCredentials):
         sessions.issue(account_id=a.id, gen=gen)
-    assert store.sessions(a.id) == [] and len(sessions.base._active) == 0
+    assert store.sessions(a.id) == [] and sessions.base.count() == 0
     _, gen = store.authenticate_gen("ola", "Fresh-pass-2026x")
     assert sessions.check(sessions.issue(account_id=a.id, gen=gen)) is not None
 
