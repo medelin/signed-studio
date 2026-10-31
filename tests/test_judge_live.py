@@ -15,7 +15,7 @@ from studio.meta import objectives
 from studio.meta.adapter import MOCK_PAGE
 from studio.receipts import canonical
 from studio.routes_studio import demo_destinations_ok, demo_link_ok, demo_refused
-from tests.test_pixel_gate import RUN, _sign
+from tests.test_pixel_gate import RUN, _sign, studio_brief
 from tests.test_ui_studio import PASSWORD, csrf, login, register, settings
 
 LIVE = {"META_ADAPTER": "graph", "META_ACCESS_TOKEN": "t" * 40,
@@ -26,6 +26,7 @@ PAYLOAD = {"action": "campaign.activate", "campaign_id": "cmp_j1", "run_id": RUN
 
 def _pending(app, action):
     conn, ledger = app.state.conn, app.state.ledger
+    studio_brief(conn)
     ledger.append(RUN, agent="producer", kind="model_call")
     p = {**PAYLOAD, "action": action}
     pending = Pending.create(action, "cmp_j1", p, ledger=ledger, run_id=RUN)
@@ -108,6 +109,7 @@ def test_judge_cannot_sign_a_live_campaign_aimed_elsewhere(tmp_path):
         login(c)
         key, approver = register(c)
         conn, ledger = app.state.conn, app.state.ledger
+        studio_brief(conn)
         ledger.append(RUN, agent="producer", kind="model_call")
         p = {"action": "campaign.create", "run_id": RUN, "link": "https://evil.example/"}
         pending = Pending.create("campaign.create", "cmp_j2", p, ledger=ledger, run_id=RUN)
@@ -195,6 +197,7 @@ def test_judge_cannot_sign_a_live_google_campaign_aimed_elsewhere(tmp_path):
         login(c)
         key, approver = register(c)
         conn, ledger = app.state.conn, app.state.ledger
+        studio_brief(conn)
         ledger.append(RUN, agent="producer", kind="model_call")
         p = _google(HOME, "https://evil.example/landing")
         pending = Pending.create("google.create", "gc_j1", p, ledger=ledger, run_id=RUN)

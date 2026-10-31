@@ -267,6 +267,44 @@ def owns(channel: str, account_id: str, owner: str | None) -> bool:
     return bool(owner) and bool(account_id) and secrets.compare_digest(account_id, owner or "")
 
 
+STUDIO = ""  # ``approval_owner``: the studio's own work, for every signed-in caller
+INBOX_ACTIONS = frozenset({"reply.post", "comment.hide"})
+
+
+def approval_owner(conn: Any, pending: Any,
+                   api_owner: Callable[[str], str | None]) -> str | None:
+    """Who an approval belongs to: an account id, ``STUDIO`` (the operator's shared
+    studio: a brief typed or spoken in the UI, a comment on the operator's Page), or None
+    when no owner can be found. A mandate grant is its mandate's account; a run is its
+    brief's (``briefs.run_id`` or ``draft_run_id``): the account whose token drafted it
+    (``api_owner``, ``studio.assistants``), the account a WhatsApp brief was sent for, or
+    the studio; a campaign whose run has no brief (the demo seed) is the studio's. Call
+    under ``conn.lock``."""
+    if pending.action == mandates.GRANT:
+        row = conn.execute("SELECT payload FROM pending_payloads WHERE approval_id = ?",
+                           (pending.id,)).fetchone()
+        body = json.loads(row[0]).get(mandates.MANDATE_FIELD) if row else None
+        aid = body.get("account_id") if isinstance(body, dict) else None
+        return aid if isinstance(aid, str) and aid else None
+    if pending.action in INBOX_ACTIONS:
+        return STUDIO
+    row = conn.execute("SELECT id, channel, account_id FROM briefs WHERE run_id = ? OR "
+                       "draft_run_id = ? LIMIT 1", (pending.run_id, pending.run_id)
+                       ).fetchone() if pending.run_id else None
+    if row is None:
+        # a campaign with no brief behind it is the operator's (the demo seed's)
+        known = conn.execute("SELECT 1 FROM campaigns WHERE id = ? UNION ALL "
+                             "SELECT 1 FROM google_campaigns WHERE id = ?",
+                             (pending.item_id, pending.item_id)).fetchone()
+        return STUDIO if known else None
+    by_token = api_owner(row[0])
+    if by_token:
+        return by_token
+    if row[1] == "whatsapp":
+        return str(row[2]) or None
+    return STUDIO
+
+
 def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
                        currency: Callable[[], str],
                        google_currency: Callable[[], str | None] = lambda: None,
@@ -987,16 +1025,24 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             raise _NoPayload
         return pending, json.loads(row[0])
 
-    def run_owned(run_id: str, owner: str | None) -> bool:
-        """The caller may see and sign the approvals of ``run_id`` unless the run is
-        another account's: a brief another account's token drafted (``foreign_runs``) or
-        another account's WhatsApp brief (``owns``). Call under ``conn.lock``."""
+    def approval_refusal(pending: Pending, account: Any) -> str | None:
+        """Whether the caller (``account``, None when unresolved) may see, renew and sign
+        ``pending``: None when it may, else the refusal code. Call under ``conn.lock``.
+        The approval's owner is found per kind (``approval_owner``); an approval of
+        another account is ``mandate_not_yours`` (a mandate) or ``not_found``; one whose
+        owner cannot be found is for a full account only (deny by default)."""
+        owner = account.id if account is not None else None
         svc = getattr(app.state, "assistants", None)
-        if svc is not None and run_id in svc.foreign_runs(owner or ""):
-            return False
-        row = conn.execute("SELECT channel, account_id FROM briefs WHERE run_id = ? OR "
-                           "draft_run_id = ? LIMIT 1", (run_id, run_id)).fetchone()
-        return row is None or owns(row[0], row[1], owner)
+        found = approval_owner(conn, pending,
+                               svc.owner_of if svc is not None else lambda _b: None)
+        if found is None:
+            full = account is not None and account.sees_personal_data
+            return None if full else "not_found"
+        if found == STUDIO:
+            return None
+        if owner and secrets.compare_digest(found, owner):
+            return None
+        return "mandate_not_yours" if pending.action == mandates.GRANT else "not_found"
 
     @app.get("/api/approvals/{approval_id}/payload")
     def approval_payload(approval_id: str, request: Request) -> Response:
@@ -1009,12 +1055,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             pending, payload = _pending_and_payload(approval_id)
         except (ApprovalError, _NoPayload):
             return JSONResponse({"error": "not_found"}, 404)
-        owner = owner_of(request)
         with conn.lock:
             # another account's run, or another account's mandate, stays unseen
-            if not run_owned(pending.run_id, owner) or (
-                    pending.action == mandates.GRANT
-                    and not mandates.signer_may_sign(conn, approval_id, owner)):
+            if approval_refusal(pending, profile_of(request)) is not None:
                 return JSONResponse({"error": "not_found"}, 404)
         with conn.lock:
             status = conn.execute("SELECT status FROM approvals WHERE id = ?",
@@ -1039,7 +1082,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             pending, payload = _pending_and_payload(approval_id)
             with conn.lock:
-                if not run_owned(pending.run_id, owner_of(request)):
+                if approval_refusal(pending, profile_of(request)) is not None:
                     raise _NoPayload
             fresh, renewed = renew_approval(conn, approval_id, payload, ledger=ledger)
         except _NoPayload:
@@ -1086,8 +1129,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             with db.transaction(conn):
                 pending = Pending.load(conn, approval_id)
-                if not run_owned(pending.run_id, account.id if account else None):
-                    raise _NoPayload  # another account's run: as if it did not exist
+                refusal = approval_refusal(pending, account)
+                if refusal == "mandate_not_yours":
+                    raise _NotOwnMandate
+                if refusal is not None:
+                    raise _NoPayload  # another account's: as if it did not exist
                 if limited and demo_refused(
                         pending.action, meta_adapter=settings.meta_adapter,
                         google_adapter=settings.google_adapter):
