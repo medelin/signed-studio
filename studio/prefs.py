@@ -1,6 +1,6 @@
 """Viewer preferences chosen in the header, server side and without JavaScript.
 
-``?lang=en|pl``, ``?theme=system|light|dark`` and ``?palette=graphite|warm|green|contrast``
+``?lang=en|pl``, ``?theme=system|light|dark`` and ``?palette=graphite|warm|…`` (``PALETTES``)
 are remembered in cookies of the same names (one year, SameSite=Lax); without a parameter
 the cookie decides, else the default. The choices are put in ``request.state`` before any
 route runs, so templates render ``<html lang data-theme data-palette>`` on the first byte:
@@ -27,7 +27,7 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 YEAR_S = 365 * 24 * 3600
 # preference -> (allowed values, default)
 THEMES = ("system", "light", "dark")
-PALETTES = ("graphite", "warm", "green", "contrast")
+PALETTES = ("graphite", "warm", "green", "contrast", "ocean", "plum", "sand", "night")
 CHOICES: dict[str, tuple[tuple[str, ...], str]] = {
     "lang": (i18n.LANGS, i18n.DEFAULT),
     "theme": (THEMES, "system"),  # light/dark mode; system follows prefers-color-scheme

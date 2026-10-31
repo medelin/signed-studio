@@ -129,3 +129,84 @@
   --down: light-dark(oklch(0.35 0 0), oklch(0.75 0 0));
   --warm: light-dark(oklch(0.45 0.13 50), oklch(0.85 0.12 75));
 }
+/* ocean: blue; plum: violet-red; sand: beige paper, indigo signal; night: navy, coral signal */
+:root[data-palette="ocean"] {
+  --bg: light-dark(oklch(0.97 0.012 235), oklch(0.19 0.02 245));
+  --bg-raised: light-dark(oklch(0.99 0.006 235), oklch(0.23 0.022 245));
+  --ink: light-dark(oklch(0.24 0.03 250), oklch(0.94 0.012 235));
+  --ink-2: light-dark(oklch(0.4 0.035 250), oklch(0.82 0.02 235));
+  --muted: light-dark(oklch(0.47 0.03 250), oklch(0.75 0.025 240));
+  --rule: light-dark(oklch(0.57 0.035 245), oklch(0.62 0.035 240));
+  --rule-soft: light-dark(oklch(0.88 0.02 235), oklch(0.33 0.025 245));
+  --soft: light-dark(oklch(0.93 0.02 235), oklch(0.27 0.025 245));
+  --signal: light-dark(oklch(0.48 0.15 255), oklch(0.75 0.13 240));
+  --signal-ink: light-dark(oklch(0.99 0.005 235), oklch(0.17 0.03 245));
+  --signal-soft: light-dark(oklch(0.93 0.04 250), oklch(0.31 0.06 250));
+  --link: light-dark(oklch(0.45 0.15 255), oklch(0.8 0.11 235));
+  --ok: light-dark(oklch(0.46 0.12 150), oklch(0.8 0.15 150));
+  --ok-soft: light-dark(oklch(0.94 0.04 150), oklch(0.31 0.05 150));
+  --partial: light-dark(oklch(0.53 0.12 70), oklch(0.84 0.13 85));
+  --partial-soft: light-dark(oklch(0.95 0.05 85), oklch(0.32 0.05 80));
+  --down: light-dark(oklch(0.5 0.02 245), oklch(0.62 0.02 245));
+  --warm: light-dark(oklch(0.55 0.13 55), oklch(0.8 0.12 70));
+}
+:root[data-palette="plum"] {
+  --bg: light-dark(oklch(0.97 0.012 320), oklch(0.19 0.02 320));
+  --bg-raised: light-dark(oklch(0.99 0.006 320), oklch(0.23 0.022 320));
+  --ink: light-dark(oklch(0.24 0.035 325), oklch(0.94 0.012 320));
+  --ink-2: light-dark(oklch(0.4 0.04 325), oklch(0.82 0.02 320));
+  --muted: light-dark(oklch(0.47 0.035 325), oklch(0.75 0.025 320));
+  --rule: light-dark(oklch(0.57 0.04 325), oklch(0.62 0.035 320));
+  --rule-soft: light-dark(oklch(0.88 0.02 320), oklch(0.33 0.025 320));
+  --soft: light-dark(oklch(0.93 0.02 320), oklch(0.27 0.025 320));
+  --signal: light-dark(oklch(0.48 0.16 340), oklch(0.76 0.14 340));
+  --signal-ink: light-dark(oklch(0.99 0.005 320), oklch(0.17 0.03 330));
+  --signal-soft: light-dark(oklch(0.93 0.04 340), oklch(0.31 0.07 340));
+  --link: light-dark(oklch(0.45 0.16 335), oklch(0.8 0.12 335));
+  --ok: light-dark(oklch(0.46 0.12 150), oklch(0.8 0.15 150));
+  --ok-soft: light-dark(oklch(0.94 0.04 150), oklch(0.31 0.05 150));
+  --partial: light-dark(oklch(0.53 0.12 70), oklch(0.84 0.13 85));
+  --partial-soft: light-dark(oklch(0.95 0.05 85), oklch(0.32 0.05 80));
+  --down: light-dark(oklch(0.5 0.02 320), oklch(0.62 0.02 320));
+  --warm: light-dark(oklch(0.55 0.13 55), oklch(0.8 0.12 70));
+}
+:root[data-palette="sand"] {
+  --bg: light-dark(oklch(0.96 0.025 88), oklch(0.2 0.015 80));
+  --bg-raised: light-dark(oklch(0.985 0.014 88), oklch(0.24 0.018 80));
+  --ink: light-dark(oklch(0.26 0.03 60), oklch(0.94 0.02 88));
+  --ink-2: light-dark(oklch(0.4 0.035 60), oklch(0.83 0.025 85));
+  --muted: light-dark(oklch(0.46 0.03 65), oklch(0.76 0.025 85));
+  --rule: light-dark(oklch(0.57 0.035 70), oklch(0.62 0.03 80));
+  --rule-soft: light-dark(oklch(0.87 0.025 85), oklch(0.34 0.02 80));
+  --soft: light-dark(oklch(0.92 0.03 88), oklch(0.28 0.02 80));
+  --signal: light-dark(oklch(0.45 0.15 275), oklch(0.76 0.11 275));
+  --signal-ink: light-dark(oklch(0.99 0.005 88), oklch(0.18 0.03 275));
+  --signal-soft: light-dark(oklch(0.93 0.035 275), oklch(0.32 0.06 275));
+  --link: light-dark(oklch(0.43 0.15 275), oklch(0.8 0.09 275));
+  --ok: light-dark(oklch(0.45 0.11 145), oklch(0.8 0.15 145));
+  --ok-soft: light-dark(oklch(0.93 0.04 145), oklch(0.31 0.05 145));
+  --partial: light-dark(oklch(0.52 0.12 70), oklch(0.84 0.13 85));
+  --partial-soft: light-dark(oklch(0.94 0.05 85), oklch(0.33 0.05 80));
+  --down: light-dark(oklch(0.5 0.02 70), oklch(0.62 0.02 80));
+  --warm: light-dark(oklch(0.55 0.13 55), oklch(0.8 0.12 70));
+}
+:root[data-palette="night"] {
+  --bg: light-dark(oklch(0.95 0.015 265), oklch(0.16 0.03 265));
+  --bg-raised: light-dark(oklch(0.98 0.008 265), oklch(0.2 0.035 265));
+  --ink: light-dark(oklch(0.22 0.04 265), oklch(0.93 0.015 265));
+  --ink-2: light-dark(oklch(0.38 0.045 265), oklch(0.82 0.025 265));
+  --muted: light-dark(oklch(0.45 0.04 265), oklch(0.74 0.03 265));
+  --rule: light-dark(oklch(0.55 0.04 265), oklch(0.6 0.04 265));
+  --rule-soft: light-dark(oklch(0.86 0.02 265), oklch(0.3 0.035 265));
+  --soft: light-dark(oklch(0.91 0.02 265), oklch(0.24 0.035 265));
+  --signal: light-dark(oklch(0.52 0.17 25), oklch(0.74 0.14 30));
+  --signal-ink: light-dark(oklch(0.99 0.005 265), oklch(0.16 0.03 265));
+  --signal-soft: light-dark(oklch(0.92 0.035 25), oklch(0.29 0.07 25));
+  --link: light-dark(oklch(0.47 0.16 25), oklch(0.8 0.11 30));
+  --ok: light-dark(oklch(0.45 0.12 150), oklch(0.8 0.15 150));
+  --ok-soft: light-dark(oklch(0.93 0.04 150), oklch(0.29 0.05 150));
+  --partial: light-dark(oklch(0.52 0.12 70), oklch(0.84 0.13 85));
+  --partial-soft: light-dark(oklch(0.94 0.05 85), oklch(0.31 0.05 80));
+  --down: light-dark(oklch(0.48 0.02 265), oklch(0.6 0.02 265));
+  --warm: light-dark(oklch(0.55 0.13 55), oklch(0.8 0.12 70));
+}
