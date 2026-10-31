@@ -214,3 +214,26 @@ def test_payload_signs_the_diversity_of_every_written_variant(env):
     assert payload["creative_diversity"]["variants"] == len(run.copy.variants) > 1
     from studio.meta.adapter import check_paused
     check_paused(payload)  # every "status" in a creation payload must be PAUSED
+
+
+def test_a_lifetime_budget_signs_its_schedule(env):
+    """Review fix E6: a lifetime budget spread over its days is a daily budget; without
+    the dates the ad set would run (and spend) past the end the owner gave."""
+    from studio.meta.adapter import adset_fields
+    from tests.test_brief import sample
+
+    ctx, run, _ = env
+    _dispatch(ctx, run, [("run_copywriter", '{"angle_index": 0}'),
+                         ("run_art_director", '{"headline": "Pair"}')])
+    run.review = {"verdict": "OK", "second_opinion": "unavailable", "disagreements": [],
+                  "formats": [], "variant_index": 0}
+    life = sample(budget={"kind": "lifetime", "amount": 280, "currency": "PLN",
+                          "start": "2026-11-03", "end": "2026-11-16"})
+    p = producer.campaign_payload(run, 0, brief=life)
+    assert p["schedule"] == {"start": "2026-11-03", "end": "2026-11-16"}
+    fields = adset_fields(p, p["delivery"])
+    assert fields["start_time"] == "2026-11-03T00:00:00"
+    assert fields["end_time"] == "2026-11-16T23:59:59"
+    assert fields["daily_budget"] == p["campaign"]["daily_budget_minor"]
+    daily = producer.campaign_payload(run, 0, brief=sample())
+    assert "schedule" not in daily and "end_time" not in adset_fields(daily, daily["delivery"])

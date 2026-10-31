@@ -124,6 +124,25 @@ def test_campaign_sequence_is_paused_in_every_creation_body(env):
     _assert_token_transport(replay)
 
 
+def test_a_signed_schedule_reaches_the_ad_set(env):
+    """Review fix E6: a lifetime budget's dates go to Meta as the ad set's start and end."""
+    conn, ledger = env
+    p = payload(schedule={"start": "2026-11-03", "end": "2026-11-16"})
+    v = approve(conn, ledger, "campaign.create", "cmp_g3", p, "run_m1")
+    replay = Replay(CASSETTE["interactions"])
+    g = adapter(replay)
+    g.upload_image(PNG, p, v)
+    g.create_adset_paused(g.create_campaign_paused(p, v), p, v)
+    (form,) = [f for r, f in replay.sent if r.url.path.endswith("/adsets")]
+    assert (form["start_time"], form["end_time"]) == ("2026-11-03T00:00:00",
+                                                      "2026-11-16T23:59:59")
+    assert form["daily_budget"] == "3000"
+    bad = payload(schedule={"start": "2026-11-03", "end": "soon"})
+    v = approve(conn, ledger, "campaign.create", "cmp_g4", bad, "run_m1")
+    with pytest.raises(NotApproved):
+        adapter(Replay([])).create_adset_paused("120200000000000101", bad, v)
+
+
 def test_activation_needs_the_activate_approval(env):
     conn, ledger = env
     create = payload()

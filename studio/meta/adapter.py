@@ -25,6 +25,7 @@ Rules every implementation follows, enforced by ``require`` and ``check_paused``
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final, Protocol
@@ -378,7 +379,27 @@ def adset_fields(payload: Mapping[str, Any], spec: Mapping[str, Any],
         out["attribution_spec"] = [dict(a) for a in spec["attribution_spec"]]
     if dynamic_creative(payload, spec):
         out["is_dynamic_creative"] = True
+    out.update(schedule_fields(payload))
     return out
+
+
+_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def schedule_fields(payload: Mapping[str, Any]) -> dict[str, str]:
+    """``start_time``/``end_time`` from the signed ``schedule`` (a lifetime budget's first
+    and last day, ``YYYY-MM-DD``): from the start of the first day to the end of the last,
+    in the ad account's time zone (no offset is sent). The daily budget stays. No
+    schedule, no fields; a malformed one is refused."""
+    schedule = payload.get("schedule")
+    if schedule is None:
+        return {}
+    start = schedule.get("start") if isinstance(schedule, Mapping) else None
+    end = schedule.get("end") if isinstance(schedule, Mapping) else None
+    if not (isinstance(start, str) and isinstance(end, str) and _DAY.fullmatch(start)
+            and _DAY.fullmatch(end) and start <= end):
+        raise NotApproved("the signed schedule is not a first and last day")
+    return {"start_time": f"{start}T00:00:00", "end_time": f"{end}T23:59:59"}
 
 
 # Call-to-action values per creative kind (link data call_to_action value:
