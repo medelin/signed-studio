@@ -68,7 +68,15 @@ def form_globals() -> dict[str, Any]:
             "needs": {k: " ".join(v) for k, v in uses.items()},
             "events": (*objectives.LEAD_EVENTS, *objectives.SALES_EVENTS),
             "lead_fields": objectives.LEAD_FIELDS,
-            "default_subs": {g: subs[0] for g, subs in objectives.SUBS.items()}}
+            "default_subs": {g: subs[0] for g, subs in objectives.SUBS.items()},
+            # rows that send people to a website / count results through a pixel: the
+            # picker disables the first when the owner has no website (brief.js)
+            "website_rows": {f"{g}:{s}" for g, s in objectives.TABLE
+                             if objectives.needs_website(g, s)},
+            "pixel_rows": {f"{g}:{s}" for g, s in objectives.TABLE
+                           if objectives.needs_pixel(g, s)},
+            "website_goals": {g for g, subs in objectives.SUBS.items()
+                              if all(objectives.needs_website(g, s) for s in subs)}}
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,

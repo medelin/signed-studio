@@ -653,7 +653,9 @@ def profile_defaults(draft: BriefV1, account: Any, *, default_landing: str = ""
     filled (the studio shows them as "from your profile"). A value the draft has is never
     replaced; the landing page counts as empty when it is not an https URL or is the
     server's default (``default_landing``). The pixel goes in only when the objective
-    needs one (``objectives.row(...).needs``)."""
+    needs one (``objectives.row(...).needs``). With no website in the profile and none in
+    the draft, the landing page is the default (not reported as filled): such an ad keeps
+    people on Meta, and the studio does not ask for a page (``destination``)."""
     # only an account that runs its own ads: the shared judge account and trial accounts
     # advertise on the operator's page, whose links a signature check requires
     if account is None or not getattr(account, "sees_personal_data", False):
@@ -669,6 +671,10 @@ def profile_defaults(draft: BriefV1, account: Any, *, default_landing: str = ""
             not _https(a.landing_url) or a.landing_url == default_landing):
         advertiser["landing_url"] = website
         filled.append("advertiser.landing_url")
+    elif not _https(website) and not a.landing_url.strip() and _https(default_landing):
+        # no website anywhere: the ad keeps people on Meta (``destination``), so the studio
+        # never asks for a page; the link field holds the default, as the draft prompt says
+        advertiser["landing_url"] = default_landing
     if countries and not a.countries:
         advertiser["countries"] = list(countries)
         filled.append("advertiser.countries")
@@ -685,9 +691,44 @@ def profile_defaults(draft: BriefV1, account: Any, *, default_landing: str = ""
         if "pixel_id" in needs:
             promotion["pixel_id"] = pixel_id
             filled.append("promotion.pixel_id")
-    if not filled:
+    if not filled and not advertiser:
         return draft, []
     return draft.model_copy(update={
         "advertiser": a.model_copy(update=advertiser),
         "audience": au.model_copy(update=audience),
         "promotion": pr.model_copy(update=promotion)}), filled
+
+
+def destination(brief: BriefV1, account: Any, *, default_landing: str = ""
+                ) -> dict[str, Any]:
+    """Where this brief's ad can send people, for the objective picker and the assistant.
+
+    ``website``: the advertiser has a website of their own: the brief's landing page is an
+    https URL other than the server's default (``default_landing``), or the profile has
+    one. Without an account that runs its own ads (no account, or the judge and trial
+    accounts, which advertise on the operator's page) the configured page is the website.
+    ``pixel``: a pixel (dataset) id is known, in the brief or in the profile.
+    ``issue``: ``no_website`` when the objective sends people to a website and there is
+    none; ``no_pixel`` when it counts results through a pixel and none is known; else "".
+    ``switches``: the objectives offered instead (``goal``, ``sub``), per issue.
+
+    Advice only: ``problems`` still refuses a conversion objective without ``pixel_id``.
+    """
+    own = account is not None and bool(getattr(account, "sees_personal_data", False))
+    landing = brief.advertiser.landing_url
+    profile_site = str(getattr(account, "website", "") or "") if own else ""
+    profile_pixel = str(getattr(account, "pixel_id", "") or "") if own else ""
+    website = (not own or (_https(landing) and landing != default_landing)
+               or _https(profile_site))
+    pixel = bool(_ID.fullmatch(brief.promotion.pixel_id.strip())
+                 or _ID.fullmatch(profile_pixel))
+    try:
+        to_site = objectives.needs_website(brief.objective.goal, brief.objective.sub)
+        counts_pixel = objectives.needs_pixel(brief.objective.goal, brief.objective.sub)
+    except objectives.DeliveryError:
+        to_site = counts_pixel = False
+    issue = ("no_website" if to_site and not website
+             else "no_pixel" if counts_pixel and not pixel else "")
+    return {"website": website, "pixel": pixel, "issue": issue,
+            "switches": {"no_website": [list(x) for x in objectives.NO_WEBSITE_SWITCHES],
+                         "no_pixel": [list(x) for x in objectives.NO_PIXEL_SWITCHES]}}

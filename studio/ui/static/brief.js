@@ -293,13 +293,63 @@
     });
   }
 
+  // -- where the ad can send people (studio/brief.py destination) ---------------------
+  // The server says whether the owner has a website and a pixel (dataset) id; a landing
+  // page the owner types here, or a pixel id, counts too. Without a website, the
+  // objectives that send people to one (data-website) are disabled with a short reason.
+  let dest = { website: true, pixel: true, switches: {} };
+  let landingAtDraft = "";
+  function httpsUrl(v) {
+    try { const u = new URL(String(v || "").trim()); return u.protocol === "https:" && u.hostname.includes("."); } catch (_) { return false; }
+  }
+  function hasWebsite() {
+    if (dest.website) return true;
+    const url = ($("bf-advertiser-landing_url") || {}).value || "";
+    return url.trim() !== landingAtDraft && httpsUrl(url);
+  }
+  function hasPixel() {
+    return Boolean(dest.pixel) || /^\d{1,30}$/.test((($("bf-promotion-pixel_id") || {}).value || "").trim());
+  }
+  // the sub-choice option of the objective as it stands (the goal's default when "")
+  function rowOption() {
+    const goal = $("bf-objective-goal").value;
+    const sel = $("bf-objective-sub").selectedOptions[0];
+    if (sel && sel.dataset.goal === goal) return sel;
+    return $("bf-objective-sub").querySelector('option[data-goal="' + goal + '"]');
+  }
+  // "no_website" | "no_pixel" | "": the same rule as destination() on the server
+  function siteIssue() {
+    const opt = rowOption();
+    if (!opt) return "";
+    if ("website" in opt.dataset && !hasWebsite()) return "no_website";
+    if ("pixel" in opt.dataset && !hasPixel()) return "no_pixel";
+    return "";
+  }
+  function markWebsite(opt, off) {  // a disabled choice says why
+    if (opt.dataset.label === undefined) opt.dataset.label = opt.textContent;
+    opt.textContent = off ? T("brief_needs_website", { label: opt.dataset.label }) : opt.dataset.label;
+  }
+
   // -- objective: sub-choices of the chosen goal, and only the ids that row needs -----
   function syncObjective() {
     const goal = $("bf-objective-goal").value;
     const sub = $("bf-objective-sub");
-    for (const opt of sub.querySelectorAll("option[data-goal]")) opt.disabled = opt.dataset.goal !== goal;
+    const noSite = !hasWebsite();
+    for (const opt of $("bf-objective-goal").options) {
+      const off = noSite && "website" in opt.dataset;
+      opt.disabled = off;
+      markWebsite(opt, off);
+    }
+    for (const opt of sub.querySelectorAll("option[data-goal]")) {
+      const off = noSite && "website" in opt.dataset;
+      opt.disabled = opt.dataset.goal !== goal || off;
+      markWebsite(opt, off);
+    }
     for (const grp of sub.querySelectorAll("optgroup")) grp.hidden = grp.dataset.goal !== goal;
-    if (sub.selectedOptions.length && sub.selectedOptions[0].disabled) sub.value = "";
+    // another goal's sub-choice resets to the default; one disabled only for want of a
+    // website stays, so the summary and the assistant can offer the switch
+    const picked = sub.selectedOptions[0];
+    if (picked && picked.dataset.goal !== undefined && picked.dataset.goal !== goal) sub.value = "";
     const first = sub.querySelector('option[data-goal="' + goal + '"]');
     const row = goal + ":" + (sub.value || (first ? first.value : ""));
     for (const box of v1.querySelectorAll("[data-needs]")) {
@@ -310,6 +360,9 @@
   }
   $("bf-objective-goal").addEventListener("change", syncObjective);
   $("bf-objective-sub").addEventListener("change", syncObjective);
+  for (const id of ["bf-advertiser-landing_url", "bf-promotion-pixel_id"]) {
+    if ($(id)) $(id).addEventListener("input", syncObjective);
+  }
 
   // -- fill and collect ---------------------------------------------------------------
   function fill(b) {
@@ -541,6 +594,9 @@
   function showDraft(data) {
     if (data.source === "transcript") dictated = true;
     draft = data;
+    dest = data.destination && typeof data.destination === "object" ? data.destination
+      : { website: true, pixel: true, switches: {} };
+    landingAtDraft = String((draft.brief.advertiser || {}).landing_url || "").trim();
     clearErrors();
     v1.querySelectorAll("input, textarea, select, button").forEach((n) => { n.disabled = false; });
     fill(draft.brief);
@@ -562,6 +618,9 @@
       currency: draft ? draft.currency : "", google_currency: draft ? draft.google_currency || "" : "" }),
     draft: () => draft,
     questions: () => questions,
+    hasWebsite, hasPixel, siteIssue,
+    rowKey: () => { const o = rowOption(); return o ? o.dataset.goal + ":" + o.value : ""; },
+    switches: (issue) => ((dest.switches || {})[issue] || []).filter((x) => Array.isArray(x) && x.length === 2),
   };
   const stored = new URLSearchParams(location.search).get("brief");
   if (stored && /^b_[0-9a-f]{16}$/.test(stored)) {

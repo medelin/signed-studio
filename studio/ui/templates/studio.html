@@ -171,7 +171,7 @@
         <label for="bf-objective-goal">{{ t("brief.f.goal") }}</label>
         <p class="hint" id="hint-bf-objective-goal">{{ t("brief.h.goal") }}</p>
         <select id="bf-objective-goal" data-path="objective.goal" aria-describedby="hint-bf-objective-goal err-bf-objective-goal">
-          {% for g in goals %}<option value="{{ g }}">{{ t("brief.goal." ~ g) }}</option>{% endfor %}
+          {% for g in goals %}<option value="{{ g }}"{% if g in website_goals %} data-website{% endif %}>{{ t("brief.goal." ~ g) }}</option>{% endfor %}
         </select>
         {{ err("bf-objective-goal") }}
       </div>
@@ -180,7 +180,7 @@
         <p class="hint" id="hint-bf-objective-sub">{{ t("brief.h.sub") }}</p>
         <select id="bf-objective-sub" data-path="objective.sub" aria-describedby="hint-bf-objective-sub err-bf-objective-sub">
           <option value="">{{ t("brief.sub.default") }}</option>
-          {% for g in goals %}<optgroup label="{{ t('brief.goal.' ~ g) }}" data-goal="{{ g }}">{% for sub in subs[g] %}<option value="{{ sub }}" data-goal="{{ g }}">{{ t("brief.sub." ~ sub) }}</option>{% endfor %}</optgroup>{% endfor %}
+          {% for g in goals %}<optgroup label="{{ t('brief.goal.' ~ g) }}" data-goal="{{ g }}">{% for sub in subs[g] %}<option value="{{ sub }}" data-goal="{{ g }}"{% if g ~ ":" ~ sub in website_rows %} data-website{% endif %}{% if g ~ ":" ~ sub in pixel_rows %} data-pixel{% endif %}>{{ t("brief.sub." ~ sub) }}</option>{% endfor %}</optgroup>{% endfor %}
         </select>
         {{ err("bf-objective-sub") }}
       </div>
