@@ -95,3 +95,47 @@ def test_a_studio_run_stays_signable_by_the_judge(tmp_path):
         _brief_of(app)
         _, r = _sign(c, key, approver, _pending(app))
         assert r.status_code == 200, r.text
+
+
+class _NoThread:
+    def __init__(self, *a, **kw):
+        pass
+
+    def start(self):
+        raise RuntimeError("can't start new thread")
+
+
+def test_a_run_whose_thread_cannot_start_frees_the_run_slot(tmp_path, monkeypatch):
+    from studio import routes_studio
+
+    app = create_app(settings(tmp_path))
+    app.state.muse = object()  # a model client is there; the run never starts
+    monkeypatch.setattr(routes_studio.threading, "Thread", _NoThread)
+    with TestClient(app, base_url="https://testserver", raise_server_exceptions=False) as c:
+        login(c)
+        assert c.post("/api/runs", json={"brief": "a brief"}).status_code == 500
+        assert app.state.active_run is None
+        # its committed run is failed, not left running for ever
+        assert app.state.conn.execute("SELECT status FROM run_state").fetchall() == \
+            [("failed",)]
+
+
+def test_a_confirmation_that_fails_unexpectedly_frees_the_run_slot(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from studio import routes_studio
+
+    app = create_app(settings(tmp_path))
+    app.state.muse = object()
+
+    def boom(*a, **kw):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(routes_studio, "check_confirmation",
+                        lambda *a, **kw: SimpleNamespace(run_id="run_x1"))
+    monkeypatch.setattr(routes_studio, "commit_confirmation", boom)
+    with TestClient(app, base_url="https://testserver", raise_server_exceptions=False) as c:
+        login(c)
+        r = c.post("/api/runs", json={"brief_v1": {}})
+        assert r.status_code == 500
+        assert app.state.active_run is None

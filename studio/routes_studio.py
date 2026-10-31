@@ -531,6 +531,18 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "open_weights_unavailable"}, 503)
         return on
 
+    def release_run(run_id: str, error: BaseException | None = None) -> None:
+        """Free the one run slot claimed for ``run_id`` when its worker did not start;
+        with ``error``, its committed ``running`` state is marked ``failed`` too."""
+        if error is not None:
+            try:
+                producer.mark_failed(conn, run_id, type(error).__name__)
+            except Exception as exc:  # noqa: BLE001 - the slot is freed regardless
+                LOG.warning("run %s not marked failed: %s", run_id, type(exc).__name__)
+        with app.state.run_lock:
+            if app.state.active_run == run_id:
+                app.state.active_run = None
+
     def confirm_and_start(body: dict[str, Any], owner: str | None = None, *,
                           agent: str = "owner", untrusted: bool = False,
                           token_id: str = "") -> Response:
@@ -557,17 +569,22 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 return JSONResponse({"error": "run_in_progress",
                                      "run_id": app.state.active_run}, 409)
             app.state.active_run = c.run_id
+        committed = False
         try:
             commit_confirmation(conn, ledger, c, agent=agent)
+            committed = True
+            thread = threading.Thread(target=worker, daemon=True, name=f"producer-{c.run_id}",
+                                      args=(c.run_id, brief_v1.render(c.brief), c.source,
+                                            c.brief, c.digest, mode, token_id))
+            app.state.last_thread = thread
+            thread.start()
         except Refused as exc:
-            with app.state.run_lock:
-                app.state.active_run = None
+            release_run(c.run_id)
             return JSONResponse(exc.body, exc.status)
-        thread = threading.Thread(target=worker, daemon=True, name=f"producer-{c.run_id}",
-                                  args=(c.run_id, brief_v1.render(c.brief), c.source,
-                                        c.brief, c.digest, mode, token_id))
-        app.state.last_thread = thread
-        thread.start()
+        except BaseException as exc:
+            # the worker never ran: its finally cannot free the slot
+            release_run(c.run_id, exc if committed else None)
+            raise
         return JSONResponse({"run_id": c.run_id, "brief_sha256": c.digest, **c.counts}, 202)
 
     app.state.confirm_and_start = confirm_and_start  # the assistants API starts runs here
@@ -762,22 +779,29 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                      "run_id": app.state.active_run}, 409)
             run_id = producer.new_run_id()
             app.state.active_run = run_id
-        with db.transaction(conn):
-            if brief_id is not None:
-                conn.execute("UPDATE briefs SET run_id = ?, text = ? WHERE id = ? AND "
-                             "source = 'voice' AND run_id = ''", (run_id, brief, brief_id))
-            else:
-                conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "
-                             "VALUES (?, ?, ?, 'text', ?)",
-                             ("b_" + run_id[4:], run_id, brief, time.time()))
-            conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
-                         "VALUES (?, 'running', '{}', ?)", (run_id, time.time()))
-        source = "transcript" if brief_id is not None else "operator"
-        thread = threading.Thread(target=worker, args=(run_id, brief, source, None, "", mode),
-                                  daemon=True,
-                                  name=f"producer-{run_id}")
-        app.state.last_thread = thread
-        thread.start()
+        committed = False
+        try:
+            with db.transaction(conn):
+                if brief_id is not None:
+                    conn.execute("UPDATE briefs SET run_id = ?, text = ? WHERE id = ? AND "
+                                 "source = 'voice' AND run_id = ''", (run_id, brief, brief_id))
+                else:
+                    conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "
+                                 "VALUES (?, ?, ?, 'text', ?)",
+                                 ("b_" + run_id[4:], run_id, brief, time.time()))
+                conn.execute("INSERT INTO run_state (run_id, status, state, updated_ts) "
+                             "VALUES (?, 'running', '{}', ?)", (run_id, time.time()))
+            committed = True
+            source = "transcript" if brief_id is not None else "operator"
+            thread = threading.Thread(target=worker,
+                                      args=(run_id, brief, source, None, "", mode),
+                                      daemon=True, name=f"producer-{run_id}")
+            app.state.last_thread = thread
+            thread.start()
+        except BaseException as exc:
+            # the worker never ran: its finally cannot free the slot
+            release_run(run_id, exc if committed else None)
+            raise
         return JSONResponse({"run_id": run_id}, 202)
 
     def clip_allowed(request: Request) -> str | None:
