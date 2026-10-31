@@ -604,3 +604,17 @@ def test_a_login_whose_credentials_change_before_the_session_gets_none(app, monk
     with TestClient(app, base_url="https://testserver") as c:
         r = c.post("/login", json={"username": "judge", "password": PASSWORD})
         assert r.status_code == 401 and "studio_session" not in r.cookies
+
+
+def test_a_visitor_sees_no_meta_ids_not_even_the_extra_ads(app, client):
+    conn = app.state.conn
+    with conn.lock:
+        conn.execute("INSERT INTO campaigns (id, name, objective, daily_budget_minor, adapter, "
+                     "external_id, adset_external_id, ad_external_id, created_ts, more_ad_ids) "
+                     "VALUES ('item_1', 'n', 'OUTCOME_TRAFFIC', 100, 'graph', '120001', "
+                     "'120002', '120003', 0, ?)", (json.dumps(["120004", "120005"]),))
+    body = client.get("/api/campaigns/item_1").json()
+    for raw in ("120001", "120002", "120003", "120004", "120005"):
+        assert raw not in json.dumps(body)
+    assert all(v.startswith("sha256:") for v in body["more_ad_external_ids"])
+    assert body["external_id"].startswith("sha256:")

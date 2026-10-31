@@ -401,6 +401,15 @@ class Sessions:
                 self._active.pop(value.split(".")[0], None)
 
 
+# every field of a campaign that holds Meta object ids (one id or a list of them): a
+# visitor sees them hashed (``GET /api/campaigns/{id}``)
+META_ID_FIELDS = ("external_id", "adset_external_id", "ad_external_id", "more_ad_external_ids")
+
+
+def _hashed_id(value: Any) -> str:
+    return "sha256:" + sha256_hex(str(value))[:32]
+
+
 # -- middleware -------------------------------------------------------------------------
 
 
@@ -626,9 +635,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if session_of(request) is None:
             # A visitor gets no Meta object ids and no Meta preview URL (its query string
             # is a short-lived access token); the mock's inline preview carries neither.
-            for key in ("external_id", "adset_external_id", "ad_external_id"):
-                if c.get(key):
-                    c[key] = "sha256:" + sha256_hex(str(c[key]))[:32]
+            for key in META_ID_FIELDS:
+                value = c.get(key)
+                if isinstance(value, list):
+                    c[key] = [_hashed_id(v) for v in value]
+                elif value:
+                    c[key] = _hashed_id(value)
             if not (isinstance(preview, dict) and preview.get("kind") == "inline"):
                 preview = None
         return JSONResponse({**c, "preview": preview,
