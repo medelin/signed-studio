@@ -28,9 +28,12 @@ def signed(body: bytes, secret: str = HOOK, ts: int | None = None) -> str:
     return f"t={ts},v1={sig}"
 
 
-def event(kind, obj, *, eid="evt_1", livemode=False):
-    return json.dumps({"id": eid, "object": "event", "type": kind, "livemode": livemode,
-                       "data": {"object": obj}}).encode()
+def event(kind, obj, *, eid="evt_1", livemode=False, created=None):
+    body = {"id": eid, "object": "event", "type": kind, "livemode": livemode,
+            "data": {"object": obj}}
+    if created is not None:
+        body["created"] = created
+    return json.dumps(body).encode()
 
 
 def post(c, body, header=None):
@@ -172,3 +175,130 @@ def test_no_billing_ui_without_configuration(tmp_path):
         c.post("/login", data={"username": "ola", "password": PASSWORD, "csrf": csrf(c)})
         assert 'id="billing"' not in c.get("/account").text
         assert c.post("/webhooks/stripe", content=b"{}").status_code == 404
+
+
+LIVE = {"STRIPE_SECRET_KEY": "sk_live_" + "b" * 24, "STUDIO_BILLING_LIVE": "1"}
+ONCE = {"id": "cs_9", "mode": "payment", "payment_status": "paid", "customer": "cus_9"}
+
+
+def test_a_live_one_off_month_lifts_the_tier_until_it_ends(tmp_path):
+    app, _ = _app(tmp_path, **LIVE)
+    trial = app.state.accounts.create_external("google", "g1", email="t@example.com")
+    now = int(time.time())
+    with TestClient(app, base_url="https://testserver") as c:
+        post(c, event("checkout.session.completed",
+                      {**ONCE, "metadata": {"account_id": trial.id}}, eid="o1",
+                      livemode=True, created=now))
+    assert app.state.accounts.get(trial.id).tier == "full"
+    conn = app.state.conn
+    assert billing.expire_access(conn, live_key=True, now=now + 29 * 86400) == 0
+    assert billing.expire_access(conn, live_key=False, now=now + 31 * 86400) == 0
+    assert billing.expire_access(conn, live_key=True, now=now + 31 * 86400) == 1
+    assert app.state.accounts.get(trial.id).tier == "trial"
+    assert billing.of(conn, trial.id).access_until == 0  # dropped once
+    app.state.accounts.set_tier(trial.username, "full")  # a later operator grant stands
+    assert billing.expire_access(conn, live_key=True, now=now + 32 * 86400) == 0
+    assert app.state.accounts.get(trial.id).tier == "full"
+
+
+def test_an_ended_one_off_month_is_swept_on_the_next_request(tmp_path):
+    app, _ = _app(tmp_path, **LIVE)
+    trial = app.state.accounts.create_external("google", "g1", email="t@example.com")
+    app.state.accounts.set_tier(trial.username, "full")
+    with app.state.conn.lock:
+        app.state.conn.execute("INSERT INTO billing (account_id, livemode, access_until, "
+                               "updated_ts) VALUES (?, 1, ?, ?)",
+                               (trial.id, time.time() - 1, time.time()))
+    with TestClient(app, base_url="https://testserver") as c:
+        c.get("/pricing")
+    assert app.state.accounts.get(trial.id).tier == "trial"
+
+
+def test_an_older_subscription_event_does_not_overwrite_a_newer_one(tmp_path):
+    app, ola = _app(tmp_path)
+    sub = {**SUB, "metadata": {"account_id": ola.id}}
+    now = int(time.time())
+    with TestClient(app, base_url="https://testserver") as c:
+        post(c, event("customer.subscription.updated", sub, eid="new", created=now))
+        late = event("customer.subscription.updated", {**sub, "status": "incomplete"},
+                     eid="old", created=now - 60)
+        assert post(c, late).status_code == 200
+    assert billing.of(app.state.conn, ola.id).status == "active"
+    seen = app.state.conn.execute("SELECT id FROM stripe_events ORDER BY id").fetchall()
+    assert [r[0] for r in seen] == ["new", "old"]  # recorded as seen all the same
+
+
+def test_the_end_of_a_replaced_subscription_keeps_the_live_one(tmp_path):
+    app, ola = _app(tmp_path)
+    meta = {"account_id": ola.id}
+    with TestClient(app, base_url="https://testserver") as c:
+        post(c, event("customer.subscription.created", {**SUB, "id": "sub_new",
+                                                        "metadata": meta}, eid="a"))
+        post(c, event("customer.subscription.deleted", {**SUB, "id": "sub_old",
+                                                        "metadata": meta}, eid="b"))
+    row = app.state.conn.execute("SELECT status, subscription_id FROM billing "
+                                 "WHERE account_id = ?", (ola.id,)).fetchone()
+    assert tuple(row) == ("active", "sub_new")
+
+
+def test_a_failure_after_the_event_is_recorded_is_retried_whole(tmp_path):
+    """The tier change is part of the event's transaction: a failure rolls the event back,
+    so Stripe's retry (same id) applies it instead of being dropped as a duplicate."""
+    app, _ = _app(tmp_path, **LIVE)
+    trial = app.state.accounts.create_external("google", "g1", email="t@example.com")
+    body = event("customer.subscription.created", {**SUB, "metadata": {"account_id": trial.id}},
+                 eid="e1", livemode=True)
+    conn = app.state.conn
+    with conn.lock:
+        conn.execute("CREATE TEMP TRIGGER no_tier BEFORE UPDATE OF tier ON accounts "
+                     "BEGIN SELECT RAISE(ABORT, 'down'); END")
+    with TestClient(app, base_url="https://testserver", raise_server_exceptions=False) as c:
+        assert post(c, body).status_code == 500
+        with conn.lock:
+            conn.execute("DROP TRIGGER no_tier")
+        assert post(c, body).status_code == 200
+    assert app.state.accounts.get(trial.id).tier == "full"
+
+
+def test_a_lost_mail_does_not_fail_the_webhook(tmp_path, monkeypatch):
+    app, _ = _app(tmp_path, **LIVE)
+    trial = app.state.accounts.create_external("google", "g1", email="t@example.com")
+
+    def down(*a, **kw):
+        raise RuntimeError("smtp")
+
+    monkeypatch.setattr(app.state.notifier, "security", down)
+    with TestClient(app, base_url="https://testserver") as c:
+        assert post(c, event("customer.subscription.created",
+                             {**SUB, "metadata": {"account_id": trial.id}}, eid="e1",
+                             livemode=True)).status_code == 200
+    assert app.state.accounts.get(trial.id).tier == "full"
+
+
+def test_a_disabled_account_keeps_its_billing_current_without_mails(tmp_path):
+    app, _ = _app(tmp_path, **LIVE)
+    store = app.state.accounts
+    bob = store.create("bob", PASSWORD, email="bob@example.com")
+    store.set_tier("bob", "trial")
+    store.set_status("bob", "disabled")
+    sub = {**SUB, "metadata": {"account_id": bob.id}}
+    with TestClient(app, base_url="https://testserver") as c:
+        post(c, event("customer.subscription.created", sub, eid="e1", livemode=True))
+        app.state.notifier.flush()
+    row = billing.of(app.state.conn, bob.id)
+    assert row is not None and row.status == "active"
+    assert app.state.notifier.outbox == []  # mails held back while disabled
+    assert store.set_status("bob", "active").tier == "full"  # re-enabled: not stale
+
+
+def test_an_invoice_with_null_subscription_details_is_handled(tmp_path):
+    app, ola = _app(tmp_path)
+    with TestClient(app, base_url="https://testserver") as c:
+        post(c, event("customer.subscription.created",
+                      {**SUB, "metadata": {"account_id": ola.id}}, eid="s"))
+        inv = {"id": "in_1", "customer": "cus_1", "subscription_details": None,
+               "parent": None, "hosted_invoice_url": "https://invoice.stripe.com/i/y"}
+        assert post(c, event("invoice.paid", inv, eid="p")).status_code == 200
+        up = {**inv, "lines": {"data": []}}
+        assert post(c, event("invoice.upcoming", up, eid="u")).status_code == 200
+    assert billing.of(app.state.conn, ola.id).last_invoice_url.endswith("/i/y")
