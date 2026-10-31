@@ -746,30 +746,41 @@ class Accounts:
                             (account_id,)).fetchone()
         return int(row[0]) if row else -1
 
-    def _code_gate(self, account_id: str) -> None:
-        """Refuse any code check while the account's code lock runs."""
-        with self._read() as c:
+    @contextmanager
+    def _code_attempt(self, account_id: str) -> Iterator[sqlite3.Connection]:
+        """One ``BEGIN IMMEDIATE`` transaction around a code check: refused while the
+        account's code lock runs; a ``WrongCode`` raised inside is counted (and the count
+        committed) before it propagates. Gate, check and count share the write lock, so
+        parallel requests cannot all pass the gate before any failure is recorded."""
+        wrong: WrongCode | None = None
+        with transaction(self.conn) as c:
             row = c.execute("SELECT code_locked_until FROM accounts WHERE id = ?",
                             (account_id,)).fetchone()
-        if row and self.clock() < row[0]:
-            raise SecondFactorLocked("too many wrong codes; wait and try again")
+            if row and self.clock() < row[0]:
+                raise SecondFactorLocked("too many wrong codes; wait and try again")
+            try:
+                yield c
+            except WrongCode as exc:  # nothing was written before it: count and commit
+                wrong = exc
+                self._count_failure(c, account_id)
+        if wrong is not None:
+            raise wrong
 
-    def _code_failed(self, account_id: str) -> None:
-        """Count a wrong code for the account (own transaction: the failed check rolled
-        back) and lock code checks once the free attempts are used up."""
+    def _count_failure(self, c: sqlite3.Connection, account_id: str) -> None:
+        """Count a wrong code for the account and lock code checks once the free attempts
+        are used up."""
         now = self.clock()
-        with transaction(self.conn) as c:
-            row = c.execute("SELECT code_failures FROM accounts WHERE id = ?",
-                            (account_id,)).fetchone()
-            if row is None:
-                return
-            failures = int(row[0]) + 1
-            locked = 0.0
-            if failures > FREE_CODE_FAILURES:
-                exponent = min(failures - FREE_CODE_FAILURES - 1, 16)
-                locked = now + min(CODE_LOCK_BASE_S * 2 ** exponent, CODE_LOCK_MAX_S)
-            c.execute("UPDATE accounts SET code_failures = ?, code_locked_until = ? "
-                      "WHERE id = ?", (failures, locked, account_id))
+        row = c.execute("SELECT code_failures FROM accounts WHERE id = ?",
+                        (account_id,)).fetchone()
+        if row is None:
+            return
+        failures = int(row[0]) + 1
+        locked = 0.0
+        if failures > FREE_CODE_FAILURES:
+            exponent = min(failures - FREE_CODE_FAILURES - 1, 16)
+            locked = now + min(CODE_LOCK_BASE_S * 2 ** exponent, CODE_LOCK_MAX_S)
+        c.execute("UPDATE accounts SET code_failures = ?, code_locked_until = ? "
+                  "WHERE id = ?", (failures, locked, account_id))
 
     def code_lock_remaining(self, account_id: str) -> float:
         with self._read() as c:
@@ -790,17 +801,13 @@ class Accounts:
         ``gen`` (the credential generation when the challenge was opened) is stale, the
         account is not active, or its code lock runs; a wrong code counts per account."""
         try:
-            self._code_gate(account_id)
-            with transaction(self.conn) as c:
+            with self._code_attempt(account_id) as c:
                 row = self._require(c, account_id)
                 current = c.execute("SELECT credential_gen FROM accounts WHERE id = ?",
                                     (account_id,)).fetchone()[0]
                 if row[2] != "active" or not row[4] or (gen is not None and gen != current):
                     raise TwoFactorState("the challenge is stale")
                 self._checked_code(c, account_id, row[4], row[6], code)
-        except WrongCode:
-            self._code_failed(account_id)
-            return False
         except AccountError:
             return False
         return True
@@ -899,15 +906,10 @@ class Accounts:
         if not row[4]:
             raise TwoFactorState("two-step sign-in is off")
         self._check_password(row[1], password)
-        self._code_gate(account_id)
-        try:
-            with transaction(self.conn) as c:
-                row = self._require(c, account_id)
-                self._checked_code(c, account_id, row[4], row[6], code)
-                self._clear_totp(c, account_id)
-        except WrongCode:
-            self._code_failed(account_id)
-            raise
+        with self._code_attempt(account_id) as c:
+            row = self._require(c, account_id)
+            self._checked_code(c, account_id, row[4], row[6], code)
+            self._clear_totp(c, account_id)
 
     def recovery_codes_left(self, account_id: str) -> int:
         with self._read() as c:
@@ -1029,17 +1031,11 @@ class Accounts:
             raise ConfirmationMismatch("type your user name to confirm")
         self._check_password(row[1], password)
         now = self.clock()
-        if row[4]:
-            self._code_gate(account_id)
-        try:
-            with transaction(self.conn) as c:
-                row = self._require(c, account_id)
-                if row[4]:
-                    self._check_code(c, account_id, row[4], row[6], code)
-                self._erase(c, account_id, now)
-        except WrongCode:
-            self._code_failed(account_id)
-            raise
+        with self._code_attempt(account_id) as c:  # no lock without a second factor
+            row = self._require(c, account_id)
+            if row[4]:
+                self._check_code(c, account_id, row[4], row[6], code)
+            self._erase(c, account_id, now)
 
     def _erase(self, c: sqlite3.Connection, account_id: str, now: float) -> None:
         """Revoke every session and key, erase every personal field, keep the tombstone."""

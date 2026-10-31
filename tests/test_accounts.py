@@ -404,3 +404,52 @@ def test_older_accounts_tables_get_the_new_columns(tmp_path):
     db.init(conn)
     cols = {r[1] for r in conn.execute("PRAGMA table_info(accounts)")}
     assert {"credential_gen", "code_failures", "code_locked_until"} <= cols
+
+
+# -- review fixes (31 Oct): the code lock is one transaction --------------------------
+
+
+@pytest.mark.parametrize("operation", ["login", "disable", "delete"])
+def test_parallel_wrong_codes_cannot_all_pass_the_lock(store, monkeypatch, operation):
+    """Gate, code check and failure count run in one transaction: with one free attempt
+    left, parallel wrong codes get one check; the others meet the lock it set."""
+    import threading
+    import time
+
+    a = store.create("ola", PASSWORD)
+    secret, _ = enrol(store, a)
+    with store.conn.lock:
+        store.conn.execute("UPDATE accounts SET code_failures = ? WHERE id = ?",
+                           (accounts.FREE_CODE_FAILURES, a.id))
+    checks = []
+    real = store._check_code
+
+    def slow_check(*args):
+        checks.append(1)
+        time.sleep(0.05)
+        return real(*args)
+
+    monkeypatch.setattr(store, "_check_code", slow_check)
+    bad = wrong(secret)
+
+    def attempt():
+        try:
+            if operation == "login":
+                store.verify_second_factor(a.id, bad)
+            elif operation == "disable":
+                store.totp_disable(a.id, PASSWORD, bad)
+            else:
+                store.delete(a.id, confirm="ola", password=PASSWORD, code=bad)
+        except accounts.AccountError:
+            pass
+
+    threads = [threading.Thread(target=attempt) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(checks) == 1
+    row = store.conn.execute("SELECT code_failures FROM accounts WHERE id = ?",
+                             (a.id,)).fetchone()
+    assert row[0] == accounts.FREE_CODE_FAILURES + 1
+    assert store.code_lock_remaining(a.id) > 0
