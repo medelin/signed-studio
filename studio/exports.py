@@ -501,8 +501,9 @@ def _budget_after(action: str, payload: Mapping[str, Any], before: int | None) -
 
 
 def _approvals(conn: Any, item_ids: Iterable[str]) -> dict[str, list[dict[str, Any]]]:
-    """Per campaign: its approved budget-bearing approvals, oldest first, each with the
-    daily budget in force after it and the hash of its ``approval`` receipt."""
+    """Per campaign: its approved budget-bearing approvals whose execution is ``done``
+    (a signed change that failed or never ran changed nothing), oldest first, each with
+    the daily budget in force after it and the hash of its ``approval`` receipt."""
     ids = list(item_ids)
     if not ids:
         return {}
@@ -511,6 +512,7 @@ def _approvals(conn: Any, item_ids: Iterable[str]) -> dict[str, list[dict[str, A
         "SELECT a.id, a.run_id, a.action, a.item_id, a.approver, a.decided_ts, "  # noqa: S608
         "coalesce(p.payload, '{}') FROM approvals a "
         "LEFT JOIN pending_payloads p ON p.approval_id = a.id "
+        "JOIN executions e ON e.approval_id = a.id AND e.status = 'done' "
         f"WHERE a.status = 'approved' AND a.item_id IN ({marks}) "
         f"AND a.action IN ({', '.join('?' for _ in BUDGET_ACTIONS)}) "
         "ORDER BY a.decided_ts, a.id", (*ids, *BUDGET_ACTIONS)).fetchall()
@@ -542,6 +544,49 @@ def _window(body: Mapping[str, Any], created_ts: float) -> tuple[str, str]:
     return start, stop
 
 
+def _days(start: str, stop: str) -> list[str]:
+    first = datetime.strptime(start, "%Y-%m-%d")
+    n = (datetime.strptime(stop, "%Y-%m-%d") - first).days
+    return [(first + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(min(n, 366) + 1)]
+
+
+def _daily_spend(snaps: Iterable[tuple[str, Mapping[str, Any], float]]
+                 ) -> dict[str, dict[str, float]]:
+    """``campaign → day → spend`` from snapshots given newest first. Every pull covers the
+    last 7 days, so windows overlap: each day is taken from the newest snapshot that has
+    it. A snapshot's daily rows (``spend_by_day``) are used as they are; a window without
+    them books what its total leaves after the days newer snapshots already booked,
+    spread evenly (to the cent) over the days only it covers. No day is dropped or booked
+    twice."""
+    out: dict[str, dict[str, float]] = {}
+    for cid, body, created in snaps:
+        booked = out.setdefault(cid, {})
+        by_day = body.get("spend_by_day")
+        if isinstance(by_day, Mapping) and by_day:
+            for day, value in by_day.items():
+                if isinstance(day, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) \
+                        and day not in booked:
+                    try:
+                        booked[day] = round(float(value or 0.0), 2)
+                    except (TypeError, ValueError):
+                        continue
+            continue
+        start, stop = _window(body, created)
+        days = _days(start, stop)
+        free = [d for d in days if d not in booked]
+        if not free:
+            continue
+        try:
+            total = float((body.get("totals") or {}).get("spend") or 0.0)
+        except (TypeError, ValueError):
+            total = 0.0
+        cents = max(0, round((total - sum(booked[d] for d in days if d in booked)) * 100))
+        share, extra = divmod(cents, len(free))
+        for i, day in enumerate(free):
+            booked[day] = (share + (1 if i >= len(free) - extra else 0)) / 100
+    return out
+
+
 def _run_costs(conn: Any, lo: float, hi: float) -> dict[str, tuple[float, float]]:
     """``run_id → (model cost in USD, last receipt ts)`` for receipts written in the month."""
     rows = conn.execute(
@@ -564,8 +609,7 @@ def statement(conn: Any, month: str, *, exclude_runs: Iterable[str] = ()
                              "ORDER BY created_ts DESC, id DESC").fetchall()
         chains = _approvals(conn, campaigns)
         costs = {run: c for run, c in _run_costs(conn, lo, hi).items() if run not in skip}
-    rows: list[dict[str, Any]] = []
-    taken: dict[str, list[tuple[str, str]]] = {}
+    parsed = []
     for cid, raw, created in snaps:
         if cid not in campaigns:
             continue
@@ -573,32 +617,32 @@ def statement(conn: Any, month: str, *, exclude_runs: Iterable[str] = ()
             body = json.loads(raw)
         except ValueError:
             continue
-        start, stop = _window(body, created)
-        windows = taken.setdefault(cid, [])
-        if any(not (stop < s or start > e) for s, e in windows):
-            continue  # an older snapshot overlapping a newer one: never counted twice
-        windows.append((start, stop))
-        if not first <= stop <= last:
-            continue
+        if isinstance(body, dict):
+            parsed.append((cid, body, float(created)))
+    rows: list[dict[str, Any]] = []
+    for cid, days in _daily_spend(parsed).items():
         _, run_id, name, external, currency, budget_now = campaigns[cid]
         currency = str(currency or "PLN")
         chain = chains.get(cid, [])
-        end = _day_end(stop)
-        approval = next((a for a in reversed(chain) if a["decided_ts"] < end),
-                        chain[0] if chain else None)
-        budget_minor = approval["budget_minor"] if approval and approval["budget_minor"] \
-            is not None else int(budget_now)
-        spend = float((body.get("totals") or {}).get("spend") or 0.0)
-        rows.append({
-            "date": stop, "campaign_item_id": cid, "campaign_name": envelope.clean(str(name)),
-            "meta_campaign_id": str(external or ""), "currency": currency,
-            "spend": round(spend, 2),
-            "approved_daily_budget": round(budget_minor / _offset(currency), 2),
-            "approved_by": _short_key(approval["approver"]) if approval else "",
-            "approved_at": _iso(approval["decided_ts"]) if approval else "",
-            "approval_id": approval["approval_id"] if approval else "",
-            "approval_receipt_hash": approval["receipt_hash"] if approval else "",
-            "model_cost_usd": 0.0, "run_id": str(run_id or "")})
+        for day, spend in sorted(days.items()):
+            if not first <= day <= last or spend <= 0:
+                continue  # each day in its own month; a day with no spend is no expense
+            end = _day_end(day)
+            approval = next((a for a in reversed(chain) if a["decided_ts"] < end),
+                            chain[0] if chain else None)
+            budget_minor = approval["budget_minor"] if approval and approval[
+                "budget_minor"] is not None else int(budget_now)
+            rows.append({
+                "date": day, "campaign_item_id": cid,
+                "campaign_name": envelope.clean(str(name)),
+                "meta_campaign_id": str(external or ""), "currency": currency,
+                "spend": round(spend, 2),
+                "approved_daily_budget": round(budget_minor / _offset(currency), 2),
+                "approved_by": _short_key(approval["approver"]) if approval else "",
+                "approved_at": _iso(approval["decided_ts"]) if approval else "",
+                "approval_id": approval["approval_id"] if approval else "",
+                "approval_receipt_hash": approval["receipt_hash"] if approval else "",
+                "model_cost_usd": 0.0, "run_id": str(run_id or "")})
     rows.sort(key=lambda r: (r["date"], r["campaign_item_id"]))
     booked: set[str] = set()
     for row in rows:  # a run's model cost goes on its first row of the month

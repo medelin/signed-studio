@@ -183,8 +183,12 @@ def test_the_import_receipt_has_counts_only(conn, tmp_path):
 APPROVER = "ed25519:" + "ab" * 16
 
 
-def approve(conn, ledger, aid, cid, run, action, payload, decided):
+def approve(conn, ledger, aid, cid, run, action, payload, decided, executed="done"):
     with db.transaction(conn):
+        if executed:
+            conn.execute("INSERT INTO executions (approval_id, action, item_id, run_id, "
+                         "status, created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                         (aid, action, cid, run, executed, decided, decided))
         conn.execute("INSERT INTO approvals (id, run_id, action, item_id, content_sha256, "
                      "chain_head, nonce, ts, status, approver, signature, decided_ts) VALUES "
                      "(?, ?, ?, ?, ?, 'h', ?, ?, 'approved', ?, 'sig', ?)",
@@ -197,8 +201,9 @@ def approve(conn, ledger, aid, cid, run, action, payload, decided):
                                   "pending_id": aid}).hash
 
 
-def snapshot(conn, sid, cid, start, stop, spend, created):
-    body = {"date_start": start, "date_stop": stop, "totals": {"spend": spend}}
+def snapshot(conn, sid, cid, start, stop, spend, created, by_day=None):
+    body = {"date_start": start, "date_stop": stop, "totals": {"spend": spend},
+            **({"spend_by_day": by_day} if by_day is not None else {})}
     with db.transaction(conn):
         conn.execute("INSERT INTO insights_snapshots (id, campaign_id, body, created_ts) "
                      "VALUES (?, ?, ?, ?)", (sid, cid, json.dumps(body), created))
@@ -206,7 +211,8 @@ def snapshot(conn, sid, cid, start, stop, spend, created):
 
 def statement_fixture(conn, ledger, month):
     """Two campaigns in the month: c1 (PLN, a budget raise signed on day 3, daily snapshots
-    plus an older overlapping 7-day one) and c2 (EUR); one run with model cost only."""
+    plus an older overlapping 4-day one whose first day only it covers) and c2 (EUR); one
+    run with model cost only."""
     _, _, start_ts, _ = exports.month_bounds(month)
     with db.transaction(conn):
         for cid, run, cur, budget in (("c1", "run_a", "PLN", 5000), ("c2", "run_b", "EUR", 2000)):
@@ -221,7 +227,8 @@ def statement_fixture(conn, ledger, month):
     approve(conn, ledger, "ap_3", "c2", "run_b", "campaign.create",
             {"campaign": {"daily_budget_minor": 2000}}, start_ts)
     d = [f"{month}-{n:02d}" for n in range(1, 6)]
-    snapshot(conn, "s0", "c1", d[0], d[3], 999.0, start_ts + 3 * 86400)  # overlaps: dropped
+    # overlaps the newer ones: only its first day (65.63 - 60.63 = 5.00) is left to book
+    snapshot(conn, "s0", "c1", d[0], d[3], 65.63, start_ts + 3 * 86400)
     snapshot(conn, "s1", "c1", d[1], d[1], 10.10, start_ts + 4 * 86400)
     snapshot(conn, "s2", "c1", d[2], d[2], 20.20, start_ts + 4 * 86400 + 1)
     snapshot(conn, "s3", "c1", d[3], d[3], 30.33, start_ts + 4 * 86400 + 2)
@@ -242,21 +249,25 @@ def test_statement_rows_and_exact_totals(conn, ledger):
     month = exports.current_month()
     h1 = statement_fixture(conn, ledger, month)
     rows = exports.statement(conn, month)
-    assert [(r["date"][-2:], r["campaign_item_id"], r["spend"]) for r in rows[:4]] == [
-        ("02", "c1", 10.10), ("03", "c1", 20.20), ("04", "c1", 30.33), ("05", "c2", 7.07)]
+    assert [(r["date"][-2:], r["campaign_item_id"], r["spend"]) for r in rows[:5]] == [
+        ("01", "c1", 5.00), ("02", "c1", 10.10), ("03", "c1", 20.20), ("04", "c1", 30.33),
+        ("05", "c2", 7.07)]
+    rows = rows[1:]  # the checks below are about the daily snapshots
     first = rows[0]
     assert set(first) == set(exports.STATEMENT_COLUMNS)
     assert first["approval_id"] == "ap_1" and first["approved_daily_budget"] == 40.0
     assert first["approval_receipt_hash"] == h1 and first["approved_by"] == "ed25519:abababab"
     assert first["meta_campaign_id"] == "1201" and first["currency"] == "PLN"
-    assert first["model_cost_usd"] == 0.013 and rows[1]["model_cost_usd"] == 0.0
+    assert first["model_cost_usd"] == 0.0 and rows[1]["model_cost_usd"] == 0.0
     assert rows[2]["approval_id"] == "ap_2" and rows[2]["approved_daily_budget"] == 50.0
     assert rows[3]["currency"] == "EUR" and rows[3]["approved_daily_budget"] == 20.0
     model_only = [r for r in rows if not r["campaign_item_id"]]
     assert [(r["run_id"], r["model_cost_usd"], r["currency"]) for r in model_only] == [
         ("run_x", 0.5, "")]
+    rows = exports.statement(conn, month)
+    assert rows[0]["model_cost_usd"] == 0.013  # a run's model cost: on its first row
     t = exports.totals(rows)
-    assert t["spend"] == {"EUR": 7.07, "PLN": 60.63}
+    assert t["spend"] == {"EUR": 7.07, "PLN": 65.63}
     assert t["model_cost_usd"] == 0.513
     assert exports.statement(conn, month, exclude_runs={"run_a", "run_x"}) == \
         [r for r in rows if r["run_id"] == "run_b"]
@@ -281,7 +292,7 @@ def test_hledger_transactions_balance_per_commodity(conn, ledger):
                 if m.group(1).startswith("expenses:"):
                     spent[m.group(3)] += Decimal(m.group(2))
         assert sums and all(v == 0 for v in sums.values()), txn
-    assert spent == {"PLN": Decimal("60.63"), "EUR": Decimal("7.07"),
+    assert spent == {"PLN": Decimal("65.63"), "EUR": Decimal("7.07"),
                      "USD": Decimal("0.513000")}
     assert "; approval:ap_1, approver:ed25519:abababab" in journal
     assert re.search(r"; receipt:[0-9a-f]{64}", journal)
@@ -297,12 +308,62 @@ def test_the_four_csv_profiles(conn, ledger):
                      "quickbooks": "\ufeffDate,Description,Amount",
                      "wfirma": "\ufeffData,Kontrahent,Opis,Kwota,Waluta"}
     xero = exports.statement_csv(rows, "xero").split("\r\n")
-    assert xero[1].startswith(f"{month}-02,-10.10,Meta Platforms,") and xero[1].endswith(",ap_1")
+    assert xero[1].startswith(f"{month}-01,-5.00,Meta Platforms,") and xero[1].endswith(",ap_1")
     wf = exports.statement_csv(rows, "wfirma").split("\r\n")
-    assert wf[1].endswith(",10.10,PLN")
+    assert wf[1].endswith(",5.00,PLN")
     assert any(line.endswith(",0.50,USD") for line in wf)  # run_x's model cost
     with pytest.raises(ValueError):
         exports.statement_csv(rows, "sage")
+
+
+def _campaign(conn, cid="c9", run="run_c", currency="PLN", budget=3000):
+    with db.transaction(conn):
+        conn.execute("INSERT INTO campaigns (id, run_id, name, objective, status, "
+                     "daily_budget_minor, adapter, external_id, created_ts, currency) "
+                     "VALUES (?, ?, 'Mugs', 'OUTCOME_TRAFFIC', 'ACTIVE', ?, 'mock', '1209', 0, ?)",
+                     (cid, run, budget, currency))
+
+
+def test_overlapping_windows_keep_every_day_in_its_own_month(conn, ledger):
+    """Review fix E11: snapshots are pulled daily over the last 7 days, so windows always
+    overlap. Daily rows (``spend_by_day``) are booked per day, the newest snapshot first;
+    a window without them books only the days no newer snapshot has; each day lands in
+    its own month."""
+    _campaign(conn)
+    snapshot(conn, "w1", "c9", "2026-09-27", "2026-10-03", 70.0, 1, by_day={
+        f"2026-09-{d}": 10.0 for d in (27, 28, 29, 30)} | {
+        f"2026-10-0{d}": 10.0 for d in (1, 2, 3)})
+    snapshot(conn, "w2", "c9", "2026-09-29", "2026-10-05", 77.0, 2, by_day={
+        "2026-09-29": 11.0, "2026-09-30": 11.0, "2026-10-01": 11.0, "2026-10-02": 11.0,
+        "2026-10-03": 11.0, "2026-10-04": 11.0, "2026-10-05": 11.0})
+    # a legacy snapshot (no daily rows), newest, overlapping 10-04 and 10-05 only
+    snapshot(conn, "w3", "c9", "2026-10-04", "2026-10-07", 52.0, 3)
+    sep = exports.statement(conn, "2026-09")
+    assert [(r["date"], r["spend"]) for r in sep] == [
+        ("2026-09-27", 10.0), ("2026-09-28", 10.0), ("2026-09-29", 11.0),
+        ("2026-09-30", 11.0)]
+    octo = {r["date"]: r["spend"] for r in exports.statement(conn, "2026-10")}
+    # w3's 52.00 over 4 days: the newer daily values do not exist for its days (w3 is the
+    # newest), so it is spread evenly; w2's 10-04/10-05 are not booked twice
+    assert octo == {"2026-10-01": 11.0, "2026-10-02": 11.0, "2026-10-03": 11.0,
+                    "2026-10-04": 13.0, "2026-10-05": 13.0, "2026-10-06": 13.0,
+                    "2026-10-07": 13.0}
+
+
+def test_only_executed_approvals_set_the_budget(conn, ledger):
+    """Review fix E12: a signed budget change that failed (or never ran) did not change
+    the budget; the statement shows the one in force."""
+    _campaign(conn)
+    approve(conn, ledger, "ap_c", "c9", "run_c", "campaign.create",
+            {"campaign": {"daily_budget_minor": 3000}}, 1_790_000_000)
+    approve(conn, ledger, "ap_f", "c9", "run_c", "campaign.update",
+            {"change": {"kind": "budget", "to_minor": 9000}}, 1_790_000_100, executed="failed")
+    approve(conn, ledger, "ap_n", "c9", "run_c", "campaign.update",
+            {"change": {"kind": "budget", "to_minor": 8000}}, 1_790_000_200, executed="")
+    day = exports._day(1_790_100_000)
+    snapshot(conn, "x1", "c9", day, day, 12.0, 1_790_100_000)
+    (row,) = exports.statement(conn, day[:7])
+    assert row["approval_id"] == "ap_c" and row["approved_daily_budget"] == 30.0
 
 
 # -- web: the pages, downloads, import and CSRF ---------------------------------------------
