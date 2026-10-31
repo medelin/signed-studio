@@ -76,7 +76,7 @@ def test_recorded_interest_search_shape():
     assert json.dumps(RECORDED).count("act_100000000000001") >= 1
 
 
-def test_the_self_advertising_example_is_selectable_and_ceramics_stays_default(tmp_path):
+def test_the_ceramics_example_is_one_click_and_the_gbp_example_stays_for_the_demo(tmp_path):
     from fastapi.testclient import TestClient
 
     from studio.app import create_app
@@ -87,8 +87,9 @@ def test_the_self_advertising_example_is_selectable_and_ceramics_stays_default(t
         login(c)
         for lang in ("en", "pl"):
             page = c.get(f"/studio?lang={lang}").text
-            assert 'value="ceramics"' in page and 'value="muse"' in page
-            assert page.index('value="ceramics"') < page.index('value="muse"')
+            # the studio page offers the ceramics example only ("use an example brief
+            # instead"); the self-advertising GBP brief stays for the demo and tour
+            assert 'id="use-example"' in page and 'value="muse"' not in page
             text = i18n.CATALOGS[lang]["studio.brief_example_muse"]
             assert "3 GBP" in text and "https://muse.udun.eu" in text
     from studio.demo import BRIEFS

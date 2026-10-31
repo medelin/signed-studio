@@ -46,24 +46,32 @@
   <p class="sr-only" id="brief-live" role="status" aria-live="polite"></p>
 
   <form id="brief-form" class="stack" aria-describedby="brief-paths">
+    {#- what is advertised and the links that show it: the site is scanned, a profile's
+        public page read for meta tags only (brand_scan); brief.js prefills the website -#}
+    <fieldset class="sources" id="sources">
+      <legend>{{ t("src.legend") }}</legend>
+      <p class="hint" id="src-hint">{{ t("src.hint") }}</p>
+      {% for f, ph in (("website", "https://"), ("facebook", "https://facebook.com/…"), ("instagram", "https://instagram.com/…"), ("x", "https://x.com/…")) %}
+      <div class="src-field">
+        <label for="src-{{ f }}">{{ t("src." ~ f) }}</label>
+        <input id="src-{{ f }}" name="{{ f }}" type="url" inputmode="url" pattern="https://.+" maxlength="300" autocomplete="{{ 'url' if f == 'website' else 'off' }}" placeholder="{{ ph }}" aria-describedby="src-hint err-src-{{ f }}">
+        {{ err("src-" ~ f) }}
+      </div>
+      {% endfor %}
+      <label class="src-remember" id="src-remember-box" hidden><input type="checkbox" id="src-remember"> {{ t("src.remember") }}</label>
+    </fieldset>
     <fieldset class="two-paths">
       <legend>{{ t("brief.paths_legend") }}</legend>
       <p class="hint" id="brief-paths">{{ t("brief.paths_hint") }}</p>
       <div class="path">
         <h2 class="path-h">{{ t("brief.path_text") }}</h2>
-        <label for="brief-example">{{ t("studio.example_label") }}</label>
-        <select id="brief-example" aria-describedby="brief-example-hint">
-          <option value="" data-text="" selected>{{ t("studio.example.own") }}</option>
-          <option value="ceramics" data-text="{{ t('studio.brief_default') }}">{{ t("studio.example.ceramics") }}</option>
-          <option value="muse" data-text="{{ t('studio.brief_example_muse') }}">{{ t("studio.example.muse") }}</option>
-        </select>
-        <p class="hint" id="brief-example-hint">{{ t("studio.example_hint") }}</p>
         <label for="brief">{{ t("brief.text_label") }}</label>
         <textarea id="brief" name="brief" rows="6" maxlength="4000" required
           placeholder="{{ t('studio.brief_default') }}"
           aria-describedby="brief-help err-brief"></textarea>
         <p id="brief-help" class="hint">{{ t("brief.text_help") }}</p>
         {{ err("brief") }}
+        <p class="hint"><button type="button" id="use-example" class="text-link" data-text="{{ t('studio.brief_default') }}">{{ t("src.use_example") }}</button></p>
       </div>
       <div class="path" id="voice-box">
         <h2 class="path-h">{{ t("brief.path_voice") }}</h2>
@@ -154,6 +162,14 @@
 
     <fieldset>
       <legend>{{ t("brief.s.offer") }}</legend>
+      <div class="bf-field" data-field="offer.subject_kind">
+        <label for="bf-offer-subject_kind">{{ t("brief.f.subject_kind") }}</label>
+        <p class="hint" id="hint-bf-offer-subject_kind">{{ t("brief.h.subject_kind") }}</p>
+        <select id="bf-offer-subject_kind" data-path="offer.subject_kind" aria-describedby="hint-bf-offer-subject_kind err-bf-offer-subject_kind">
+          {% for k in ("product", "service", "event", "person", "organisation", "other") %}<option value="{{ k }}">{{ t("brief.subject." ~ k) }}</option>{% endfor %}
+        </select>
+        {{ err("bf-offer-subject_kind") }}
+      </div>
       {{ field("offer.product", "product") }}
       {{ field("offer.offer", "offer", "area") }}
       {{ field("offer.valid_until", "valid_until", "date", dictate=False) }}
