@@ -9,6 +9,7 @@ from studio.pii import (
     contains_pii,
     find_phone,
     long_digit_run,
+    redact,
 )
 
 # Checksums: NIP 5260250274 (weights 6,5,7,2,3,4,5,6,7), PESEL 44051401359 / 02270803624.
@@ -203,3 +204,40 @@ def test_padding_between_digits_cannot_stretch_the_window(sep):
                                   "Od 150 zł dostawa gratis, 350 ml, rocznik 2026."])
 def test_a_sentence_with_a_price_and_a_year_stays_on_contributor(text):
     assert choose_tier(text, "contributor")[0] == "contributor"
+
+
+# Review fix (31 Oct): digit runs glued to letters, and Unicode e-mail addresses.
+GLUED = [("tel600123456", "phone"), ("PESEL44051401359", "pesel"),
+         ("nip5260250274 dzięki", "nip"), ("kontakt:tel+48600123456!", "phone"),
+         ("zadzwoń_600123456", "phone")]
+
+
+@pytest.mark.parametrize(("text", "kind"), GLUED)
+def test_a_number_glued_to_letters_is_found_and_masked(text, kind):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == kind, (text, m)
+    masked = redact(text)
+    assert f"[{kind}]" in masked and not any(ch.isdigit() for ch in masked), masked
+    assert not any(ch.isdigit() for ch in receipt_redact(text)), receipt_redact(text)
+    assert choose_tier(text, "contributor")[0] == "standard"
+
+
+def test_glued_hex_ids_and_short_numbers_stay():
+    from studio.receipts import redact as receipt_redact
+
+    for text in ("3f9a1234567890bbb", "run_3fa9c2b1d4e5f607", "an_ab600123456cd",
+                 "kubek350ml za 89zł", "model X200"):
+        assert contains_pii(text) is None, text
+        assert receipt_redact(text) == text, text
+
+
+@pytest.mark.parametrize("text", ["napisz: kontakt@sklep-żabka.pl", "zofia.łęcka@poczta.pl",
+                                  "info@例え.jp"])
+def test_unicode_email_addresses_are_found_and_masked(text):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == "email", text
+    assert "@" not in redact(text) and "@" not in receipt_redact(text)
