@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-31 — whole-code review fixes (45 findings)
+
+A local whole-code review and three cloud reviews of `c39d5fc`; every finding reproduced with a failing test before its fix (plans in `docs/plans/2026-10-31-review-fixes-*.md`).
+
+- **Billing**: the spend fee is metered only in the subscription's currency, in Stripe's minor units (other currencies skipped as `currency_mismatch`); Stripe events applied whole, in order, also for disabled accounts; a paid one-off month grants `full` and ends; one failed meter send no longer stops the daily run.
+- **Accounts and sessions**: two-step lockout checked in one transaction; form errors never clear the login limiter; per-account session caps (the shared judge account per client) instead of evicting other users; bounded OAuth states; argon2 off the event loop with a credential re-check; provider-only accounts re-authenticate per session; visitors never see Meta ids.
+- **Content guards**: a model BLOCK/WARN is never lowered by a finding's own level or by code findings; PII masking catches numbers glued to letters or separators and Unicode e-mails; numbers in copy are grounded as whole tokens; the lifetime budget meets the daily ceiling; re-triage never reopens a replied or hidden comment; prices are checked in either currency order.
+- **Runs and routes**: one ownership gate for reading, renewing and signing approvals (deny when no owner is known); a limited account's live `google.create` links only to the landing host; a failed run start frees the run slot; the leadgen webhook honours read-only; reports no longer block the event loop; Caddy allows the microphone and the lead import size; brief form attributes render.
+- **Meta and Google**: disapproval recovery works end to end (propose, renew, sign, replace, activate the replacement ad); lifetime budgets carry start and end; instant-form phones kept; leads and comments read by cursor with progress through a backlog; writes never retried; Google search without `pageSize`; the monthly statement books each day once in its own month and counts executed approvals only; budget advice in the currency's own minor units.
+- Eval: 247/247 attack tests (23 files).
+
 ## 2026-10-29 — your own assistant: personal access tokens, `/api/v1` and remote `/mcp`
 
 - **Tokens** (`studio/api_tokens.py`): made and revoked by the signed-in owner on `/account` ("Assistants & API", `account_assistants.html`, strings in `studio/ui/i18n_assistants.py`, EN/PL). Value `msl_tok_<id>_<secret>` shown once; stored as HMAC-SHA256 under a key derived from the ledger key; scopes `read` and `read draft` only (a `CHECK` constraint, no `sign` scope exists); expiry 7 / 30 (default) / 90 days, last-used time, label, at most 10 live per account; a disabled or deleted account's tokens stop at once. New tables `api_tokens`, `api_briefs` (one self-contained step at the end of `db.init`).
