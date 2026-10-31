@@ -324,7 +324,10 @@ def _account_forms(app: FastAPI, svc: assistants.Assistants) -> None:
                                                                  fields.get("code", "")))
 
         good, code_ok = await run_in_threadpool(check)
-        app.state.limiter.settle(ip, good and code_ok)
+        if not app.state.limiter.settle(ip, good and code_ok):  # paused meanwhile
+            paused: Response = app.state.account_refused(request, sid, account,
+                                                         "assistants", ip)
+            return paused
         if not good:
             return refuse(request, sid, account, "wrong_password", 400)
         if not code_ok:
