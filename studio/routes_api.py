@@ -316,9 +316,14 @@ def _account_forms(app: FastAPI, svc: assistants.Assistants) -> None:
                                                           "assistants", ip)
             return refused
         store = app.state.accounts
-        good = store.authenticate(account.username, fields.get("password", "")) is not None
-        code_ok = good and (not account.totp_enabled
-                            or store.verify_second_factor(account.id, fields.get("code", "")))
+
+        def check() -> tuple[bool, bool]:  # argon2: off the event loop
+            good = store.authenticate(account.username, fields.get("password", "")) is not None
+            return good, good and (not account.totp_enabled
+                                   or store.verify_second_factor(account.id,
+                                                                 fields.get("code", "")))
+
+        good, code_ok = await run_in_threadpool(check)
         app.state.limiter.settle(ip, good and code_ok)
         if not good:
             return refuse(request, sid, account, "wrong_password", 400)
