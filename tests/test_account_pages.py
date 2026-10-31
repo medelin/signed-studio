@@ -578,6 +578,25 @@ def test_a_restart_keeps_approver_keys_of_live_sessions_only(tmp_path):
         other.state.accounts.by_username("ola").id) == []
 
 
+def test_a_new_or_removed_judge_password_ends_judge_sessions_at_restart(tmp_path):
+    secret = secrets.token_urlsafe(32)
+    first = make_app(tmp_path, SESSION_SECRET=secret)
+    with client_for(first) as c:
+        login(c, "judge", JUDGE)
+        cookie = c.cookies.get("studio_session")
+    assert _accepted(make_app(tmp_path, SESSION_SECRET=secret), cookie)  # same password
+    rotated = "Rt9-" + secrets.token_urlsafe(24)
+    assert not _accepted(make_app(tmp_path, SESSION_SECRET=secret, JUDGE_PASSWORD=rotated),
+                         cookie)
+    with client_for(make_app(tmp_path, SESSION_SECRET=secret, JUDGE_PASSWORD=rotated)) as c:
+        login(c, "judge", rotated)
+        cookie = c.cookies.get("studio_session")
+    make_app(tmp_path, SESSION_SECRET=secret, JUDGE_PASSWORD="", STUDIO_REQUIRE_LOGIN="0")
+    back = make_app(tmp_path, SESSION_SECRET=secret, JUDGE_PASSWORD=rotated)
+    assert not _accepted(back, cookie)  # disabled in between: re-enabling revives nothing
+    assert back.state.sessions.base.count() == 0  # the server-side rows went too
+
+
 def test_demo_per_client_caps_count_sessions_from_before_a_restart(tmp_path):
     secret = secrets.token_urlsafe(32)
     first = make_app(tmp_path, SESSION_SECRET=secret)

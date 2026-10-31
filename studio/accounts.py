@@ -646,7 +646,8 @@ class Accounts:
     def seed_demo(self, password: str) -> Account | None:
         """The judge demo account follows ``JUDGE_PASSWORD``: created or re-hashed when it is
         set (the hash is replaced only when the password changed), disabled when empty. Its
-        second factor stays off."""
+        second factor stays off. A new password or a disabling ends every judge session and
+        key (sessions outlive a restart, so this is where a rotation takes effect)."""
         current = self.by_username(DEMO_USER)
         now = self.clock()
         if not password:
@@ -654,6 +655,7 @@ class Accounts:
                 with transaction(self.conn) as c:
                     c.execute("UPDATE accounts SET status = 'disabled', updated_ts = ? "
                               "WHERE id = ?", (now, current.id))
+                    self._revoke_sessions(c, current.id, keep="", now=now)
             return None
         if current is None:
             return self.create(DEMO_USER, password, display_name="Judge", demo=True)
@@ -668,6 +670,8 @@ class Accounts:
                       "ELSE ? END, updated_ts = ? WHERE id = ?",
                       (fresh, fresh, fresh, now, current.id))
             c.execute("DELETE FROM recovery_codes WHERE account_id = ?", (current.id,))
+            if fresh:
+                self._revoke_sessions(c, current.id, keep="", now=now)
         return self.get(current.id)
 
     def _operator_target(self, username: str) -> Account:
@@ -1074,7 +1078,9 @@ class Accounts:
 
     @staticmethod
     def _revoke_hashes(c: sqlite3.Connection, digests: list[str], now: float) -> None:
+        """Revoke the rows and approver keys, and drop the cookies' server side."""
         for digest in digests:
+            c.execute("DELETE FROM web_sessions WHERE sid_sha256 = ?", (digest,))
             c.execute("UPDATE account_sessions SET revoked_ts = ? WHERE sid_sha256 = ? AND "
                       "revoked_ts IS NULL", (now, digest))
             c.execute("UPDATE keys SET revoked_ts = ? WHERE session_sha256 = ? AND "
