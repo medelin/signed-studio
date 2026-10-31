@@ -340,3 +340,20 @@ def test_the_report_reads_its_inputs_off_the_event_loop(tmp_path, monkeypatch):
         r = c.post("/api/reports", json={})
         assert r.status_code == 200, r.text
     assert on_loop == []
+
+
+@pytest.mark.parametrize("path", ["Caddyfile", "deploy/Caddyfile"])
+def test_caddy_allows_the_microphone_and_the_leads_import_body(path):
+    import re
+    from pathlib import Path
+
+    from studio import routes_export
+
+    text = (Path(__file__).resolve().parents[1] / path).read_text()
+    policy = re.search(r'Permissions-Policy "([^"]*)"', text).group(1)
+    assert "microphone=(self)" in policy and "camera=()" in policy  # voice brief, Dictate
+    small = re.search(r"@small not path ([^\n]*)", text).group(1).split()
+    assert "/leads/import" in small  # not capped at 128 KB
+    m = re.search(r"request_body @import \{\s*max_size (\d+)MB", text)
+    assert m and int(m.group(1)) * 1_000_000 >= routes_export.IMPORT_BODY_LIMIT
+    assert "@import path /leads/import" in text
