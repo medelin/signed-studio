@@ -19,6 +19,7 @@ unless the caller stores it.
 from __future__ import annotations
 
 import io
+import re
 import shutil
 import subprocess
 import tempfile
@@ -174,6 +175,19 @@ def _turns(items: list[dict[str, Any]]) -> list[Turn]:
 LANGUAGE_NAMES = {"pl": "Polish", "en": "English"}
 
 
+_PUNCT_RUN = re.compile(r"\s*([.,;:!?])[.,;:!?()\[\]\s]*(?=\s|$)")
+_REPEAT = re.compile(r"\b(\w+)([,]?\s+\1\b)+", re.IGNORECASE)
+
+
+def tidy(text: str) -> str:
+    """The model's slips on short dictation, measured on Polish phrases: a word said once
+    written twice ("robione robione", "Malwina, Malwina") and punctuation debris at a
+    boundary ("Warszawa..):", ",.,"). Collapses both; leaves everything else as heard."""
+    out = _REPEAT.sub(r"\1", text.strip())
+    out = _PUNCT_RUN.sub(lambda m: m.group(1), out)
+    return re.sub(r"[\s,;:]+$", "", re.sub(r"\s{2,}", " ", out)).strip()
+
+
 def language_bias(lang: str) -> tuple[str, ...]:
     """The page's language first, then the other one the studio speaks (owners mix them)."""
     first = LANGUAGE_NAMES.get(lang, "English")
@@ -201,4 +215,4 @@ def transcribe(
                                tier_reason="operator voice brief (speech to text)")
     if not result.text.strip():
         raise MuseError("the transcription is empty", code="empty_transcript")
-    return Transcript(result.text.strip(), _turns(result.output_items), seconds, result)
+    return Transcript(tidy(result.text), _turns(result.output_items), seconds, result)

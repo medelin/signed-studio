@@ -272,3 +272,17 @@ def test_ffmpeg_conversions_are_capped(monkeypatch):
     with pytest.raises(voice.VoiceError):  # the fake ffmpeg wrote nothing: bad_audio …
         voice.to_wav(WAV)
     assert slots.acquire(blocking=False)  # … and the slot was given back
+
+
+@pytest.mark.parametrize("heard,clean", [
+    ("Kraków i i Warszawa..):", "Kraków i Warszawa."),
+    ("Kraków i Warszawa,.,", "Kraków i Warszawa"),
+    ("sprzedaje ręcznie robione robione kubki z gliny.",
+     "sprzedaje ręcznie robione kubki z gliny."),
+    ("sklep ceramiczny Malwina, Malwina, ulica Długa siedem",
+     "sklep ceramiczny Malwina, ulica Długa siedem"),
+    ("To jest 3.5 zł, a nie 3,50.", "To jest 3.5 zł, a nie 3,50."),
+])
+def test_tidy_removes_the_models_slips_on_short_polish_dictation(heard, clean):
+    # measured on real Muse Voice Transcribe output for Polish phrases (2026-10-31)
+    assert voice.tidy(heard) == clean
