@@ -43,6 +43,7 @@ AGENT = "community"
 LOCAL_ACTIONS = ("draft",)
 SIGNED_ACTIONS = ("reply.post", "comment.hide")
 ACTIONS = LOCAL_ACTIONS + SIGNED_ACTIONS
+TERMINAL = ("replied", "hidden")  # a human already acted on the comment
 MAX_COMMENT = 2000
 MAX_REPLY = 600
 PRICE_SHEET = (
@@ -50,8 +51,47 @@ PRICE_SHEET = (
     "- Delivery in Poland: free above 150 PLN\n"
     "No other prices, discounts or bundles exist."
 )
-APPROVED_AMOUNTS = frozenset({"89", "150"})
-_PRICE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:pln|zł|zl|złotych|usd|eur|\$|€)", re.IGNORECASE)
+# (amount, currency) pairs on the price sheet; a price in another currency is not on it
+APPROVED_PRICES = frozenset({("89", "PLN"), ("150", "PLN")})
+APPROVED_AMOUNTS = frozenset(a for a, _ in APPROVED_PRICES)
+_CURRENCY = {"pln": "PLN", "zł": "PLN", "zl": "PLN", "złotych": "PLN", "zlotych": "PLN",
+             "usd": "USD", "$": "USD", "eur": "EUR", "€": "EUR", "gbp": "GBP", "£": "GBP"}
+_CUR = r"(?:złotych|zlotych|pln|zł|zl|usd|eur|gbp|\$|€|£)"
+_AMOUNT = r"\d+(?:[.,]\d+)?"
+# amount and currency in either order: ``49 zł``, ``49zł``, ``PLN 49``, ``$20``, ``€15``
+_PRICE = re.compile(
+    rf"(?<![^\W\d_])(?P<pre>{_CUR})\s*(?P<a1>{_AMOUNT})(?![\d.,]*\d)"
+    rf"|(?<![\d.,])(?P<a2>{_AMOUNT})\s*(?P<post>{_CUR})(?![^\W\d_])",
+    re.IGNORECASE)
+# a bare number right after a price word (``kosztuje 49``, ``price: 20``): an amount too
+_BARE_PRICE = re.compile(
+    r"\b(?:price|prices|costs?|pay|cena|cenie|kosztuj[eą]|zapłacisz|płacisz)\b\s*(?:za\s+|for\s+)?[:=]?\s*(?P<a>\d+(?:[.,]\d+)?)(?![\d.,]*\d)",
+    re.IGNORECASE)
+
+
+def _amount(raw: str) -> str:
+    """``"89,00"`` → ``"89"``, ``"19,9"`` → ``"19.9"``."""
+    a = raw.replace(",", ".")
+    return a.removesuffix(".00").removesuffix(".0") if "." in a else a
+
+
+def quoted_prices(text: str) -> set[tuple[str, str]]:
+    """``(amount, currency)`` for each price in ``text`` (currency ``""`` for a bare
+    number after a price word)."""
+    out = set()
+    for m in _PRICE.finditer(text):
+        cur = (m.group("pre") or m.group("post")).casefold()
+        out.add((_amount(m.group("a1") or m.group("a2")), _CURRENCY[cur]))
+    for m in _BARE_PRICE.finditer(text):
+        out.add((_amount(m.group("a")), ""))
+    return out
+
+
+def unapproved_prices(text: str) -> set[tuple[str, str]]:
+    """Prices in ``text`` that are not on the sheet: an (amount, currency) pair not in
+    ``APPROVED_PRICES``, or a bare amount not among ``APPROVED_AMOUNTS``."""
+    return {(a, c) for a, c in quoted_prices(text)
+            if ((a, c) not in APPROVED_PRICES if c else a not in APPROVED_AMOUNTS)}
 _LINK = re.compile(r"https?://|www\.|\b[a-z0-9-]+\.(?:com|pl|net|org|io|ly)/", re.IGNORECASE)
 _INJECTION = re.compile(
     r"ignore (?:all |any |the )?(?:previous|prior|above|earlier) (?:instructions|rules|prompts?)"
@@ -119,8 +159,7 @@ def enforce(triage: Triage, comment: str) -> tuple[Triage, list[str]]:
         human = True
         at_least("medium")
         flags.append("complaint")
-    amounts = {a.replace(",", ".").removesuffix(".00") for a in _PRICE.findall(draft)}
-    if amounts - APPROVED_AMOUNTS:
+    if unapproved_prices(draft):
         flags.append("unapproved_price")
         human = True
         at_least("high")
@@ -215,12 +254,15 @@ def triage(
 
 
 def save(conn: sqlite3.Connection, ledger: Ledger, comment_id: str, t: Triaged) -> None:
-    """Store the draft (the only automatic action) and leave a local ``tool_call`` receipt."""
+    """Store the draft (the only automatic action) and leave a local ``tool_call`` receipt.
+    A replied or hidden comment keeps its status (``TERMINAL``): a re-triage never
+    reopens it."""
     tr = t.triage
     run_id = run_id_for(comment_id)
     with transaction(conn):
         conn.execute(
-            "UPDATE comments SET status = 'drafted', intent = ?, draft = ?, sentiment = ?, "
+            "UPDATE comments SET status = CASE WHEN status IN ('replied', 'hidden') "
+            "THEN status ELSE 'drafted' END, intent = ?, draft = ?, sentiment = ?, "
             "risk = ?, requires_human = ?, reason = ?, confidence = ?, flags = ?, run_id = ? "
             "WHERE id = ?",
             (tr.intent, tr.draft, tr.sentiment, tr.risk, int(tr.requires_human), tr.reason,
