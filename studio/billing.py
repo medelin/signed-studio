@@ -25,11 +25,15 @@
   per unit, on the Billing Meter ``STRIPE_SPEND_METER_EVENT``) and ``STUDIO_SPEND_FEE_PCT``
   (default 5; 0 = none). Checkout adds the metered item to a subscription;
   ``report_spend`` (``studio billing report-usage``, daily) sends each account's fee for
-  one day as one meter event. Not yet billed for the one-off month (see the docs).
-- **Tier**: with a *live* key an active (or trialing / past-due) subscription lifts the
-  account to ``full`` and its end puts it back on ``trial``. With a test key the status is
-  shown and mailed but the tier never changes: a test card must never unlock the operator's
-  live ad account.
+  one day as one meter event, in the subscription's currency only (spend in another
+  currency is skipped, never converted). Not yet billed for the one-off month (see the docs).
+- **Tier** (``tier_of``): with a *live* key a live event sets ``full`` while an active (or
+  trialing / past-due) subscription or a paid one-off month lasts, else ``trial``. A
+  subscription event sets it at once; the end of a one-off month is swept by
+  ``expire_access``. With a test key the status is shown and mailed but the tier never
+  changes: a test card must never unlock the operator's live ad account.
+- **Order**: Stripe may deliver ``customer.subscription.*`` events late or twice; one older
+  (by ``created``) than the last applied for the account is recorded and ignored.
 """
 
 from __future__ import annotations
@@ -114,7 +118,19 @@ CREATE TABLE IF NOT EXISTS spend_usage (    -- one meter event per account and d
 
 
 # columns added after the table was first created (the studio.db migration pattern)
-COLUMNS = {"access_until": "REAL NOT NULL DEFAULT 0"}  # a one-off payment's access end
+COLUMNS = {"access_until": "REAL NOT NULL DEFAULT 0",  # a one-off payment's access end
+           # the subscription's currency (ISO code, upper case): the metered fee is billed
+           # in it, so only spend in that currency is reported (``report_spend``)
+           "currency": "TEXT NOT NULL DEFAULT ''",
+           # ``created`` of the newest customer.subscription.* event applied: an older one
+           # (a retry or an out-of-order delivery) is recorded as seen and changes nothing
+           "sub_event_ts": "REAL NOT NULL DEFAULT 0"}
+# Stripe's minor units (https://docs.stripe.com/currencies, read 2026-10-31): zero-decimal
+# and three-decimal currencies; every other one has two decimals (ISK, HUF and TWD too:
+# Stripe counts them in hundredths, unlike Meta's offset in studio.meta.currency)
+STRIPE_ZERO_DECIMAL = frozenset({"BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA",
+                                 "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF"})
+STRIPE_THREE_DECIMAL = frozenset({"BHD", "JOD", "KWD", "OMR", "TND"})
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
@@ -381,20 +397,50 @@ def _day_spend(conn: sqlite3.Connection, campaign_id: str, day: str) -> float | 
     return None
 
 
+def stripe_minor(amount: Decimal, currency: str) -> int:
+    """Whole units of ``currency`` → Stripe's minor units (halves up): 10^0, 10^3 or 10^2
+    (``STRIPE_ZERO_DECIMAL`` / ``STRIPE_THREE_DECIMAL`` / the rest)."""
+    code = currency.upper()
+    exp = 0 if code in STRIPE_ZERO_DECIMAL else 3 if code in STRIPE_THREE_DECIMAL else 2
+    return int((amount * 10 ** exp).quantize(Decimal(1), ROUND_HALF_UP))
+
+
 def fee_of(spend_minor: int, pct: Decimal) -> int:
     """``round(spend × pct / 100)``, halves up, in the same minor units."""
     return int((Decimal(spend_minor) * pct / 100).quantize(Decimal(1), ROUND_HALF_UP))
+
+
+class SendFailed(BillingError):
+    """``report_spend`` sent what it could; ``failed`` accounts' meter events did not go
+    through (their records were undone, so the next run retries them)."""
+
+    def __init__(self, result: dict[str, int]) -> None:
+        super().__init__("send_failed")
+        self.result = result
+
+
+def _fee_currency(api: StripeApi, cache: dict[str, str]) -> str:
+    """The metered price's own currency (upper case), read once per run: the fallback for a
+    billing row stored before the subscription's currency was kept. "" when unreadable."""
+    if "price" not in cache:
+        try:
+            cache["price"] = str(api.price(api.config.spend_price_id).get("currency")
+                                 or "").upper()
+        except BillingError:
+            cache["price"] = ""
+    return cache["price"]
 
 
 def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: Any
                  ) -> dict[str, int]:
     """Send yesterday's (``day``, UTC ``YYYY-MM-DD``) ad-spend fee to Stripe: per account
     with a Stripe customer, the spend of the campaigns it signed on that day, the fee
-    (``STUDIO_SPEND_FEE_PCT``) in the ad account's minor units, and one meter event with
-    the identifier ``account_id:day`` (sent once; Stripe also drops a duplicate). A
-    ``billing.usage`` receipt per account and day records the numbers (no names)."""
-    from studio.meta.currency import offset
-
+    (``STUDIO_SPEND_FEE_PCT``) in Stripe's minor units of the subscription's currency
+    (``stripe_minor``), and one meter event with the identifier ``account_id:day`` (sent
+    once; Stripe also drops a duplicate). Spend in another currency than the subscription's
+    is never converted: it is skipped as ``currency_mismatch``. A ``billing.usage`` receipt
+    per account and day records the numbers (no names). A failed send is recorded
+    (``send_failed``) and the run goes on; ``SendFailed`` is raised at the end."""
     dt.date.fromisoformat(day)  # ValueError on anything else
     cfg = api.config
     if not cfg.spend_fee:
@@ -408,19 +454,20 @@ def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: 
             spend = _day_spend(conn, cid, day)
             if spend is None:
                 continue
-            row = per.setdefault(aid, {"minor": {}, "campaigns": 0})
-            row["minor"][currency] = row["minor"].get(currency, 0) + int(
-                (Decimal(str(spend)) * offset(currency)).quantize(Decimal(1), ROUND_HALF_UP))
+            row = per.setdefault(aid, {"spend": {}, "campaigns": 0})
+            code = str(currency or "").upper()
+            row["spend"][code] = row["spend"].get(code, Decimal(0)) + Decimal(str(spend))
             row["campaigns"] += 1
         customers = {aid: tuple(conn.execute(
-            "SELECT customer_id, status FROM billing WHERE account_id = ?",
-            (aid,)).fetchone() or ("", "")) for aid in per}
+            "SELECT customer_id, status, currency FROM billing WHERE account_id = ?",
+            (aid,)).fetchone() or ("", "", "")) for aid in per}
         done = {r[0] for r in conn.execute("SELECT account_id FROM spend_usage WHERE day = ?",
                                            (day,))}
-    out = {"accounts": len(per), "sent": 0, "skipped": 0}
+    out = {"accounts": len(per), "sent": 0, "skipped": 0, "failed": 0}
+    price_cache: dict[str, str] = {}
     day_number = int(day.replace("-", ""))  # a dated string would be redacted as a phone
     for aid, row in sorted(per.items()):
-        customer, sub_status = customers.get(aid, ("", ""))
+        customer, sub_status, sub_currency = customers.get(aid, ("", "", ""))
         status, spend_minor, currency, fee = "sent", 0, "", 0
         nonce = secrets.token_hex(16)
         if not customer:
@@ -429,31 +476,22 @@ def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: 
             status = "no_subscription"
         elif aid in done:
             status = "already_sent"
-        elif len(row["minor"]) != 1:
+        elif len(row["spend"]) != 1:
             status = "mixed_currencies"  # one meter value cannot hold two currencies
         else:
-            ((currency, spend_minor),) = row["minor"].items()
-            fee = fee_of(spend_minor, cfg.fee_pct)
-            if fee <= 0:
-                status = "zero_fee"
+            ((currency, spend),) = row["spend"].items()
+            billed_in = str(sub_currency or "").upper() or _fee_currency(api, price_cache)
+            if not billed_in:
+                status = "currency_unknown"
+            elif currency != billed_in:
+                status = "currency_mismatch"  # never converted
             else:
-                # recorded first: a local write that fails after Stripe took the event
-                # would send it again on the next run; a failed send undoes the record
-                # (Stripe also deduplicates by the identifier)
-                with transaction(conn) as c:
-                    c.execute("INSERT OR IGNORE INTO spend_usage (account_id, day, "
-                              "spend_minor, currency, fee_minor, nonce, sent_ts) VALUES "
-                              "(?, ?, ?, ?, ?, ?, ?)",
-                              (aid, day, spend_minor, currency, fee, nonce, time.time()))
-                try:
-                    api.meter_event(customer_id=customer, value=fee,
-                                    identifier=f"{aid}:{day}")
-                except Exception:
-                    with transaction(conn) as c:
-                        c.execute("DELETE FROM spend_usage WHERE account_id = ? AND day = ?",
-                                  (aid, day))
-                    raise
-        out["sent" if status == "sent" else "skipped"] += 1
+                spend_minor = stripe_minor(spend, currency)
+                fee = fee_of(spend_minor, cfg.fee_pct)
+                status = "zero_fee" if fee <= 0 else _send_fee(
+                    conn, api, aid, day, (spend_minor, currency, fee, nonce), customer)
+        out["sent" if status == "sent" else "failed" if status == "send_failed"
+            else "skipped"] += 1
         # the receipts log is readable by every signed-in account: no account id and no
         # amounts in it, only the salted hash of the full record (spend_usage keeps the
         # amounts and the nonce, so the owner and the operator can recompute it and nobody
@@ -465,7 +503,30 @@ def report_spend(conn: sqlite3.Connection, api: StripeApi, day: str, *, ledger: 
             "tool": "billing.usage", "side_effects": "billing" if status == "sent" else "none",
             "status": status, "day": day_number, "usage_sha256": usage_sha256(full),
             "meter_event": cfg.meter_event if status == "sent" else ""})
+    if out["failed"]:
+        raise SendFailed(out)
+    del out["failed"]
     return out
+
+
+def _send_fee(conn: sqlite3.Connection, api: StripeApi, aid: str, day: str,
+              record: tuple[int, str, int, str], customer: str) -> str:
+    """Record the day's fee, then send it: ``sent``, or ``send_failed`` with the record
+    undone (so the next run retries it). Recorded first: a local write that fails after
+    Stripe took the event would send it again on the next run (Stripe also deduplicates by
+    the identifier)."""
+    spend_minor, currency, fee, nonce = record
+    with transaction(conn) as c:
+        c.execute("INSERT OR IGNORE INTO spend_usage (account_id, day, spend_minor, "
+                  "currency, fee_minor, nonce, sent_ts) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (aid, day, spend_minor, currency, fee, nonce, time.time()))
+    try:
+        api.meter_event(customer_id=customer, value=fee, identifier=f"{aid}:{day}")
+    except Exception:  # noqa: BLE001 - any failure: undo this account's record, go on
+        with transaction(conn) as c:
+            c.execute("DELETE FROM spend_usage WHERE account_id = ? AND day = ?", (aid, day))
+        return "send_failed"
+    return "sent"
 
 
 def usage_sha256(record: Mapping[str, Any]) -> str:
@@ -562,21 +623,82 @@ def _period_end(sub: Mapping[str, Any]) -> float:
 class Applied:
     account_id: str = ""
     mail: str = ""  # a studio.notify event for the account, or ""
-    tier: str = ""  # "full" / "trial" when the tier should change
-    email: str = ""  # an address Checkout collected (kept when the profile has none)
+    tier: str = ""  # the tier this event set ("full" / "trial"), already stored, or ""
+    email: str = ""  # an address Checkout collected (stored when the profile had none)
     duplicate: bool = False
+    stale: bool = False  # an older subscription event than one already applied
+
+
+def tier_of(status: str, access_until: float, now: float) -> str:
+    """The tier billing gives (live key, live events only): ``full`` while a subscription
+    lifts it (``LIFTING``) or a paid one-off month lasts (``access_until`` ahead), else
+    ``trial``. Every tier change billing makes comes from this one rule."""
+    return "full" if status in LIFTING or access_until > now else "trial"
+
+
+def _store_tier(c: sqlite3.Connection, aid: str, tier: str, now: float) -> None:
+    """In the caller's transaction; never the demo account (it follows JUDGE_PASSWORD).
+    A disabled account's tier is kept current too, so re-enabling it is never stale."""
+    c.execute("UPDATE accounts SET tier = ?, updated_ts = ? WHERE id = ? AND is_demo = 0 "
+              "AND status != 'deleted' AND tier != ?", (tier, now, aid, tier))
+
+
+def _store_email(c: sqlite3.Connection, aid: str, email: str, now: float) -> str:
+    """Checkout's address on a profile that has none (validated like a profile edit), in
+    the caller's transaction; the stored address or ""."""
+    from studio.accounts import AccountError, _clean_profile
+
+    try:
+        email = _clean_profile({"email": email}).get("email", "")
+    except AccountError:
+        return ""
+    if email:
+        c.execute("UPDATE accounts SET email = ?, updated_ts = ? WHERE id = ? AND email = '' "
+                  "AND status != 'deleted'", (email, now, aid))
+    return email
+
+
+def expire_access(conn: sqlite3.Connection, *, live_key: bool, now: float | None = None
+                  ) -> int:
+    """Put back on ``trial`` every account whose paid one-off month (live) has ended and
+    that no subscription lifts (``tier_of``); its ``access_until`` is cleared, so the drop
+    happens once and a later operator grant stands. Returns how many changed. Run often
+    (``studio.routes_billing`` sweeps at most once a minute while requests come in)."""
+    if not live_key:  # a test key never lifted the tier
+        return 0
+    now = time.time() if now is None else now
+    with transaction(conn) as c:
+        rows = c.execute("SELECT account_id, status FROM billing WHERE livemode = 1 AND "
+                         "access_until > 0 AND access_until <= ?", (now,)).fetchall()
+        ended = [aid for aid, status in rows if status not in LIFTING]
+        for aid in ended:
+            _store_tier(c, aid, tier_of("", 0.0, now), now)
+            c.execute("UPDATE billing SET access_until = 0, updated_ts = ? "
+                      "WHERE account_id = ?", (now, aid))
+    return len(ended)
+
+
+def _subscription_metadata(obj: Mapping[str, Any]) -> Any:
+    """An invoice's subscription metadata: ``parent.subscription_details`` (newer API
+    versions) or ``subscription_details`` (older); either may be absent or null."""
+    return (((obj.get("parent") or {}).get("subscription_details") or {}).get("metadata")
+            or (obj.get("subscription_details") or {}).get("metadata"))
 
 
 def apply(conn: sqlite3.Connection, event: Mapping[str, Any], *, live_key: bool,
           now: float | None = None, months_of: Mapping[str, int] | None = None) -> Applied:
-    """Record one verified event (once per id); what the caller should do next.
-    ``months_of`` maps the configured price ids to their months per period (for the
-    renewal reminder of a 3-, 6- or 12-month plan on ``invoice.upcoming``)."""
+    """Record one verified event (once per id) and everything it changes: the billing row,
+    the account's tier (``tier_of``, live key and live event only) and a missing profile
+    address, in one transaction, so a failure leaves the event unrecorded and Stripe's
+    retry applies it. What the caller still does: the mail (``Applied.mail``), after the
+    commit. ``months_of`` maps the configured price ids to their months per period (for
+    the renewal reminder of a 3-, 6- or 12-month plan on ``invoice.upcoming``)."""
     now = time.time() if now is None else now
     out = Applied()
     obj = (event.get("data") or {}).get("object") or {}
     kind = str(event.get("type") or "")
     livemode = bool(event.get("livemode"))
+    lifts = live_key and livemode  # a test card never unlocks the operator's live account
     with transaction(conn) as c:
         try:
             c.execute("INSERT INTO stripe_events (id, type, received_ts) VALUES (?, ?, ?)",
@@ -586,12 +708,14 @@ def apply(conn: sqlite3.Connection, event: Mapping[str, Any], *, live_key: bool,
             return out
 
         def account_for(customer: str, meta: Mapping[str, Any] | None) -> str:
+            """Any account that still exists: a disabled one keeps its billing current (its
+            mails are held back by the notifier, which writes only to active accounts)."""
             aid = str((meta or {}).get("account_id") or "")
             if not aid and customer:
                 row = c.execute("SELECT account_id FROM billing WHERE customer_id = ?",
                                 (customer,)).fetchone()
                 aid = row[0] if row else ""
-            exists = c.execute("SELECT 1 FROM accounts WHERE id = ? AND status = 'active'",
+            exists = c.execute("SELECT 1 FROM accounts WHERE id = ? AND status != 'deleted'",
                                (aid,)).fetchone()
             return aid if exists else ""
 
@@ -602,58 +726,78 @@ def apply(conn: sqlite3.Connection, event: Mapping[str, Any], *, live_key: bool,
             c.execute(f"UPDATE billing SET {sets}, updated_ts = ?, livemode = ? "  # noqa: S608
                       "WHERE account_id = ?", (*cols.values(), now, int(livemode), aid))
 
+        def checkout_email(aid: str) -> None:
+            found = str((obj.get("customer_details") or {}).get("email") or "")
+            out.email = _store_email(c, aid, found, now) if found else ""
+
         if kind == "checkout.session.completed":
             aid = account_for(str(obj.get("customer") or ""),
                               obj.get("metadata") or {"account_id":
                                                       obj.get("client_reference_id")})
             if aid and obj.get("mode") == "payment":  # the one-off plan
                 if obj.get("payment_status") == "paid":
-                    old = c.execute("SELECT access_until FROM billing WHERE account_id = ?",
-                                    (aid,)).fetchone()
+                    old = c.execute("SELECT access_until, status FROM billing "
+                                    "WHERE account_id = ?", (aid,)).fetchone()
                     paid = float(event.get("created") or now)
                     start = max(paid, float(old[0] or 0) if old else 0.0)  # adds to the rest
+                    until = start + ONCE_DAYS * 86400
                     upsert(aid, customer_id=str(obj.get("customer") or ""),
-                           access_until=start + ONCE_DAYS * 86400)
+                           access_until=until)
+                    if lifts:
+                        out.tier = tier_of(old[1] if old else "", until, now)
+                        _store_tier(c, aid, out.tier, now)
                 out.account_id = aid
-                out.email = str((obj.get("customer_details") or {}).get("email") or "")
+                checkout_email(aid)
             elif aid:
-                upsert(aid, customer_id=str(obj.get("customer") or ""),
-                       subscription_id=str(obj.get("subscription") or ""))
+                session = {"customer_id": str(obj.get("customer") or ""),
+                           "subscription_id": str(obj.get("subscription") or "")}
+                if obj.get("currency"):
+                    session["currency"] = str(obj["currency"]).upper()
+                upsert(aid, **session)
                 out.account_id = aid
-                out.email = str((obj.get("customer_details") or {}).get("email") or "")
+                checkout_email(aid)
         elif kind.startswith("customer.subscription."):
             aid = account_for(str(obj.get("customer") or ""), obj.get("metadata"))
             if aid:
                 status = "canceled" if kind.endswith(".deleted") else str(obj.get("status"))
-                old = c.execute("SELECT status FROM billing WHERE account_id = ?",
-                                (aid,)).fetchone()
-                upsert(aid, customer_id=str(obj.get("customer") or ""),
-                       subscription_id=str(obj.get("id") or ""), status=status,
-                       period_end=_period_end(obj),
-                       cancel_at_period_end=int(bool(obj.get("cancel_at_period_end"))))
+                sub_id = str(obj.get("id") or "")
+                created = float(event.get("created") or 0)
+                old = c.execute("SELECT status, subscription_id, sub_event_ts, access_until "
+                                "FROM billing WHERE account_id = ?", (aid,)).fetchone()
+                was, was_sub, last_ts, access = old if old else ("", "", 0.0, 0.0)
+                if created < float(last_ts or 0) or (
+                        was in LIFTING and status not in LIFTING and was_sub and sub_id
+                        and sub_id != was_sub):
+                    # older than what is stored, or the end of another subscription than
+                    # the live one: seen (the event id is recorded), nothing changes
+                    out.stale = True
+                    return out
+                cols: dict[str, Any] = {
+                        "customer_id": str(obj.get("customer") or ""),
+                        "subscription_id": sub_id, "status": status,
+                        "period_end": _period_end(obj),
+                        "cancel_at_period_end": int(bool(obj.get("cancel_at_period_end"))),
+                        "sub_event_ts": max(created, float(last_ts or 0))}
+                if obj.get("currency"):
+                    cols["currency"] = str(obj["currency"]).upper()
+                upsert(aid, **cols)
                 out.account_id = aid
-                was = old[0] if old else ""
                 if status in LIFTING and was not in LIFTING:
                     out.mail = "subscription_started"
                 elif status not in LIFTING and was in LIFTING:
                     out.mail = "subscription_ended"
-                if live_key and livemode:
-                    out.tier = "full" if status in LIFTING else "trial"
+                if lifts:
+                    out.tier = tier_of(status, float(access or 0), now)
+                    _store_tier(c, aid, out.tier, now)
         elif kind in ("invoice.paid", "invoice.payment_failed"):
-            aid = account_for(str(obj.get("customer") or ""),
-                              ((obj.get("parent") or {}).get("subscription_details") or {})
-                              .get("metadata") or obj.get("subscription_details",
-                                                          {}).get("metadata"))
+            aid = account_for(str(obj.get("customer") or ""), _subscription_metadata(obj))
             if aid:
                 if kind == "invoice.paid":
                     upsert(aid, last_invoice_url=str(obj.get("hosted_invoice_url") or ""))
                 out.account_id = aid
                 out.mail = "payment_received" if kind == "invoice.paid" else "payment_failed"
         elif kind == "invoice.upcoming":  # Stripe's renewal notice (days set in Stripe)
-            aid = account_for(str(obj.get("customer") or ""),
-                              ((obj.get("parent") or {}).get("subscription_details") or {})
-                              .get("metadata") or obj.get("subscription_details",
-                                                          {}).get("metadata"))
+            aid = account_for(str(obj.get("customer") or ""), _subscription_metadata(obj))
             lines = [x for x in ((obj.get("lines") or {}).get("data") or [])
                      if isinstance(x, Mapping)]
             months = max([_line_months(x, months_of or {}) for x in lines] or [0])

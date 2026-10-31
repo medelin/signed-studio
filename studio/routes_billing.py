@@ -4,11 +4,14 @@ the account page's billing view: plans, prices (``studio.pricing``) and consent 
 from __future__ import annotations
 
 import logging
+import time
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from studio import auth, billing, pricing
 from studio.receipts import Ledger
@@ -21,6 +24,7 @@ log = logging.getLogger(__name__)
 # checkbox names, value "1": the payment (with the Terms; every plan) and the immediate
 # start (a private person only: it ends the 14-day right to cancel for the part provided)
 CONSENTS = ("recurring_consent", "immediate_start")
+EXPIRY_EVERY_S = 60.0  # how often requests trigger billing.expire_access
 
 
 def fee_clause(lang: str, plan: str, cfg: billing.BillingConfig) -> str:
@@ -199,15 +203,39 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn) -> None:  #
         ledger.append(billing.RUN_ID, agent="billing", kind="tool_call", details={
             "tool": "stripe.webhook", "side_effects": "read", "event": event.get("type"),
             "event_id": event.get("id"), "duplicate": done.duplicate, "tier": done.tier})
-        store = app.state.accounts
-        account = store.get(done.account_id) if done.account_id else None
+        # the tier and the address were stored with the event (billing.apply); the mail is
+        # best-effort after the commit
+        account = app.state.accounts.get(done.account_id) if done.mail else None
         if account is not None:
-            if done.email and not account.email:
-                account = store.update_profile(account.id, {**account.profile(),
-                                                             "email": done.email})
-            if done.tier and done.tier != account.tier and not account.is_demo:
-                account = store.set_tier(account.username, done.tier)
-            if done.mail:
+            try:
                 app.state.notifier.security(done.mail, account)
+            except Exception:  # noqa: BLE001 - the event is applied; a lost mail is logged
+                log.exception("billing: mail %s not queued", done.mail)
         return JSONResponse({"ok": True})
 
+    app.add_middleware(AccessExpiry, sweep=lambda: billing.expire_access(
+        conn, live_key=cfg.live), enabled=lambda: app.state.stripe is not None)
+
+
+class AccessExpiry:
+    """ASGI middleware (pure, so SSE streams pass through): at most once per
+    ``EXPIRY_EVERY_S``, before a request, ``billing.expire_access`` puts accounts whose paid
+    one-off month ended back on ``trial``. The rule lives in ``billing.tier_of``; this only
+    decides when it is checked."""
+
+    def __init__(self, app: ASGIApp, *, sweep: Callable[[], int],
+                 enabled: Callable[[], bool]) -> None:
+        self.app = app
+        self.sweep = sweep
+        self.enabled = enabled
+        self.next_at = 0.0
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and time.monotonic() >= self.next_at and self.enabled():
+            self.next_at = time.monotonic() + EXPIRY_EVERY_S
+            try:
+                await run_in_threadpool(self.sweep)
+            except Exception:  # noqa: BLE001 - retried on the next sweep; never fail a request
+                log.exception("billing: access expiry sweep failed")
+                self.next_at = 0.0
+        await self.app(scope, receive, send)
