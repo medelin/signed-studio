@@ -223,9 +223,17 @@ class Adapter(Protocol):
         """``POST /act_{id}/ads`` under the signed ad set, ``status=PAUSED``."""
 
 
+# a signed activation of one replacement ad (a disapproved ad's, ``studio.disapprovals``)
+# under a campaign that is already live: that ad only, never its ad set or campaign
+REPLACEMENT_AD: Final = "replacement_ad"
+
+
 def activation_levels(payload: Mapping[str, Any]) -> list[str]:
     """``ad``, then every further ad the signed payload names (``ad_2`` …), then the ad
-    set and the campaign: the parent goes live last."""
+    set and the campaign: the parent goes live last. A ``replacement_ad`` activation is
+    the one ad it names."""
+    if payload.get("kind") == REPLACEMENT_AD:
+        return ["ad"]
     more = payload.get("more_ad_external_ids") or []
     return ["ad", *(f"ad_{i + 2}" for i in range(len(more))), "adset", "campaign"]
 

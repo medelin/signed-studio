@@ -15,7 +15,12 @@
   payload names. The disapproved ad is **left as it is**: Meta does not deliver a
   disapproved ad, leaving it makes no write the owner did not need, and it keeps the
   owner's option to ask Meta for another review in Ads Manager. The new ad stays PAUSED
-  until the owner activates it.
+  until the owner activates it: with the whole campaign while it is PAUSED, or, on a live
+  campaign, under its own signed ``campaign.activate`` of kind ``replacement_ad`` (that
+  ad only; ``media_buyer.request_activation``).
+- A renewed approval (``approvals.renew``) is the same proposal: ``replace`` follows the
+  ``superseded_by`` chain. A replacement that failed, or a request whose approval was
+  never signed in its window, can be proposed again.
 """
 
 from __future__ import annotations
@@ -30,7 +35,7 @@ from typing import Any
 from studio import brief as brief_v1
 from studio import executor
 from studio.agents import rules
-from studio.approvals import Pending, Verified, confirmed_brief, transaction
+from studio.approvals import TTL_S, Pending, Verified, confirmed_brief, transaction
 from studio.meta.adapter import DISAPPROVED, PAUSED, REPLACE, Adapter, AdapterError
 from studio.receipts import Ledger, canonical, sha256_hex
 
@@ -212,7 +217,41 @@ def _brief(conn: sqlite3.Connection, run_id: str) -> tuple[brief_v1.BriefV1 | No
                            "brief_v1 IS NOT NULL AND brief_v1 != ''", (run_id,)).fetchone()
     if row is None:
         return None, ""
-    return brief_v1.BriefV1.model_validate(json.loads(row[0])), str(row[1] or "")
+    return brief_v1.load_v1(row[0]), str(row[1] or "")
+
+
+CHAIN_MAX = 50  # renewals followed at most (one per signing window)
+
+
+def _chain(conn: sqlite3.Connection, approval_id: str) -> list[str]:
+    """``approval_id`` and every renewal of it, oldest first (``approvals.renew`` marks
+    the old approval ``superseded_by`` the fresh one: same action, item and content)."""
+    out = [approval_id] if approval_id else []
+    with conn.lock:  # type: ignore[attr-defined]
+        while out and len(out) < CHAIN_MAX:
+            row = conn.execute("SELECT superseded_by FROM approvals WHERE id = ?",
+                               (out[-1],)).fetchone()
+            if row is None or not row[0] or row[0] in out:
+                break
+            out.append(str(row[0]))
+    return out
+
+
+def _proposable(conn: sqlite3.Connection, d: dict[str, Any], now: float) -> bool:
+    """A disapproval can get a (new) proposal when none is open: never proposed, blocked,
+    a replacement that failed, or a request whose latest approval (after renewals) was
+    never signed and whose signing window closed."""
+    if d["status"] in ("open", "blocked", "failed"):
+        return True
+    if d["status"] != "requested":
+        return False
+    chain = _chain(conn, d["approval_id"])
+    if not chain:
+        return True
+    with conn.lock:  # type: ignore[attr-defined]
+        row = conn.execute("SELECT status, ts FROM approvals WHERE id = ?",
+                           (chain[-1],)).fetchone()
+    return row is None or (row[0] == "pending" and now - float(row[1]) > TTL_S)
 
 
 def propose(conn: sqlite3.Connection, ledger: Ledger, client: Any, open_client: Any,
@@ -226,7 +265,7 @@ def propose(conn: sqlite3.Connection, ledger: Ledger, client: Any, open_client: 
     d = _row(conn, did)
     if d is None:
         raise DisapprovalError("no such disapproval", "not_found")
-    if d["status"] not in ("open", "blocked"):
+    if not _proposable(conn, d, time.time()):
         raise DisapprovalError("a replacement was already requested", "not_open")
     c = media_buyer.campaign(conn, d["campaign_id"])
     if c is None or not c["adset_external_id"]:
@@ -259,7 +298,10 @@ def propose(conn: sqlite3.Connection, ledger: Ledger, client: Any, open_client: 
     proposal = {"variant": variant.model_dump(), "verdict": review.verdict,
                 "left_out": [x.model_dump() for x in pack.left_out],
                 "findings": [f.model_dump() for f in review.primary.findings]}
-    if review.verdict == "BLOCK" or copywriter.has_unfilled_fact(variant) or (
+    # the same nets as ``producer.request_approval``: nothing the producer would refuse
+    # to send for a signature is proposed here either
+    if review.verdict == "BLOCK" or pack.unfilled_facts > 0 or copywriter.has_unfilled_fact(
+            variant) or copywriter.unsupported_character(variant) or (
             brief is not None and reviewer.grounding_net(variant, brief)):
         with transaction(conn):
             conn.execute("UPDATE disapprovals SET status = 'blocked', proposal = ? "
@@ -309,7 +351,8 @@ def replace(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, v: Verif
     if c is None or [c["external_id"], c["adset_external_id"], c["adapter"]] != [
             payload.get("external_id"), payload.get("adset_external_id"), adapter.name]:
         problem = "campaign_changed"
-    elif d is None or d["approval_id"] != v.pending_id or d["campaign_id"] != v.item_id:
+    elif d is None or v.pending_id not in _chain(conn, d["approval_id"]) or \
+            d["campaign_id"] != v.item_id:
         problem = "not_proposed"
     elif payload.get("brief_sha256") and confirmed_brief(
             ledger, v.run_id) != payload["brief_sha256"]:
@@ -363,8 +406,36 @@ def replace(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, v: Verif
         more = [*c["more_ad_external_ids"], ad_id]
         conn.execute("UPDATE campaigns SET more_ad_ids = ? WHERE id = ?",
                      (json.dumps(more), v.item_id))
-        conn.execute("UPDATE disapprovals SET status = 'replaced' WHERE id = ?", (did,))
+        conn.execute("UPDATE disapprovals SET status = 'replaced', proposal = json_set("
+                     "proposal, '$.new_ad', ?, '$.new_ad_status', ?) WHERE id = ?",
+                     (ad_id, PAUSED, did))
     result = {"adapter": adapter.name, "campaign_item_id": v.item_id,
               "change": dict(payload["change"]), "ad_id": ad_id, "status": PAUSED}
     executor.finish(conn, v, "done", result)
     return result
+
+
+def paused_replacement(conn: sqlite3.Connection, campaign_id: str) -> tuple[str, str] | None:
+    """``(disapproval id, new ad id)`` of the oldest replacement ad of this campaign that
+    is still PAUSED (created under a signed replacement, not activated yet), or ``None``.
+    On a live campaign it goes ACTIVE only under its own signed ``campaign.activate``
+    (``media_buyer.request_activation``, kind ``replacement_ad``)."""
+    with conn.lock:  # type: ignore[attr-defined]
+        row = conn.execute(
+            "SELECT id, json_extract(proposal, '$.new_ad') FROM disapprovals "
+            "WHERE campaign_id = ? AND status = 'replaced' "
+            "AND json_extract(proposal, '$.new_ad_status') = ? "
+            "AND coalesce(json_extract(proposal, '$.new_ad'), '') != '' "
+            "ORDER BY created_ts, id LIMIT 1", (campaign_id, PAUSED)).fetchone()
+    return (str(row[0]), str(row[1])) if row is not None else None
+
+
+def mark_active(conn: sqlite3.Connection, campaign_id: str, ad_ids: list[str]) -> None:
+    """Record that these replacement ads of the campaign are ACTIVE now (a signed
+    activation, of the replacement alone or of the whole campaign, went through)."""
+    with transaction(conn):
+        for ad_id in ad_ids:
+            conn.execute("UPDATE disapprovals SET proposal = json_set(proposal, "
+                         "'$.new_ad_status', 'ACTIVE') WHERE campaign_id = ? AND "
+                         "status = 'replaced' AND json_extract(proposal, '$.new_ad') = ?",
+                         (campaign_id, ad_id))

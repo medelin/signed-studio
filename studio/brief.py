@@ -26,6 +26,7 @@ maps them to Meta's fields in code; a missing id is a field error, never a guess
 from __future__ import annotations
 
 import datetime as dt
+import json
 import math
 import re
 import unicodedata
@@ -205,6 +206,16 @@ class Resolution(_Strict):
 def as_json(brief: BriefV1) -> dict[str, Any]:
     """The hashed form: ``{"schema": "brief/v1", ...fields}``."""
     return {"schema": SCHEMA, **brief.model_dump(mode="json")}
+
+
+def load_v1(stored: str | dict[str, Any]) -> BriefV1:
+    """A brief stored in its hashed form (``as_json``: JSON with ``"schema": "brief/v1"``)
+    back as a ``BriefV1``; ``ValueError`` for another schema."""
+    data = dict(json.loads(stored) if isinstance(stored, str) else stored)
+    schema = data.pop("schema", SCHEMA)
+    if schema != SCHEMA:
+        raise ValueError(f"not a {SCHEMA} brief: {schema!r}")
+    return BriefV1.model_validate(data)
 
 
 def brief_sha256(brief: BriefV1) -> str:
