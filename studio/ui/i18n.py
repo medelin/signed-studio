@@ -151,6 +151,23 @@ EN: dict[str, str] = {
     "studio.activation_hint": "Activation is a second signature, refused above the "
                               "daily-budget ceiling.",
     "studio.activate": "Request activation and sign",
+    "studio.next.title": "What next",
+    "studio.next.ads_html": "Your ads: the copy variants are in <a href=\"#copy-h\">section 3</a> "
+                            "and the images in <a href=\"#images-h\">section 4</a>; the preview "
+                            "above is what Meta will show.",
+    "studio.next.live": "When you are ready, turn the campaign on with the button above: a second "
+                        "signature, and only then does Meta start spending.",
+    "studio.next.report_html": "After a few days of delivery, the <a href=\"/report\">Report</a> "
+                               "shows results and the analyst's proposals (a budget change, a new "
+                               "variant); each one waits for your signature.",
+    "studio.next.people_html": "People who answer: leads in <a href=\"/leads\">Leads</a>, comments "
+                               "with drafted replies in <a href=\"/inbox\">Inbox</a>.",
+    "studio.next.books_html": "For your records: every step is in <a "
+                              "href=\"/receipts\">Receipts</a>; the monthly statement for your "
+                              "accountant (CSV, Xero, QuickBooks, wFirma, hledger) is on the <a "
+                              "href=\"/report\">Report</a> page.",
+    "studio.next.again_html": "Another product or offer? "
+                              "<a href=\"/studio\">Start a new brief</a>.",
     "studio.ticker": "Receipts (live)",
     "studio.ticker_caption": "Every model call, tool call, review and approval of this run.",
     "studio.col.model_tool": "model / tool", "studio.total": "Total",
@@ -579,6 +596,24 @@ PL: dict[str, str] = {
     "studio.activation_hint": "Włączenie to drugi podpis, odrzucany powyżej limitu budżetu "
                               "dziennego.",
     "studio.activate": "Poproś o włączenie i podpisz",
+    "studio.next.title": "Co dalej",
+    "studio.next.ads_html": "Twoje reklamy: warianty tekstu są w <a href=\"#copy-h\">sekcji 3</a>, "
+                            "grafiki w <a href=\"#images-h\">sekcji 4</a>; podgląd powyżej to to, "
+                            "co pokaże Meta.",
+    "studio.next.live": "Gdy będziesz gotowy, włącz kampanię przyciskiem powyżej: to drugi podpis "
+                        "i dopiero wtedy Meta zaczyna wydawać.",
+    "studio.next.report_html": "Po kilku dniach emisji <a href=\"/report\">Raport</a> pokaże "
+                               "wyniki i propozycje analityka (zmiana budżetu, nowy wariant); "
+                               "każda czeka na Twój podpis.",
+    "studio.next.people_html": "Odpowiedzi ludzi: leady w <a href=\"/leads\">Leadach</a>, "
+                               "komentarze z gotowymi odpowiedziami w "
+                               "<a href=\"/inbox\">Skrzynce</a>.",
+    "studio.next.books_html": "Do rozliczeń: każdy krok jest w <a "
+                              "href=\"/receipts\">Pokwitowaniach</a>; miesięczne zestawienie dla "
+                              "księgowej (CSV, Xero, QuickBooks, wFirma, hledger) jest na stronie "
+                              "<a href=\"/report\">Raport</a>.",
+    "studio.next.again_html": "Inny produkt albo oferta? "
+                              "<a href=\"/studio\">Zacznij nowy brief</a>.",
     "studio.ticker": "Pokwitowania (na żywo)",
     "studio.ticker_caption": "Każde wywołanie modelu i narzędzia, recenzja i zatwierdzenie "
                              "tego przebiegu.",
@@ -1028,8 +1063,10 @@ EN_BRIEF: dict[str, str] = {
     "js.brief_no_mic": "No microphone is available or it is not allowed in this browser. "
                        "Everything works by typing as well.",
     "js.brief_confirming": "Confirming the brief and starting the run…",
-    "js.brief_confirmed": "Brief confirmed (sha256 {sha}…, {facts} facts). The run has "
-                          "started.",
+    "js.brief_confirmed": "Brief confirmed (sha256 {sha}…, {facts} facts). The agents are "
+                          "at work now: plan, copy, images and two reviews, about 3–5 "
+                          "minutes, shown below. Then you sign the campaign here; "
+                          "nothing is spent before.",
     "js.brief_errors": "{n} fields need attention; the list is at the top of the form.",
     "js.brief_reading": "Reading the brief aloud…",
     "js.brief_err_required": "This field is required.",
@@ -1197,8 +1234,10 @@ PL_BRIEF: dict[str, str] = {
     "js.brief_no_mic": "Mikrofon jest niedostępny albo ta przeglądarka nie ma na niego zgody. "
                        "Wszystko działa także po wpisaniu tekstu.",
     "js.brief_confirming": "Potwierdzam brief i uruchamiam przebieg…",
-    "js.brief_confirmed": "Brief potwierdzony (sha256 {sha}…, faktów: {facts}). Przebieg "
-                          "wystartował.",
+    "js.brief_confirmed": "Brief potwierdzony (sha256 {sha}…, faktów: {facts}). Agenci "
+                          "pracują: plan, teksty, grafiki i dwie recenzje, ok. 3–5 minut, "
+                          "postęp poniżej. Potem podpisujesz kampanię tutaj; wcześniej nic "
+                          "nie jest wydawane.",
     "js.brief_errors": "Pola wymagające uwagi: {n}; lista jest na górze formularza.",
     "js.brief_reading": "Czytam brief na głos…",
     "js.brief_err_required": "To pole jest wymagane.",

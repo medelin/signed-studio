@@ -90,6 +90,8 @@ button.copy-json { padding: .25rem .6rem; font-size: .72rem; }
 .hint { color: var(--muted); font-size: .9rem; }
 .status { min-height: 1.4em; margin: 0; overflow-wrap: anywhere; }
 .status.error { color: var(--signal); font-weight: 600; }
+.status.done { color: var(--ink); background: var(--ok-soft); border-left: 4px solid var(--ok);
+  padding: .7rem .9rem; font-weight: 600; font-size: 1.05rem; }
 .cards { display: grid; gap: .5rem; }
 .card { border: 1px solid var(--rule-soft); padding: .5rem .7rem; background: var(--bg); }
 .card h3 { margin: 0 0 .25rem; font-size: 1rem; }

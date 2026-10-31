@@ -593,8 +593,15 @@
     for (const li of $("brief-steps").querySelectorAll("li")) { li.dataset.state = "done"; li.removeAttribute("aria-current"); }
     const msg = T("brief_confirmed", { sha: r.data.brief_sha256.slice(0, 12), facts: r.data.facts });
     status("confirm-status", msg);
+    $("confirm-status").classList.add("done");
     say(msg);
     v1.querySelectorAll("input, textarea, select, button").forEach((n) => { n.disabled = true; });
     Studio.follow(r.data.run_id);
+    // what comes next is below the form: take the owner there
+    const hud = $("hud-h");
+    hud.tabIndex = -1;
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    hud.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+    hud.focus({ preventScroll: true });
   });
 })();

@@ -207,6 +207,7 @@
     node.id = id;
     if (node.tagName === "INPUT") node.type = kind === "url" ? "url" : kind === "number" ? "number" : "text";
     if (kind === "url") node.setAttribute("inputmode", "url");
+    if (kind === "amount") node.setAttribute("inputmode", "decimal");
     if (kind === "number") { node.min = "0"; node.step = "any"; node.setAttribute("inputmode", "decimal"); }
     if (node.tagName === "TEXTAREA") node.rows = 2;
     node.value = value || "";
@@ -287,6 +288,21 @@
       resolved: () => ok(valueOf(path)), need: () => T("brief_err_bad_url") };
   }
 
+  // "3", "3 GBP", "£3", "3,50 zł", "1 500": the number, and a currency named in the answer
+  // when it is not the ad account's (the amount is never converted)
+  const CURRENCY_WORDS = { "£": "GBP", "€": "EUR", "$": "USD", "zł": "PLN", "zl": "PLN", "złotych": "PLN" };
+  let ISO = new Set(["PLN", "GBP", "EUR", "USD"]);
+  try { ISO = new Set(Intl.supportedValuesOf("currency")); } catch (e) { /* older browser: the common four */ }
+  function amountOf(text, currency) {
+    const t = String(text || "").trim();
+    const m = t.replace(/(\d)[\s\u00a0](?=\d{3}\b)/g, "$1").match(/\d+(?:[.,]\d+)?/);
+    const n = m ? Number(m[0].replace(",", ".")) : NaN;
+    const named = (t.match(/[A-Za-z]{3}\b|[£€$]|zł|zl/gi) || [])
+      .map((w) => CURRENCY_WORDS[w.toLowerCase()] || w.toUpperCase())
+      .find((c) => ISO.has(c));
+    return { n, other: named && named !== currency ? named : "" };
+  }
+
   function amountCard(code) {
     const path = "budget.amount";
     const d = F.draft() || {};
@@ -316,9 +332,13 @@
       }
       if (seen.size) shell.li.append(chips);
     }
-    const box = input(shell, "number", T("brief_ask_amount_label", { currency }), Number(valueOf(path)) > 0 ? valueOf(path) : "");
+    const box = input(shell, "amount", T("brief_ask_amount_label", { currency }), Number(valueOf(path)) > 0 ? valueOf(path) : "");
     shell.li.append(shell.err);
-    box.addEventListener("input", () => { setField(path, box.value.trim()); showErr(shell, ""); });
+    box.addEventListener("input", () => {
+      const { n, other } = amountOf(box.value, currency);
+      setField(path, !other && n > 0 ? String(n) : "");
+      showErr(shell, other ? T("brief_ask_amount_currency", { other, currency }) : "");
+    });
     const ok = () => {
       const n = Number(valueOf(path));
       return n > 0 && n < 10000000 && (lifetime || !d.ceiling || n <= d.ceiling);

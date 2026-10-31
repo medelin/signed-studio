@@ -59,6 +59,8 @@ EN_SUMMARY: dict[str, str] = {
     "js.brief_ask_amount": "How much do you want to spend on the ad a day?",
     "js.brief_ask_amount_total": "How much do you want to spend on the ad in total?",
     "js.brief_ask_amount_label": "Amount in {currency}",
+    "js.brief_ask_amount_currency": "The ad account pays in {currency}, not {other}: give the "
+                                    "amount in {currency}.",
     "js.brief_ask_chip_suggested": "{amount} (suggested)",
     "js.brief_ask_chip_learning": "{amount} (enough to learn)",
     "js.brief_ask_chip_minimum": "{amount} (the least)",
@@ -125,6 +127,8 @@ PL_SUMMARY: dict[str, str] = {
     "js.brief_ask_amount": "Ile chcesz dziennie wydać na reklamę?",
     "js.brief_ask_amount_total": "Ile łącznie chcesz wydać na reklamę?",
     "js.brief_ask_amount_label": "Kwota w {currency}",
+    "js.brief_ask_amount_currency": "Konto reklamowe płaci w {currency}, nie w {other}: podaj "
+                                    "kwotę w {currency}.",
     "js.brief_ask_chip_suggested": "{amount} (proponowane)",
     "js.brief_ask_chip_learning": "{amount} (wystarczy do nauki)",
     "js.brief_ask_chip_minimum": "{amount} (najmniej)",
