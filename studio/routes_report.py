@@ -17,7 +17,6 @@ import json
 import secrets
 import threading
 from collections.abc import Callable
-from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -112,17 +111,23 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         if not lock.acquire(blocking=False):
             return JSONResponse({"error": "report_in_progress"}, 409)
-        try:
+        run_id = "an_" + secrets.token_hex(8)
+
+        def build() -> tuple[str, analyst.AnalystResult]:
+            """The whole report in one worker thread: the ledger export, insights and
+            summaries are read there too, never on the event loop."""
             muse, _ = app.state.clients()
-            run_id = "an_" + secrets.token_hex(8)
             cap = analyst.MAX_COST_USD
             if muse.budget is not None:
                 cap = min(cap, muse.budget.remaining())
-            out = await run_in_threadpool(partial(
-                analyst.report, muse, ledger.export_jsonl(), insights(), shot, run_id=run_id,
+            made = analyst.report(
+                muse, ledger.export_jsonl(), insights(), shot, run_id=run_id,
                 summary={**analyst.inbox_summary(conn),
-                         "measurement": measurement.summary(conn)}, max_cost_usd=cap))
-            report_id = analyst.save(conn, ledger, run_id, out)
+                         "measurement": measurement.summary(conn)}, max_cost_usd=cap)
+            return analyst.save(conn, ledger, run_id, made), made
+
+        try:
+            report_id, out = await run_in_threadpool(build)
         except analyst.ContextTooLarge:
             return JSONResponse({"error": "context_too_large"}, 413)
         except (ReadOnlyMode, BudgetExceeded) as exc:

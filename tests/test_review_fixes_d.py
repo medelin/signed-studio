@@ -302,3 +302,41 @@ def test_the_lead_webhook_under_read_only_asks_meta_to_retry_and_stores_nothing(
         assert c.post("/api/meta/webhook", content=body).status_code == 403
     assert app.state.conn.execute("SELECT count(*) FROM leads WHERE external_id != ''"
                                   ).fetchone()[0] == 0
+
+
+def test_the_report_reads_its_inputs_off_the_event_loop(tmp_path, monkeypatch):
+    import asyncio
+
+    import httpx
+
+    from studio.agents import analyst
+    from studio.muse.client import MuseClient
+    from studio.settings import Budget
+    from tests.cassettes import FAKE_KEY
+    from tests.test_analyst import REPORT, _fake
+
+    app = create_app(settings(tmp_path))
+    app.state.muse = MuseClient(FAKE_KEY, ledger=app.state.ledger, budget=Budget(1.0),
+                                transport=httpx.MockTransport(
+                                    lambda req: httpx.Response(200, json=_fake(REPORT))))
+    on_loop = []
+
+    def watch(name, fn):
+        def wrapped(*a, **kw):
+            try:
+                asyncio.get_running_loop()
+                on_loop.append(name)
+            except RuntimeError:
+                pass  # a worker thread: no running loop
+            return fn(*a, **kw)
+        return wrapped
+
+    ledger = app.state.ledger
+    monkeypatch.setattr(ledger, "export_jsonl", watch("export", ledger.export_jsonl))
+    monkeypatch.setattr(analyst, "inbox_summary", watch("inbox", analyst.inbox_summary))
+    monkeypatch.setattr(analyst, "save", watch("save", analyst.save))
+    with TestClient(app, base_url="https://testserver") as c:
+        login(c)
+        r = c.post("/api/reports", json={})
+        assert r.status_code == 200, r.text
+    assert on_loop == []
