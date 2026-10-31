@@ -572,7 +572,7 @@ def agreement() -> dict[str, Any] | None:
                      "same_decision": (s["verdict"] == "OK") == (o["verdict"] == "OK")})
     bad = [r for r in rows if r["expect"] != "OK"]
     return {"rows": rows, "n": len(rows), "cost_usd": data["cost_usd"],
-            "recorded": data["recorded"],
+            "recorded": data["recorded"], "model": data.get("model", "meta-models/muse-spark-open"),
             "tokens_in": sum(r["tokens_in"] for r in data["reviews"]),
             "tokens_out": sum(r["tokens_out"] for r in data["reviews"]),
             "same_verdict": sum(r["same_verdict"] for r in rows),
@@ -797,7 +797,7 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
     if ag:
         pct = 100 * ag["same_decision"] / ag["n"]
         out += [f"The same {ag['n']} ads, prompt, image and strict `Review` schema, reviewed by "
-                "Muse Spark Open (`meta-models/muse-spark-open`, open weights on Baseten, a "
+                f"Muse Spark Open (`{ag['model']}`, open weights on Baseten, a "
                 f"reasoning model) on {ag['recorded']}: {ag['n']} real calls, "
                 f"{ag['tokens_in']:,} input / {ag['tokens_out']:,} output tokens (reasoning "
                 f"included), ${ag['cost_usd']:.4f} at Baseten's published Model APIs price "
@@ -806,7 +806,8 @@ def render(t: dict[str, Any], attacks: list[dict[str, Any]], rv: dict[str, Any] 
                 + (" Spark Open was not re-recorded for "
                    + ", ".join(f"`{x}`" for x in rv["re_recorded"]) + ": those rows compare "
                    "a Spark Open review under the earlier checklist with the new Spark vision "
-                   "review." if rv and rv.get("re_recorded") else ""), "",
+                   "review." if rv and rv.get("re_recorded")
+                   and ag["recorded"] < rv.get("re_recorded_on", "") else ""), "",
                 f"- Same decision (OK vs WARN/BLOCK): **{ag['same_decision']}/{ag['n']} "
                 f"({pct:.0f} %)**; same verdict: {ag['same_verdict']}/{ag['n']}.",
                 f"- Bad ads flagged by Spark Open: {ag['open_flagged']}/{ag['n_bad']}; by either "

@@ -13,7 +13,7 @@ the numbers we measured.
 > on the Model API and **Muse Spark Open** (`meta-models/muse-spark-open`, Meta's open-weight
 > 816B MoE, served on Baseten). BLOCK from either one wins. The open model is a second check
 > with different weights, not the same model asked twice: on the 25 seeded ads it made the
-> same OK-or-flag decision as Spark vision on **25/25** (same verdict on 22/25), and on 20
+> same OK-or-flag decision as Spark vision on **23/25** (same verdict on 20/25), and on 20
 > inbox comments it gave the same intent on **17/20** and the same needs-a-human decision on
 > **19/20**. With `STUDIO_OPEN_WEIGHTS=1` (or the per-run switch on the brief) the
 > copywriter runs on Spark Open with the same strict schema, and **customer text (comments,
@@ -120,9 +120,11 @@ Together key (or a local vLLM) is configured, run
 
 ## Numbers
 
-**Review, 25 seeded ads** (`docs/eval.md` §4, recorded 2026-10-28): Spark vision vs Spark
-Open gave the same OK-or-flag decision on **25/25** and the same verdict on 22/25 (3 WARN vs
-BLOCK). Spark Open blocks 5/5 P9 ads and 0/5 clean ones. Cost: $0.075.
+**Review, 25 seeded ads** (`docs/eval.md` §4, recorded 2026-10-31 on
+`meta-models/muse-spark-open-1026`): Spark vision vs Spark Open gave the same OK-or-flag
+decision on **23/25** and the same verdict on 20/25. Spark Open flags 16/20 bad ads alone
+(18/20 with either reviewer, BLOCK from either side wins), blocks 3/5 P9 ads and 0/5 clean
+ones. Cost: $0.093.
 
 **Comment triage, 20 comments** (`fixtures/eval/comments.SYNTHETIC.json`, hand-written,
 c-1..c-5 are the seeded inbox; results in `fixtures/eval/triage_open.json`, recorded
@@ -165,6 +167,8 @@ seeded comment.
 
 - Offline: `make demo-replay SET=open` (or `studio demo --set open`).
 - Live: `STUDIO_OPEN_WEIGHTS=1` with `MODEL_API_KEY` and `BASETEN_API_KEY`, or tick
-  "Run on open weights" on the brief for a single run.
+  "Run on open weights" on the brief for a single run. `BASETEN_MODEL` picks the Baseten
+  deployment (default `meta-models/muse-spark-open`; the hackathon key serves
+  `meta-models/muse-spark-open-1026`).
 - Re-record: `studio demo --record --set open --env-file .env`;
   agreement: `python scripts/open_weights_eval.py --record --env-file .env`.

@@ -141,10 +141,10 @@ third party:
   after signing, a campaign created with another objective or promoted object than the one
   signed, a Google Search campaign created with another spec than the one signed, and a
   recommendation executed without approval) and accepts every clean one.
-- The reviewer stops **19 of 20 seeded bad ads** (all **5/5 P9** ads blocked by the model
+- The reviewer stops **18 of 20 seeded bad ads** (all **5/5 P9** ads blocked by the model
   alone), with **0 of 5** clean ads blocked. The open-weights second opinion (Muse Spark
-  Open on Baseten) makes the **same OK-vs-flag decision on 25/25** ads (same verdict on
-  22/25; every disagreement is shown before signing). One campaign run (brief → pending
+  Open on Baseten) makes the **same OK-vs-flag decision on 23/25** ads (same verdict on
+  20/25; every disagreement is shown before signing). One campaign run (brief → pending
   approval, both reviewers on every placement) costs **$0.08–0.13**.
 
 ### Verify a receipt log
