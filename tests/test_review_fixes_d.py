@@ -368,3 +368,14 @@ def test_the_brief_form_fields_carry_their_attributes_unescaped(tmp_path):
     assert 'min="0" step="any" inputmode="decimal"' in html
     assert 'min="1" max="10" inputmode="numeric"' in html
     assert "&#34;" not in html and "&quot;0&quot;" not in html
+
+
+def test_brief_js_gives_the_button_back_when_the_request_fails():
+    import re
+    from pathlib import Path
+
+    js = (Path(__file__).resolve().parents[1] / "studio/ui/static/brief.js").read_text()
+    taken = js.count("btn.disabled = true;")
+    returned = len(re.findall(r"finally \{\s*btn\.disabled = false;", js))
+    assert taken == 2 and returned == taken  # a failed fetch (offline) re-enables it too
+    assert js.count('data: { error: "network" }') == 2  # and says why (err.network)
