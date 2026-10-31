@@ -496,8 +496,8 @@
   function showBudgetAdvice(a) {
     const node = document.getElementById("bf-budget-advice");
     if (!node) return;
-    node.hidden = !a;
-    if (!a) return;
+    node.hidden = !a || a.estimate === false;  // no advice for an unknown currency
+    if (node.hidden) return;
     const vars = { suggested: a.suggested, learning: a.learning, minimum: a.minimum,
       currency: a.currency, cpr: a.cost_per_result, events: a.events_per_week,
       results: a.results_per_week ?? "" };
