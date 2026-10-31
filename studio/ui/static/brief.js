@@ -520,13 +520,55 @@
   }
 
   // -- the flow -----------------------------------------------------------------------
-  const example = $("brief-example");
-  if (example) {
-    example.addEventListener("change", () => {
-      $("brief").value = example.selectedOptions[0].dataset.text;
-      say(example.selectedOptions[0].textContent);
-    });
+  // The links that show what is advertised: the server scans the website and reads each
+  // profile's public page for its meta tags only (brand_scan). The profile's website is
+  // prefilled; "remember" shows only for an account that runs its own ads
+  // (GET /api/briefs/sources).
+  const SOURCES = ["website", "facebook", "instagram", "x"];
+  const SRC_ERR = "src_err_";  // + a code from brand_scan.owner_sources
+  function clearSourceErrors() {
+    for (const f of SOURCES) {
+      const node = $("err-src-" + f);
+      node.hidden = true;
+      node.textContent = "";
+      $("src-" + f).removeAttribute("aria-invalid");
+    }
   }
+  function showSourceErrors(fields) {
+    let first = null;
+    for (const f of SOURCES) {
+      if (!fields[f]) continue;
+      const node = $("err-src-" + f);
+      node.textContent = T(SRC_ERR + fields[f]);
+      node.hidden = false;
+      $("src-" + f).setAttribute("aria-invalid", "true");
+      first = first || $("src-" + f);
+    }
+    if (first) first.focus();
+  }
+  function sources() {
+    const out = {};
+    for (const f of SOURCES) {
+      const value = $("src-" + f).value.trim();
+      if (value) out[f] = value;
+    }
+    if (out.website && !$("src-remember-box").hidden && $("src-remember").checked) out.remember = true;
+    return out;
+  }
+  if (document.getElementById("studio").dataset.loggedIn === "yes") {
+    fetch("/api/briefs/sources", { credentials: "same-origin" }).then(async (r) => {
+      if (!r.ok) return;
+      const data = await r.json();
+      const site = $("src-website");
+      if (data.website && !site.value) site.value = data.website;
+      $("src-remember-box").hidden = !data.can_remember;
+    }).catch(() => { /* the block works without the prefill */ });
+  }
+  $("use-example").addEventListener("click", (ev) => {
+    $("brief").value = ev.currentTarget.dataset.text;
+    $("brief").focus();
+    say(T("src_example"));
+  });
   $("bv-add-fact").addEventListener("click", () => addFact("", true));
   $("bv-add-reason").addEventListener("click", () => addReason("", [], true));
   $("redraft-button").addEventListener("click", () => {
@@ -541,7 +583,8 @@
     btn.disabled = true;
     status("run-status", T("brief_drafting"));
     say(T("brief_drafting"));
-    const body = { text: $("brief").value, lang, dictated };
+    clearSourceErrors();
+    const body = { text: $("brief").value, lang, dictated, ...sources() };
     const voiceId = Studio.voiceBriefId();
     if (voiceId) body.brief_id = voiceId;
     const clipId = Studio.clipId();  // the owner's phone clip becomes the ad's video
@@ -554,6 +597,12 @@
     } finally {
       btn.disabled = false;
     }
+    if (r.status === 422 && r.data.error === "invalid_sources" && r.data.fields) {
+      status("run-status", T("src_errors"), true);
+      say(T("src_errors"));
+      showSourceErrors(r.data.fields);
+      return;
+    }
     if (!r.ok) {
       const msg = T("brief_draft_failed", { error: E(r.data, r.status) });
       status("run-status", msg, true);
@@ -562,6 +611,9 @@
     }
     Studio.clearVoiceBrief();
     showDraft(r.data);
+    if ((r.data.remembered || []).includes("website")) {
+      status("run-status", $("run-status").textContent + " " + T("src_remembered"));
+    }
   });
 
   // What a day buys for this objective (studio.budget_advice): an estimate, the owner

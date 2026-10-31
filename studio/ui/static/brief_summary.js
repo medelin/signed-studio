@@ -171,7 +171,16 @@
       try { date = new Date(o.valid_until + "T12:00:00").toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" }); } catch (_) { /* as typed */ }
       what += " " + T("brief_sum_until", { date });
     }
-    out.push({ topic: T("brief_sum_t_what"), path: "offer.product", paths: ["offer.product", "offer.offer", "offer.valid_until"], missing: !o.product, text: what });
+    // what kind of thing it is, as the draft recognised it from the words and links
+    const kindSel = $("bf-offer-subject_kind");
+    if (kindSel && kindSel.value && kindSel.value !== "other") {
+      what += " " + T("brief_sum_kind", { kind: kindSel.options[kindSel.selectedIndex].text });
+    }
+    // the owner's profiles the studio could not read without a login (brand_scan)
+    const site = (F.draft() || {}).site || {};
+    const unread = (site.profiles || []).filter((p) => p.blocked).map((p) => p.host);
+    out.push({ topic: T("brief_sum_t_what"), path: "offer.product", paths: ["offer.subject_kind", "offer.product", "offer.offer", "offer.valid_until"], missing: !o.product, text: what,
+      note: unread.length ? T("brief_sum_unread", { hosts: unread.join(", ") }) : "" });
     const au = b.audience;
     const places = (au.locations.length ? au.locations : a.countries).map(place).join(", ");
     const langs = au.languages.map(language).join(", ");

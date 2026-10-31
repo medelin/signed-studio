@@ -55,7 +55,7 @@ def test_studio_page_has_summary_assistant_and_folded_details(client, lang):
 
 def test_ids_the_flow_and_the_recorder_rely_on_stay(client):
     html = client.get("/studio?lang=en").text
-    for node in ('id="brief-example"', 'id="run-button"', 'id="brief-v1-form"',
+    for node in ('id="use-example"', 'id="src-website"', 'id="run-button"', 'id="brief-v1-form"',
                  'id="confirm-button"', 'id="confirm-status"', 'id="bv-question-list"',
                  'name="advertiser.countries"', 'id="bf-advertiser-countries"'):
         assert node in html, node

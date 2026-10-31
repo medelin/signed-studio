@@ -372,3 +372,12 @@ details.advanced > summary { cursor: pointer; color: var(--muted); font-size: .9
 /* the campaign panel's "what next" list: plain steps, links underlined */
 .next-steps { margin: .4rem 0 0; padding-left: 1.3rem; display: grid; gap: .35rem; }
 .next-steps a { text-decoration: underline; }
+
+/* where the studio learns about the business (studio page, above the brief) */
+.sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: .6rem 1rem; border: 1px solid var(--rule-soft); padding: .8rem 1rem; }
+.sources > legend { font-weight: 700; padding: 0 .3rem; }
+.sources > .hint, .sources > .src-remember { grid-column: 1 / -1; margin: 0; }
+.src-field { display: grid; gap: .25rem; min-width: 0; }
+.src-field input { width: 100%; min-width: 0; }
+button.text-link { background: none; border: 0; padding: .2rem 0; min-height: 1.5rem; text-transform: none; letter-spacing: normal; color: var(--ink-2); text-decoration: underline; text-underline-offset: .15em; font: inherit; cursor: pointer; }
+button.text-link:hover:not(:disabled) { filter: none;  color: var(--ink); }

@@ -9,8 +9,12 @@ text (capped) and schema.org JSON-LD offers (``Product``/``Offer`` name, price, 
 and the organisation's ``sameAs`` profiles; plus the brand's social profiles linked from
 the pages (Facebook, Instagram, TikTok, YouTube, X, LinkedIn, Pinterest, Threads).
 
-Social profiles are listed, never fetched: Meta's and others' profile pages need a login
-or an API grant the studio does not have for third parties.
+Social profiles found on the site are listed, not fetched. The profiles the owner gives on
+the studio page (``owner_sources``: Facebook, Instagram, X, each checked for https and its
+own host) are read as the public page only, meta tags only, never with a login
+(``read_profiles``: the same ``Fetcher``, then the Open Graph title, description and image
+address); a page behind a login or consent wall, or one that fails, falls back to the
+handle and address as a named fact (``with_profiles``).
 
 ``as_prompt(result)`` is how a scan enters the draft prompt: inside the untrusted-content
 envelope (source ``website``), as suggestions the owner confirms with the rest of the brief;
@@ -50,6 +54,7 @@ class _Page(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.title = ""
+        self.image = ""  # og:image, read only for an owner's profile page
         self.meta: dict[str, str] = {}
         self.links: list[str] = []
         self.jsonld: list[str] = []
@@ -73,6 +78,8 @@ class _Page(HTMLParser):
             if key in ("description", "og:title", "og:description", "og:site_name",
                        "og:type", "og:locale") and a.get("content"):
                 self.meta[key] = a["content"][:500]
+            elif key == "og:image" and a.get("content"):
+                self.image = a["content"][:500]
         elif tag == "a" and a.get("href"):
             self.links.append(a["href"])
         elif tag == "html" and a.get("lang"):
@@ -121,6 +128,142 @@ def social_kind(url: str) -> str | None:
         if host == domain or host.endswith("." + domain):
             return kind
     return None
+
+
+# -- the links the owner gives on the studio page ---------------------------------------
+
+# profile field → (the host of the address kept, the hosts it accepts, any subdomain)
+PROFILE_FIELDS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "facebook": ("facebook.com", ("facebook.com", "fb.com")),
+    "instagram": ("instagram.com", ("instagram.com",)),
+    "x": ("x.com", ("x.com", "twitter.com")),
+}
+MAX_SOURCE = 300  # characters per field, as the profile's website
+MAX_META = 300  # characters kept of a profile page's title or description
+_HANDLE = re.compile(r"[\w.\-]{1,100}")
+_SCHEME = re.compile(r"[a-z][a-z0-9+.\-]*://", re.IGNORECASE)
+# a public profile page that is really a login wall or a consent page
+_WALL = re.compile(r"\blog ?in\b|\bsign ?(?:up|in)\b|zaloguj|zarejestruj|before you "
+                   r"continue|zanim przejdziesz", re.IGNORECASE)
+
+
+def _https(value: str) -> tuple[str | None, str]:
+    """(``value`` as an https URL, "") — a bare ``host/path`` gets the scheme — or
+    (None, ``not_https`` for another scheme, else ``bad_url``)."""
+    if _SCHEME.match(value) and not value.lower().startswith("https://"):
+        return None, "not_https"
+    try:
+        url = normalize_url(value)
+    except ValueError:  # a malformed host or port
+        url = None
+    if url is None or "." not in (urlsplit(url).hostname or ""):
+        return None, "bad_url"
+    return url, ""
+
+
+def _profile(kind: str, value: str) -> tuple[dict[str, str], str]:
+    """({"handle", "url"}, "") for the owner's profile on ``kind``, or ({}, error code).
+    ``@name`` stands for the profile's address; the kept address is rebuilt from the
+    handle, so nothing but the handle comes from the owner."""
+    home, hosts = PROFILE_FIELDS[kind]
+    if value.startswith("@"):
+        value = f"https://{home}/{value[1:]}"
+    url, error = _https(value)
+    if url is None:
+        return {}, error
+    host = urlsplit(url).hostname or ""
+    if not any(host == h or host.endswith("." + h) for h in hosts):
+        return {}, "wrong_site"
+    handle = next((p for p in urlsplit(url).path.split("/") if p), "")
+    if not _HANDLE.fullmatch(handle) or handle.endswith(".php"):
+        return {}, "no_handle"
+    return {"handle": handle, "url": f"https://{home}/{handle}"}, ""
+
+
+def owner_sources(body: Any) -> tuple[str, dict[str, dict[str, str]], dict[str, str]]:
+    """The website and social profiles the owner gives above the brief (``website``,
+    ``facebook``, ``instagram``, ``x`` in a draft request): (the https site to scan or "",
+    {kind: {"handle", "url"}}, {field: error code}). Only https; each profile field takes
+    its own network's addresses (``PROFILE_FIELDS``) and must name a page or handle; the
+    website may not be a social profile. Empty fields are no source."""
+    website, profiles, errors = "", {}, {}
+    for field in ("website", *PROFILE_FIELDS):
+        raw = body.get(field) if isinstance(body, dict) else None
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            continue
+        if not isinstance(raw, str) or len(raw) > MAX_SOURCE or any(
+                c.isspace() or ord(c) < 0x20 for c in raw.strip()):
+            errors[field] = "bad_url"
+        elif field == "website":
+            url, error = _https(raw.strip())
+            if url and social_kind(url):
+                error = "social_as_website"
+            if error:
+                errors[field] = error
+            else:
+                website = str(url)
+        else:
+            found, error = _profile(field, raw.strip())
+            if error:
+                errors[field] = error
+            else:
+                profiles[field] = found
+    return website, profiles, errors
+
+
+def read_profile(kind: str, named: dict[str, str], fetcher: Any) -> dict[str, Any]:
+    """The owner's public profile page, read like the website (``fetcher``: https, public
+    address, size and time caps, no cookies, never a login): only its title, description
+    and image address from the meta tags. ``read`` is False, with ``blocked`` True, when
+    the page fails, serves no meta tags or is a login or consent wall: the profile is then
+    only named."""
+    out: dict[str, Any] = {**named, "kind": kind, "read": False, "blocked": True,
+                           "title": "", "description": "", "image": ""}
+    try:
+        body = fetcher.fetch(named["url"])
+    except PageError:
+        return out
+    page = _Page()
+    try:
+        page.feed(body.decode("utf-8", "replace"))
+        page.close()
+    except (AssertionError, ValueError):
+        pass
+    meta = page.meta
+    title = " ".join((meta.get("og:title") or page.title).split())[:MAX_META]
+    description = " ".join((meta.get("og:description") or meta.get("description") or ""
+                            ).split())[:MAX_META]
+    image = normalize_url(page.image) if page.image else None
+    platform = PROFILE_FIELDS[kind][0].split(".")[0]
+    if not (meta.get("og:title") or meta.get("og:description")) or \
+            _WALL.search(title) or title.casefold() in (platform, "x", "twitter", ""):
+        return out
+    return {**out, "read": True, "blocked": False, "title": title,
+            "description": description, "image": image or ""}
+
+
+def read_profiles(profiles: dict[str, dict[str, str]], fetcher: Any | None = None
+                  ) -> dict[str, dict[str, Any]]:
+    """``read_profile`` for each profile the owner gave."""
+    fetcher = fetcher or Fetcher()
+    return {kind: read_profile(kind, named, fetcher) for kind, named in profiles.items()}
+
+
+def named_only(profiles: dict[str, dict[str, str]]) -> dict[str, dict[str, Any]]:
+    """The profiles as named facts, not read (the scan is off): never reported blocked."""
+    return {kind: {**named, "kind": kind, "read": False, "blocked": False, "title": "",
+                   "description": "", "image": ""} for kind, named in profiles.items()}
+
+
+def with_profiles(result: dict[str, Any] | None, profiles: dict[str, dict[str, Any]]
+                  ) -> dict[str, Any] | None:
+    """A scan result (or an empty one, when there is no site) carrying the owner's
+    profiles (``owner_social``, from ``read_profiles`` or ``named_only``); ``result``
+    itself when there are none."""
+    if not profiles:
+        return result
+    base = result or {"url": "", "pages": [], "social": {}, "errors": []}
+    return {**base, "owner_social": profiles}
 
 
 def _offers(blob: Any, out: list[dict[str, str]], same_as: list[str]) -> None:
@@ -228,6 +371,14 @@ def as_prompt(result: dict[str, Any]) -> str:
             lines.append(f"  text: {page['text']}")
     for kind, link in result.get("social", {}).items():
         lines.append(f"Profile {kind}: {link}")
+    for kind, p in result.get("owner_social", {}).items():
+        if p["read"]:
+            lines.append(f"The owner's own {kind} profile @{p['handle']} {p['url']}")
+            lines += [f"  {key}: {p[key]}" for key in ("title", "description", "image")
+                      if p[key]]
+        else:
+            lines.append(f"The owner's own {kind} profile (named by the owner, not read): "
+                         f"@{p['handle']} {p['url']}")
     if not lines:
         return ""
     return envelope.wrap("\n".join(lines), "website", max_chars=12000)
@@ -239,4 +390,6 @@ def grounding_text(result: dict[str, Any]) -> str:
     for page in result.get("pages", []):
         parts += [page["title"], *page["meta"].values(), page["text"]]
         parts += [f"{o['name']} {o['price']} {o['currency']}" for o in page["offers"]]
+    for p in result.get("owner_social", {}).values():
+        parts += [p["title"], p["description"]]
     return "\n".join(parts)

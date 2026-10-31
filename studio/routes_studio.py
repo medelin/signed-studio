@@ -45,6 +45,7 @@ from pydantic import ValidationError
 
 from studio import brand_scan, budget_advice, clip, db, mandates
 from studio import brief as brief_v1
+from studio.accounts import AccountError
 from studio.agents import producer
 from studio.approvals import (
     Approval,
@@ -642,6 +643,50 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "result_sha256": sha256_hex(canonical(result))})
         return result if result["pages"] else None
 
+    def owner_profiles(run_id: str, site: dict[str, Any] | None,
+                       profiles: dict[str, dict[str, str]]) -> dict[str, Any] | None:
+        """``site`` with the social profiles the owner gave: their public pages read for meta
+        tags only (``brand_scan.read_profiles``, never with a login), or only named when
+        ``STUDIO_BRAND_SCAN`` is off. A ``brand.profiles`` receipt lists the addresses,
+        which were read and the hash of the result."""
+        if not profiles:
+            return site
+        read = settings.brand_scan
+        found = (brand_scan.read_profiles(profiles, getattr(app.state, "brand_fetcher", None))
+                 if read else brand_scan.named_only(profiles))
+        ledger.append(run_id, agent="producer", kind="tool_call", details={
+            "tool": "brand.profiles", "side_effects": "read" if read else "none",
+            "urls": [p["url"] for p in found.values()],
+            "read": sorted(k for k, p in found.items() if p["read"]),
+            "blocked": sorted(k for k, p in found.items() if p["blocked"]),
+            "result_sha256": sha256_hex(canonical(found))})
+        return brand_scan.with_profiles(site, found)
+
+    def remember_website(account: Any, website: str) -> list[str]:
+        """Keep the website the owner typed in their business profile, when they ticked
+        "remember" and run their own ads (``sees_personal_data``: never the shared judge
+        account or a trial account, which advertise on the operator's page). The paths
+        kept; social profiles are not part of the profile."""
+        if not website or account is None or not account.sees_personal_data or \
+                website == account.website:
+            return []
+        try:
+            app.state.accounts.update_profile(account.id, {"website": website})
+        except AccountError:
+            return []
+        return ["website"]
+
+    @app.get("/api/briefs/sources")
+    def brief_sources(request: Request) -> Response:
+        """What the studio page prefills above the brief: the profile's website (only for
+        an account that runs its own ads) and whether "remember" is offered."""
+        account = profile_of(request)
+        if not logged_in(request) or account is None:
+            return JSONResponse({"error": "login_required"}, 401)
+        own = bool(account.sees_personal_data)
+        return JSONResponse({"website": account.website if own else "", "can_remember": own},
+                            headers={"Cache-Control": "no-store"})
+
     def budget_of(draft: brief_v1.BriefV1) -> dict[str, Any]:
         """What a day makes sense for the draft's objective (``studio.budget_advice``),
         with Meta's ``delivery_estimate`` for the draft's countries and ages when the
@@ -676,6 +721,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return None
         return {"url": site["url"], "pages": [p["url"] for p in site["pages"]],
                 "social": site["social"],
+                "profiles": [{"kind": k, "host": urlsplit(p["url"]).hostname, "read": p["read"],
+                              "blocked": p["blocked"]}
+                             for k, p in site.get("owner_social", {}).items()],
                 "offers": [o for p in site["pages"] for o in p["offers"]][:6]}
 
     @app.post("/api/briefs/draft")
@@ -707,15 +755,19 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                     not owns(row[2], row[3], owner_of(request)):
                 return JSONResponse({"error": "unknown_voice_brief"}, 409)
             source = "transcript"
+        typed, profiles, bad = brand_scan.owner_sources(body)
+        if bad:  # each field's own error, before any model call or fetch
+            return JSONResponse({"error": "invalid_sources", "fields": bad}, 422)
         if app.state.muse is None and not settings.model_available:
             return JSONResponse({"error": "model_api_unavailable"}, 503)
         run_id = producer.new_run_id()
         account = profile_of(request)
-        website = body.get("website") if isinstance(body.get("website"), str) else ""
+        website = typed
         if not website and account is not None and account.sees_personal_data and \
                 brand_scan.first_site(text) is None:
             website = account.website  # the profile's site when the brief names none
         site = await run_in_threadpool(scan_site, run_id, website, text)
+        site = await run_in_threadpool(owner_profiles, run_id, site, profiles)
         try:
             muse, _ = clients()
             draft = await run_in_threadpool(partial(
@@ -727,6 +779,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return JSONResponse({"error": "model_error", "code": exc.code}, 502)
         except MuseError as exc:
             return JSONResponse({"error": "model_error", "code": exc.code}, 502)
+        remembered = remember_website(account, typed) if body.get("remember") is True else []
+        if remembered:
+            account = app.state.accounts.get(account.id)
         draft, from_profile = brief_v1.profile_defaults(
             draft, account, default_landing=settings.landing_url)
         brief_id = store_draft(conn, text, draft, run_id, brief_id)
@@ -744,7 +799,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                           currency=account_currency()),
             "ceiling": settings.max_daily_budget, "currency": account_currency(),
             "google_currency": draft_google_currency(),
-            "site": site_summary(site),
+            "site": site_summary(site), "remembered": remembered,
             "budget_advice": await run_in_threadpool(budget_of, draft),
             "cost_usd": round(sum(r.cost_usd for r in ledger.receipts(run_id)), 6)})
 

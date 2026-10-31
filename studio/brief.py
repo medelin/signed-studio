@@ -55,6 +55,7 @@ GOALS: tuple[str, ...] = objectives.GOALS
 Sub = Literal["", "reach", "ad_recall_lift", "link_clicks", "landing_page_views",
               "post_engagement", "messenger", "instagram_direct", "whatsapp",
               "event_responses", "instant_form", "website", "app_installs", "catalog"]
+SubjectKind = Literal["product", "service", "event", "person", "organisation", "other"]
 LeadField = Literal["FULL_NAME", "EMAIL", "PHONE", "CITY", "COMPANY_NAME"]
 
 
@@ -79,6 +80,9 @@ class Offer(_Strict):
     offer: str
     valid_until: str  # YYYY-MM-DD or ""
     reasons_to_believe: list[Reason]
+    # what is advertised, as the draft recognised it from the owner's words and links;
+    # the owner corrects it in the summary ("other" when it is not clear)
+    subject_kind: SubjectKind = "other"
 
 
 class Objective(_Strict):

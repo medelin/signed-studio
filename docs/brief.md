@@ -15,8 +15,8 @@ Code: `studio/brief.py` (schema, hash, field checks, grounding), `studio/agents/
 
 | Step | Who | What happens |
 |---|---|---|
-| 1. Tell | owner | Free text, or a recording transcribed by `muse-voice-transcribe-1.0` (`languageBias` = the page language, `pl` or `en`). The transcript lands in the same text box and can be edited before the producer reads it. |
-| 2. Draft | producer (`muse-spark-1.3`) | One strict-JSON call with the `BriefV1` schema. The prompt holds the policy checklist and the drafting role, not the brand sheet: a draft carries only what the owner wrote. Code then runs `ground_draft`: a fact, product, offer, validity date or proposition holding a number that is not in the owner's words becomes an open `[FACT]` question. |
+| 1. Tell | owner | Free text, or a recording transcribed by `muse-voice-transcribe-1.0` (`languageBias` = the page language, `pl` or `en`). The transcript lands in the same text box and can be edited before the producer reads it. Above it, optional links that show what is advertised: a website or page and Facebook, Instagram, X/Twitter profiles (https only, each on its own network's host, `brand_scan.owner_sources`; a bad one is a 422 naming the field). |
+| 2. Draft | producer (`muse-spark-1.3`) | The website is scanned and each profile's public page is read for its meta tags only (title, description, image address), never with a login; a page behind a login wall stays a named fact and the summary says so (`brand.scan` and `brand.profiles` receipts: the addresses and the result hash). All of it enters the prompt inside the untrusted-content envelope. One strict-JSON call with the `BriefV1` schema. The prompt holds the policy checklist and the drafting role, not the brand sheet: a draft carries only what the owner wrote. Code then runs `ground_draft`: a fact, product, offer, validity date or proposition holding a number that is not in the owner's words becomes an open `[FACT]` question. |
 | 3. Answer | owner | Every open question is answered in a short sentence (it becomes a confirmed fact, in the owner's words) or the claim is struck (it is dropped). Every field of the draft can be edited, by typing or by dictation. |
 | 4. Confirm | owner, then code | The server checks every field (`brief.problems`), refuses a brief with an unresolved question, hashes it and writes the `brief.confirmed` receipt in the same transaction that starts the run. |
 
@@ -29,7 +29,7 @@ A free-text brief (`POST /api/runs {"brief": "..."}`) still runs as before, with
 |---|---|---|
 | `advertiser` | `kind` (`person` or `company`), `display_name`, `countries` (ISO 3166-1 alpha-2), `landing_url` (https) | A display name that does not match the page or legal name gets ads rejected. Global: no national registry or tax ids. |
 | `confirmed_facts` | short statements | The only facts an ad may state: prices, times, guarantees, numbers. |
-| `offer` | `product`, `offer`, `valid_until` (`YYYY-MM-DD` or empty), `reasons_to_believe[{text, facts}]` | Each reason names the indices of the confirmed facts it rests on; a reason without a fact is refused. |
+| `offer` | `product`, `offer`, `valid_until` (`YYYY-MM-DD` or empty), `reasons_to_believe[{text, facts}]`, `subject_kind` (`product`, `service`, `event`, `person`, `organisation` or `other`, recognised by the draft from the words and links; the owner corrects it) | Each reason names the indices of the confirmed facts it rests on; a reason without a fact is refused. |
 | `objective` | `goal` (exactly one of `awareness`, `traffic`, `engagement`, `leads`, `app_promotion`, `sales`), `kpi`, `sub` (Meta's sub-choice, `""` = the goal's default) | Meta's six campaign objectives. Code maps goal and sub-choice to Meta's fields (table below); the mapping is the payload's signed `delivery` block. |
 | `promotion` | `pixel_id`, `custom_event_type`, `application_id`, `object_store_url`, `event_id`, `product_catalog_id`, `product_set_id`, `privacy_policy_url`, `lead_fields` | The ids the chosen objective needs, as the owner gives them. A missing one is the field error `required_for_objective`; an id or URL the draft holds but the owner never wrote is cleared (`ground_ids`). |
 | `audience` | `locations`, `age_min`, `age_max` (13–65), `languages`, `insight{who, belief, barrier, trigger}`, `advantage_audience` (default true), `genders`, `interests`, `excluded_interests`, `excluded_countries`, `custom_audience_ids`, `excluded_custom_audience_ids`, `lookalike_source_id`, `lookalike_percent` | With Advantage+ audience the age range, genders and interests are suggestions and locations, the minimum age (18–25), languages and excluded audiences are controls. Interests and languages are resolved to Meta ids by code through the targeting search before the approval; audience ids come only from the owner (never guessed, never uploaded data). |
@@ -195,5 +195,5 @@ output schema), so the form can be explored offline.
 tool for one-person businesses (traffic to the sandbox, 6 GBP a day for 7 days, Poland, no
 company named), recorded on an ad account that books in GBP (`account_currency` in the
 set). `make demo-replay SET=muse` replays it; `make serve-replay SET=muse` serves the UI on
-it. In the studio both examples are in the "Example brief" list; the ceramics one is the
-default.
+it. In the studio the ceramics example is one click away ("use an example brief instead"
+under the brief box).

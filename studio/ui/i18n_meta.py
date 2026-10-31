@@ -15,12 +15,38 @@ EN_META: dict[str, str] = {
         "Poland, aged 25-55. Budget 3 GBP a day for 7 days, from 4 to 10 "
         "November 2026. The ad in Polish. Matter-of-fact and calm, no "
         "promises of profit. Do not name any company."),
-    "studio.example_label": "Example brief",
-    "studio.example_hint": "Start with your own words, or load one of two made-up owners' "
-                           "briefs and edit it.",
-    "studio.example.own": "your own words (empty box)",
-    "studio.example.ceramics": "a ceramics shop (PLN)",
-    "studio.example.muse": "this studio, advertised as an open-source tool (GBP)",
+    # what is advertised and the links that show it (above the brief; brand_scan)
+    "src.legend": "What do you want to advertise? Links that show it help",
+    "src.hint": "Optional: a product, a service, an event, yourself or a cause. We read the "
+                "pages you link (website, Facebook, Instagram, X) to propose ads with your "
+                "own words, products and prices: public pages only, never with a login. "
+                "Addresses start with https://.",
+    "src.website": "Website or page",
+    "src.facebook": "Facebook",
+    "src.instagram": "Instagram",
+    "src.x": "X/Twitter",
+    "src.remember": "Remember this website in my profile",
+    "src.use_example": "or use an example brief instead",
+    "brief.f.subject_kind": "What you advertise",
+    "brief.h.subject_kind": "Recognised from your words and links; change it if it is wrong.",
+    "brief.subject.product": "a product",
+    "brief.subject.service": "a service",
+    "brief.subject.event": "an event",
+    "brief.subject.person": "a person or creator",
+    "brief.subject.organisation": "an organisation or cause",
+    "brief.subject.other": "something else",
+    "js.brief_sum_kind": "Recognised as {kind}.",
+    "js.brief_sum_unread": "Couldn't read {hosts} without a login; only the address was "
+                           "used.",
+    "js.src_example": "Example brief loaded: a made-up ceramics shop. Edit it or draft it.",
+    "js.src_errors": "Check the addresses above the brief.",
+    "js.src_remembered": "Website saved in your profile.",
+    "js.src_err_not_https": "Use an address that starts with https://.",
+    "js.src_err_bad_url": "This does not look like a web address.",
+    "js.src_err_wrong_site": "This address is on a different site than this field asks for.",
+    "js.src_err_no_handle": "Add your page or user name after the slash.",
+    "js.src_err_social_as_website": "This is a social profile: put it in its own field.",
+    "err.invalid_sources": "Check the addresses above the brief.",
     # Brief v1: objective and sub-choice
     "brief.goal.app_promotion": "app promotion",
     "brief.f.sub": "What Meta optimises for",
@@ -181,12 +207,38 @@ PL_META: dict[str, str] = {
         "działalność w Polsce, 25-55 lat. Budżet 3 GBP dziennie przez 7 "
         "dni, od 4 do 10 listopada 2026. Rzeczowo i spokojnie, bez obietnic"
         " zysku. Reklama po polsku. Nie wymieniajcie nazwy żadnej firmy."),
-    "studio.example_label": "Przykładowy brief",
-    "studio.example_hint": "Zacznij od własnych słów albo wczytaj jeden z dwóch wymyślonych "
-                           "briefów i go popraw.",
-    "studio.example.own": "własne słowa (puste pole)",
-    "studio.example.ceramics": "sklep z ceramiką (PLN)",
-    "studio.example.muse": "to studio jako narzędzie open source (GBP)",
+    "src.legend": "Co chcesz zareklamować? Pomogą linki, które to pokazują",
+    "src.hint": "Nieobowiązkowe: produkt, usługa, wydarzenie, ty sam albo sprawa. Czytamy "
+                "strony, do których podasz linki (strona, Facebook, Instagram, X), żeby "
+                "zaproponować reklamy z twoimi słowami, produktami i cenami: tylko strony "
+                "publiczne, nigdy z logowaniem. Adresy zaczynają się od https://.",
+    "src.website": "Strona internetowa lub link",
+    "src.facebook": "Facebook",
+    "src.instagram": "Instagram",
+    "src.x": "X/Twitter",
+    "src.remember": "Zapamiętaj tę stronę w moim profilu",
+    "src.use_example": "albo użyj przykładowego briefu",
+    "brief.f.subject_kind": "Co reklamujesz",
+    "brief.h.subject_kind": "Rozpoznane z twoich słów i linków; zmień, jeśli się nie zgadza.",
+    "brief.subject.product": "produkt",
+    "brief.subject.service": "usługa",
+    "brief.subject.event": "wydarzenie",
+    "brief.subject.person": "osoba lub twórca",
+    "brief.subject.organisation": "organizacja lub sprawa",
+    "brief.subject.other": "coś innego",
+    "js.brief_sum_kind": "Rozpoznane jako: {kind}.",
+    "js.brief_sum_unread": "Nie udało się odczytać {hosts} bez logowania; użyliśmy tylko "
+                           "adresu.",
+    "js.src_example": "Wczytano przykładowy brief: wymyślony sklep z ceramiką. Popraw go "
+                      "albo przygotuj szkic.",
+    "js.src_errors": "Sprawdź adresy nad briefem.",
+    "js.src_remembered": "Strona zapisana w twoim profilu.",
+    "js.src_err_not_https": "Podaj adres zaczynający się od https://.",
+    "js.src_err_bad_url": "To nie wygląda na adres strony.",
+    "js.src_err_wrong_site": "Ten adres prowadzi do innego serwisu, niż to pole.",
+    "js.src_err_no_handle": "Dopisz nazwę strony lub użytkownika po ukośniku.",
+    "js.src_err_social_as_website": "To profil społecznościowy: wpisz go w jego własne pole.",
+    "err.invalid_sources": "Sprawdź adresy nad briefem.",
     "brief.goal.app_promotion": "promocja aplikacji",
     "brief.f.sub": "Na co Meta optymalizuje",
     "brief.h.sub": "Każdy cel ma własne opcje; kod zamienia twój wybór na pola Mety. Jeśli "
