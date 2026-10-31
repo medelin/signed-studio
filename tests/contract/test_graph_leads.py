@@ -4,12 +4,12 @@ the Page token and the owner's privacy page; leads are read with the Page token,
 with a token in a URL."""
 
 import json
+import time
 
 import pytest
 
 from studio import db, leadads
 from studio.meta import objectives
-from studio.meta.adapter import AdapterError
 from tests.approve import approve
 from tests.cassettes import load
 from tests.contract.test_graph import PAGE_TOKEN, Replay, adapter
@@ -104,15 +104,62 @@ def test_leads_and_comments_follow_every_page_without_the_next_url(env):
     assert [c.external_id for c in got] == ["1_2", "1_3"]
 
 
-def test_a_failed_page_leaves_the_forms_poll_mark(env):
+def test_a_failed_form_keeps_its_mark_and_does_not_stop_the_others(env):
     conn, ledger = env
     leadads.record_form(conn, "130000000000000505", "cmp_x", "run_x", "graph")
-    replay = Pages([_page([_lead(1)], "c1"), None])
-    with pytest.raises(AdapterError):
-        leadads.poll(conn, ledger, adapter(replay), now=2_000_000_000)
-    assert leadads.forms(conn, "graph") == [("130000000000000505", 0.0)]
+    leadads.record_form(conn, "130000000000000506", "cmp_y", "run_y", "graph")
+    # the first form fails on its second page; the second form reads fine
+    replay = Pages([_page([_lead(1)], "c1"), None, _page([_lead(2)])])
+    out = leadads.poll(conn, ledger, adapter(replay), now=2_000_000_000)
+    assert out == {"forms": 1, "fetched": 1, "new": 1, "failed": 1}
+    assert dict(leadads.forms(conn, "graph")) == {"130000000000000505": 0.0,
+                                                  "130000000000000506": 2_000_000_000.0}
+    g = adapter(Pages([_page([_lead(1)], "c1"), _page([_lead(3)]), _page([])]))
+    assert leadads.poll(conn, ledger, g, now=2_000_000_100)["new"] == 2
+    assert leadads.forms(conn, "graph")[0] == ("130000000000000505", 2_000_000_100.0)
+
+
+class Backlog:
+    """A form's leads as Graph serves them: newest first, ``time_created`` filtering,
+    two leads a page, cursor paging."""
+
+    def __init__(self, created):
+        self.leads = [{**_lead(n), "created_time": time.strftime(
+            "%Y-%m-%dT%H:%M:%S+0000", time.gmtime(ts)), "_ts": ts}
+            for n, ts in enumerate(created)]
+        self.sent = []
+
+    def __call__(self, request):
+        import httpx
+
+        self.sent.append(request)
+        rows = sorted(self.leads, key=lambda x: -x["_ts"])
+        for rule in json.loads(request.url.params.get("filtering", "[]")):
+            op = {"GREATER_THAN": int.__gt__, "LESS_THAN": int.__lt__}[rule["operator"]]
+            rows = [r for r in rows if op(r["_ts"], rule["value"])]
+        start = int(request.url.params.get("after", "0"))
+        chunk = [{k: v for k, v in r.items() if k != "_ts"} for r in rows[start:start + 2]]
+        more = start + 2 < len(rows)
+        return httpx.Response(200, json=_page(chunk, str(start + 2) if more else ""))
+
+
+def test_a_backlog_bigger_than_the_page_cap_is_read_over_successive_polls(env):
+    """Security follow-up to E8: a backlog over the cap neither wedges the form nor skips
+    a lead; each poll reads the oldest window that fits and moves the mark to its end."""
+    conn, ledger = env
+    leadads.record_form(conn, "130000000000000505", "cmp_x", "run_x", "graph")
+    now = 1_900_000_000
+    server = Backlog([now - 50_000 + 997 * i for i in range(13)])
+    seen, marks = 0, []
+    for _ in range(10):
+        g = adapter(server, clock=lambda: now)
+        g.LEAD_PAGES = 2  # four leads a window
+        out = leadads.poll(conn, ledger, g, now=now)
+        assert "failed" not in out
+        seen += out["new"]
+        marks.append(leadads.forms(conn, "graph")[0][1])
+        if marks[-1] == now:
+            break
+    assert seen == 13 and marks == sorted(marks) and len(marks) > 1
     with conn.lock:
-        assert conn.execute("SELECT count(*) FROM leads").fetchone()[0] == 0
-    g = adapter(Pages([_page([_lead(1)], "c1"), _page([_lead(2)])]))
-    assert leadads.poll(conn, ledger, g, now=2_000_000_000)["new"] == 2
-    assert leadads.forms(conn, "graph") == [("130000000000000505", 2_000_000_000.0)]
+        assert conn.execute("SELECT count(*) FROM leads").fetchone()[0] == 13
