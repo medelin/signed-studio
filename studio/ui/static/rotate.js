@@ -19,12 +19,12 @@
       const turns = [...slot.children];
       const at = turns.findIndex((g) => g.classList.contains("on"));
       const old = turns[at];
-      const next = turns[(at + 1) % turns.length];
+      const incoming = turns[(at + 1) % turns.length];
       // no dip through the background: the next person fades in on top of the one
       // shown (moved last, so it paints over), which fades out only afterwards
       old.classList.add("was");
-      slot.appendChild(next);
-      next.classList.add("on");
+      slot.appendChild(incoming);
+      incoming.classList.add("on");
       setTimeout(() => old.classList.remove("on", "was"), FADE_MS);
     }, EVERY_MS);
   }
