@@ -24,14 +24,13 @@ from __future__ import annotations
 
 import json
 import math
-import secrets
 import sqlite3
 import time
 from collections.abc import Mapping
 from typing import Any
 
 from studio.approvals import transaction
-from studio.receipts import Ledger, canonical, sha256_hex
+from studio.receipts import Ledger, canonical, new_id, sha256_hex
 
 AGENT = "analyst"
 KIND = "insights.snapshot"
@@ -175,7 +174,7 @@ def run_id_for(campaign_id: str) -> str:
 
 def save(conn: sqlite3.Connection, ledger: Ledger, campaign_id: str,
          snap: Mapping[str, Any]) -> str:
-    snapshot_id = "sn_" + secrets.token_hex(6)
+    snapshot_id = new_id("sn_")
     body = json.dumps(dict(snap), ensure_ascii=False, sort_keys=True)
     with transaction(conn):
         conn.execute("INSERT INTO insights_snapshots (id, campaign_id, body, created_ts) "
@@ -244,7 +243,7 @@ def store_recommendations(conn: sqlite3.Connection, campaign_id: str, snapshot_i
         conn.execute("DELETE FROM recommendations WHERE campaign_id = ? AND status = 'open'",
                      (campaign_id,))
         for r in recs:
-            rid = "rc_" + secrets.token_hex(6)
+            rid = new_id("rc_")
             conn.execute("INSERT INTO recommendations (id, campaign_id, snapshot_id, body, "
                          "created_ts) VALUES (?, ?, ?, ?, ?)",
                          (rid, campaign_id, snapshot_id, json.dumps(r), time.time()))

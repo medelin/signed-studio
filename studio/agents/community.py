@@ -24,7 +24,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import secrets
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -37,7 +36,7 @@ from studio.approvals import TTL_S, Pending, transaction
 from studio.muse.client import MuseClient, MuseError, MuseResult, family_details
 from studio.muse.structured import structured
 from studio.pii import choose_tier, contains_pii, long_digit_run, redact
-from studio.receipts import Ledger, canonical, is_opaque, sha256_hex
+from studio.receipts import Ledger, canonical, is_opaque, new_id, sha256_hex
 
 AGENT = "community"
 LOCAL_ACTIONS = ("draft",)
@@ -354,7 +353,7 @@ def simulate(conn: sqlite3.Connection, text: str, author: str = "Simulated visit
     if not text or len(text) > MAX_COMMENT:
         raise InboxError(f"comment must be 1-{MAX_COMMENT} characters", "inbox_comment_length",
                          max=MAX_COMMENT)
-    comment_id = "sim-" + secrets.token_hex(6)
+    comment_id = new_id("sim-")
     with transaction(conn):
         conn.execute(
             "INSERT INTO comments (id, post_id, author_name, text, created_ts, status, source) "

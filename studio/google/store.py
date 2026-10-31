@@ -4,14 +4,13 @@ has Meta's three object ids and a ``mock|graph`` adapter check)."""
 from __future__ import annotations
 
 import json
-import secrets
 import sqlite3
 import time
 from collections.abc import Mapping
 from typing import Any
 
 from studio.approvals import transaction
-from studio.receipts import Ledger, canonical, sha256_hex
+from studio.receipts import Ledger, canonical, new_id, sha256_hex
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS google_campaigns (
@@ -74,7 +73,7 @@ def save_snapshot(conn: sqlite3.Connection, ledger: Ledger, campaign_id: str,
         if totals["impressions"] else 0.0
     snap = {"channel": "google_search", "date_preset": "last_7d", "provenance": provenance,
             "totals": totals, "days": [dict(r) for r in rows]}
-    snapshot_id = "gsn_" + secrets.token_hex(6)
+    snapshot_id = new_id("gsn_")
     with transaction(conn):
         conn.execute("INSERT INTO google_insights (id, campaign_id, body, created_ts) "
                      "VALUES (?, ?, ?, ?)", (snapshot_id, campaign_id,

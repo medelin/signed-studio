@@ -53,7 +53,7 @@ from studio.meta.currency import to_minor
 from studio.muse.client import MuseClient, MuseError, ToolCall
 from studio.muse.openweights import OpenWeightsClient, OpenWeightsUnavailable
 from studio.muse.structured import structured
-from studio.receipts import canonical, is_opaque, sha256_hex
+from studio.receipts import canonical, is_opaque, new_id, sha256_hex
 
 AGENT = "producer"
 MODEL = "muse-spark-1.3"
@@ -593,7 +593,7 @@ def _handlers(ctx: Context, run: RunResult, brief: str,
                 ctx.conn.execute(
                     "INSERT INTO creatives (id, run_id, placement, path, sha256, created_ts) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    ("cr_" + secrets.token_hex(6), run.run_id, im.placement, im.path,
+                    (new_id("cr_"), run.run_id, im.placement, im.path,
                      im.sha256, time.time()))
         emit("creatives")
         return {"images": [{"placement": i.placement, "size": f"{i.width}x{i.height}"}

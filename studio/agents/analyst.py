@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import json
 import math
-import secrets
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -28,7 +27,7 @@ from studio.approvals import transaction
 from studio.muse.client import TOKEN_PRICES, MuseClient, MuseError, MuseResult
 from studio.muse.structured import strict_schema
 from studio.muse.vision import strip_metadata, vision_parts
-from studio.receipts import Ledger, sha256_hex
+from studio.receipts import Ledger, new_id, sha256_hex
 
 AGENT = "analyst"
 MODEL = "muse-spark-1.3"
@@ -207,7 +206,7 @@ def inbox_summary(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def save(conn: sqlite3.Connection, ledger: Ledger, run_id: str, out: AnalystResult) -> str:
-    report_id = "rp_" + secrets.token_hex(6)
+    report_id = new_id("rp_")
     body = out.as_dict()
     with transaction(conn):
         conn.execute("INSERT INTO reports (id, run_id, body, created_ts) VALUES (?, ?, ?, ?)",

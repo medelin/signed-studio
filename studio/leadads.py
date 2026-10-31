@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import secrets
 import sqlite3
 import time
 from collections.abc import Mapping
@@ -35,7 +34,7 @@ from urllib.parse import urlsplit
 
 from studio import envelope
 from studio.approvals import transaction
-from studio.receipts import Ledger, sha256_hex
+from studio.receipts import Ledger, new_id, sha256_hex
 
 AGENT = "lead_ads"
 SCHEMA = """
@@ -149,7 +148,7 @@ def ingest(conn: sqlite3.Connection, ledger: Ledger, client: Any, lead: RemoteLe
     from studio.agents import lead_scorer
 
     row = lead_row(lead)
-    lead_id = "l-" + secrets.token_hex(5)
+    lead_id = new_id("l-", 5)
     with transaction(conn):
         if conn.execute("SELECT 1 FROM leads WHERE external_id = ?",
                         (lead.external_id,)).fetchone():

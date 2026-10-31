@@ -40,7 +40,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat
 
 from studio.approvals import transaction
-from studio.receipts import is_opaque
+from studio.receipts import is_opaque, new_id
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS api_tokens (
@@ -167,7 +167,7 @@ class Tokens:
         if days not in DAY_CHOICES:
             raise TokenError("token_expiry")
         now = self.clock()
-        tid = "tok_" + secrets.token_hex(6)
+        tid = new_id("tok_")
         value = f"{PREFIX}{tid}_{secrets.token_urlsafe(32)}"
         with transaction(self.conn) as c:
             acct = c.execute("SELECT status, is_demo, credential_gen FROM accounts WHERE "

@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import re
+import secrets
 import threading
 import time
 import uuid
@@ -235,6 +236,16 @@ def is_opaque(value: Any) -> bool:
     if _HEX.fullmatch(value) and len(value) in (64, 128):
         return True
     return bool(_OPAQUE_ID.fullmatch(value)) and redact(value) == value
+
+
+def new_id(prefix: str, nbytes: int = 6) -> str:
+    """A fresh random id ``prefix + hex`` that ``is_opaque`` accepts: a hex tail can by
+    chance hold a digit run that the PII rules read as a phone number (``600123456``), so
+    such draws are skipped instead of making the id unusable in a receipt."""
+    while True:
+        value = prefix + secrets.token_hex(nbytes)
+        if is_opaque(value):
+            return value
 
 
 _ID_FIELDS = ("model", "provider", "tier")

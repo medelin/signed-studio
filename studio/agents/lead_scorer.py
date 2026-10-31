@@ -10,7 +10,6 @@ the score or temperature. A HOT lead gets a "call within 30 min" task and an own
 from __future__ import annotations
 
 import json
-import secrets
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -23,7 +22,7 @@ from studio.approvals import transaction
 from studio.muse.client import MuseClient, MuseResult
 from studio.muse.structured import structured
 from studio.pii import choose_tier, find_email, find_phone
-from studio.receipts import Ledger, redact, sha256_hex
+from studio.receipts import Ledger, new_id, redact, sha256_hex
 
 AGENT = "lead_scorer"
 HOT, WARM = 80, 60
@@ -168,7 +167,7 @@ def score_lead(conn: sqlite3.Connection, ledger: Ledger, client: MuseClient | No
             have = conn.execute("SELECT id FROM tasks WHERE lead_id = ? AND done = 0 AND "
                                 "title LIKE 'Call within 30 min%'", (lead_id,)).fetchone()
             if have is None:
-                task_id = "t-" + secrets.token_hex(5)
+                task_id = new_id("t-", 5)
                 conn.execute("INSERT INTO tasks (id, lead_id, title, due_ts, done) "
                              "VALUES (?, ?, ?, ?, 0)",
                              (task_id, lead_id, f"Call within 30 min ({owner})",
@@ -191,7 +190,7 @@ def lead_from_comment(conn: sqlite3.Connection, comment_id: str) -> str:
         raise KeyError(comment_id)
     if row[2]:
         return str(row[2])
-    lead_id = "l-" + secrets.token_hex(5)
+    lead_id = new_id("l-", 5)
     text = str(row[1])
     with transaction(conn):
         conn.execute(

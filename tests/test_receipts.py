@@ -396,3 +396,13 @@ def test_export_of_pii_laden_inputs_has_no_contact_data(tmp_path):
                details={"n": "+48 601 234 567"})
     text = led.export_jsonl()
     assert "jan@example.org" not in text and "601 234 567" not in text
+
+
+def test_new_id_is_always_opaque_even_when_the_hex_reads_like_a_phone(monkeypatch):
+    import secrets as _secrets
+
+    from studio import receipts as r
+    draws = iter(["600123456abc", "0a1b2c3d4e5f"])
+    monkeypatch.setattr(_secrets, "token_hex", lambda n=6: next(draws))
+    assert not r.is_opaque("tok_600123456abc")
+    assert r.new_id("tok_") == "tok_0a1b2c3d4e5f"

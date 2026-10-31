@@ -26,7 +26,6 @@
 from __future__ import annotations
 
 import json
-import secrets
 import sqlite3
 import time
 from pathlib import Path
@@ -37,7 +36,7 @@ from studio import executor
 from studio.agents import rules
 from studio.approvals import TTL_S, Pending, Verified, confirmed_brief, transaction
 from studio.meta.adapter import DISAPPROVED, PAUSED, REPLACE, Adapter, AdapterError
-from studio.receipts import Ledger, canonical, sha256_hex
+from studio.receipts import Ledger, canonical, new_id, sha256_hex
 
 AGENT = "media_buyer"
 KIND = "ad.review"
@@ -126,7 +125,7 @@ def check_all(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter) -> int
         if state.get("effective_status") != DISAPPROVED:
             continue
         rule_id = rule_for(state.get("reasons") or [])
-        did = "dp_" + secrets.token_hex(6)
+        did = new_id("dp_")
         with transaction(conn):
             cur = conn.execute(
                 "INSERT OR IGNORE INTO disapprovals (id, campaign_id, ad_external_id, body, "
