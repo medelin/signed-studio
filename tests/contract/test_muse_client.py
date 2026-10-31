@@ -494,13 +494,13 @@ def test_a_503_is_retried_once_and_both_attempts_have_receipts():
     assert statuses == [503, None]
 
 
-def test_other_errors_and_a_second_503_are_not_retried():
+def test_other_errors_are_final_and_a_lasting_503_stops_after_four_attempts():
     from studio.muse import client as mc
 
     led = Ledger()
     c = mc.MuseClient("test-key-not-a-secret", ledger=led, budget=Budget(1.0))
     c.retry_delay_s = 0.0
-    for first, calls in ((400, 1), (503, 2)):
+    for first, calls in ((400, 1), (503, 4)):
         with respx.mock() as router:
             route = router.post(f"{mc.BASE_URL}/chat/completions").mock(
                 return_value=httpx.Response(first, json={"error": {"type": "e"}}))

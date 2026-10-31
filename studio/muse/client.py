@@ -410,18 +410,21 @@ class MuseClient:
     # -- internals -------------------------------------------------------------------
 
     retry_delay_s = 2.0
+    RETRY_BACKOFF = (1.0, 2.5, 5.0)  # × retry_delay_s: waits of 2, 5 and 10 s
     RETRY_STATUS = frozenset({502, 503, 504, 529})
 
     def _call(self, *args: Any, **kwargs: Any) -> MuseResult:
-        """``_call_once``, retried once after ``retry_delay_s`` when the API answered
-        502/503/504/529 (an answered error, so nothing was produced; the failed attempt
-        keeps its own error receipt). Network errors and every other status are final."""
-        try:
-            return self._call_once(*args, **kwargs)
-        except MuseError as exc:
-            if exc.status not in self.RETRY_STATUS:
-                raise
-        time.sleep(self.retry_delay_s)
+        """``_call_once``, retried up to three times with growing waits when the API
+        answered 502/503/504/529 (an answered error, so nothing was produced; each failed
+        attempt keeps its own error receipt): a brief outage upstream should not fail a
+        whole run. Network errors and every other status are final."""
+        for factor in self.RETRY_BACKOFF:
+            try:
+                return self._call_once(*args, **kwargs)
+            except MuseError as exc:
+                if exc.status not in self.RETRY_STATUS:
+                    raise
+            time.sleep(self.retry_delay_s * factor)
         return self._call_once(*args, **kwargs)
 
     def _call_once(
