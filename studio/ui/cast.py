@@ -656,7 +656,9 @@ def rotation(slots: Sequence[Sequence[str]], label: str = "", cls: str = "") -> 
             draw, box = figure(p, x, y, 1.0)
             tops.append(box[1])
             on = " on" if i == 0 else ""
-            body.append(f'<g class="turn{on}" data-who="{p.key}">{draw}</g>')
+            look = f"{p.pronoun} {p.skin}"  # rotate.js never shows two alike at once
+            body.append(f'<g class="turn{on}" data-who="{p.key}" data-look="{look}">'
+                        f'{draw}</g>')
         body.append("</g>")
         x0 += width + GAP
     top = max(0, int(min(tops) - 4))

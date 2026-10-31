@@ -258,3 +258,16 @@ def test_a_rotation_draws_every_owner_on_one_floor_and_shows_one_per_slot():
     assert svg.count('class="turn on"') == 2  # without script: the first of each slot
     assert [m for m in re.findall(r'data-who="(\w+)"', svg)] == [k for s in slots for k in s]
     assert len(svg.encode()) <= cast.MAX_BYTES * 5 + 2048
+    looks = re.findall(r'data-look="(\w+) (\d)"', svg)  # rotate.js keeps them apart
+    assert looks[0] == ("she", str(cast.BY_KEY["grace"].skin)) and len(looks) == 5
+
+
+def test_the_login_rotation_always_has_an_unlike_partner():
+    """rotate.js only brings in someone whose pronoun and skin tone both differ from the
+    person shown beside them: every owner of each slot needs such a partner."""
+    a, b = (["grace", "amara", "leila", "mei", "ola"], ["kofi", "tomasz", "harjit", "diego"])
+    for row, other in ((a, b), (b, a)):
+        for k in row:
+            p = cast.BY_KEY[k]
+            assert any(cast.BY_KEY[o].pronoun != p.pronoun and cast.BY_KEY[o].skin != p.skin
+                       for o in other), k
