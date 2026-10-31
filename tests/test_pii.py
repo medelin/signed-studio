@@ -227,10 +227,11 @@ def test_a_number_glued_to_letters_is_found_and_masked(text, kind):
 def test_glued_hex_ids_and_short_numbers_stay():
     from studio.receipts import redact as receipt_redact
 
-    for text in ("3f9a1234567890bbb", "run_3fa9c2b1d4e5f607", "an_ab600123456cd",
+    for text in ("3f9a1234567890bbb", "run_3fa9c2b1d4e5f607", "an_ab600123456cdef0",
                  "kubek350ml za 89zł", "model X200"):
         assert contains_pii(text) is None, text
         assert receipt_redact(text) == text, text
+    assert contains_pii("id 550e8400-e29b-41d4-a716-446655440000") is None
 
 
 @pytest.mark.parametrize("text", ["napisz: kontakt@sklep-żabka.pl", "zofia.łęcka@poczta.pl",
@@ -241,3 +242,46 @@ def test_unicode_email_addresses_are_found_and_masked(text):
     m = contains_pii(text)
     assert m is not None and m.kind == "email", text
     assert "@" not in redact(text) and "@" not in receipt_redact(text)
+
+
+# Security review of the fix: hex letters, separators, long runs, decomposed e-mails.
+@pytest.mark.parametrize("text", ["abc600123456", "a44051401359", "a44051401458",
+                                  "tel600-123-456", "tel600 123 456", "tel(600)123456",
+                                  "tel600123456789012345", "fax+48600123456x"])
+def test_glued_runs_with_hex_letters_separators_or_any_length_are_masked(text):
+    from studio.receipts import redact as receipt_redact
+
+    for masked in (redact(text), receipt_redact(text)):
+        assert sum(ch.isdigit() for ch in masked) < 9, (text, masked)
+    assert choose_tier(text, "contributor")[0] == "standard"
+
+
+@pytest.mark.parametrize(("text", "kind"), [("abc600123456", "phone"),
+                                            ("a44051401359", "pesel"),
+                                            ("tel600-123-456", "phone"),
+                                            ("tel600 123 456 dzięki", "phone")])
+def test_glued_runs_are_classified(text, kind):
+    m = contains_pii(text)
+    assert m is not None and m.kind == kind, (text, m)
+
+
+@pytest.mark.parametrize("text", ["kontakt@sklep-z\u0307abka.pl", "zofia.l\u0301ecka@poczta.pl",
+                                  "kontakt@sklep\u200b.pl", "pisz: jan@firma", "a@b"])
+def test_decomposed_or_bare_addresses_count_as_email(text):
+    from studio.receipts import redact as receipt_redact
+
+    m = contains_pii(text)
+    assert m is not None and m.kind == "email", text
+    assert "@" not in redact(text) and "@" not in receipt_redact(text), text
+
+
+@pytest.mark.parametrize("text", ["jan.kowalski@example.com", "x@.example.com",
+                                  "jan@-b.pl", "x@a..pl", "A_B@Sub.Domain.co.uk",
+                                  "100%+tag@mail-1.example.org"])
+def test_new_email_pattern_covers_every_address_the_old_one_caught(text):
+    from studio.receipts import _EMAIL as OLD
+    from studio.receipts import redact as receipt_redact
+
+    assert OLD.search(text), text
+    out = receipt_redact(f"pisz: {text} teraz")
+    assert "@" not in out and not OLD.search(out), out
