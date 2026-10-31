@@ -714,7 +714,12 @@ class Accounts:
                           (hash_password(password), row[0]))
         return self.get(row[0])
 
-    def _check_password(self, stored: str, password: str) -> None:
+    def _check_password(self, stored: str, password: str, *, external_fresh: bool = False
+                        ) -> None:
+        """The password, or, for an account without one (registered with a provider), a
+        provider sign-in less than ``EXTERNAL_PASSWORD_WINDOW_S`` ago (``external_fresh``)."""
+        if not stored and external_fresh:
+            return
         if not verify_password(stored or _dummy_hash(), password[:MAX_PASSWORD_LEN + 1]):
             raise WrongPassword("the password is not correct")
 
@@ -855,15 +860,17 @@ class Accounts:
 
     # -- second factor ---------------------------------------------------------------------
 
-    def totp_begin(self, account_id: str, password: str) -> str:
-        """Start an enrolment: a new secret, sealed as pending until a code confirms it."""
+    def totp_begin(self, account_id: str, password: str, *, external_fresh: bool = False
+                   ) -> str:
+        """Start an enrolment: a new secret, sealed as pending until a code confirms it.
+        Needs the password (or a fresh provider sign-in for an account without one)."""
         with self._read() as c:
             row = self._require(c, account_id)
         if row[3]:
             raise DemoAccount("two-step sign-in stays off for the shared demo account")
         if row[4]:
             raise TwoFactorState("two-step sign-in is already on")
-        self._check_password(row[1], password)
+        self._check_password(row[1], password, external_fresh=external_fresh)
         secret = new_totp_secret()
         with transaction(self.conn) as c:
             c.execute("UPDATE accounts SET totp_pending = ?, updated_ts = ? WHERE id = ?",
@@ -1022,15 +1029,18 @@ class Accounts:
 
     # -- deletion and export ---------------------------------------------------------------
 
-    def delete(self, account_id: str, *, confirm: str, password: str, code: str = "") -> None:
-        """Typed confirmation (the user name) + password (+ a code with 2FA on). Erases the
+    def delete(self, account_id: str, *, confirm: str, password: str, code: str = "",
+               external_fresh: bool = False) -> None:
+        """Password (or a fresh provider sign-in for an account without one) + typed
+        confirmation (the user name) (+ a code with 2FA on). Erases the
         personal fields and the second factor, revokes every session and approver key; the
         row stays as a tombstone so receipts keep resolving to a pseudonymous id."""
         with self._read() as c:
             row = self._require(c, account_id)
         if row[3]:
             raise DemoAccount("the shared demo account cannot be deleted")
-        self._check_password(row[1], password)  # first: no other error answers before it
+        # first: no other error answers before it
+        self._check_password(row[1], password, external_fresh=external_fresh)
         if not hmac.compare_digest(normalize_username(confirm).encode(), row[0].encode()):
             raise ConfirmationMismatch("type your user name to confirm")
         now = self.clock()

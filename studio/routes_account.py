@@ -340,7 +340,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not ok:
             return refused(request, sid, account, "two_factor", ip)
         try:
-            await run_in_threadpool(store.totp_begin, account.id, fields.get("password", ""))
+            from studio import routes_social  # it imports this module
+
+            await run_in_threadpool(
+                store.totp_begin, account.id, fields.get("password", ""),
+                external_fresh=routes_social.external_fresh(app, account.id))
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
@@ -470,10 +474,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         ip, ok = limited(request)
         if not ok:
             return refused(request, sid, account, "delete", ip)
+        from studio import routes_social  # it imports this module
+
         try:
             await run_in_threadpool(store.delete, account.id, confirm=fields.get("confirm", ""),
                                     password=fields.get("password", ""),
-                                    code=fields.get("code", ""))
+                                    code=fields.get("code", ""),
+                                    external_fresh=routes_social.external_fresh(app, account.id))
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,

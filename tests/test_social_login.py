@@ -241,3 +241,38 @@ def test_a_full_state_table_refuses_the_start(tmp_path):
     with TestClient(app, base_url="https://testserver") as c:
         r = c.get("/auth/google/start", follow_redirects=False)
     assert r.status_code == 303 and "social_error=" in r.headers["location"]
+
+
+# -- review fixes (31 Oct): a provider account without a password -----------------------
+
+
+def test_a_passwordless_account_turns_on_two_step_and_deletes_after_a_fresh_sign_in(tmp_path):
+    app, _ = _app(tmp_path, GOOGLE)
+    with TestClient(app, base_url="https://testserver") as c:
+        account = app.state.sessions.account_of(_sign_in(c).cookies[COOKIE])
+        app.state.external_signins[account.id] = 0.0  # long ago: a password is needed
+        r = c.post("/account/2fa/start", data={"csrf": csrf(c), "password": ""},
+                   follow_redirects=False)
+        assert r.status_code == 400
+        app.state.external_signins.pop(account.id)
+        _sign_in(c)
+        r = c.post("/account/2fa/start", data={"csrf": csrf(c), "password": ""},
+                   follow_redirects=False)
+        assert r.status_code == 303, r.text
+        c.post("/account/2fa/cancel", data={"csrf": csrf(c)})
+        r = c.post("/account/delete", data={"csrf": csrf(c), "confirm": account.username,
+                                            "password": ""}, follow_redirects=False)
+        assert r.status_code == 200, r.text
+    assert app.state.accounts.get(account.id).status == "deleted"
+
+
+def test_a_password_account_still_needs_its_password_after_a_provider_sign_in(tmp_path):
+    from studio import accounts
+
+    app, _ = _app(tmp_path, GOOGLE)
+    store = app.state.accounts
+    ola = store.create("ola", PASSWORD)
+    with pytest.raises(accounts.WrongPassword):
+        store.totp_begin(ola.id, "", external_fresh=True)
+    with pytest.raises(accounts.WrongPassword):
+        store.delete(ola.id, confirm="ola", password="", external_fresh=True)
