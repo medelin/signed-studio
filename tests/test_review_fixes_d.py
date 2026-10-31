@@ -281,3 +281,24 @@ def test_a_linked_owners_text_with_a_code_like_string_is_a_brief(tmp_path):
     app.state.whatsapp_inbox.flush()
     statuses = [r.details.get("status") for r in wa_receipts(app)]
     assert "verification_failed" not in statuses and "accepted" in statuses
+
+
+def test_the_lead_webhook_under_read_only_asks_meta_to_retry_and_stores_nothing(tmp_path):
+    from studio import leadads
+    from tests.attack.test_lead_ads import RUN as LEAD_RUN
+    from tests.attack.test_lead_ads import SECRET, _event
+    from tests.attack.test_lead_ads import _sign as hub_sign
+
+    app = create_app(settings(tmp_path, META_APP_SECRET=SECRET, STUDIO_READ_ONLY="1"))
+    form_id = "mock-form-0a1b2c3d4e"
+    app.state.adapter.objects[form_id] = {"type": "lead_form"}
+    leadads.record_form(app.state.conn, form_id, "cmp_hook1", LEAD_RUN, app.state.adapter.name)
+    body = _event(form_id, f"lead-demo-2-{form_id[-6:]}")
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.post("/api/meta/webhook", content=body,
+                   headers={"X-Hub-Signature-256": hub_sign(body)})
+        assert r.status_code == 503 and r.headers.get("retry-after")
+        # an unsigned request is still refused first
+        assert c.post("/api/meta/webhook", content=body).status_code == 403
+    assert app.state.conn.execute("SELECT count(*) FROM leads WHERE external_id != ''"
+                                  ).fetchone()[0] == 0

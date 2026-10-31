@@ -49,6 +49,7 @@ LOG = logging.getLogger("studio.meta")
 CHALLENGE = re.compile(r"\d{1,64}")
 REC_ID = re.compile(r"rc_[0-9a-f]{12}")
 DISAPPROVAL_ID = re.compile(r"dp_[0-9a-f]{12}")
+READ_ONLY_RETRY_S = 600  # the leadgen webhook under STUDIO_READ_ONLY: Meta retries later
 
 
 def form_globals() -> dict[str, Any]:
@@ -194,6 +195,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not leadads.verify_signature(body, request.headers.get("x-hub-signature-256"),
                                         settings.meta_app_secret):
             return JSONResponse({"error": "webhook_refused"}, 403)
+        if settings.read_only:
+            # STUDIO_READ_ONLY writes nothing: Meta retries a 5xx later, so no lead is lost
+            return JSONResponse({"error": "read_only"}, 503,
+                                headers={"Retry-After": str(READ_ONLY_RETRY_S)})
         try:
             event = json.loads(body)
         except ValueError:
