@@ -587,8 +587,8 @@ def _seed_spend(app):
             conn.execute("INSERT INTO insights_snapshots (id, campaign_id, body, created_ts) "
                          "VALUES (?, ?, ?, ?)",
                          (f"sn{i}", cid, json.dumps({"spend_by_day": days}), ts))
-        conn.execute("INSERT INTO billing (account_id, customer_id, status, updated_ts) "
-                     "VALUES (?, 'cus_1', 'active', ?)", (ola, now))
+        conn.execute("INSERT INTO billing (account_id, customer_id, status, currency, "
+                     "updated_ts) VALUES (?, 'cus_1', 'active', 'GBP', ?)", (ola, now))
     return ola, bob
 
 
@@ -727,3 +727,96 @@ def test_a_campaign_approved_by_a_mandate_is_billed_to_the_mandates_account(tmp_
     billing.report_spend(conn, api, "2026-10-29", ledger=app.state.ledger)
     assert conn.execute("SELECT spend_minor FROM spend_usage WHERE account_id = ?",
                         (ola,)).fetchone() == (2000,)  # 12.34 + 0.66 + 7.00
+
+
+def _meter_events(fake):
+    return [parse_qs(r.content.decode()) for r in fake.posts
+            if r.url.path == "/v1/billing/meter_events"]
+
+
+def _usage_statuses(app):
+    return sorted(r.details["status"] for r in app.state.ledger.receipts()
+                  if r.details.get("tool") == "billing.usage")
+
+
+def test_spend_in_another_currency_than_the_subscription_is_skipped(tmp_path):
+    fake = FakeStripe()
+    app = _billing_app(tmp_path, fake, **FEE)
+    ola, _ = _seed_spend(app)
+    with app.state.conn.lock:
+        app.state.conn.execute("UPDATE billing SET currency = 'EUR' WHERE account_id = ?",
+                               (ola,))
+    out = billing.report_spend(app.state.conn, fake.api(app.state.settings.billing),
+                               "2026-10-29", ledger=app.state.ledger)
+    assert out["sent"] == 0 and _meter_events(fake) == []
+    assert _usage_statuses(app) == ["currency_mismatch", "no_customer"]
+
+
+def test_a_row_without_its_currency_falls_back_to_the_metered_price(tmp_path):
+    fake = FakeStripe({**PRICES, "price_spend": {"id": "price_spend", "currency": "gbp"}})
+    app = _billing_app(tmp_path, fake, **FEE)
+    ola, _ = _seed_spend(app)
+    with app.state.conn.lock:
+        app.state.conn.execute("UPDATE billing SET currency = '' WHERE account_id = ?", (ola,))
+    out = billing.report_spend(app.state.conn, fake.api(app.state.settings.billing),
+                               "2026-10-29", ledger=app.state.ledger)
+    assert out["sent"] == 1 and _meter_events(fake)[0]["payload[value]"] == ["65"]
+
+
+def test_the_subscription_currency_is_stored_from_its_events(tmp_path):
+    app = _billing_app(tmp_path, FakeStripe())
+    aid = app.state.conn.execute("SELECT id FROM accounts WHERE username = 'ola'"
+                                 ).fetchone()[0]
+    with TestClient(app, base_url="https://testserver") as c:
+        _hook(c, "customer.subscription.created", {
+            "id": "sub_1", "customer": "cus_1", "status": "active", "currency": "pln",
+            "metadata": {"account_id": aid}}, "e1")
+    assert app.state.conn.execute("SELECT currency FROM billing WHERE account_id = ?",
+                                  (aid,)).fetchone() == ("PLN",)
+
+
+@pytest.mark.parametrize("amount,cur,want", [
+    ("12.34", "GBP", 1234), ("1234", "JPY", 1234), ("100", "ISK", 10000),
+    ("1.5", "HUF", 150), ("1.234", "KWD", 1234), ("0.005", "EUR", 1)])
+def test_stripe_minor_units(amount, cur, want):
+    """Stripe's rules, not Meta's offset (ISK and HUF are 1 at Meta, 100 at Stripe)."""
+    assert billing.stripe_minor(Decimal(amount), cur) == want
+
+
+def test_a_zero_decimal_currency_is_metered_in_whole_units(tmp_path):
+    fake = FakeStripe()
+    app = _billing_app(tmp_path, fake, **FEE)
+    ola, _ = _seed_spend(app)
+    with app.state.conn.lock:
+        app.state.conn.execute("UPDATE campaigns SET currency = 'JPY'")
+        app.state.conn.execute("UPDATE billing SET currency = 'JPY' WHERE account_id = ?",
+                               (ola,))
+    billing.report_spend(app.state.conn, fake.api(app.state.settings.billing), "2026-10-29",
+                         ledger=app.state.ledger)
+    # 12.34 + 0.66 = 13 yen (insights in whole yen in practice) → 5 % = 0.65 → 1
+    assert _meter_events(fake)[0]["payload[value]"] == ["1"]
+
+
+def test_one_failed_send_is_recorded_and_the_run_goes_on(tmp_path):
+    fake = FakeStripe()
+    app = _billing_app(tmp_path, fake, **FEE)
+    ola, bob = _seed_spend(app)
+    with app.state.conn.lock:
+        app.state.conn.execute("INSERT INTO billing (account_id, customer_id, status, "
+                               "currency, updated_ts) VALUES (?, 'cus_2', 'active', 'GBP', "
+                               "?)", (bob, time.time()))
+    api = fake.api(app.state.settings.billing)
+    real = api.meter_event
+
+    def flaky(**kw):
+        if kw["customer_id"] == "cus_1":
+            raise billing.BillingError("stripe_unreachable")
+        real(**kw)
+
+    api.meter_event = flaky
+    with pytest.raises(billing.SendFailed) as failed:
+        billing.report_spend(app.state.conn, api, "2026-10-29", ledger=app.state.ledger)
+    assert failed.value.result == {"accounts": 2, "sent": 1, "skipped": 0, "failed": 1}
+    rows = app.state.conn.execute("SELECT account_id FROM spend_usage").fetchall()
+    assert [r[0] for r in rows] == [bob]  # ola's record undone: the next run retries it
+    assert _usage_statuses(app) == ["send_failed", "sent"]
