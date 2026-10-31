@@ -414,6 +414,7 @@ EN: dict[str, str] = {
     "err.screenshot_too_large": "The screenshot is larger than 5 MB.",
     "err.invalid_screenshot": "The screenshot could not be read as PNG or JPEG.",
     "err.report_in_progress": "A report is already being written.",
+    "err.comment_closed": "This comment was already answered or hidden; it is not re-triaged.",
     "err.context_too_large": "The ledger is too large for one prompt.",
     "err.analyst_budget": "The analyst budget for this report is used up.",
     "err.invalid_comment": "The comment is not valid.",
@@ -850,6 +851,8 @@ PL: dict[str, str] = {
     "err.screenshot_too_large": "Zrzut ekranu jest większy niż 5 MB.",
     "err.invalid_screenshot": "Nie udało się odczytać zrzutu ekranu jako PNG ani JPEG.",
     "err.report_in_progress": "Raport jest już w trakcie pisania.",
+    "err.comment_closed": "Ten komentarz ma już odpowiedź albo jest ukryty; nie jest "
+                          "ponownie oceniany.",
     "err.context_too_large": "Rejestr jest za duży na jeden prompt.",
     "err.analyst_budget": "Budżet analityka na ten raport został wyczerpany.",
     "err.invalid_comment": "Komentarz jest nieprawidłowy.",
