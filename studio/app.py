@@ -39,6 +39,7 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import (
     HTMLResponse,
     JSONResponse,
@@ -716,8 +717,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                                          fields.get(auth.CSRF_FIELD)):
             app.state.limiter.settle(ip, False)  # a forged form counts as a failure
             return fail("csrf", 403)
-        # No await from here to settle(): the global count is exact, never "in flight".
-        account = app.state.accounts.authenticate(username, password)  # argon2id, no enum
+        # argon2id (no user enumeration) in the threadpool: the event loop keeps serving.
+        # The attempt was reserved above, so a request waiting here is already counted.
+        account = await run_in_threadpool(app.state.accounts.authenticate, username, password)
         two_step = account is not None and account.totp_enabled
         # a session follows a success without a second step: it counts as a sign-in
         if not app.state.limiter.settle(ip, account is not None, clear=not two_step,

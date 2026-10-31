@@ -638,3 +638,39 @@ def test_delete_checks_the_password_before_the_typed_confirmation(app):
     a = store.by_username("ola")
     with pytest.raises(accounts.WrongPassword):
         store.delete(a.id, confirm="someone-else", password="wrong-" + PASSWORD)
+
+
+# -- review fixes (31 Oct): argon2 never runs on the event loop -------------------------
+
+
+def test_password_hashing_runs_off_the_event_loop(app, client, monkeypatch):
+    import asyncio
+
+    on_loop = []
+    real_verify, real_hash = accounts.verify_password, accounts.hash_password
+
+    def running_loop() -> bool:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        return True
+
+    def verify(stored, password):
+        on_loop.append(running_loop())
+        return real_verify(stored, password)
+
+    def digest(password):
+        on_loop.append(running_loop())
+        return real_hash(password)
+
+    monkeypatch.setattr(accounts, "verify_password", verify)
+    monkeypatch.setattr(accounts, "hash_password", digest)
+    assert login(client).status_code == 303
+    new = "Abc-" + PASSWORD
+    assert post(client, "/account/password", current=PASSWORD, new=new,
+                confirm=new).status_code == 303
+    assert post(client, "/account/2fa/start", password=new).status_code == 303
+    post(client, "/account/2fa/disable", password=new, code="000000")
+    post(client, "/account/delete", confirm="ola", password="wrong-" + new)
+    assert len(on_loop) >= 5 and not any(on_loop)

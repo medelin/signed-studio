@@ -4,7 +4,8 @@ login's second step ``/login/2fa``.
 Every form is a plain server-rendered HTML form (no JavaScript needed). Every ``POST`` is
 same-origin (``Origin`` here, ``Sec-Fetch-Site`` in the Gate), carries the CSRF token as the
 ``csrf`` field (checked here: ``auth.FORM_CHECKED_PREFIXES``), needs a live session and is
-refused in read-only mode. Forms that check a password or a code also count against the
+refused in read-only mode. Password hashing runs in the threadpool, never on the event
+loop. Forms that check a password or a code also count against the
 login limiter (a stolen session cookie must not become a password oracle); only a real
 success clears the client's attempts, any other form error leaves them counted. Responses are
 ``Cache-Control: no-store``: recovery codes and the enrolment QR must not be cached.
@@ -20,6 +21,7 @@ from typing import Any
 from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
@@ -314,10 +316,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         from studio import routes_social  # it imports this module
 
         try:
-            store.change_password(account.id, fields.get("current", ""),
-                                  fields.get("new", ""), fields.get("confirm", ""),
-                                  keep_sid=sid,
-                                  external_fresh=routes_social.external_fresh(app, account.id))
+            await run_in_threadpool(  # argon2: never on the event loop
+                store.change_password, account.id, fields.get("current", ""),
+                fields.get("new", ""), fields.get("confirm", ""), keep_sid=sid,
+                external_fresh=routes_social.external_fresh(app, account.id))
         except AccountError as exc:
             refused_attempt(ip, exc)
             field = "current" if isinstance(exc, accounts.WrongPassword) else "new"
@@ -338,7 +340,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not ok:
             return refused(request, sid, account, "two_factor", ip)
         try:
-            store.totp_begin(account.id, fields.get("password", ""))
+            await run_in_threadpool(store.totp_begin, account.id, fields.get("password", ""))
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
@@ -386,7 +388,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not ok:
             return refused(request, sid, account, "two_factor", ip)
         try:
-            store.totp_disable(account.id, fields.get("password", ""), fields.get("code", ""))
+            await run_in_threadpool(store.totp_disable, account.id,
+                                    fields.get("password", ""), fields.get("code", ""))
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
@@ -468,8 +471,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if not ok:
             return refused(request, sid, account, "delete", ip)
         try:
-            store.delete(account.id, confirm=fields.get("confirm", ""),
-                         password=fields.get("password", ""), code=fields.get("code", ""))
+            await run_in_threadpool(store.delete, account.id, confirm=fields.get("confirm", ""),
+                                    password=fields.get("password", ""),
+                                    code=fields.get("code", ""))
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
