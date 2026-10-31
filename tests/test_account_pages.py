@@ -599,3 +599,42 @@ def test_the_account_page_has_its_own_sign_out_button(client):
     assert 'action="/logout"' in form[:200] and 'name="csrf"' in form[:400]
     client.post("/logout", data={"csrf": csrf(client)})
     assert client.get("/account").status_code in (302, 303)
+
+
+# -- review fixes (31 Oct): only a real success clears the limiter ----------------------
+
+
+@pytest.mark.parametrize("form", ["password", "2fa_start", "delete"])
+def test_a_form_error_does_not_reset_the_password_attempts(client, app, form):
+    """A stolen cookie must not become a password oracle: an error that is not a credential
+    check (a confirmation mismatch, a state error) leaves the attempts counted."""
+    login(client)
+    if form == "2fa_start":
+        enable_2fa(client)  # /2fa/start now fails with a state error, before the password
+    wrong = "wrong-" + PASSWORD
+    guesses = {
+        "password": lambda: post(client, "/account/password", current=wrong,
+                                 new="Abc-" + PASSWORD, confirm="Abc-" + PASSWORD),
+        "2fa_start": lambda: post(client, "/account/2fa/disable", password=wrong,
+                                  code="000000"),
+        "delete": lambda: post(client, "/account/delete", confirm="ola", password=wrong),
+    }
+    benign = {
+        "password": lambda: post(client, "/account/password", current=PASSWORD,
+                                 new="Abc-" + PASSWORD, confirm="Xyz-" + PASSWORD),
+        "2fa_start": lambda: post(client, "/account/2fa/start", password=wrong),
+        "delete": lambda: post(client, "/account/delete", confirm="someone-else",
+                               password=PASSWORD),
+    }
+    statuses = []
+    for _ in range(app.state.limiter.max_attempts):
+        statuses.append(guesses[form]().status_code)
+        statuses.append(benign[form]().status_code)
+    assert 429 in statuses
+
+
+def test_delete_checks_the_password_before_the_typed_confirmation(app):
+    store = app.state.accounts
+    a = store.by_username("ola")
+    with pytest.raises(accounts.WrongPassword):
+        store.delete(a.id, confirm="someone-else", password="wrong-" + PASSWORD)

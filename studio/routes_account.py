@@ -5,7 +5,8 @@ Every form is a plain server-rendered HTML form (no JavaScript needed). Every ``
 same-origin (``Origin`` here, ``Sec-Fetch-Site`` in the Gate), carries the CSRF token as the
 ``csrf`` field (checked here: ``auth.FORM_CHECKED_PREFIXES``), needs a live session and is
 refused in read-only mode. Forms that check a password or a code also count against the
-login limiter (a stolen session cookie must not become a password oracle). Responses are
+login limiter (a stolen session cookie must not become a password oracle); only a real
+success clears the client's attempts, any other form error leaves them counted. Responses are
 ``Cache-Control: no-store``: recovery codes and the enrolment QR must not be cached.
 """
 
@@ -42,6 +43,8 @@ GROUPS = (("profile", ("profile", "billing")),
           ("assistants", ("assistants",)), ("notifications", ("notifications",)),
           ("data", ("export", "delete")))
 NO_STORE = {"Cache-Control": "no-store"}
+# the errors of a wrong guess (they count as failed sign-ins in the login limiter)
+CREDENTIAL_ERRORS = (accounts.WrongPassword, accounts.WrongCode, accounts.SecondFactorLocked)
 MAX_FIELDS = 20
 
 
@@ -240,6 +243,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         ip = client_ip(request, settings.trusted_proxies)
         return ip, bool(app.state.limiter.reserve(ip))
 
+    def refused_attempt(ip: str, exc: AccountError) -> None:
+        """Settle a form's failed attempt: a wrong password or code counts as a login
+        failure, any other error does not; neither clears the client's attempts (only a
+        real success does, so a form error cannot reset a password guesser's count)."""
+        app.state.limiter.settle(ip, not isinstance(exc, CREDENTIAL_ERRORS), clear=False)
+
     def refused(request: Request, sid: str, account: Account, form: str, ip: str) -> Response:
         r = page(request, sid, account, status=429,
                  errors={form: ("err.too_many_attempts", "")})
@@ -310,7 +319,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                                   keep_sid=sid,
                                   external_fresh=routes_social.external_fresh(app, account.id))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, accounts.WrongPassword))
+            refused_attempt(ip, exc)
             field = "current" if isinstance(exc, accounts.WrongPassword) else "new"
             return page(request, sid, account, status=400,
                         errors={"password": ("err." + exc.code, field)})
@@ -331,7 +340,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             store.totp_begin(account.id, fields.get("password", ""))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, accounts.WrongPassword))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"two_factor": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
@@ -349,7 +358,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             codes = store.totp_confirm(account.id, fields.get("code", ""))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, accounts.WrongCode))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"two_factor": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
@@ -379,8 +388,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             store.totp_disable(account.id, fields.get("password", ""), fields.get("code", ""))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, (
-                accounts.WrongPassword, accounts.WrongCode, accounts.SecondFactorLocked)))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"two_factor": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
@@ -463,8 +471,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             store.delete(account.id, confirm=fields.get("confirm", ""),
                          password=fields.get("password", ""), code=fields.get("code", ""))
         except AccountError as exc:
-            app.state.limiter.settle(ip, not isinstance(exc, (
-                accounts.WrongPassword, accounts.WrongCode, accounts.SecondFactorLocked)))
+            refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"delete": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)

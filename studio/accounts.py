@@ -1027,9 +1027,9 @@ class Accounts:
             row = self._require(c, account_id)
         if row[3]:
             raise DemoAccount("the shared demo account cannot be deleted")
+        self._check_password(row[1], password)  # first: no other error answers before it
         if not hmac.compare_digest(normalize_username(confirm).encode(), row[0].encode()):
             raise ConfirmationMismatch("type your user name to confirm")
-        self._check_password(row[1], password)
         now = self.clock()
         with self._code_attempt(account_id) as c:  # no lock without a second factor
             row = self._require(c, account_id)
