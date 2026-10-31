@@ -1,7 +1,9 @@
 """Voice brief: browser audio → ffmpeg (mono 24 kHz PCM WAV) → Muse Voice Transcribe.
 
 ``POST /asr/transcribe`` (multipart: ``request`` JSON + ``audio`` file) with
-``mode=ENDPOINTING``, ``audioEncoding=WAV`` and ``languageBias=["pl"]``; the response is the
+``mode=ENDPOINTING`` (a whole brief, with turns) or ``PUSH_TO_TALK`` (one dictated answer),
+``audioEncoding=WAV`` and ``languageBias`` as language names, the page's language first
+(``["Polish", "English"]``; the API reads names, not codes); the response is the
 transcript plus ``turns[{startMs, endMs, transcript, speaker}]``. Limits enforced here, before
 any request: ≤ 32 MB upload, ≤ 10 minutes of audio.
 
@@ -168,12 +170,22 @@ def _turns(items: list[dict[str, Any]]) -> list[Turn]:
     return out
 
 
+# languageBias takes language names (docs: "a list of languages"), not ISO codes
+LANGUAGE_NAMES = {"pl": "Polish", "en": "English"}
+
+
+def language_bias(lang: str) -> tuple[str, ...]:
+    """The page's language first, then the other one the studio speaks (owners mix them)."""
+    first = LANGUAGE_NAMES.get(lang, "English")
+    return (first, *(n for n in LANGUAGE_NAMES.values() if n != first))
+
+
 def transcribe(
     client: MuseClient,
     wav: bytes,
     *,
     run_id: str,
-    language_bias: tuple[str, ...] = ("pl",),
+    language_bias: tuple[str, ...] = ("Polish", "English"),
     mode: str = "ENDPOINTING",
 ) -> Transcript:
     """One Muse Voice Transcribe call for a converted WAV (``to_wav``)."""

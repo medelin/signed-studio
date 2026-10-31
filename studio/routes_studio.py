@@ -908,8 +908,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         try:
             wav = await run_in_threadpool(voice.to_wav, data)
             muse, _ = clients()
-            t = await run_in_threadpool(partial(voice.transcribe, muse, wav, run_id=brief_id,
-                                                language_bias=(lang,)))
+            # a dictated answer is one turn the owner delimits with the button: push-to-talk
+            t = await run_in_threadpool(partial(
+                voice.transcribe, muse, wav, run_id=brief_id,
+                language_bias=voice.language_bias(lang),
+                mode="PUSH_TO_TALK" if field else "ENDPOINTING"))
         except voice.VoiceError as exc:
             return JSONResponse({"error": exc.code}, exc.status)
         except (ReadOnlyMode, BudgetExceeded) as exc:

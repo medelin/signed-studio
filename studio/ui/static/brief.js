@@ -63,8 +63,14 @@
     return lab ? lab.textContent.trim() : "";
   }
 
+  const WARM_MS = 300;  // the microphone settles before "Listening" shows
+  const TAIL_MS = 400;  // audio kept after Stop, so the last word is not cut off
+
   async function stopDictation() {
-    if (active && active.recorder.state === "recording") active.recorder.stop();
+    const rec = active && active.recorder;
+    if (!rec || rec.state !== "recording" || rec.stopping) return;
+    rec.stopping = true;
+    setTimeout(() => { if (rec.state === "recording") rec.stop(); }, TAIL_MS);
   }
 
   async function startDictation(button, target) {
@@ -84,6 +90,9 @@
     button.setAttribute("aria-pressed", "true");
     button.textContent = T("brief_dictate_stop");
     recorder.ondataavailable = (ev) => { if (ev.data.size) chunks.push(ev.data); };
+    recorder.onstart = () => setTimeout(() => {
+      if (recorder.state === "recording") status("confirm-status", T("brief_dictating"));
+    }, WARM_MS);
     recorder.onstop = async () => {
       stream.getTracks().forEach((t) => t.stop());
       button.setAttribute("aria-pressed", "false");
@@ -112,8 +121,8 @@
       target.focus();
     };
     recorder.start();
-    status("confirm-status", T("brief_dictating"));
-    say(T("brief_dictating"));
+    status("confirm-status", T("mic_warming"));
+    setTimeout(() => say(T("brief_dictating")), WARM_MS);
   }
 
   function addDictate(target) {

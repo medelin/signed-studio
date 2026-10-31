@@ -64,7 +64,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         brief_id = "b_" + secrets.token_hex(8)
         if audio is not None:
             wav = voice.to_wav(audio)
-            t = voice.transcribe(muse, wav, run_id=brief_id, language_bias=(lang,))
+            t = voice.transcribe(muse, wav, run_id=brief_id,
+                                 language_bias=voice.language_bias(lang))
             text, source = t.text[:producer.MAX_BRIEF], "voice"
         else:
             text, source = m.text.strip(), "text"

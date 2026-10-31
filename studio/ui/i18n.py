@@ -305,7 +305,9 @@ EN: dict[str, str] = {
     "js.too_big": "Recording is larger than 32 MB.",
     "js.transcribing": "Transcribing with Muse Voice Transcribe…",
     "js.transcription_failed": "Transcription failed: {error}",
-    "js.transcribed": "Transcribed {seconds} s for ${cost}.", "js.recording": "Recording…",
+    "js.transcribed": "Transcribed {seconds} s for ${cost}.",
+    "js.recording": "Recording… speak now.",
+    "js.mic_warming": "Starting the microphone…",
     "js.no_mic": "Microphone not available: {error}",
     "js.campaign": "{name} · status {status} · {budget} {currency}/day · adapter {adapter} · "
                    "ceiling {ceiling} {currency}/day",
@@ -755,7 +757,9 @@ PL: dict[str, str] = {
     "js.too_big": "Nagranie jest większe niż 32 MB.",
     "js.transcribing": "Transkrypcja w Muse Voice Transcribe…",
     "js.transcription_failed": "Transkrypcja nie powiodła się: {error}",
-    "js.transcribed": "Przepisano {seconds} s za ${cost}.", "js.recording": "Nagrywanie…",
+    "js.transcribed": "Przepisano {seconds} s za ${cost}.",
+    "js.recording": "Nagrywanie… mów teraz.",
+    "js.mic_warming": "Włączam mikrofon…",
     "js.no_mic": "Mikrofon niedostępny: {error}",
     "js.campaign": "{name} · status {status} · {budget} {currency}/dzień · adapter "
                    "{adapter} · limit {ceiling} {currency}/dzień",

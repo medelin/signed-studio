@@ -660,6 +660,8 @@ $("open-form").addEventListener("submit", (ev) => {
     if (recBtn) { recBtn.disabled = true; status("voice-status", T("no_recording") + " " + T("brief_no_mic")); }
     return;
   }
+  const WARM_MS = 300;  // the microphone settles before "Recording" shows
+  const TAIL_MS = 400;  // audio kept after Stop
   const MAX_REC_S = 600;  // the server's limit per recording; record again to add more
   const MAX_BYTES = 32 * 1024 * 1024;
   let recorder = null;
@@ -706,12 +708,15 @@ $("open-form").addEventListener("submit", (ev) => {
         recBtn.hidden = false;
         upload(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }));
       };
+      // "Recording" only once the recorder really runs (and the microphone has settled),
+      // so the first word is not lost before the owner starts speaking
+      status("voice-status", T("mic_warming"));
+      recorder.onstart = () => setTimeout(() => status("voice-status", T("recording")), WARM_MS);
       recorder.start();
       started = Date.now();
       recBtn.hidden = true;
       stopBtn.hidden = false;
       stopBtn.focus();
-      status("voice-status", T("recording"));
       timer = setInterval(() => {
         const ms = Date.now() - started;
         $("rec-timer").textContent = fmt(ms);
@@ -722,7 +727,12 @@ $("open-form").addEventListener("submit", (ev) => {
       $("brief").focus();
     }
   });
-  stopBtn.addEventListener("click", () => { if (recorder && recorder.state === "recording") recorder.stop(); });
+  // a short tail after Stop, so the last word is not cut off
+  stopBtn.addEventListener("click", () => {
+    if (!recorder || recorder.state !== "recording") return;
+    stopBtn.disabled = true;
+    setTimeout(() => { stopBtn.disabled = false; if (recorder.state === "recording") recorder.stop(); }, TAIL_MS);
+  });
 })();
 
 // -- campaign + activation ------------------------------------------------------------

@@ -96,7 +96,11 @@ def _mock(router):
         assert request.url.path.endswith("/asr/transcribe")
         parts = _parts(request)
         sent.append(parts)
-        assert json.loads(parts["request"]) == rec["request"]["multipart"]["request"]
+        # recorded with languageBias ["pl"] (codes); the request now names languages and,
+        # for a dictated answer, uses PUSH_TO_TALK: the rest of the request is unchanged
+        same = ("model", "audioEncoding")
+        got, want = json.loads(parts["request"]), rec["request"]["multipart"]["request"]
+        assert {k: got[k] for k in same} == {k: want[k] for k in same}
         assert hashlib.sha256(parts["audio"]).hexdigest() == rec["request"]["multipart"][
             "audio_sha256"]
         return httpx.Response(200, json=rec["response"]["json"])
@@ -113,7 +117,7 @@ def test_recorded_polish_brief_is_transcribed_with_turn_timestamps():
         t = voice.transcribe(client, WAV, run_id="b_rec")
     req = json.loads(sent[0]["request"])
     assert req == {"mode": "ENDPOINTING", "model": "muse-voice-transcribe-1.0",
-                   "audioEncoding": "WAV", "languageBias": ["pl"]}
+                   "audioEncoding": "WAV", "languageBias": ["Polish", "English"]}
     assert "kubki" in t.text and "Instagram" in t.text
     assert t.turns and t.turns[0].start_ms == 0 and t.turns[-1].end_ms > 15_000
     (r,) = ledger.receipts("b_rec")
@@ -151,8 +155,9 @@ def test_voice_route_converts_transcribes_and_keeps_no_audio(tmp_path):
 
 
 @needs_ffmpeg
-@pytest.mark.parametrize("query,bias", [("?lang=en", ["en"]), ("?lang=pl", ["pl"]),
-                                        ("?lang=xx", ["en"])])
+@pytest.mark.parametrize("query,bias", [("?lang=en", ["English", "Polish"]),
+                                        ("?lang=pl", ["Polish", "English"]),
+                                        ("?lang=xx", ["English", "Polish"])])
 def test_language_bias_follows_the_ui_language(tmp_path, query, bias):
     a = create_app(settings(tmp_path))
     a.state.muse = MuseClient(FAKE_KEY, ledger=a.state.ledger, budget=Budget(1.0))
@@ -171,7 +176,8 @@ def test_language_bias_follows_the_ui_language(tmp_path, query, bias):
         r = c.post("/api/briefs/voice" + query, content=WAV,
                    headers={"content-type": "audio/wav"})
     assert r.status_code == 200, r.text
-    assert sent[0]["languageBias"] == bias
+    assert sent[0]["languageBias"] == bias  # names, not codes: the API reads names
+    assert sent[0]["mode"] == "ENDPOINTING"
 
 
 @needs_ffmpeg
@@ -181,11 +187,12 @@ def test_field_dictation_returns_text_and_makes_no_brief_row(tmp_path):
     with TestClient(a, base_url="https://testserver") as c, respx.mock(
             assert_all_called=False) as router:
         router.route(host="testserver").pass_through()
-        _mock(router)
+        sent = _mock(router)
         login(c)
         r = c.post("/api/briefs/voice?lang=pl&purpose=field", content=WAV,
                    headers={"content-type": "audio/wav"})
     assert r.status_code == 200, r.text
+    assert json.loads(sent[0]["request"])["mode"] == "PUSH_TO_TALK"  # one dictated answer
     assert "kubki" in r.json()["transcript"] and "brief_id" not in r.json()
     assert a.state.conn.execute("SELECT count(*) FROM briefs WHERE source = 'voice'"
                                 ).fetchone()[0] == 0

@@ -431,7 +431,7 @@ def draft_brief_audio(s: Assistants, p: Principal, content_type: str, lang: str 
     wav = voice.to_wav(blob)
     muse, _ = s.app.state.clients()
     brief_id = "b_" + secrets.token_hex(8)
-    t = voice.transcribe(muse, wav, run_id=brief_id, language_bias=(lang,))
+    t = voice.transcribe(muse, wav, run_id=brief_id, language_bias=voice.language_bias(lang))
     text = t.text[:brief_v1.MAX_SOURCE]
     with db.transaction(s.conn):
         s.conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) "

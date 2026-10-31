@@ -253,7 +253,7 @@ def test_voice_note_becomes_a_brief_draft_and_one_reply(app, client, transcribed
     assert deliver(client, event(audio())).json()["queued"] == 1
     out = sent(app)
     assert transcribed[0] == ("wav", b"OggS-opus-bytes")
-    assert transcribed[1][2] == ("pl",)  # the account's language biases the transcription
+    assert transcribed[1][2] == ("Polish", "English")  # the account's language first
     with app.state.conn.lock:
         row = app.state.conn.execute(
             "SELECT id, source, channel, account_id, run_id, draft FROM briefs "
