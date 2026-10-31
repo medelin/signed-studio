@@ -14,11 +14,12 @@ strings, as in the reference's cURL examples.
   hex HMAC-SHA256(key=app secret, message=the access token used), per "Securing Graph
   API Requests" (form field on writes, query parameter on reads; it does not reveal the
   token).
-- Retry matrix: Graph error codes 4, 17, 32, 613 (throttling), 80000-80014 (business use
-  case rate limits) and any error with ``is_transient: true`` are retried with backoff (at
-  most ``RETRIES`` times); 10, 100, 190 and anything else are fatal. A
-  network error on a POST is not retried (the write may have happened; a duplicate PAUSED
-  object is better found by a human than created twice silently).
+- Retry matrix, reads (GET) only: Graph error codes 4, 17, 32, 613 (throttling),
+  80000-80014 (business use case rate limits), any error with ``is_transient: true`` and
+  a network error are retried with backoff (at most ``RETRIES`` times); 10, 100, 190 and
+  anything else are fatal. A write (POST: a create, a status or budget change, a reply) is
+  never sent twice: a transient error is raised with ``transient=True`` (the write may
+  have happened; a duplicate object is better found by a human than created silently).
 - ``pixel_check`` is read-only (Graph GETs and the SSRF-safe landing-page fetch of
   ``pixel.Fetcher``); with an injected Graph ``transport`` (tests, replay) and no
   ``fetcher`` the landing page is not fetched at all (``pixel.Offline``).
@@ -199,7 +200,7 @@ class GraphAdapter:
             code = int(err.get("code", 0)) if isinstance(err, dict) and isinstance(
                 err.get("code"), int) else 0
             transient = _transient(code, err)
-            if transient and attempt < RETRIES:
+            if transient and method == "GET" and attempt < RETRIES:
                 self._sleep(2 ** attempt)
                 continue
             raise AdapterError(f"Graph API error {code or resp.status_code}",
