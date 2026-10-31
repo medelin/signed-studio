@@ -115,6 +115,19 @@ def demo_destinations_ok(payload: Any, landing_url: str) -> bool:
         urls += [policy.get("url") if isinstance(policy, dict) else None,
                  form.get("follow_up_action_url")]
     return all(demo_link_ok(u, landing_url) for u in urls)
+
+
+def demo_google_ok(payload: Any, landing_url: str) -> bool:
+    """Every address a limited account's live ``google.create`` would send: the payload's
+    ``link`` and the Search ad's final URL (``google.ad.final_url``), on the operator's
+    landing host (``demo_link_ok``)."""
+    if not isinstance(payload, dict):
+        return False
+    spec = payload.get("google")
+    ad = spec.get("ad") if isinstance(spec, dict) else None
+    if not isinstance(ad, dict):
+        return False
+    return all(demo_link_ok(u, landing_url) for u in (payload.get("link"), ad.get("final_url")))
 BRIEF_ID = re.compile(r"b_[0-9a-f]{16}")
 _CREATIVE_NAMES = ("feed_1x1", "feed_4x5", "story_9x16", *(f"card_{i}" for i in range(1, 11)))
 # every creative, its SAM mask overlay (``<name>_mask``), the cut-out and the video poster
@@ -1045,6 +1058,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                         and pending.action == "campaign.create"
                         and not demo_destinations_ok(json.loads(row[0]),
                                                      settings.landing_url)):
+                    raise _DemoLanding
+                if (limited and settings.google_adapter != "mock"
+                        and pending.action == "google.create"
+                        and not demo_google_ok(json.loads(row[0]), settings.landing_url)):
                     raise _DemoLanding
                 if pending.action == "campaign.create":
                     # a failed pixel check cannot be signed (nothing is consumed)

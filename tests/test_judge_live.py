@@ -163,3 +163,47 @@ def test_on_a_live_adapter_the_judge_sees_leads_without_personal_data(tmp_path):
     with TestClient(app, base_url="https://testserver") as c:
         c.post("/login", data={"username": "ola", "password": PASSWORD, "csrf": csrf(c)})
         assert "real@example.com" in str(c.get("/api/leads").json()["leads"])
+
+
+GOOGLE_LIVE = {"GOOGLE_ADS_ADAPTER": "rest", "GOOGLE_ADS_CLIENT_ID": "cid",
+               "GOOGLE_ADS_CLIENT_SECRET": "secret", "GOOGLE_ADS_REFRESH_TOKEN": "refresh",
+               "GOOGLE_ADS_CUSTOMER_ID": "1234567890", "GOOGLE_ADS_ACCOUNT_CURRENCY": "USD",
+               "META_LANDING_URL": "https://muse.example/"}
+
+
+def _google(link, final_url):
+    return {"action": "google.create", "run_id": RUN, "link": link,
+            "google": {"ad": {"status": "PAUSED", "final_url": final_url}}}
+
+
+@pytest.mark.parametrize("payload,ok", [
+    (_google(HOME + "try", HOME), True),
+    (_google("https://evil.example/", HOME), False),
+    (_google(HOME, "https://evil.example/"), False),
+    ({"link": HOME}, False),  # no google block
+])
+def test_every_destination_of_a_judge_live_google_campaign_is_checked(payload, ok):
+    from studio.routes_studio import demo_google_ok
+    assert demo_google_ok(payload, HOME) is ok
+
+
+def test_judge_cannot_sign_a_live_google_campaign_aimed_elsewhere(tmp_path):
+    app = create_app(settings(tmp_path, **GOOGLE_LIVE))
+    ran = []
+    app.state.executors["google.create"] = lambda v, p: ran.append(v.action) or {}
+    with TestClient(app, base_url="https://testserver") as c:
+        login(c)
+        key, approver = register(c)
+        conn, ledger = app.state.conn, app.state.ledger
+        ledger.append(RUN, agent="producer", kind="model_call")
+        p = _google(HOME, "https://evil.example/landing")
+        pending = Pending.create("google.create", "gc_j1", p, ledger=ledger, run_id=RUN)
+        with db.transaction(conn):
+            pending.save(conn)
+            conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, "
+                         "created_ts) VALUES (?, ?, ?, ?)",
+                         (pending.id, RUN, canonical(p).decode(), time.time()))
+        _, r = _sign(c, key, approver, pending.id)
+        assert r.status_code == 403 and r.json() == {"error": "demo_landing"}
+        assert conn.execute("SELECT count(*) FROM nonces").fetchone()[0] == 0
+        assert ran == []
