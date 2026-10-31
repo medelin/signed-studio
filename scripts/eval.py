@@ -417,7 +417,7 @@ ATTACK_FILES = ["test_dispatcher.py", "test_paused_only.py", "test_injection.py"
                 "test_review_every_format.py", "test_voice_transcript.py",
                 "test_brief_binding.py", "test_approval_renew.py", "test_objective_binding.py",
                 "test_lead_ads.py", "test_recommendations.py", "test_google_binding.py",
-                "test_mcp.py"]
+                "test_mcp.py", "test_assistants.py", "test_token_revocation.py"]
 
 
 def attack_suites() -> list[dict[str, Any]]:
@@ -548,6 +548,12 @@ def record_open_reviews(env_file: Path) -> None:
         ensure_ascii=False) + "\n")
 
 
+def flagged(verdict: str) -> bool:
+    """A review that stopped the ad (WARN or BLOCK); an ``OK`` or a failed review
+    (``ERROR:<code>``) stopped nothing and is never counted as flagged."""
+    return verdict in ("WARN", "BLOCK")
+
+
 def agreement() -> dict[str, Any] | None:
     """Spark vision vs Spark Open on the same seeded ads (model verdicts, before the code
     check)."""
@@ -571,9 +577,8 @@ def agreement() -> dict[str, Any] | None:
             "tokens_out": sum(r["tokens_out"] for r in data["reviews"]),
             "same_verdict": sum(r["same_verdict"] for r in rows),
             "same_decision": sum(r["same_decision"] for r in rows),
-            "open_flagged": sum(r["open"] not in ("OK",) and not r["open"].startswith("ERROR")
-                                for r in bad),
-            "either_flagged": sum(r["open"] not in ("OK",) or r["spark"] != "OK" for r in bad),
+            "open_flagged": sum(flagged(r["open"]) for r in bad),
+            "either_flagged": sum(flagged(r["open"]) or flagged(r["spark"]) for r in bad),
             "n_bad": len(bad),
             "open_p9_blocked": sum(r["open"] == "BLOCK" for r in bad if r["expect"] == "P9"),
             "open_clean_blocked": sum(r["open"] == "BLOCK" for r in rows
@@ -633,10 +638,10 @@ def reviewer_metrics() -> dict[str, Any] | None:
         "rows": rows, "n_bad": len(bad), "n_clean": len(clean), "cost_usd": data["cost_usd"],
         "recorded": data["recorded"], "re_recorded": data.get("re_recorded", []),
         "re_recorded_on": max((r.get("recorded", "") for r in data["reviews"]), default=""),
-        "model_flagged": sum(x["model_verdict"] != "OK" for x in bad),
+        "model_flagged": sum(flagged(x["model_verdict"]) for x in bad),
         "model_blocked": sum(x["model_verdict"] == "BLOCK" for x in bad),
         "model_rule": sum(x["rule_cited"] for x in bad),
-        "final_flagged": sum(x["final_verdict"] != "OK" for x in bad),
+        "final_flagged": sum(flagged(x["final_verdict"]) for x in bad),
         "final_blocked": sum(x["final_verdict"] == "BLOCK" for x in bad),
         "p9_n": len(p9), "p9_model_blocked": sum(x["model_verdict"] == "BLOCK" for x in p9),
         "p9_final_blocked": sum(x["final_verdict"] == "BLOCK" for x in p9),

@@ -379,3 +379,43 @@ def test_brief_js_gives_the_button_back_when_the_request_fails():
     returned = len(re.findall(r"finally \{\s*btn\.disabled = false;", js))
     assert taken == 2 and returned == taken  # a failed fetch (offline) re-enables it too
     assert js.count('data: { error: "network" }') == 2  # and says why (err.network)
+
+
+def _eval_script():
+    import importlib.util
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("eval_script_d", root / "scripts" / "eval.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod, root
+
+
+def test_eval_runs_every_attack_suite():
+    ev, root = _eval_script()
+    on_disk = sorted(p.name for p in (root / "tests" / "attack").glob("test_*.py"))
+    assert sorted(ev.ATTACK_FILES) == on_disk
+
+
+def test_eval_never_counts_a_failed_review_as_flagged(tmp_path, monkeypatch):
+    import json
+
+    ev, _ = _eval_script()
+
+    def review(i, expect, verdict):
+        return {"id": i, "expect": expect, "verdict": verdict, "findings": [],
+                "tokens_in": 1, "tokens_out": 1}
+
+    spark = tmp_path / "spark.json"
+    spark.write_text(json.dumps({"reviews": [review("a", "P1", "ERROR:timeout"),
+                                             review("b", "P1", "WARN")]}))
+    open_ = tmp_path / "open.json"
+    open_.write_text(json.dumps({"cost_usd": 0, "recorded": "2026-10-31", "reviews": [
+        review("a", "P1", "ERROR:timeout"), review("b", "P1", "OK")]}))
+    monkeypatch.setattr(ev, "REVIEWS", spark)
+    monkeypatch.setattr(ev, "OPEN_REVIEWS", open_)
+    ag = ev.agreement()
+    assert ag["open_flagged"] == 0 and ag["either_flagged"] == 1  # only b, by Spark
+    assert ev.flagged("WARN") and ev.flagged("BLOCK")
+    assert not ev.flagged("OK") and not ev.flagged("ERROR:timeout")
