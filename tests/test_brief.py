@@ -90,6 +90,8 @@ def test_a_complete_brief_has_no_problems():
     (lambda d: d["audience"].update(age_min=60, age_max=30), "audience.age", "age_range"),
     (lambda d: d["budget"].update(amount=0), "budget.amount", "amount"),
     (lambda d: d["budget"].update(amount=80), "budget.amount", "over_ceiling"),
+    (lambda d: d["budget"].update(kind="lifetime", amount=10_000, start="2026-11-01",
+                                  end="2026-11-02"), "budget.amount", "over_ceiling"),
     (lambda d: d["budget"].update(currency="EUR"), "budget.currency", "account_currency"),
     (lambda d: d["budget"].update(end="2026-10-01"), "budget.end", "date_order"),
     (lambda d: d["budget"].update(kind="lifetime", end=""), "budget.end", "required"),
@@ -218,3 +220,10 @@ def test_every_error_code_has_an_english_and_polish_message():
     assert len(codes) > 20
     for code in codes:
         assert f"js.brief_err_{code}" in i18n.EN and f"js.brief_err_{code}" in i18n.PL, code
+
+
+def test_a_lifetime_budget_within_the_daily_ceiling_passes():
+    life = sample(budget={"kind": "lifetime", "amount": 100, "currency": "PLN",
+                          "start": "2026-11-01", "end": "2026-11-03"})
+    assert "budget.amount" not in bv.problems(life, ceiling_daily=34)
+    assert bv.problems(life, ceiling_daily=33)["budget.amount"] == "over_ceiling"

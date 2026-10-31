@@ -354,8 +354,6 @@ def problems(brief: BriefV1, *, confirmed: bool = True, currency: str = "PLN",
     b = brief.budget
     if not (b.amount > 0 and b.amount < 10_000_000):
         out["budget.amount"] = "amount"
-    elif b.kind == "daily" and ceiling_daily is not None and b.amount > ceiling_daily:
-        out["budget.amount"] = "over_ceiling"
     if not _CURRENCY.fullmatch(b.currency):
         out["budget.currency"] = "bad_currency"
     elif b.currency != currency:
@@ -369,6 +367,12 @@ def problems(brief: BriefV1, *, confirmed: bool = True, currency: str = "PLN",
         out["budget.end"] = "required"
     if start and end and end < start:
         out["budget.end"] = "date_order"
+    # the ceiling bounds what the campaign spends per day, for either kind: a lifetime
+    # amount is spread over its days (``daily_budget``) before the comparison
+    if ("budget.amount" not in out and ceiling_daily is not None
+            and (b.kind == "daily" or (start and end and end >= start))
+            and daily_budget(brief) > ceiling_daily):
+        out["budget.amount"] = "over_ceiling"
     ch = brief.channels
     if ch.google_search:
         if not (ch.google_daily_budget > 0 and ch.google_daily_budget < 10_000_000):
