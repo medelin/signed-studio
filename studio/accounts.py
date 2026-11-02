@@ -305,7 +305,10 @@ _LATER_COLUMNS = {"credential_gen": "INTEGER NOT NULL DEFAULT 0",
                   "tier": "TEXT NOT NULL DEFAULT 'full'",
                   "website": "TEXT NOT NULL DEFAULT ''",
                   "sell_countries": "TEXT NOT NULL DEFAULT ''",
-                  "pixel_id": "TEXT NOT NULL DEFAULT ''"}
+                  "pixel_id": "TEXT NOT NULL DEFAULT ''",
+                  # Conversions API (studio.meta.capi): when the owner said they have their
+                  # customers' consent for conversion measurement; 0 = not given (default)
+                  "capi_consent_ts": "REAL NOT NULL DEFAULT 0"}
 
 TIERS = ("full", "trial")
 EXTERNAL_PASSWORD_WINDOW_S = 15 * 60  # a first password, this soon after a provider sign-in
@@ -874,6 +877,27 @@ class Accounts:
         assert result is not None
         return result
 
+    def capi_consent(self, account_id: str) -> float:
+        """When the owner recorded their customers' consent for conversion measurement
+        (Conversions API, ``studio.meta.capi``); 0 when they have not."""
+        with self._read() as c:
+            row = c.execute("SELECT capi_consent_ts FROM accounts WHERE id = ?",
+                            (account_id,)).fetchone()
+        return float(row[0]) if row else 0.0
+
+    def set_capi_consent(self, account_id: str, on: bool) -> bool:
+        """Record (keeping the first date) or withdraw the consent; True if it changed."""
+        now = self.clock()
+        with transaction(self.conn) as c:
+            self._require(c, account_id)
+            before = float(c.execute("SELECT capi_consent_ts FROM accounts WHERE id = ?",
+                                     (account_id,)).fetchone()[0])
+            if bool(before) == on:
+                return False
+            c.execute("UPDATE accounts SET capi_consent_ts = ?, updated_ts = ? WHERE id = ?",
+                      (now if on else 0, now, account_id))
+        return True
+
     def change_password(self, account_id: str, current: str, new: str, confirm: str, *,
                         keep_sid: str, external_fresh: bool = False) -> int:
         """Needs the current password; revokes every other session and its approver keys.
@@ -1116,6 +1140,7 @@ class Accounts:
                   "status = 'deleted', display_name = '', email = '', lang = '', "
                   "theme = '', palette = '', advertiser_type = 'person', legal_name = '', "
                   "country = '', tax_id = '', website = '', sell_countries = '', pixel_id = '', "
+                  "capi_consent_ts = 0, "
                   "totp_secret = '', totp_pending = '', "
                   "totp_last_step = 0, credential_gen = credential_gen + 1, "
                   "whatsapp_number = '', notify_whatsapp = 0, whatsapp_verified_ts = 0, "
@@ -1167,6 +1192,8 @@ class Accounts:
                          for s in self.sessions(account_id, current_sid)],
             "approvals": signed,
             "whatsapp": self._whatsapp(account_id),
+            **({"conversions_api": {"consent": True, "consent_ts": consent}}
+               if (consent := self.capi_consent(account_id)) else {}),
         }
 
     def _whatsapp(self, account_id: str) -> dict[str, Any]:

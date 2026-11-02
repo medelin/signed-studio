@@ -13,6 +13,9 @@ into the lead store and the lead scorer.
   city, company, country), stores the lead once per Meta lead id and scores it. Contact
   data stays in the ``leads`` table as for comment leads; receipts carry counts and opaque
   ids only, and the model rationale never sees the e-mail or phone (``lead_scorer``).
+- With ``STUDIO_CAPI=1`` a new lead is then offered to the Conversions API
+  (``studio.meta.capi``): a ``Lead`` event with the e-mail and phone hashed, sent to the
+  signing account's dataset only when that account recorded its consent.
 
 Sources (read 2026-10-28): lead form creation
 https://developers.facebook.com/docs/graph-api/reference/page/leadgen_forms/ ; lead ads
@@ -143,8 +146,10 @@ def lead_row(lead: RemoteLead) -> dict[str, str]:
 
 
 def ingest(conn: sqlite3.Connection, ledger: Ledger, client: Any, lead: RemoteLead,
-           *, via: str) -> dict[str, Any] | None:
-    """Store one Meta lead (once per lead id) and score it; ``None`` if already stored."""
+           *, via: str, capi: Any = None) -> dict[str, Any] | None:
+    """Store one Meta lead (once per lead id) and score it; ``None`` if already stored.
+    With ``capi`` (``studio.meta.capi.sender``: ``STUDIO_CAPI=1``), the new lead is then
+    offered to the Conversions API, which sends it only with the owner's consent."""
     from studio.agents import lead_scorer
 
     row = lead_row(lead)
@@ -166,18 +171,22 @@ def ingest(conn: sqlite3.Connection, ledger: Ledger, client: Any, lead: RemoteLe
                            "via": via, "lead": lead_id,
                            "fields": sorted(k for k, v in row.items() if v and k != "kind")})
     try:
-        return lead_scorer.score_lead(conn, ledger, client, lead_id)
+        card = lead_scorer.score_lead(conn, ledger, client, lead_id)
     except Exception:  # noqa: BLE001 - the rules score never fails; the rationale may
-        return lead_scorer.score_lead(conn, ledger, None, lead_id)
+        card = lead_scorer.score_lead(conn, ledger, None, lead_id)
+    if capi is not None:
+        capi(lead_id, row, lead.external_id, lead.form_id)
+    return card
 
 
 def poll(conn: sqlite3.Connection, ledger: Ledger, adapter: Any, client: Any = None,
-         now: float | None = None) -> dict[str, int]:
+         now: float | None = None, *, capi: Any = None) -> dict[str, int]:
     """``GET /{form_id}/leads`` for every form this adapter created; new leads are stored
     and scored. One ``leadgen.poll`` receipt per form (counts only). A form's
     ``polled_ts`` moves only past leads that were read: to now, or, when the adapter read
     a backlog in part (``lead_window``), to the last second it read in full. A form whose
-    read fails keeps its mark and does not stop the others (``failed``)."""
+    read fails keeps its mark and does not stop the others (``failed``). ``capi``: see
+    ``ingest``."""
     from studio.meta.adapter import AdapterError
 
     clock = time.time() if now is None else now
@@ -194,7 +203,7 @@ def poll(conn: sqlite3.Connection, ledger: Ledger, adapter: Any, client: Any = N
                                    "side_effects": "read", "error": exc.code})
             total["failed"] = total.get("failed", 0) + 1
             continue
-        new = sum(ingest(conn, ledger, client, lead, via="poll") is not None
+        new = sum(ingest(conn, ledger, client, lead, via="poll", capi=capi) is not None
                   for lead in fetched)
         with transaction(conn):
             conn.execute("UPDATE lead_forms SET polled_ts = ? WHERE form_id = ?",

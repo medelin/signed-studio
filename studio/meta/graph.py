@@ -23,6 +23,8 @@ strings, as in the reference's cURL examples.
 - ``pixel_check`` is read-only (Graph GETs and the SSRF-safe landing-page fetch of
   ``pixel.Fetcher``); with an injected Graph ``transport`` (tests, replay) and no
   ``fetcher`` the landing page is not fetched at all (``pixel.Offline``).
+- ``send_events`` (Conversions API, ``studio.meta.capi``) is a POST like any write: the
+  events go form-encoded (``data`` as JSON), hashed user data only, never retried.
 - Campaign, ad set and ad bodies carry ``status=PAUSED`` from a literal; activation is
   ``POST /{id} status=ACTIVE`` for the ad, the ad set and the campaign (in that order,
   one call per level), each behind the same ``campaign.activate`` approval.
@@ -44,7 +46,7 @@ from typing import Any, Final
 import httpx
 
 from studio.approvals import Verified
-from studio.meta import pixel
+from studio.meta import capi, pixel
 from studio.meta.adapter import (
     ACTIVATE,
     CREATE,
@@ -73,6 +75,7 @@ from studio.meta.adapter import (
     update_of,
 )
 from studio.meta.preview import from_graph_body
+from studio.receipts import normalize_id
 
 LOG = logging.getLogger(__name__)
 VERSION = "v25.0"
@@ -542,6 +545,22 @@ class GraphAdapter:
         if lead is None:
             raise AdapterError("Graph API returned no lead", code="bad_response")
         return lead
+
+    def send_events(self, dataset_id: str, events: list[dict[str, Any]], *,
+                    test_event_code: str = "") -> dict[str, Any]:
+        """Conversions API: ``POST /{dataset_id}/events`` with ``data`` (the events, JSON)
+        and ``test_event_code`` when set; the dataset id and the hashed user data are
+        checked before the call. A write: never retried."""
+        capi.check_dataset(dataset_id)
+        capi.check_events(events)
+        fields: dict[str, Any] = {"data": [dict(e) for e in events]}
+        if test_event_code:
+            fields["test_event_code"] = test_event_code
+        body = self._post(f"{dataset_id}/events", fields)
+        received = body.get("events_received")
+        trace, _ = normalize_id(body.get("fbtrace_id", ""))
+        return {"events_received": received if isinstance(received, int)
+                and not isinstance(received, bool) else 0, "fbtrace_id": trace}
 
     def preview(self, ad_id: str) -> Preview:
         body = self._request("GET", f"{_oid(ad_id)}/previews",

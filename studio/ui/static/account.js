@@ -43,12 +43,13 @@
 // send people to the owner's website, so its field shows once a website is typed (a full
 // https address) and hides again when the website is emptied. A pixel already chosen or
 // typed stays visible, so it can be cleared. Without JavaScript the server decides the same
-// way from the saved values.
+// way from the saved values. With the Conversions API offered the server shows the field
+// always (no data-needs-website): instant-form leads need the dataset too.
 (() => {
   const site = document.getElementById("pf-website");
   const field = document.getElementById("pf-pixel-field");
   const pixel = document.getElementById("pf-pixel");
-  if (!site || !field || !pixel) return;
+  if (!site || !field || !pixel || !field.hasAttribute("data-needs-website")) return;
   function https(value) {
     try {
       const u = new URL(value.trim());

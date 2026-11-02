@@ -113,6 +113,9 @@ class SandboxConfig:
             # sign activate/update/reply/hide (routes_studio.demo_refused)
             raise ConfigError("STUDIO_SANDBOX=1 requires META_ADAPTER=mock "
                               "(or STUDIO_SANDBOX_LIVE_META=1)")
+        if settings.capi and self.live_meta:
+            # the Conversions API would send lead data to a real dataset from a sandbox
+            raise ConfigError("STUDIO_SANDBOX_LIVE_META=1 cannot be used with STUDIO_CAPI=1")
         if settings.google_adapter != "mock":
             raise ConfigError("STUDIO_SANDBOX=1 requires GOOGLE_ADS_ADAPTER=mock")
         if not settings.cookie_secure:

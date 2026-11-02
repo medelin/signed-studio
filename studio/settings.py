@@ -160,6 +160,10 @@ class Settings:
     social: SocialLoginConfig = field(default_factory=SocialLoginConfig)
     # read the advertiser's website named in a brief before drafting (studio.brand_scan)
     brand_scan: bool = False
+    # Conversions API (studio.meta.capi): new leads sent to the signing account's dataset,
+    # only with that account's recorded consent; off unless STUDIO_CAPI=1
+    capi: bool = False
+    capi_test_event_code: str = ""  # Events Manager → Test events (nothing is counted)
     # Stripe subscription, invoices and payment mails (studio.billing)
     billing: BillingConfig = field(default_factory=BillingConfig)
     # the seller named on /pricing and /terms (studio.pricing); a missing line is left out
@@ -298,6 +302,10 @@ class Settings:
         seller = {k: _one_line(e, f"STUDIO_SELLER_{k.upper()}", limit)
                   for k, limit in (("name", 120), ("number", 40), ("address", 300))}
         replay = _bool(e, "STUDIO_REPLAY", False)
+        test_code = e.get("STUDIO_CAPI_TEST_EVENT_CODE", "").strip()
+        if test_code and not re.fullmatch(r"[A-Za-z0-9]{1,40}", test_code):
+            raise ConfigError("STUDIO_CAPI_TEST_EVENT_CODE must be the code Events Manager "
+                              "shows (letters and digits, like TEST12345)")
         open_weights = _bool(e, "STUDIO_OPEN_WEIGHTS", False)
         if open_weights and not e.get("BASETEN_API_KEY", "") and not replay:
             raise ConfigError("STUDIO_OPEN_WEIGHTS=1 needs BASETEN_API_KEY (Muse Spark Open "
@@ -370,6 +378,8 @@ class Settings:
             price_display=_one_line(e, "STUDIO_PRICE_DISPLAY", 40),
             fair_use_runs=fair_use,
             brand_scan=_bool(e, "STUDIO_BRAND_SCAN", False) and not replay,
+            capi=_bool(e, "STUDIO_CAPI", False),
+            capi_test_event_code=test_code,
             google_adapter=google,
             google_client_id=e.get("GOOGLE_ADS_CLIENT_ID", ""),
             google_client_secret=e.get("GOOGLE_ADS_CLIENT_SECRET", ""),
