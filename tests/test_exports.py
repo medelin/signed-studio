@@ -248,8 +248,10 @@ def ledger(conn, tmp_path):
 def test_statement_rows_and_exact_totals(conn, ledger):
     month = exports.current_month()
     h1 = statement_fixture(conn, ledger, month)
-    rows = exports.statement(conn, month)
-    assert [(r["date"][-2:], r["campaign_item_id"], r["spend"]) for r in rows[:5]] == [
+    every = exports.statement(conn, month)
+    # model-only rows are dated by the ledger's clock (today), so they may sit anywhere
+    rows = [r for r in every if r["campaign_item_id"]]
+    assert [(r["date"][-2:], r["campaign_item_id"], r["spend"]) for r in rows] == [
         ("01", "c1", 5.00), ("02", "c1", 10.10), ("03", "c1", 20.20), ("04", "c1", 30.33),
         ("05", "c2", 7.07)]
     rows = rows[1:]  # the checks below are about the daily snapshots
@@ -261,7 +263,7 @@ def test_statement_rows_and_exact_totals(conn, ledger):
     assert first["model_cost_usd"] == 0.0 and rows[1]["model_cost_usd"] == 0.0
     assert rows[2]["approval_id"] == "ap_2" and rows[2]["approved_daily_budget"] == 50.0
     assert rows[3]["currency"] == "EUR" and rows[3]["approved_daily_budget"] == 20.0
-    model_only = [r for r in rows if not r["campaign_item_id"]]
+    model_only = [r for r in every if not r["campaign_item_id"]]
     assert [(r["run_id"], r["model_cost_usd"], r["currency"]) for r in model_only] == [
         ("run_x", 0.5, "")]
     rows = exports.statement(conn, month)
