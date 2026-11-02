@@ -5,8 +5,8 @@ Muse Studio Lite, solo entry, Indie track, theme **Build for Your World**
 
 ## What git shows
 
-- First commit: `Start: README and license`, 2026-10-27. Latest commit on `main` at the time of writing: 2026-10-31.
-- Commit count on `main`: 347 (43 on 27 Oct, 126 on 28 Oct, 50 on 29 Oct, 50 on 30 Oct, 78 on 31 Oct).
+- First commit: `Start: README and license`, 2026-10-27. Latest commit on `main` on 2 Nov: 2026-11-02 (more follow until 4 Nov).
+- Commit count on `main` on 2 Nov: 358 (43 on 27 Oct, 126 on 28 Oct, 50 on 29 Oct, 50 on 30 Oct, 78 on 31 Oct, 11 on 2 Nov).
 - The repository starts empty at that first commit: every line was written during the event, and there is no earlier history.
 - Check it yourself: `git log --reverse --format='%ad %s' --date=short | head -1` and `git rev-list --count main`.
 
