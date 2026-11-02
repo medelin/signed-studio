@@ -28,6 +28,7 @@
     <span class="tag">{{ t("tagline") }}</span>
     {% if read_only %}<span class="badge warn">{{ t("badge.read_only") }}</span>{% endif %}
     {% if replay %}<span class="badge warn" title="{{ t('badge.replay_title') }}">{{ t("badge.replay") }}</span>{% endif %}
+    {% if replay_fallback %}<span class="badge warn" title="{{ t('badge.replay_fallback_title') }}">{{ t("badge.replay_fallback") }}</span>{% endif %}
     <span class="prefs">
       <span class="lang-switch" role="group" aria-label="{{ t('lang.label') }}">
       {% for code, name in lang_names.items() %}<a href="{{ query_with(request.url.query, lang=code) }}" hreflang="{{ code }}" lang="{{ code }}"{% if code == lang %} aria-current="true"{% endif %}>{{ code | upper }}</a>{% endfor %}

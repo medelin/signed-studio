@@ -162,3 +162,136 @@ def test_event_streams_and_form_bodies(tmp_path):
 def test_set_names_are_restricted():
     with pytest.raises(ValueError):
         replay.set_path("../etc")
+
+
+# -- replay fallback (STUDIO_REPLAY_FALLBACK=1): a lasting upstream outage, a recorded answer
+
+
+def _down(status=503):
+    return httpx.MockTransport(lambda request: httpx.Response(
+        status, json={"error": {"type": "overloaded"}}))
+
+
+def _live_with_fallback(tmp_path, texts, status=503):
+    path, _ = _record(tmp_path, texts)
+    led = Ledger()
+    client = MuseClient("live-key-not-a-secret", ledger=led, transport=_down(status))
+    client.retry_delay_s = 0.0
+    fallback = replay.ReplayTransport(json.loads(path.read_text()), blobs=tmp_path / "blobs",
+                                      strict=True)
+    client.use_replay_fallback(fallback)
+    return client, led, fallback
+
+
+@pytest.mark.parametrize("status", [502, 503, 504, 529])
+def test_a_lasting_upstream_error_falls_back_to_the_recording_and_says_so(tmp_path, status):
+    client, led, fallback = _live_with_fallback(tmp_path, ["first brief"], status)
+    result = _chat(client, "first brief")
+    assert result.text == "echo first brief"
+    assert result.model == "replay:muse-spark-1.3"  # never the live model id
+    receipts = led.receipts("run_aaaabbbbccccdddd")
+    live, last = receipts[:-1], receipts[-1]
+    assert [r.details.get("error_status") for r in live] == [status] * 4
+    assert all(r.provider == "meta-model-api" for r in live)
+    assert last.provider == "meta-model-api-replay"
+    assert last.model == "replay:muse-spark-1.3"
+    assert last.details["fallback"] == "replay"
+    assert last.details["fallback_reason"] == f"upstream_http_{status}"
+    assert last.details["upstream_status"] == status
+    assert last.details["fallback_match"] == "exact"
+    assert last.details["model_family"] == "muse-spark"
+    # nothing was spent on the recorded answer: no tokens, no cost, out of the budget
+    assert (last.tokens_in, last.tokens_out, last.cost_usd) == (0, 0, 0.0)
+    assert last.details["cost_basis"] == "replay"
+    assert fallback.stats == {"exact": 1, "route": 0, "miss": 0}
+
+
+def test_fallback_by_route_says_the_recording_was_for_another_request(tmp_path):
+    client, led, _ = _live_with_fallback(tmp_path, ["recorded brief"])
+    assert _chat(client, "the judge's own brief").text == "echo recorded brief"
+    assert led.receipts("run_aaaabbbbccccdddd")[-1].details["fallback_match"] == "route"
+
+
+def test_without_a_recording_the_step_fails_as_before(tmp_path):
+    client, led, fallback = _live_with_fallback(tmp_path, ["first brief"])
+    with pytest.raises(Exception) as err:  # noqa: B017 - MuseError, the upstream one
+        client.chat("muse-spark-1.3-contributor", [{"role": "user", "content": "x"}],
+                    run_id="run_x", agent="copywriter", tier="contributor")
+    assert getattr(err.value, "status", None) == 503  # the upstream error, not the miss
+    assert fallback.stats["miss"] == 1
+    receipts = led.receipts("run_x")
+    assert [r.details.get("error_status") for r in receipts[:4]] == [503] * 4
+    miss = receipts[-1]
+    assert miss.details["fallback"] == "replay" and miss.details.get("error_status") == 599
+    assert miss.cost_usd == 0.0
+
+
+def test_other_errors_and_a_client_without_fallback_never_use_the_recording(tmp_path):
+    client, led, fallback = _live_with_fallback(tmp_path, ["first brief"], status=400)
+    with pytest.raises(Exception):  # noqa: B017 - MuseError 400, final at once
+        _chat(client, "first brief")
+    assert len(led.receipts("run_aaaabbbbccccdddd")) == 1
+    assert fallback.stats == {"exact": 0, "route": 0, "miss": 0}
+    plain = MuseClient("live-key-not-a-secret", ledger=Ledger(), transport=_down())
+    plain.retry_delay_s = 0.0
+    with pytest.raises(Exception) as err:  # noqa: B017
+        _chat(plain, "first brief")
+    assert getattr(err.value, "status", None) == 503
+
+
+def test_strict_route_fallback_never_answers_with_another_schema(tmp_path):
+    rec = replay.RecordingTransport(httpx.MockTransport(_fake_api), blobs=tmp_path / "blobs")
+    client = MuseClient("k", ledger=Ledger(), transport=rec)
+    client.chat("muse-spark-1.3", [{"role": "user", "content": "plan"}],
+                run_id="run_aaaabbbbccccdddd", agent="producer",
+                response_format={"type": "json_schema", "json_schema": {
+                    "name": "Plan", "strict": True, "schema": {"type": "object"}}})
+    path = tmp_path / "s" / "replay.json"
+    rec.save(path, {})
+    data = json.loads(path.read_text())
+    req = httpx.Request("POST", "https://api.meta.ai/v1/chat/completions", json={
+        "model": "muse-spark-1.3", "messages": [{"role": "user", "content": "draft"}],
+        "response_format": {"type": "json_schema", "json_schema": {
+            "name": "BriefV1", "strict": True, "schema": {"type": "object"}}}})
+    loose = replay.ReplayTransport(data, blobs=tmp_path / "blobs")
+    strict = replay.ReplayTransport(data, blobs=tmp_path / "blobs", strict=True)
+    assert loose.handle_request(req).status_code == 200  # replay mode: any answer
+    assert strict.handle_request(req).status_code == 599
+
+
+def test_the_app_attaches_the_fallback_only_when_asked(tmp_path):
+    from studio.app import create_app
+    from studio.settings import Settings
+
+    base = {"STUDIO_DATA_DIR": str(tmp_path / "var"), "MODEL_API_KEY": "k-not-a-secret"}
+    on = create_app(Settings.load({**base, "STUDIO_REPLAY_FALLBACK": "1",
+                                   "STUDIO_REPLAY_SET": "brief"}))
+    muse, _ = on.state.clients()
+    assert muse.has_replay_fallback and muse.provider == "meta-model-api"
+    off = create_app(Settings.load({**base, "STUDIO_DATA_DIR": str(tmp_path / "v2")}))
+    assert not off.state.clients()[0].has_replay_fallback
+
+
+def test_the_header_and_the_receipts_show_the_fallback(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from studio.app import create_app
+    from studio.routes_studio import receipt_event
+    from studio.settings import Settings
+
+    app = create_app(Settings.load({"STUDIO_DATA_DIR": str(tmp_path / "var"),
+                                    "STUDIO_REPLAY_FALLBACK": "1", "COOKIE_SECURE": "1"}))
+    r = app.state.ledger.append(
+        "run_aaaa", agent="producer", kind="model_call", provider="meta-model-api-replay",
+        model="replay:muse-spark-1.3",
+        details={"fallback": "replay", "fallback_reason": "upstream_http_503",
+                 "upstream_status": 503, "fallback_match": "route"})
+    event = receipt_event(r)
+    assert (event["fallback"], event["upstream_status"]) == ("replay", 503)
+    with TestClient(app, base_url="https://testserver") as c:
+        page = c.get("/receipts").text
+        pl = c.get("/receipts?lang=pl").text
+    assert 'class="badge warn fallback"' in page and "replay fallback" in page
+    assert "recorded answer · API 503" in page
+    assert "nagrana odpowiedź · API 503" in pl
+    assert "<script>" not in page

@@ -253,7 +253,13 @@ function addReceipt(r) {
   const tr = el("tr");
   const what = r.tool ? r.tool + (r.status ? " · " + r.status : "") : (r.model || "—");
   const calls = r.tool_calls && r.tool_calls.length ? " → " + r.tool_calls.join(", ") : "";
-  tr.append(el("td", r.agent), el("td", r.kind, "kind " + r.kind), el("td", what + calls),
+  const model = el("td", what + calls);
+  if (r.fallback) {  // the API kept failing: a recorded answer, said so on the step
+    const badge = el("span", T("fallback_badge", { status: r.upstream_status }), "badge warn fallback");
+    badge.title = T("fallback_title");
+    model.append(" ", badge);
+  }
+  tr.append(el("td", r.agent), el("td", r.kind, "kind " + r.kind), model,
             el("td", r.tokens_in + "/" + r.tokens_out), el("td", "$" + r.cost_usd.toFixed(5)));
   const h = el("td");
   const code = el("code", r.hash.slice(0, 12));

@@ -16,7 +16,9 @@ event streams) live once in ``fixtures/replay/blobs/<sha256>.<ext>`` and are ref
   in recorded order, preferring recordings with the same strict output schema (a Brief v1
   draft never gets a plan's answer). Both cycle when exhausted, so a replay can be run
   again in the same process. Anything else is a ``599 replay_miss`` (the client records
-  an error receipt).
+  an error receipt). A ``strict`` transport (the live fallback, ``STUDIO_REPLAY_FALLBACK``)
+  never crosses output schemas: no recording with the same schema is a miss. Every answer
+  says how it was found (``x-replay-match: exact | route``).
 - ``RecordingTransport`` wraps a real transport and writes a set; it stores no headers
   (no keys or tokens) and no request images.
 
@@ -43,6 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REPLAY_DIR = ROOT / "fixtures" / "replay"
 BLOBS = REPLAY_DIR / "blobs"
 DEFAULT_SET = "demo"
+MATCH_HEADER = "x-replay-match"  # how a served recording was found: exact | route
 FIXTURE_MAX_SIDE = 512
 _BLOB_MIN = 4096  # base64 strings longer than this become blob files
 _TEXT_BLOB_MIN = 64 * 1024  # event-stream bodies longer than this become blob files
@@ -246,7 +249,9 @@ def load_set(name: str = DEFAULT_SET, root: Path = REPLAY_DIR) -> dict[str, Any]
 class ReplayTransport(httpx.BaseTransport):
     """Serves a recorded set by request key, then by route, cycling when exhausted."""
 
-    def __init__(self, data: dict[str, Any], blobs: Path = BLOBS) -> None:
+    def __init__(self, data: dict[str, Any], blobs: Path = BLOBS, *,
+                 strict: bool = False) -> None:
+        self.strict = strict
         self._items: list[dict[str, Any]] = list(data.get("interactions") or [])
         self._blobs = blobs
         self._lock = threading.Lock()
@@ -260,16 +265,18 @@ class ReplayTransport(httpx.BaseTransport):
         self.stats = {"exact": 0, "route": 0, "miss": 0}
 
     @classmethod
-    def from_set(cls, name: str = DEFAULT_SET, root: Path = REPLAY_DIR) -> ReplayTransport:
-        return cls(load_set(name, root), root / "blobs")
+    def from_set(cls, name: str = DEFAULT_SET, root: Path = REPLAY_DIR, *,
+                 strict: bool = False) -> ReplayTransport:
+        return cls(load_set(name, root), root / "blobs", strict=strict)
 
     def _first_unused(self, idx: list[int] | None) -> int | None:
         return next((i for i in idx or [] if i not in self._used), None)
 
     def _same_schema(self, idx: list[int] | None, name: str) -> list[int] | None:
-        """Route recordings asking for the same output schema (all of them if none do)."""
+        """Route recordings asking for the same output schema (all of them if none do,
+        none when strict)."""
         same = [i for i in idx or [] if schema_name(self._items[i].get("request")) == name]
-        return same or idx
+        return same if self.strict else same or idx
 
     def _cycle(self, table: dict[str, list[int]], k: str,
                idx_override: list[int] | None = None) -> int | None:
@@ -308,8 +315,10 @@ class ReplayTransport(httpx.BaseTransport):
             content = _inflate(resp["text"], self._blobs).encode()
             return httpx.Response(resp["status"], content=content,
                                   headers={"content-type": resp.get("content_type",
-                                                                    "text/plain")})
-        return httpx.Response(resp["status"], json=_inflate(resp.get("json"), self._blobs))
+                                                                    "text/plain"),
+                                           MATCH_HEADER: kind})
+        return httpx.Response(resp["status"], json=_inflate(resp.get("json"), self._blobs),
+                              headers={MATCH_HEADER: kind})
 
 
 class RecordingTransport(httpx.BaseTransport):

@@ -204,6 +204,7 @@ def receipt_event(r: Receipt) -> dict[str, Any]:
         "tool": d.get("tool", ""), "status": d.get("status", ""),
         "tool_calls": d.get("tool_calls", []), "verdict": d.get("verdict", ""),
         "foreground_pixels": d.get("foreground_pixels"), "envelope": r.envelope,
+        "fallback": d.get("fallback", ""), "upstream_status": d.get("upstream_status"),
     }
 
 
@@ -440,6 +441,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             app.state.muse, app.state.open_weights = replay_clients(settings, ledger)
         if app.state.muse is None:
             app.state.muse = MuseClient.from_settings(settings, ledger)
+            if settings.replay_fallback:
+                from studio import replay
+                app.state.muse.use_replay_fallback(
+                    replay.ReplayTransport.from_set(settings.replay_set, strict=True))
         if app.state.open_weights is None:
             app.state.open_weights = OpenWeightsClient.from_settings(settings, ledger)
         return app.state.muse, app.state.open_weights

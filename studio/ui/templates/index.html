@@ -25,7 +25,7 @@
         <td><code>{{ r.run_id }}</code></td>
         <td>{{ r.agent }}</td>
         <td><span class="kind {{ r.kind }}">{{ r.kind }}</span></td>
-        <td>{{ r.provider or "—" }} · {{ r.model or "—" }}</td>
+        <td>{{ r.provider or "—" }} · {{ r.model or "—" }}{% if r.details and r.details.fallback %} <span class="badge warn fallback" title="{{ t('receipts.fallback_title') }}">{{ t("receipts.fallback", status=r.details.upstream_status) }}</span>{% endif %}</td>
         <td title="{{ r.tier_reason }}">{{ r.tier or "—" }}</td>
         <td>{{ r.tokens_in }}/{{ r.tokens_out }}</td>
         <td>${{ "%.5f" | format(r.cost_usd) }}</td>
