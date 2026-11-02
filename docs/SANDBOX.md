@@ -49,7 +49,36 @@ else changes in existing tables.
 | Google Ads | `GOOGLE_ADS_ADAPTER=mock` (default): Search campaign writes produce receipts with `adapter: mock`, status PAUSED, no Google calls; the sandbox never holds a Google credential |
 | Kill switch | `STUDIO_READ_ONLY=1`: every write and model call is a 503, pages stay up |
 | API down | `STUDIO_REPLAY=1`: recorded responses instead of live calls |
+| API flaky | `STUDIO_REPLAY_FALLBACK=1` (off by default): live calls, but a step whose 502/503/504/529 outlasts the retries is answered from the recorded set `STUDIO_REPLAY_SET`, if it has an answer for that step; see *Replay fallback* |
 | Health | `GET /healthz` → `{"ok": true, "read_only": false}` (public, minimal; `HEAD` works on every page for uptime monitors) |
+
+### Replay fallback (`STUDIO_REPLAY_FALLBACK=1`)
+
+Opt-in, for days when the Muse Model API answers 502/503/504/529 more often than usual. Every
+call still goes to the live API first and is retried as always (four attempts, waits of 2, 5
+and 10 s). Only when the last attempt also fails with one of those statuses does the client
+look for a recorded answer in the replay set `STUDIO_REPLAY_SET` (default `demo`; startup
+refuses a set without `fixtures/replay/<set>/replay.json`):
+
+- the same request (`exact`), else the next recording of the same endpoint, model and tools
+  that asks for the **same output schema** (`route`; a recording with another schema never
+  answers);
+- no such recording: the step fails with the upstream error, as without the flag.
+
+A fallback answer is never presented as live:
+
+- the header shows **replay fallback** while the flag is on, and the step's row in the live
+  receipt ticker, the receipts page and the home page carry **recorded answer · API 503**
+  (with the real status);
+- its `model_call` receipt has provider `meta-model-api-replay`, model
+  `replay:<recorded model id>` (e.g. `replay:muse-spark-1.3`), and in `details`
+  `fallback: "replay"`, `fallback_reason: "upstream_http_503"`, `upstream_status: 503`,
+  `fallback_match: "exact" | "route"` (`route`: the recording answered a different request,
+  e.g. another brief) and `cost_basis: "replay"`; tokens and cost are 0, so nothing counts
+  against the daily budget;
+- the failed live attempts before it keep their own error receipts (`error_status`).
+
+`STUDIO_REPLAY=1` (everything recorded) makes this flag moot; it is ignored then.
 
 ## Guards (`studio/sandbox.py`, enabled by `STUDIO_SANDBOX=1`)
 
