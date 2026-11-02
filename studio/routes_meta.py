@@ -7,7 +7,9 @@
   ``META_WEBHOOK_VERIFY_TOKEN``; the ``hub.challenge`` digits are echoed).
 - ``POST /api/meta/webhook``: a Page ``leadgen`` event. Refused (403) unless its
   ``X-Hub-Signature-256`` verifies with ``META_APP_SECRET``; only forms this studio
-  created, on its own Page, are fetched (``GET /{lead_id}``) and ingested. Like every
+  created, on its own Page, are fetched (``GET /{lead_id}``) and ingested; with
+  ``STUDIO_CAPI=1`` each new lead (polled or pushed) is offered to the Conversions API
+  (``studio.meta.capi``: sent only with the signing account's consent). Like every
   route it sits behind the login gate, so it is reachable only where
   ``STUDIO_REQUIRE_LOGIN`` is off (the operator's machine, never the sandbox).
 
@@ -38,7 +40,7 @@ from fastapi.templating import Jinja2Templates
 from studio import disapprovals, leadads
 from studio.agents import media_buyer
 from studio.google import store as google_store
-from studio.meta import measurement, objectives
+from studio.meta import capi, measurement, objectives
 from studio.meta.adapter import AdapterError
 from studio.muse.client import MuseError
 from studio.receipts import Ledger
@@ -179,8 +181,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if isinstance(guard, JSONResponse):
             return guard
         try:
-            out = await run_in_threadpool(leadads.poll, conn, ledger, app.state.adapter,
-                                          client())
+            adapter = app.state.adapter
+            out = await run_in_threadpool(lambda: leadads.poll(
+                conn, ledger, adapter, client(),
+                capi=capi.sender(conn, ledger, adapter, settings)))
         except AdapterError as exc:
             return JSONResponse({"error": "meta_error", "code": exc.code}, 502)
         if out.get("new"):
@@ -215,6 +219,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
 
         def ingest() -> int:
             n = 0
+            send = capi.sender(conn, ledger, adapter, settings)  # None unless STUDIO_CAPI=1
             for change in leadads.leadgen_changes(event):
                 if (change["page_id"] and change["page_id"] != adapter.page_id) or \
                         not leadads.known_form(conn, change["form_id"], adapter.name):
@@ -224,7 +229,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 except AdapterError as exc:
                     LOG.warning("leadgen fetch failed: %s", exc.code)
                     continue
-                n += leadads.ingest(conn, ledger, client(), lead, via="webhook") is not None
+                n += leadads.ingest(conn, ledger, client(), lead, via="webhook",
+                                    capi=send) is not None
             return n
 
         received = await run_in_threadpool(ingest)

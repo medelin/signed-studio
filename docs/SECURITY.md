@@ -106,6 +106,19 @@ per hop (no cookies), no proxy from the environment, a plain user agent. The fet
 only searched for the pixel id and never stored, rendered or passed to a model. With an
 injected Graph transport (tests, replay) nothing is fetched at all.
 
+## Conversions API (lead data to Meta)
+
+Off unless `STUDIO_CAPI=1` ([brief.md](brief.md#conversions-api-optional-off-by-default)).
+It is the one place the studio sends customer data to Meta, so: only for the account that
+signed the form's campaign, only an own account that recorded its customers' consent
+(stored per account, off by default, withdrawn by unticking, erased with the account), only
+e-mail and phone, only as SHA-256 of the normalised value (both adapters refuse anything
+else before the call), never retried, one receipt per lead with digests only (not the
+per-field hash, which would let anyone holding an address test it against the public
+export). It is not an approved write: the consent is the owner's decision, not a signature
+per event. A sandbox with live Meta refuses to start with it on; replay answers it locally
+and a recording never stores it.
+
 ## Residual risks
 
 - **Personal access tokens are bearer secrets.** Whoever holds one can read (and, with

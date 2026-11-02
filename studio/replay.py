@@ -21,6 +21,9 @@ event streams) live once in ``fixtures/replay/blobs/<sha256>.<ext>`` and are ref
   says how it was found (``x-replay-match: exact | route``).
 - ``RecordingTransport`` wraps a real transport and writes a set; it stores no headers
   (no keys or tokens) and no request images.
+- Conversions API sends (``is_capi``) carry hashed customer data: a recording never
+  stores them, and replay answers them itself (``ReplayTransport.capi`` keeps what was
+  sent, without the token), so a replayed run never reaches Meta and never misses.
 
 Receipts written during a replay name the provider ``<provider>-replay``; their tokens and
 cost are those of the recorded call.
@@ -63,6 +66,16 @@ _B64 = re.compile(r"[A-Za-z0-9+/=\s]+")
 
 class ReplayMiss(Exception):
     pass
+
+
+# Conversions API sends (``POST graph.facebook.com/<version>/<dataset id>/events``,
+# ``studio.meta.capi``): never recorded, and answered by replay itself
+_CAPI_PATH = re.compile(r"/v\d+\.\d+/\d{1,20}/events")
+
+
+def is_capi(request: httpx.Request) -> bool:
+    return (request.method == "POST" and request.url.host == "graph.facebook.com"
+            and bool(_CAPI_PATH.fullmatch(request.url.path)))
 
 
 # -- normalization -------------------------------------------------------------------
@@ -263,6 +276,7 @@ class ReplayTransport(httpx.BaseTransport):
         self._used: set[int] = set()
         self._cursor: dict[str, int] = {}
         self.stats = {"exact": 0, "route": 0, "miss": 0}
+        self.capi: list[dict[str, Any]] = []  # Conversions API sends, kept here only
 
     @classmethod
     def from_set(cls, name: str = DEFAULT_SET, root: Path = REPLAY_DIR, *,
@@ -287,7 +301,24 @@ class ReplayTransport(httpx.BaseTransport):
         self._cursor[k] = n + 1
         return idx[n % len(idx)]
 
+    def _capi(self, request: httpx.Request) -> httpx.Response:
+        """A Conversions API send is answered here (``events_received``) and kept in
+        ``capi`` (without the token): never a recording, never a miss, never Meta."""
+        form = dict(httpx.QueryParams(request.content.decode(errors="replace")))
+        form.pop("access_token", None)
+        form.pop("appsecret_proof", None)
+        try:
+            n = len(json.loads(form.get("data", "[]")))
+        except ValueError:
+            n = 0
+        with self._lock:
+            self.capi.append({"path": request.url.path, "form": form})
+        return httpx.Response(200, json={"events_received": n, "messages": [],
+                                         "fbtrace_id": "replay"})
+
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if is_capi(request):
+            return self._capi(request)
         key, route, body = request_key(request)
         with self._lock:
             # A known request is always answered from its own recordings (cycling on a
@@ -331,6 +362,8 @@ class RecordingTransport(httpx.BaseTransport):
         self._lock = threading.Lock()
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if is_capi(request):  # hashed customer data: sent, never written to a set
+            return self.inner.handle_request(request)
         key, route, body = request_key(request)
         started = time.time()
         response = self.inner.handle_request(request)

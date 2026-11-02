@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from studio.approvals import Verified
-from studio.meta import pixel
+from studio.meta import capi, pixel
 from studio.meta.adapter import (
     ACTIVATE,
     CREATE,
@@ -66,6 +66,7 @@ class MockAdapter:
         self.replies: dict[str, list[str]] = {}
         self.hidden: set[str] = set()
         self._comments = list(comments or [])
+        self.capi: list[dict[str, Any]] = []  # Conversions API events "sent" (send_events)
 
     def _create(self, method: str, prefix: str, payload: Mapping[str, Any],
                 approval: Verified, obj: dict[str, Any]) -> str:
@@ -232,6 +233,17 @@ class MockAdapter:
                     if lead.external_id == lead_id:
                         return lead
         raise AdapterError("unknown lead", code="not_found")
+
+    def send_events(self, dataset_id: str, events: list[dict[str, Any]], *,
+                    test_event_code: str = "") -> dict[str, Any]:
+        """Conversions API: checked like ``graph`` (dataset id, hashed user data), then
+        only kept in ``capi``; nothing leaves the process."""
+        capi.check_dataset(dataset_id)
+        capi.check_events(events)
+        self.calls.append(("send_events", dataset_id))
+        self.capi.append({"dataset_id": dataset_id, "data": [dict(e) for e in events],
+                          "test_event_code": test_event_code})
+        return {"events_received": len(events), "fbtrace_id": _id("trace")}
 
     def preview(self, ad_id: str) -> Preview:
         ad = self.objects.get(ad_id)

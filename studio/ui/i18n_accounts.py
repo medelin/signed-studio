@@ -163,6 +163,15 @@ EN_ACCOUNTS: dict[str, str] = {
     "account.delete.art": "An owner and a record whose chain of receipts stays intact.",
     # results
     "account.done.profile": "Profile saved.",
+    # Conversions API (shown only with STUDIO_CAPI=1, studio.meta.capi)
+    "account.capi.legend": "Measure leads with Meta (Conversions API)",
+    "account.capi.consent": "I have my customers' consent for conversion measurement",
+    "account.capi.hint_html": "When ticked, every new lead from your instant forms is sent "
+                              "to your dataset as a <code>Lead</code> event, so Meta can "
+                              "measure and optimise your campaigns. Only the e-mail and the "
+                              "phone number are sent, and only as SHA-256 hashes; never a "
+                              "name or a message. Each send leaves a receipt. You need the "
+                              "dataset ID above. Untick to stop at any time.",
     "account.done.password": "Password changed. Every other session was signed out.",
     "account.done.2fa_started": "Almost done: scan the code and confirm it below.",
     "account.done.2fa_cancelled": "Set-up cancelled.",
@@ -406,6 +415,15 @@ PL_ACCOUNTS: dict[str, str] = {
     "account.delete.demo": "Wspólnego konta jury nie da się usunąć.",
     "account.delete.art": "Właściciel i rekord, którego łańcuch pokwitowań pozostaje cały.",
     "account.done.profile": "Profil zapisany.",
+    "account.capi.legend": "Pomiar leadów w Mecie (Conversions API)",
+    "account.capi.consent": "Mam zgodę moich klientów na pomiar konwersji",
+    "account.capi.hint_html": "Po zaznaczeniu każdy nowy lead z Twoich formularzy "
+                              "błyskawicznych trafia do Twojego zbioru danych jako zdarzenie "
+                              "<code>Lead</code>, żeby Meta mogła mierzyć i optymalizować "
+                              "kampanie. Wysyłane są tylko e-mail i numer telefonu, i tylko "
+                              "jako skróty SHA-256; nigdy imię ani wiadomość. Każda wysyłka "
+                              "zostawia pokwitowanie. Potrzebne jest ID zbioru danych "
+                              "powyżej. Odznacz, aby przestać w dowolnej chwili.",
     "account.done.password": "Hasło zmienione. Wszystkie inne sesje zostały wylogowane.",
     "account.done.2fa_started": "Prawie gotowe: zeskanuj kod i potwierdź go poniżej.",
     "account.done.2fa_cancelled": "Konfiguracja przerwana.",

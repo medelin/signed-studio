@@ -17,6 +17,9 @@ Rules every implementation follows, enforced by ``require`` and ``check_paused``
   ad set, then the campaign (``ACTIVATION_ORDER``), one call each.
 - The access token goes in the POST form body or the ``Authorization`` header, never in
   a URL (``graph.py``).
+- The one write that is not a campaign object, ``send_events`` (Conversions API, off
+  unless ``STUDIO_CAPI=1``), needs no approval: it sends hashed lead data to the owner's
+  dataset only with that owner's recorded consent (``studio.meta.capi``).
 - The campaign objective, the ad set's optimisation goal, billing event, destination and
   promoted object come only from the payload's signed ``delivery`` block, and only after
   ``objectives.check`` accepted it as a row of the objective table (``delivery_of``);
@@ -181,6 +184,14 @@ class Adapter(Protocol):
 
     def get_lead(self, lead_id: str) -> Any:
         """``GET /{lead_id}`` (a ``leadads.RemoteLead``), for the leadgen webhook."""
+
+    def send_events(self, dataset_id: str, events: list[dict[str, Any]], *,
+                    test_event_code: str = "") -> dict[str, Any]:
+        """Conversions API: ``POST /{dataset_id}/events`` with events built by
+        ``capi.lead_event`` (contact data hashed, ``capi.check_events`` before any call);
+        ``{"events_received", "fbtrace_id"}``. Not a campaign write, so no approval: it
+        runs only with ``STUDIO_CAPI=1`` and the signing account's recorded consent
+        (``studio.meta.capi``), and is never sent twice."""
 
     def preview(self, ad_id: str) -> Preview: ...
 

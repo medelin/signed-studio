@@ -27,6 +27,7 @@ from fastapi.templating import Jinja2Templates
 
 from studio import accounts, auth, billing, db, notify, prefs, whatsapp
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
+from studio.meta import capi
 from studio.meta.adapter import AdapterError
 from studio.receipts import Ledger
 from studio.settings import Settings
@@ -174,6 +175,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         except AdapterError:
             return []
 
+    def capi_offered(account: Account) -> bool:
+        return settings.capi and account.sees_personal_data
+
     def page(request: Request, sid: str, account: Account, *, status: int = 200,
              errors: dict[str, tuple[str, str]] | None = None, codes: list[str] | None = None,
              values: dict[str, str] | None = None, whatsapp_code: str = "",
@@ -220,6 +224,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "whatsapp_studio_number_display": whatsapp.pretty_number(
                 settings.whatsapp.display_number),
             "whatsapp_code_minutes": whatsapp.CODE_TTL_S // 60,
+            # Conversions API consent (studio.meta.capi): only with STUDIO_CAPI=1, only
+            # for an account that runs its own ads
+            "capi_offered": capi_offered(account),
+            "capi_consent": capi_offered(account) and store.capi_consent(account.id) > 0,
             **_extras(app, account),  # studio.routes_api: the "Assistants & API" section
             **(extra or {}),
         }, status_code=status, headers=NO_STORE)
@@ -309,6 +317,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         except AccountError as exc:
             return page(request, sid, account, status=400, values=values,
                         errors={"profile": ("err." + exc.code, str(exc))})
+        if capi_offered(account):
+            consent = fields.get("capi_consent") == "1"
+            if store.set_capi_consent(account.id, consent):
+                capi.consent_receipt(ledger, account.id, consent)
         response = done("profile")
         _pref_cookies(response, updated, _secure(request, settings))
         return response

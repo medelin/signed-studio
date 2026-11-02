@@ -128,7 +128,10 @@ def leads_poll(env_file: Path) -> int:
     if client is not None and settings.open_weights:  # lead data stays on open weights
         from studio.muse.openweights import OpenWeightsClient
         client = OpenWeightsClient.from_settings(settings, ledger)
-    out = leadads.poll(conn, ledger, adapter, client)
+    from studio.meta import capi
+
+    out = leadads.poll(conn, ledger, adapter, client,
+                       capi=capi.sender(conn, ledger, adapter, settings))
     if out["new"]:
         notifier = _notifier(settings, conn, ledger)
         notifier.event("lead_new", count=out["new"])
