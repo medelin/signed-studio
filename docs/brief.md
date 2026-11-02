@@ -91,6 +91,53 @@ objective without a check, `pixel_check_mismatch` for a check of another pixel).
 is shown and signable. The check is not repeated at execution: the signed payload binds the
 result the person saw. Instant forms and objectives without a pixel skip it.
 
+### Conversions API (optional, off by default)
+
+With `STUDIO_CAPI=1` the studio can also send the leads it already receives from its own
+instant forms (polled, or pushed by the `leadgen` webhook) to the owner's dataset, from
+the server, so Meta measures them (`studio/meta/capi.py`, `Adapter.send_events`). With the
+flag off nothing changes: no checkbox, no call, no receipt.
+
+- **Who and when.** The account that signed the form's `campaign.create` (approval →
+  approver key → session → account) must be an own account (active, full tier, not the
+  shared demo or a trial), have the dataset id saved (Account → Profile → "Dataset ID (Meta
+  Pixel)"; with the flag on that field is shown even without a website, since instant-form
+  leads need it too) and have ticked **"I have my customers' consent for conversion
+  measurement"** in the same form. The consent is stored per account
+  (`accounts.capi_consent_ts`, 0 = not given, the default), dated, in the account export
+  while given, erased with the account; ticking or unticking leaves a `capi.consent`
+  receipt. The checkbox is not offered to the judge or trial accounts.
+- **What.** `POST /{dataset_id}/events`, one event per new lead, in the shape of Meta's CRM
+  integration for lead ads: `event_name=Lead`, `action_source=system_generated`,
+  `custom_data={event_source: crm, lead_event_source: "Muse Studio Lite"}`,
+  `user_data.lead_id` (Meta's numeric lead id) and `em` / `ph` as SHA-256 of the
+  normalised value (e-mail trimmed and lower-cased; phone digits only with the country
+  code, no leading zeros; a phone written without a country code is left out, not
+  guessed). Name, city, company and messages are never sent. Both adapters refuse an
+  unhashed or unknown `user_data` field before any call (`capi.check_events`).
+- **Deduplication.** `event_id` is `muse-lead-<lead id>`, fixed per lead: Meta drops a
+  repeat of the same `Lead` with the same id (a resend, or a browser event that carries
+  it). The website Pixel never sees an instant-form lead, so there is nothing else to
+  match today.
+- **Testing.** `STUDIO_CAPI_TEST_EVENT_CODE=TEST12345` (the code Events Manager → Test
+  events shows) sends every event as a test event; nothing is counted.
+- **Receipts.** Each lead gets one `capi.send` receipt in the form's run (`lf_…`): `ok`
+  (`events_received`), `error` (the Graph error code; a write is never retried, the lead
+  stays in the store) or `skipped` with `reason` (`no_account`, `no_consent`,
+  `no_dataset`, `no_contact`). The receipt export is public, so it names the lead by its
+  internal id and carries only digests: `dataset_sha256`, `user_data_sha256` (of the whole
+  `user_data` sent), `output_sha256` (of the request), plus the field names (`fields`),
+  `event_id`, `action_source`, `consent_ts` and `test`. No address, number or per-field
+  hash appears in it (`side_effects: measurement`).
+- **No real Meta in tests, replay or the sandbox.** The mock adapter keeps the events in
+  `MockAdapter.capi`; replay answers the call itself and keeps it in
+  `ReplayTransport.capi` (a recording never stores these requests); a sandbox refuses to
+  start with `STUDIO_CAPI=1` and `STUDIO_SANDBOX_LIVE_META=1`. `STUDIO_READ_ONLY=1` sends
+  nothing.
+- **Not covered.** Comment leads (no consented contact data) and WhatsApp/Messenger
+  conversations (the studio's WhatsApp channel talks to the owner only; there are no
+  customer leads from it to send). No retry queue.
+
 The Pydantic models are strict (`extra="forbid"`, no type coercion) and are also the
 producer's strict JSON schema, so length limits live in `brief.problems` (field path →
 error code; the UI shows each code's message, in English or Polish, next to its field).
