@@ -10,6 +10,25 @@ anyone can check offline with `studio verify`.
 Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for Your World).
 **Everything in this repository was built during the event (27 Oct – 4 Nov 2026).**
 
+## Judges: 60-second path
+
+- Sandbox: **https://muse.udun.eu** (login `judge`; the password is in the submission form).
+- Built during the event, with dates from git: [HACKATHON.md](HACKATHON.md).
+
+1. Open **Studio**, press "or use an example brief instead", then **Draft my brief**. Answer or strike the questions and press **Confirm the brief and run the studio**. The agents (Producer, Copywriter, Art director, Reviewers) fill sections 2-5.
+2. At "6 · Approve and sign" press **Approve and sign**. The key stays in your browser; the signature covers the exact bytes shown.
+3. Section "7 · Campaign (PAUSED) and preview" shows the campaign created PAUSED. Then open **Receipts** in the footer, or press **Verify the chain** at https://muse.udun.eu/try (no login).
+
+| Result (from [docs/eval.md](docs/eval.md)) | Value |
+|---|---|
+| `studio verify` on tampered exports | 600/600 rejected (24 classes × 25) |
+| `studio verify` on clean exports | 25/25 accepted |
+| Attack suites | 247/247 pass (23 files) |
+| Reviewer: bad ads stopped (WARN or BLOCK) | 18/20 (model alone 18/20) |
+| Reviewer: clean ads blocked (false positives) | 0/5 |
+| Spark vision vs Spark Open (Baseten) agreement | 23/25 same OK-vs-flag decision, 20/25 same verdict |
+| Cost of one campaign run (brief → approval) | $0.0945 (`demo` brief) |
+
 - Live sandbox (judge login; the password is in the submission): **https://muse.udun.eu**
 - Numbers: **[docs/eval.md](docs/eval.md)** · how it works: [docs/architecture.md](docs/architecture.md) ·
   Brief v1 and the [FACT] questions: [docs/brief.md](docs/brief.md) ·
