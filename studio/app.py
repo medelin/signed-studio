@@ -548,6 +548,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_account.install(app, settings, conn)  # accounts, judge demo account, 2FA state
     templates = Jinja2Templates(directory=str(UI / "templates"))
     templates.env.globals["replay"] = settings.replay
+    templates.env.globals["replay_fallback"] = settings.replay_fallback
     templates.env.globals["t"] = i18n.t
     templates.env.globals["tv"] = i18n.tv
     templates.env.globals["js_catalog"] = i18n.js_catalog

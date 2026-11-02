@@ -132,6 +132,9 @@ class Settings:
     daily_budget_usd: float = 8.0
     replay: bool = False  # serve recorded Model API / Baseten / Graph responses (studio.replay)
     replay_set: str = "demo"
+    # live calls, but a step whose API errors (502/503/504/529) outlast the retries is
+    # answered from ``replay_set`` when it has a recording (receipts say so; studio.replay)
+    replay_fallback: bool = False
     trusted_proxies: frozenset[str] = frozenset()
     cookie_secure: bool = True
     # every page and API needs a judge session (default on with STUDIO_SANDBOX=1)
@@ -299,6 +302,14 @@ class Settings:
         if open_weights and not e.get("BASETEN_API_KEY", "") and not replay:
             raise ConfigError("STUDIO_OPEN_WEIGHTS=1 needs BASETEN_API_KEY (Muse Spark Open "
                               "on Baseten serves the open-weights steps)")
+        replay_set = _replay_set(e.get("STUDIO_REPLAY_SET", "") or "demo")
+        replay_fallback = _bool(e, "STUDIO_REPLAY_FALLBACK", False) and not replay
+        if replay_fallback:
+            from studio.replay import set_path
+
+            if not set_path(replay_set).is_file():
+                raise ConfigError(f"STUDIO_REPLAY_FALLBACK=1 needs a recorded set: "
+                                  f"STUDIO_REPLAY_SET={replay_set!r} has no replay.json")
         glimmer = _bool(e, "STUDIO_GLIMMER", False)
         glimmer_url = (e.get("GLIMMER_BASE_URL", "") or "https://api.together.xyz/v1").rstrip("/")
         if not glimmer_url.startswith("https://"):
@@ -335,7 +346,8 @@ class Settings:
             read_only=_bool(e, "STUDIO_READ_ONLY", False),
             daily_budget_usd=budget,
             replay=replay,
-            replay_set=_replay_set(e.get("STUDIO_REPLAY_SET", "") or "demo"),
+            replay_set=replay_set,
+            replay_fallback=replay_fallback,
             trusted_proxies=frozenset(proxies),
             cookie_secure=_bool(e, "COOKIE_SECURE", True),
             require_login=require_login,

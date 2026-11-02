@@ -4,6 +4,12 @@ Every call, successful or not, appends a ``model_call`` receipt naming the model
 reports, the tier and why it was chosen, request/output hashes, token usage and cost. The
 API key is sent only in the ``Authorization`` header; it never appears in receipts,
 exceptions or ``repr``. Read-only mode and the daily budget are enforced before any request.
+
+Replay fallback (``STUDIO_REPLAY_FALLBACK=1``, ``use_replay_fallback``): when the API keeps
+answering 502/503/504/529 after the retries, the step is answered from a recorded replay set
+if it has an answer for it. That receipt says so: provider ``<provider>-replay``, model
+``replay:<recorded model>``, ``details.fallback = "replay"`` with the upstream status, how the
+recording was matched, and no tokens or cost. Without a recording the upstream error stands.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ import base64
 import binascii
 import json
 import math
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -21,6 +28,7 @@ import httpx
 
 from studio import envelope
 from studio.receipts import Ledger, canonical, normalize_id, sha256_hex
+from studio.replay import MATCH_HEADER
 from studio.settings import Budget, ReadOnlyMode, Settings
 
 BASE_URL = "https://api.meta.ai/v1"
@@ -255,6 +263,8 @@ class MuseClient:
         self.budget = budget
         self.read_only = read_only
         self._http = httpx.Client(timeout=timeout, transport=transport)
+        self._fallback_http: httpx.Client | None = None
+        self._via = threading.local()  # the replay fallback, for this thread's current call
 
     @classmethod
     def from_settings(
@@ -273,6 +283,17 @@ class MuseClient:
 
     def close(self) -> None:
         self._http.close()
+        if self._fallback_http is not None:
+            self._fallback_http.close()
+
+    def use_replay_fallback(self, transport: httpx.BaseTransport) -> None:
+        """Answer a step from ``transport`` (a strict ``ReplayTransport``) when the API keeps
+        failing with a retryable status; see the module docstring."""
+        self._fallback_http = httpx.Client(transport=transport)
+
+    @property
+    def has_replay_fallback(self) -> bool:
+        return self._fallback_http is not None
 
     # -- public API ------------------------------------------------------------------
 
@@ -417,7 +438,9 @@ class MuseClient:
         """``_call_once``, retried up to three times with growing waits when the API
         answered 502/503/504/529 (an answered error, so nothing was produced; each failed
         attempt keeps its own error receipt): a brief outage upstream should not fail a
-        whole run. Network errors and every other status are final."""
+        whole run. Network errors and every other status are final. If the last attempt
+        fails too and a replay fallback is attached, the recorded answer is used when there
+        is one; otherwise the upstream error stands."""
         for factor in self.RETRY_BACKOFF:
             try:
                 return self._call_once(*args, **kwargs)
@@ -425,7 +448,16 @@ class MuseClient:
                 if exc.status not in self.RETRY_STATUS:
                     raise
             time.sleep(self.retry_delay_s * factor)
-        return self._call_once(*args, **kwargs)
+        try:
+            return self._call_once(*args, **kwargs)
+        except MuseError as exc:
+            if exc.status not in self.RETRY_STATUS or self._fallback_http is None:
+                raise
+            upstream = exc
+        try:
+            return self._call_once(*args, **{**kwargs, "fallback_status": upstream.status})
+        except MuseError:
+            raise upstream from None  # no recording for this step: fail as without fallback
 
     def _call_once(
         self,
@@ -441,13 +473,18 @@ class MuseClient:
         stream: bool = False,
         envelope_sources: Sequence[str] = (),
         sender: Callable[[], dict[str, Any]] | None = None,
+        fallback_status: int = 0,
     ) -> MuseResult:
         """Send one request. Once anything may have been sent, a receipt is always written:
-        the success receipt, or an error receipt for network, HTTP, parse or abort."""
+        the success receipt, or an error receipt for network, HTTP, parse or abort.
+
+        ``fallback_status`` (the upstream status that exhausted the retries) sends it to the
+        replay fallback instead: nothing is reserved or charged, and the receipt says so."""
         self._check(model, tier)
         # Caller-supplied ids fail here, before any I/O, never in the receipt after the call.
         rid = self._receipt_model(model)
-        Ledger.validate_ids(run_id, agent, provider=self.provider, model=rid, tier=tier)
+        provider = f"{self.provider}-replay" if fallback_status else self.provider
+        Ledger.validate_ids(run_id, agent, provider=provider, model=rid, tier=tier)
         if self.read_only:
             raise ReadOnlyMode("STUDIO_READ_ONLY=1: model calls are disabled")
         if not self._api_key:
@@ -457,11 +494,14 @@ class MuseClient:
         # declared source must really be wrapped in this request (checked before any I/O).
         sources = sorted(set(envelope_sources))
         envelope.check_declared(canonical(body).decode(), sources)
-        estimate = self._estimate(model, body)
-        if self.budget is not None:
+        estimate = 0.0 if fallback_status else self._estimate(model, body)
+        if self.budget is not None and not fallback_status:
             self.budget.reserve(estimate)  # atomic: concurrent calls cannot overspend
+        fallback: dict[str, Any] = ({
+            "fallback": "replay", "fallback_reason": f"upstream_http_{fallback_status}",
+            "upstream_status": fallback_status} if fallback_status else {})
         audit: dict[str, Any] = {
-            "provider": self.provider,
+            "provider": provider,
             "tier": tier,
             "tier_reason": tier_reason,
             "prompt_sha256": sha256_hex(canonical(body)),
@@ -469,6 +509,7 @@ class MuseClient:
             "envelope": bool(sources),
         }
         start = time.monotonic()
+        self._via.http = self._fallback_http if fallback_status else None
         try:
             if sender is not None:
                 data = sender()
@@ -476,10 +517,13 @@ class MuseClient:
                 data = self._send_stream(path, body) if stream else self._send(path, body)
             try:
                 parsed = parser(data)
+                answered = self._receipt_model(str(data.get("model") or model))
                 used_model, reported_sha = normalize_id(
-                    self._receipt_model(str(data.get("model") or model)))
+                    f"replay:{answered}" if fallback_status else answered)
                 usage: Usage = parsed["usage"]
-                cost = self._cost(model, used_model, usage, parsed.get("units", 0))
+                cost = self._cost(model, answered, usage, parsed.get("units", 0))
+                if fallback_status:  # a recorded answer: nothing was used or spent now
+                    usage, cost = Usage(), 0.0
             except Exception:  # noqa: BLE001 - any malformed body is a bad response
                 # The call was billed: record whatever usage the body reports, else the
                 # estimate, so the spend (and the receipt the budget is rebuilt from) is real.
@@ -492,26 +536,30 @@ class MuseClient:
                                      if bad_usage and model in TOKEN_PRICES else None),
                                ) from None
         except _Failure as failure:
-            charged = estimate if failure.cost is None else failure.cost
+            charged = estimate if failure.cost is None or fallback_status else failure.cost
             self._settle(estimate, charged)
-            u = failure.usage or Usage()
-            basis = ({"cost_basis": "estimate"} if failure.cost is None
+            u = Usage() if fallback_status else failure.usage or Usage()
+            basis = ({"cost_basis": "replay"} if fallback_status
+                     else {"cost_basis": "estimate"} if failure.cost is None
                      else {"cost_basis": "usage"} if failure.usage else {})
             self.ledger.append(run_id, agent=agent, kind="model_call", model=rid, **audit,
                                duration_ms=_ms(start), tokens_in=u.input_tokens,
                                tokens_out=u.output_tokens, cost_usd=round(charged, 8),
-                               details={"endpoint": endpoint, **failure.details, **basis,
-                                        **family_details(model)})
+                               details={"endpoint": endpoint, **fallback, **failure.details,
+                                        **basis, **family_details(model)})
             raise failure.error from None
         except BaseException as exc:
             # Unknown whether the request was billed: charge the estimate (conservative).
             self._settle(estimate, estimate)
             self.ledger.append(run_id, agent=agent, kind="model_call", model=rid, **audit,
                                duration_ms=_ms(start), cost_usd=round(estimate, 8),
-                               details={"endpoint": endpoint, "error": "aborted",
+                               details={"endpoint": endpoint, **fallback, "error": "aborted",
                                         "error_type": type(exc).__name__,
-                                        "cost_basis": "estimate", **family_details(model)})
+                                        "cost_basis": "replay" if fallback_status
+                                        else "estimate", **family_details(model)})
             raise
+        finally:
+            self._via.http = None
         ms = _ms(start)
         self._settle(estimate, cost)
         details: dict[str, Any] = {
@@ -520,8 +568,11 @@ class MuseClient:
             "response_id": str(data.get("id", "")),
             "finish": parsed["finish"],
             "reasoning_tokens": usage.reasoning_tokens,
-            **family_details(used_model),
+            **family_details(used_model.removeprefix("replay:")),
         }
+        if fallback_status:
+            details.update(fallback, fallback_match=str(data.get("_replay_match") or "route"),
+                           cost_basis="replay")
         if parsed.get("units"):
             details["units"] = parsed["units"]
         details.update(self._cost_note())
@@ -578,7 +629,7 @@ class MuseClient:
     def _send(self, path: str, body: dict[str, Any] | None,
               files: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
-            resp = self._http.post(
+            resp = self._client().post(
                 self.base_url + path,
                 json=body,
                 files=files,
@@ -599,14 +650,24 @@ class MuseClient:
             raise _Failure({"error_status": resp.status_code, "error_type": code},
                            MuseError(f"{self.api_label} returned HTTP {resp.status_code} "
                                      f"({code or 'error'})", status=resp.status_code, code=code))
-        return data
+        return self._matched(data, resp)
+
+    def _client(self) -> httpx.Client:
+        """The replay fallback while this thread's call is answered from it, else the API."""
+        return getattr(self._via, "http", None) or self._http
+
+    @staticmethod
+    def _matched(data: dict[str, Any], resp: httpx.Response) -> dict[str, Any]:
+        """``data`` plus how a replay recording was found (``_replay_match``), if it was."""
+        match = resp.headers.get(MATCH_HEADER)
+        return {**data, "_replay_match": match} if match else data
 
 
     def _send_stream(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         """POST with ``stream: true``; returns the final response object plus ``_events``."""
         events: list[dict[str, Any]] = []
         try:
-            with self._http.stream(
+            with self._client().stream(
                 "POST", self.base_url + path, json=body,
                 headers={"Authorization": f"Bearer {self._api_key}",
                          "Accept": "text/event-stream"},
@@ -647,7 +708,7 @@ class MuseClient:
                                                                        dict):
                 final = dict(event["response"])
         final["_events"] = events
-        return final
+        return self._matched(final, resp)
 
 
 class _Failure(Exception):

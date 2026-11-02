@@ -48,6 +48,10 @@ EN: dict[str, str] = {
     "badge.read_only": "read-only", "badge.replay": "replay",
     "badge.replay_title": "Model API answers are recorded responses served offline "
                           "(STUDIO_REPLAY=1)",
+    "badge.replay_fallback": "replay fallback",
+    "badge.replay_fallback_title": "Model API calls are live; a step whose API errors "
+                                   "(502/503/504/529) outlast the retries is answered from "
+                                   "a recorded run and marked so (STUDIO_REPLAY_FALLBACK=1)",
     "auth.sign_in": "Sign in", "auth.sign_out": "Sign out",
     "lang.label": "Language",
     "theme.label": "Display", "theme.mode": "Mode", "theme.palette": "Colours",
@@ -135,6 +139,9 @@ EN: dict[str, str] = {
     "js.loop_banner_wait": "Reviewers BLOCKED variant {n} (rule {rules}) → copywriter rewrote → "
                            "second review pending",
     "js.loop_before": "Blocked version", "js.loop_after": "Rewritten version",
+    "js.fallback_badge": "recorded answer · API {status}",
+    "js.fallback_title": "The Model API kept failing, so this step was answered from a "
+                         "recorded run: not a live answer, nothing spent",
     "js.loop_finding": "{rule}: {evidence}",
     "studio.reviews": "5 · Reviews", "studio.no_review": "No review yet.",
     "studio.approve": "6 · Approve and sign",
@@ -245,6 +252,9 @@ EN: dict[str, str] = {
     "receipts.caption": "Receipts, newest first",
     "receipts.envelope_title": "customer text was wrapped in the untrusted-content envelope",
     "receipts.envelope": "envelope", "receipts.copy": "Copy",
+    "receipts.fallback": "recorded answer · API {status}",
+    "receipts.fallback_title": "The Model API kept failing, so this step was answered from a "
+                               "recorded run: not a live answer, nothing spent",
     "receipts.copy_label": "Copy receipt {id} as JSON",
     "receipts.empty_html": 'No receipts yet. Start a run in the <a href="/studio">studio</a> '
                            'or triage a comment in the <a href="/inbox">inbox</a>; every call '
@@ -493,6 +503,11 @@ PL: dict[str, str] = {
     "badge.read_only": "tylko odczyt", "badge.replay": "nagranie",
     "badge.replay_title": "Odpowiedzi Model API to nagrane odpowiedzi podawane offline "
                           "(STUDIO_REPLAY=1)",
+    "badge.replay_fallback": "zapas z nagrania",
+    "badge.replay_fallback_title": "Wywołania Model API idą na żywo; krok, którego błędy API "
+                                   "(502/503/504/529) trwają dłużej niż ponowienia, dostaje "
+                                   "odpowiedź z nagranego przebiegu i jest tak oznaczony "
+                                   "(STUDIO_REPLAY_FALLBACK=1)",
     "auth.sign_in": "Zaloguj", "auth.sign_out": "Wyloguj",
     "lang.label": "Język",
     "theme.label": "Wygląd", "theme.mode": "Tryb", "theme.palette": "Kolory",
@@ -580,6 +595,9 @@ PL: dict[str, str] = {
     "js.loop_banner_wait": "Recenzenci ZABLOKOWALI wariant {n} (reguła {rules}) → copywriter "
                            "przepisał → druga recenzja w toku",
     "js.loop_before": "Wersja zablokowana", "js.loop_after": "Wersja przepisana",
+    "js.fallback_badge": "nagrana odpowiedź · API {status}",
+    "js.fallback_title": "Model API wciąż zwracało błąd, więc ten krok dostał odpowiedź z "
+                         "nagranego przebiegu: to nie odpowiedź na żywo, nic nie wydano",
     "js.loop_finding": "{rule}: {evidence}",
     "studio.reviews": "5 · Recenzje", "studio.no_review": "Nie ma jeszcze recenzji.",
     "studio.approve": "6 · Zatwierdź i podpisz",
@@ -695,6 +713,9 @@ PL: dict[str, str] = {
     "receipts.caption": "Pokwitowania, najnowsze najpierw",
     "receipts.envelope_title": "tekst klienta został owinięty kopertą dla niezaufanej treści",
     "receipts.envelope": "koperta", "receipts.copy": "Kopiuj",
+    "receipts.fallback": "nagrana odpowiedź · API {status}",
+    "receipts.fallback_title": "Model API wciąż zwracało błąd, więc ten krok dostał odpowiedź "
+                               "z nagranego przebiegu: to nie odpowiedź na żywo, nic nie wydano",
     "receipts.copy_label": "Kopiuj pokwitowanie {id} jako JSON",
     "receipts.empty_html": 'Nie ma jeszcze pokwitowań. Uruchom przebieg w <a href="/studio">'
                            'studiu</a> albo posegreguj komentarz w <a href="/inbox">skrzynce'

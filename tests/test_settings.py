@@ -306,3 +306,11 @@ def test_meta_token_transport_and_app_secret():
 def test_an_unparsable_landing_url_is_a_named_config_error(url):
     with pytest.raises(ConfigError, match="META_LANDING_URL"):
         Settings.load({"META_LANDING_URL": url})
+
+
+def test_replay_fallback_is_opt_in_and_needs_a_recorded_set():
+    assert not Settings.load({}).replay_fallback
+    s = Settings.load({"STUDIO_REPLAY_FALLBACK": "1", "STUDIO_REPLAY_SET": "brief"})
+    assert s.replay_fallback and not s.replay
+    with pytest.raises(ConfigError, match="STUDIO_REPLAY_FALLBACK"):
+        Settings.load({"STUDIO_REPLAY_FALLBACK": "1", "STUDIO_REPLAY_SET": "no-such-set"})
