@@ -210,3 +210,11 @@ the same two orders.
 
   A self-signed leaf, a swapped cert file, a malformed digest, a reused transmission id
   and a wrong webhook id are each refused in tests.
+- *The event's class is PayPal's, not the body's.*
+  - A webhook receipt's `event_class` (`capture.completed`, `refund.completed`,
+    `authorization.voided` …) is derived from the resource kind and the status PayPal's
+    API reports. The body's `event_type` is kept only as `body_event_type`. `studio
+    verify` checks that the class matches the recorded status.
+  - When the API read fails, nothing is stored and the route answers 503, so PayPal's
+    retry is checked afresh instead of being dropped as a duplicate. A resource the
+    API does not know is refused (400).

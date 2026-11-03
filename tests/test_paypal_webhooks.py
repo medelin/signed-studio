@@ -119,11 +119,16 @@ def test_the_route_needs_no_session_and_refuses_forgeries(tmp_path):
         headers, body = signer.sign({"id": "WH-1ROUTE0000001-0001",
                                      "event_type": "PAYMENT.CAPTURE.COMPLETED",
                                      "resource": {"id": "3C000000NOTOURS0X"}})
-        ok = c.post("/webhooks/paypal", content=body, headers=headers)
-        # PayPal's API does not know that capture: nothing is attested, no receipt
-        assert ok.status_code == 200 and ok.json()["status"] == "unchecked"
-        again = c.post("/webhooks/paypal", content=body, headers=headers)
-        assert again.json()["status"] == "duplicate"
+        r = c.post("/webhooks/paypal", content=body, headers=headers)
+        # PayPal's API does not know that capture: refused, nothing stored
+        assert r.status_code == 400 and r.json()["error"] == "unknown_resource"
+        assert not a.state.conn.execute("SELECT 1 FROM paypal_events").fetchone()
+        a.state.funder.lookup = lambda path: (_ for _ in ()).throw(TimeoutError())
+        headers, body = signer.sign({"id": "WH-1ROUTE0000002-0002",
+                                     "event_type": "PAYMENT.CAPTURE.COMPLETED",
+                                     "resource": {"id": "3C000000NOTOURS0X"}})
+        r = c.post("/webhooks/paypal", content=body, headers=headers)
+        assert r.status_code == 503 and r.json()["error"] == "lookup_failed"  # PayPal retries
         forged = c.post("/webhooks/paypal", content=body.replace(b"0X", b"0Y"),
                         headers=headers)
         assert forged.status_code == 400 and forged.json()["error"] == "signature"
@@ -242,16 +247,20 @@ def test_recheck_uses_the_verifiers_webhook_id_not_the_exports(env, tmp_path):
 
 
 def test_a_reused_transmission_id_is_refused(env):
-    signer = env.funder.signer
+    from studio import funding as fmod
+
+    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    signer, tid = env.funder.signer, "11111111-2222-3333-4444-555555555555"
     h1, b1 = signer.sign({"id": "WH-1TRANSMIT00001-0001", "event_type": "PAYMENT.CAPTURE."
-                          "COMPLETED", "resource": {"id": "3C000000NOTOURS0X"}},
-                         transmission_id="11111111-2222-3333-4444-555555555555")
-    webhooks.apply(env.conn, env.ledger, env.funder.verifier, h1, b1)
+                          "COMPLETED", "resource": {"id": f.capture_id}}, transmission_id=tid)
+    first = webhooks.apply(env.conn, env.ledger, env.funder.verifier, h1, b1,
+                           lookup=env.funder.lookup)
+    assert first.status == "recorded"
     h2, b2 = signer.sign({"id": "WH-1TRANSMIT00002-0002", "event_type": "PAYMENT.CAPTURE."
-                          "COMPLETED", "resource": {"id": "3C000000NOTOURS0Y"}},
-                         transmission_id="11111111-2222-3333-4444-555555555555")
+                          "COMPLETED", "resource": {"id": f.capture_id}}, transmission_id=tid)
     with pytest.raises(webhooks.WebhookRefused) as e:
-        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2)
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
+                       lookup=env.funder.lookup)
     assert e.value.code == "transmission_replayed"
 
 
@@ -274,9 +283,52 @@ def test_the_receipt_states_what_paypals_api_says_not_the_body(env):
     assert d["resource_source"] == "api"
 
 
-def test_without_the_api_nothing_is_attested(env):
-    event = {"id": "WH-1NOAPI00000001-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
-             "resource": {"id": "3C000000NOTOURS0Z"}}
+def test_a_failed_lookup_stores_nothing_and_the_retry_records(env):
+    """PayPal's API is down for the first delivery: refused (503 at the route), no row,
+    so PayPal's retry of the same event and transmission is checked and recorded."""
+    from studio import funding as fmod
+    from studio.paypal.client import PayPalError
+
+    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    event = {"id": "WH-1RETRY0000001-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
+             "resource": {"id": f.capture_id}}
     headers, body = env.funder.signer.sign(event)
-    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body)
-    assert out.status == "unchecked" and out.receipt is None
+
+    def down(path):
+        raise PayPalError(503, "SERVICE_UNAVAILABLE", transient=True)
+
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body, lookup=down)
+    assert e.value.code == "lookup_failed"
+    assert not env.conn.execute("SELECT 1 FROM paypal_events WHERE event_id = ?",
+                                (event["id"],)).fetchone()
+    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
+                         lookup=env.funder.lookup)
+    assert out.status == "recorded" and out.receipt.details["event_class"] == \
+        "capture.completed"
+
+
+def test_the_body_cannot_name_the_event_class(env):
+    """A genuine signature over a body that calls the capture something else: the
+    receipt's class is what PayPal's API says the resource is."""
+    from studio import funding as fmod
+
+    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    event = {"id": "WH-1LABEL0000001-0001", "event_type": "PAYMENT.CAPTURE.DENIED",
+             "resource": {"id": f.capture_id}}
+    headers, body = env.funder.signer.sign(event)
+    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
+                         lookup=env.funder.lookup)
+    d = out.receipt.details
+    assert d["event_class"] == "capture.completed" and d["status"] == "COMPLETED"
+    assert d["body_event_type"] == "PAYMENT.CAPTURE.DENIED"
+
+
+def test_verify_refuses_a_class_that_does_not_match_the_status(env):
+    receipt = next(r for r in env.ledger.receipts(RUN) if r.kind == PAYPAL_WEBHOOK_KIND
+                   and r.details["event_class"] == "capture.completed")
+    env.ledger.append(RUN, agent="paypal", kind=PAYPAL_WEBHOOK_KIND, provider="paypal",
+                      details={**receipt.details, "event_id": "WH-1CLASS0000001-0001",
+                               "status": "PENDING"})
+    report = env.verify()
+    assert any("class does not match" in e for e in report.errors), report.errors

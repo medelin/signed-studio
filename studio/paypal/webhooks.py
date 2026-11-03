@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS paypal_events (
     event_type TEXT NOT NULL,
     order_id TEXT NOT NULL DEFAULT '',
     funding_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL CHECK (status IN ('recorded', 'unmatched', 'unchecked')),
+    status TEXT NOT NULL CHECK (status IN ('recorded', 'unmatched')),
     body TEXT NOT NULL,                      -- the raw bytes PayPal signed (owner-only)
     transmission_id TEXT NOT NULL UNIQUE,    -- a transmission is accepted once
     transmission_time TEXT NOT NULL,
@@ -360,6 +360,8 @@ class Applied:
 
 # What the event is about: the API path of the resource to re-fetch (the webhook body is
 # only CRC32-bound to PayPal's signature, so its fields are a trigger, never attested).
+RESOURCE_KINDS = {"order_id": "order", "authorization_id": "authorization",
+                  "capture_id": "capture", "refund_id": "refund"}
 RESOURCE_PATHS = {"order_id": "/v2/checkout/orders/{}",
                   "authorization_id": "/v2/payments/authorizations/{}",
                   "capture_id": "/v2/payments/captures/{}",
@@ -390,9 +392,13 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
     PayPal's signature covers the body only through CRC32, so the body is a trigger: the
     resource it names is fetched from PayPal's API (``lookup``, a GET with the studio's
     own credentials) and only the API's answer (ids, status, amount, ``custom_id``) is
-    recorded. Without a lookup, or when it fails, the event is stored ``unchecked`` and
-    gets no receipt. A transmission id is accepted once (a second event under a used
-    transmission id is refused)."""
+    recorded, and the event's class is derived from the API's status
+    (``event_class``: ``capture.completed``, ``refund.completed``, ``authorization.voided``
+    …); the body's ``event_type`` is kept only as ``body_event_type`` (unattested). When the
+    lookup fails nothing is stored and ``WebhookRefused`` is raised: ``lookup_failed``
+    (transient: the route answers 503, so PayPal delivers again and the retry redoes the
+    lookup) or ``unknown_resource`` (PayPal's API has no such resource). Only stored events
+    (``recorded`` / ``unmatched``) count for dedupe; a transmission id is accepted once."""
     t, cert_digest = verifier.verify(headers, body)
     try:
         event = json.loads(body)
@@ -414,37 +420,53 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
                         (t.transmission_id,)).fetchone():
             raise WebhookRefused("this transmission was already used", "transmission_replayed")
     subject = _subject(etype, _ids(etype, resource))
-    api: dict[str, Any] | None = None
-    if subject is not None and lookup is not None:
-        try:
-            api = lookup(RESOURCE_PATHS[subject[0]].format(subject[1]))
-        except Exception:  # noqa: BLE001 - the event stays unchecked; nothing is attested
-            api = None
-        if api is not None and api.get("id") != subject[1]:
-            api = None
-    ids = _ids(etype, api) if api is not None else {}
-    status_row = "unchecked"
+    if subject is None:
+        raise WebhookRefused("the event names no resource the studio can check",
+                             "unknown_resource")
+    if lookup is None:
+        raise WebhookRefused("PayPal's API is not reachable from here", "lookup_failed")
+    from studio.paypal.client import PayPalError
+
+    try:
+        api = lookup(RESOURCE_PATHS[subject[0]].format(subject[1]))
+    except PayPalError as exc:
+        if exc.status == 404:
+            raise WebhookRefused("PayPal's API has no such resource",
+                                 "unknown_resource") from None
+        raise WebhookRefused("PayPal's API could not be read", "lookup_failed") from None
+    except Exception:  # noqa: BLE001 - nothing stored; PayPal delivers again
+        raise WebhookRefused("PayPal's API could not be read", "lookup_failed") from None
+    if not isinstance(api, dict) or api.get("id") != subject[1]:
+        raise WebhookRefused("PayPal's API answered about another resource", "lookup_failed")
+    api_ids = _ids(etype, api)
+    api_ids[subject[0]] = subject[1]
+    kind = RESOURCE_KINDS[subject[0]]
+    api_status = api.get("status")
+    if not (isinstance(api_status, str) and re.fullmatch(r"[A-Z_]{1,40}", api_status)):
+        raise WebhookRefused("PayPal's API gave no status", "lookup_failed")
+    ids = api_ids
     with funding.atomic(conn):
         if conn.execute("SELECT 1 FROM paypal_events WHERE event_id = ? OR "
                         "transmission_id = ?", (eid, t.transmission_id)).fetchone():
             return Applied("duplicate", eid)
-        f = _find_funding(conn, ids) if api is not None else None
+        f = _find_funding(conn, ids)
         receipt = None
-        if api is not None:
-            status_row = "recorded" if f is not None else "unmatched"
-        if f is not None and api is not None:
+        status_row = "recorded" if f is not None else "unmatched"
+        if f is not None:
             if f.order_id and "order_id" not in ids:
                 ids = {**ids, "order_id": f.order_id}
             details: dict[str, Any] = {
-                "event_type": etype, "event_id": eid, **ids, "funding_id": f.id,
+                # attested by PayPal's API: the resource kind, its status and their class
+                "event_class": f"{kind}.{api_status.lower()}", "resource_kind": kind,
+                "status": api_status,
+                # from the body (CRC32-bound only): a label, never evidence
+                "body_event_type": etype,
+                "event_id": eid, **ids, "funding_id": f.id,
                 "item_id": f.item_id, "body_sha256": hashlib.sha256(body).hexdigest(),
                 "transmission_id_sha256": sha256_hex(t.transmission_id),
                 "transmission_ts": int(t.when()),
                 "signature_sha256": sha256_hex(t.signature), "cert_sha256": cert_digest,
                 "verified": "rsa", "resource_source": "api"}
-            status = api.get("status")
-            if isinstance(status, str) and re.fullmatch(r"[A-Z_]{1,40}", status):
-                details["status"] = status
             money = _amount(api)
             if money is not None:
                 details["amount_minor"], details["currency"] = money

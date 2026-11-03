@@ -106,11 +106,13 @@ def test_the_signed_funding_loop(env):
     calls = [r.details["step"] for r in env.ledger.receipts(RUN) if r.kind == PAYPAL_KIND]
     assert calls == ["paypal.create_order", "paypal.get_order", "paypal.authorize",
                      "paypal.capture"]
-    hooks_seen = [r.details["event_type"] for r in env.ledger.receipts(RUN)
+    hooks_seen = [r.details["event_class"] for r in env.ledger.receipts(RUN)
                   if r.kind == PAYPAL_WEBHOOK_KIND]
-    assert hooks_seen == ["PAYMENT.AUTHORIZATION.CREATED", "PAYMENT.CAPTURE.COMPLETED"]
+    # the class comes from what PayPal's API reports when each event arrives; the
+    # body's label is kept apart (body_event_type)
+    assert hooks_seen == ["authorization.created", "capture.completed"]
     cap = next(r for r in env.ledger.receipts(RUN) if r.kind == PAYPAL_WEBHOOK_KIND
-               and r.details["event_type"] == "PAYMENT.CAPTURE.COMPLETED")
+               and r.details["body_event_type"] == "PAYMENT.CAPTURE.COMPLETED")
     assert cap.details["custom_id_sha256"] == f.content_sha256  # PayPal attests the ad
     assert cap.details["verified"] == "rsa"
     report = env.verify()
@@ -209,9 +211,9 @@ def test_a_signed_refund(env):
     assert out["state"] == "partially_refunded" and out["refunded_minor"] == 2000
     receipt = [r for r in env.ledger.receipts(RUN) if r.kind == "approval"][-1]
     assert receipt.details["refund"]["amount_minor"] == 2000
-    events = [r.details["event_type"] for r in env.ledger.receipts(RUN)
+    events = [r.details["event_class"] for r in env.ledger.receipts(RUN)
               if r.kind == PAYPAL_WEBHOOK_KIND]
-    assert events[-1] == "PAYMENT.CAPTURE.REFUNDED"
+    assert events[-1] == "refund.completed"
     report = env.verify()
     assert report.ok, report.errors
 

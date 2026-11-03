@@ -316,9 +316,10 @@ def test_8_a_webhook_for_an_unknown_order_gets_no_receipt(log):
                                                                 "8ZZ00000UNKNOWN0X"}}}
     headers, body = log.funder.signer.sign(event)
     before = len(log.ledger.receipts(RUN))
-    out = webhooks.apply(log.conn, log.ledger, log.funder.verifier, headers, body,
-                         lookup=log.funder.lookup)
-    assert out.status in ("unmatched", "unchecked") and len(log.ledger.receipts(RUN)) == before
+    with pytest.raises(webhooks.WebhookRefused) as e:  # PayPal's API has no such capture
+        webhooks.apply(log.conn, log.ledger, log.funder.verifier, headers, body,
+                       lookup=log.funder.lookup)
+    assert e.value.code == "unknown_resource" and len(log.ledger.receipts(RUN)) == before
 
 
 def test_8_a_receipt_for_an_unfunded_order_is_caught(log):
