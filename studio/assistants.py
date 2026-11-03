@@ -62,6 +62,8 @@ LOG = logging.getLogger("studio.assistants")
 REQUESTS_PER_MIN = 120
 DRAFTS_PER_MIN = 10
 MAX_LIST = 100
+MAX_WAIT_S = 110  # run_brief: how long one call may wait for the run
+POLL_S = 0.25
 AWAITING = "awaiting_human_signature"
 CANNOT = ("This tool cannot sign, approve, launch, spend or change a budget: a human signs "
           "every send in the browser.")
@@ -150,6 +152,7 @@ class Assistants:
 
     def __init__(self, app: Any, *, clock: Callable[[], float] = time.time) -> None:
         self.app = app
+        self.clock = clock
         self.settings = app.state.settings
         self.conn = app.state.conn
         self.ledger = app.state.ledger
@@ -524,6 +527,72 @@ def run_status(s: Assistants, p: Principal, run_id: str) -> dict[str, Any]:
     if waiting:
         out["sign_url"] = waiting[0]["sign_url"]
         out["message"] = waiting[0]["message"]
+    payment = payment_of(s, state.get("mandate"), waiting)
+    if payment is not None:
+        out["payment"] = payment
+    return out
+
+
+def payment_of(s: Assistants, decision: Any, waiting: list[dict[str, Any]]
+               ) -> dict[str, Any] | None:
+    """How the run's campaign is paid (PayPal on only): ``mandate_charge`` (the owner's
+    saved PayPal was charged within their signed mandate: money held, not taken; the
+    charge's receipt), or ``pay_and_sign`` (the owner opens ``pay_and_sign_url``, approves
+    the PayPal order and signs). ``None`` with PayPal off or while nothing is decided."""
+    if getattr(s.app.state, "funder", None) is None:
+        return None
+    if isinstance(decision, dict) and isinstance(decision.get("charge"), dict):
+        c = decision["charge"]
+        return {"outcome": "mandate_charge", "mandate_id": decision.get("mandate_id", ""),
+                "approval_id": decision.get("approval_id", ""),
+                "receipt": {"receipt_id": c.get("receipt_id"),
+                            "receipt_hash": c.get("receipt_hash"),
+                            "step": "paypal.vault_charge",
+                            "funding_id": c.get("funding_id"),
+                            "order_id": c.get("order_id"),
+                            "authorization_id": c.get("authorization_id"),
+                            "amount_minor": c.get("amount_minor"),
+                            "currency": c.get("currency"), "state": c.get("state")},
+                "campaign_status": "PAUSED" if decision.get("executed") else "not_created",
+                "message": "Paid from the owner's saved PayPal within their signed mandate: "
+                           "the money is held, not taken. Turning the campaign on still "
+                           "needs the owner's signature, which captures it."}
+    create = [w for w in waiting if w.get("action") == "campaign.create"]
+    if create:
+        why = decision.get("reasons") or ([decision["charge_error"]]
+                                           if decision.get("charge_error") else []) \
+            if isinstance(decision, dict) else []
+        return {"outcome": "pay_and_sign", "pay_and_sign_url": create[0]["sign_url"],
+                "approval_id": create[0].get("approval_id", ""),
+                "mandate_reasons": why,
+                "message": "A human must pay and sign: the owner opens pay_and_sign_url, "
+                           "approves the PayPal order and signs the ad with it."}
+    return None
+
+
+def run_brief(s: Assistants, p: Principal, brief_id: str, open_weights: bool = False,
+              wait_s: int = 60) -> dict[str, Any]:
+    """Run a confirmed brief and wait (up to ``wait_s``) for how its campaign is paid:
+    under a mandate the owner signed, the charge of their saved PayPal and its receipt
+    (the campaign created PAUSED); otherwise the pay-and-sign link for the owner."""
+    started = start_run(s, p, brief_id, open_weights)
+    run_id = started["run_id"]
+    deadline = s.clock() + max(0, min(int(wait_s), MAX_WAIT_S))
+    while True:
+        found = routes_studio.run_state(s.conn, run_id)
+        status, state = (found[0], found[1]) if found else ("running", {})
+        # a token's run is settled once the worker wrote its mandate decision (fits, the
+        # charge, or the reasons it waits for the owner), or it ended
+        settled = status in ("failed", "done") or (
+            status not in ("running", "approved") and "mandate" in state)
+        if settled or s.clock() >= deadline:
+            break
+        time.sleep(POLL_S)
+    out = run_status(s, p, run_id)
+    payment = out.get("payment")
+    out["outcome"] = payment["outcome"] if isinstance(payment, dict) else (
+        "running" if out["status"] in ("running", "approved") else out["status"])
+    out["status_url"] = started["status_url"]
     return out
 
 
@@ -698,6 +767,20 @@ OPS: dict[str, Op] = {o.name: o for o in (
                 "open_weights": {"type": "boolean",
                                  "description": "Write copy on open weights."}},
                ("brief_id",)), start_run),
+    Op("run_brief", "Run a confirmed brief (plan, copy, images, reviews) and wait up to "
+       "wait_s seconds for how its campaign gets paid. Either outcome pay_and_sign: give "
+       "the owner pay_and_sign_url, where they approve the PayPal order and sign the ad (a "
+       "human must). Or outcome mandate_charge: a mandate the owner signed covers it, so the "
+       "studio paid from the owner's saved PayPal within the signed caps (money held, not "
+       "taken) and created the campaign PAUSED; the receipt of the charge is returned. This "
+       "tool cannot sign, approve, activate or change a budget, and pays only within limits "
+       "the owner signed. Outcome running: poll run_status. Needs a draft token.", "draft",
+       _schema({"brief_id": _BRIEF_ID,
+                "open_weights": {"type": "boolean",
+                                 "description": "Write copy on open weights."},
+                "wait_s": {"type": "integer", "minimum": 0, "maximum": MAX_WAIT_S,
+                           "description": "Seconds to wait for the outcome (default 60)."}},
+               ("brief_id",)), run_brief),
     Op("run_status", "One run: status (running, awaiting_approval, done, failed), plan, "
        "copy, image links (fetch with the same bearer token), reviews, and the pending "
        "approval with the sign_url a human must open to sign. " + CANNOT, "read",

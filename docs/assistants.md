@@ -119,6 +119,7 @@ curl -s -H "$T" -X POST $S/comments/c-1/reply -H 'Content-Type: application/json
 | `POST /briefs/voice` (HTTP only) | draft | Muse Voice Transcribe on the upload, then the same draft |
 | `confirm_brief` / `POST /briefs/{id}/confirm` | draft | one resolution per `[FACT]` question, the web UI's checks (same 422 field errors); kept for `start_run` |
 | `start_run` / `POST /runs` | draft | the run: plan, copy, images, reviews, the normal model budget, one run at a time; ends at a pending approval |
+| `run_brief` / `POST /briefs/{id}/run` | draft | `start_run`, then waits (up to `wait_s`) for how the campaign is paid: `outcome: mandate_charge` with the receipt of the charge to the owner's saved PayPal (within a mandate the owner signed; campaign PAUSED, money held), or `outcome: pay_and_sign` with the `pay_and_sign_url` for the owner and the mandate's reasons |
 | `run_status` / `GET /runs/{id}` | read | status, plan, copy, image links (same token), reviews, the pending approval and its `sign_url` |
 | `pending_approvals` / `GET /approvals` | read | everything waiting for a signature, each with `sign_url` and "a human must sign" |
 | `campaigns`, `insights` / `GET /campaigns`, `GET /insights` | read | runs and campaigns (created PAUSED; activation is a human signature), the latest insights, recommendations and report |

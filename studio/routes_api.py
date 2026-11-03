@@ -116,6 +116,11 @@ class RunIn(_Body):
     open_weights: bool = False
 
 
+class RunBriefIn(_Body):
+    open_weights: bool = False
+    wait_s: int = Field(60, ge=0, le=assistants.MAX_WAIT_S)
+
+
 class ReplyIn(_Body):
     message: str = Field("", max_length=community.MAX_REPLY,
                          description="The exact reply; empty: the community agent drafts it.")
@@ -178,6 +183,13 @@ def build_api(svc: assistants.Assistants) -> FastAPI:
                       "human signature")
     async def start(request: Request, body: RunIn) -> Response:
         return await do(request, "start_run", body.model_dump(), 202)
+
+    @api.post("/briefs/{brief_id}/run",
+              summary="Run a confirmed brief and wait for how it is paid: a pay-and-sign "
+                      "link, or the receipt of a charge within the owner's signed mandate "
+                      "(draft scope)")
+    async def run_brief(request: Request, brief_id: str, body: RunBriefIn) -> Response:
+        return await do(request, "run_brief", {"brief_id": brief_id, **body.model_dump()})
 
     @api.get("/runs/{run_id}", summary="Run status: plan, copy, images, reviews, sign_url")
     async def run(request: Request, run_id: str) -> Response:
