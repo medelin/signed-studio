@@ -105,3 +105,77 @@ full history) found nothing.
 executor hooks (authorize after create, capture on activate, void on lapse), webhooks with
 offline RSA verification, `studio verify` rules P-V1…P-V6, vault and mandates, the
 treasurer, and the AG Grid money page.
+
+## 2026-11-03 (Tue, evening): Day 2, signed funding
+
+The owner's signature now covers the money. The order of events:
+
+1. The run ends with a pending `campaign.create` approval, as before.
+2. On the approval screen, the studio creates the PayPal order
+   (`POST /api/funding/{approval}/order`). Code computes the amount from the payload: the
+   daily budget × days plus the 5 % fee. `custom_id` is the ad's hash.
+3. The buyer approves it in PayPal. In mock mode a button plays the buyer.
+4. The server reads the order back. Only when PayPal says APPROVED is the approval
+   replaced by one whose payload carries the closed `funding/v1` block. The signed
+   message adds `funding_sha256`, and the approval receipt carries the block.
+5. Signing creates the campaign PAUSED, then **authorizes** the order under the same
+   approval: the money is held, not taken. With PayPal on, a creation without an
+   approved, signed funding creates nothing.
+6. The activation payload names the held funding, so the second signature covers the
+   **capture**. The capture runs before Meta activates anything: no capture, no
+   activation.
+7. A hold not captured within the 3-day honour period is voided
+   (`studio paypal void-lapsed`).
+8. A refund is its own signed `funding.refund` approval over a closed `refund/v1` body.
+
+**Webhooks.** `POST /webhooks/paypal` verifies before parsing:
+
+- the transmission headers, and a transmission time within 5 minutes;
+- a cert URL on an allowlist (`api.paypal.com` and `api.sandbox.paypal.com` over HTTPS
+  only, so the header cannot point the server at an internal address);
+- a cert chain that is valid now and ends at a trusted root, with a PayPal host name,
+  pinned by SHA-256;
+- RSA/SHA-256 over `transmission_id|time|webhook_id|crc32(body)`.
+
+Each event is applied once. An event for an order the studio funded becomes a
+`paypal.webhook` receipt in that funding's run, with hashes and ids only and no payer
+data. Raw events go only into the owner export. `studio verify --paypal-events
+--paypal-certs` re-checks PayPal's signatures offline. In mock mode the fake PayPal signs
+its events with a test CA, and they go through the same verification.
+
+**`studio verify` rules.**
+
+- P-V1: a capture rides on a `campaign.activate` approval of a campaign whose creation
+  signed a funding block for the same order.
+- P-V2: captured ≤ authorized ≤ signed.
+- P-V3: a webhook names a funded order; its `custom_id` is the signed ad and its amount
+  at most the signed amount.
+- P-V4: a refund matches its signed body, and refunds never exceed the capture.
+- P-V6: every money step names a valid approval of the right action, used once.
+
+**Attack classes 1–9** are in `tests/attack/test_paypal_money.py`:
+
+1. an amount edited after signing;
+2. an order id swapped;
+3. a capture without activation;
+4. a capture above the authorization;
+5. a refund without approval, or twice;
+6. a forged webhook signature (another key, a changed body, an untrusted CA);
+7. a replayed webhook, or a stale one;
+8. a webhook for an unknown order;
+9. a `custom_id` mismatch.
+
+The attacker is the server itself, holding the ledger key: it re-signs the edited logs,
+so only the owner's signature and the P-V rules can catch them.
+
+**UI.** `paypal.js` puts the PayPal step on the approval screen, and signing stays
+disabled until PayPal reports the payer approved.
+- **JS SDK:** I used the v5 `paypal.Buttons` flow (`intent=authorize`), which is
+  documented in depth. I could not test v6 in a browser here; it remains an option.
+- **CSP:** the PayPal origins are added only when `PAYPAL_ADAPTER=rest`.
+
+**Not yet.**
+- The recorded authorize/capture/refund/void cassette waits for the sandbox buyer to
+  approve two orders in a browser (`scripts/paypal_record.py --full`).
+- With PayPal on, a campaign created under a signed mandate is refused
+  (`funding_required`) until Day 3 adds Vault charges under the mandate.
