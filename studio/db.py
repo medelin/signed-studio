@@ -33,6 +33,7 @@ from studio import (
     clip,
     disapprovals,
     executor,
+    funding,
     leadads,
     mandates,
     notify,
@@ -244,6 +245,7 @@ def init(conn: sqlite3.Connection) -> None:
     google_store.ensure_schema(conn)
     api_tokens.ensure_schema(conn)  # assistants: personal access tokens, API-drafted briefs
     mandates.ensure_schema(conn)  # assistants: the owner's signed mandates
+    funding.ensure_schema(conn)  # PayPal: each campaign's funding and its money moves
 
 
 def _strings(value: Any) -> list[str]:
