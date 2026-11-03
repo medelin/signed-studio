@@ -73,3 +73,5 @@ f7fab9d183f05c9ff368fc67d3250998bcda1e8b:fixtures/tour/muse.json:generic-api-key
 b96ace38f52a7294068e9db1a503ec161c8336b4:fixtures/tour/muse.json:generic-api-key:1413
 6b3b8e6ee637ae0e154e2f3e2450bb84beffe0cc:fixtures/tour/muse.json:generic-api-key:1413
 6c59391f059c2d1b29e83bd659899c6b1aa4a94b:fixtures/tour/muse.json:generic-api-key:1420
+# The comment above that names the accounts.py annotation matched the same rule.
+e76b482164a3f7fa745cf7f54fa5f1442b182512:.gitleaksignore:generic-api-key:67
