@@ -64,3 +64,12 @@ dd771f647231c216652df8b4e45fb05317a879ab:studio/receipts.py:generic-api-key:95
 818d0cb4f056afee9a7200f108fc04fbdbbcfbca:fixtures/replay/pushy/replay.json:generic-api-key:835
 818d0cb4f056afee9a7200f108fc04fbdbbcfbca:fixtures/replay/pushy/replay.json:generic-api-key:865
 818d0cb4f056afee9a7200f108fc04fbdbbcfbca:fixtures/replay/pushy/replay.json:generic-api-key:936
+# False positive: a type annotation (ledger_key: Ed25519PrivateKey | None), not a secret.
+9670166c7a8e343ab8f00e26721b051d9116ce25:studio/accounts.py:generic-api-key:339
+# The tour's "ledger_key" is the ledger's Ed25519 *public* key (tour.py writes
+# ledger_key["public_key"]), published so anyone can verify the tour's receipts.
+e9eb10b63233668768a9e0ef66dfba3300d74cae:fixtures/tour/muse.json:generic-api-key:1280
+f7fab9d183f05c9ff368fc67d3250998bcda1e8b:fixtures/tour/muse.json:generic-api-key:1411
+b96ace38f52a7294068e9db1a503ec161c8336b4:fixtures/tour/muse.json:generic-api-key:1413
+6b3b8e6ee637ae0e154e2f3e2450bb84beffe0cc:fixtures/tour/muse.json:generic-api-key:1413
+6c59391f059c2d1b29e83bd659899c6b1aa4a94b:fixtures/tour/muse.json:generic-api-key:1420
