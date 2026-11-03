@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 from decimal import Decimal
 
+import httpx
 import pytest
 
 from studio import db, funding
@@ -171,7 +172,7 @@ def test_a_lost_answer_then_a_second_attempt_gets_the_first_capture(w):
     from studio.paypal import orders
     from studio.paypal.client import request_id
 
-    rid = request_id(f.id, "capture", "apr_activate1")
+    rid = request_id(f.id, "capture", "apr_activate1", "4725")
     first = orders.capture(w.client, f.authorization_id, amount_minor=4725, currency="GBP",
                            invoice_id=f.id, request_id=rid)
     step = w.money.capture(f.id, approval_id="apr_activate1")
@@ -243,3 +244,113 @@ def test_open_respects_the_daily_ceiling(w):
     with pytest.raises(FundingError) as e:
         w.open(daily_budget_minor=60_00, max_daily_minor=50_00)
     assert e.value.code == "ceiling" and not w.fake.orders
+
+
+# -- concurrency, replays and approval reuse (security review, 3 Nov) ---------------------
+
+
+def captured(w: World):
+    to_authorized(w)
+    f = funding.of_item(w.conn, "cre_1")[0]
+    return w.money.capture(f.id, approval_id="apr_activate1").funding
+
+
+def test_two_concurrent_refunds_over_the_capture_only_one_succeeds(w):
+    """Refund B starts while refund A waits for PayPal: A's pending claim reserves its
+    amount, so B (which alone would fit) is refused before PayPal is called."""
+    f = captured(w)
+    inner = w.fake.handle
+    state = {"b": None}
+
+    def racing(request):
+        if request.url.path.endswith("/refund") and state["b"] is None:
+            state["b"] = "running"
+            try:
+                w.money.refund(f.id, 3000, approval_id="apr_refund_b")
+                state["b"] = "succeeded"
+            except FundingError as exc:
+                state["b"] = exc.code
+        return inner(request)
+
+    w.client._http._transport = httpx.MockTransport(racing)
+    a = w.money.refund(f.id, 3000, approval_id="apr_refund_a")
+    assert state["b"] == "refund_amount"
+    assert a.funding.refunded_minor == 3000 and len(w.fake.refunds) == 1
+    assert funding.get(w.conn, f.id).refunded_minor == 3000
+    assert w.verify().ok
+
+
+def test_a_replayed_refund_answer_is_not_counted_twice(w):
+    f = captured(w)
+    first = w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    inner = w.fake.handle
+
+    def replaying(request):
+        if request.url.path.endswith("/refund"):
+            # a stale or forged answer: the first refund's representation again
+            return httpx.Response(201, json=w.fake.refunds[first.result.id])
+        return inner(request)
+
+    w.client._http._transport = httpx.MockTransport(replaying)
+    with pytest.raises(FundingError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund2")
+    assert e.value.code == "replayed"
+    after = funding.get(w.conn, f.id)
+    assert after.refunded_minor == 1000 and after.state == "partially_refunded"
+    assert [m["move"] for m in funding.moves(w.conn, f.id)].count("refund") == 1
+    last = w.paypal_receipts()[-1].details
+    assert (last["ok"], last["error"], last["issue"]) == (False, "NOT_RECORDED", "REPLAYED")
+    # fail closed: the claim stays pending, so its amount stays reserved
+    pending = [c for c in funding.claims(w.conn, f.id) if c["status"] == "pending"]
+    assert [c["key"] for c in pending] == ["apr_refund2"]
+    assert w.verify().ok
+
+
+def test_an_approval_authorises_exactly_one_refund(w):
+    f = captured(w)
+    w.money.refund(f.id, 500, approval_id="apr_refund1")
+    calls = len(w.fake.calls)
+    with pytest.raises(FundingError) as e:
+        w.money.refund(f.id, 500, approval_id="apr_refund1")
+    assert e.value.code == "approval_used" and len(w.fake.calls) == calls
+    with pytest.raises(FundingError) as e:  # nor a different amount under the same approval
+        w.money.refund(f.id, 400, approval_id="apr_refund1")
+    assert e.value.code == "approval_used"
+    assert funding.get(w.conn, f.id).refunded_minor == 500
+
+
+def test_an_approval_cannot_be_reused_across_money_steps(w):
+    to_authorized(w)
+    f = funding.of_item(w.conn, "cre_1")[0]
+    with pytest.raises(FundingError) as e:  # the authorize approval cannot also capture
+        w.money.capture(f.id, approval_id="apr_create1")
+    assert e.value.code == "approval_used" and not w.fake.captures
+
+
+def test_the_database_refuses_a_second_record_of_one_paypal_object(w):
+    import sqlite3
+
+    f = captured(w)
+    with pytest.raises(sqlite3.IntegrityError):
+        w.conn.execute("INSERT INTO funding_moves (funding_id, move, paypal_id, currency, ts) "
+                       "VALUES (?, 'capture', ?, 'GBP', 0)", (f.id, f.capture_id))
+
+
+def test_a_refused_refund_releases_its_reservation_but_an_unknown_one_keeps_it(w):
+    f = captured(w)
+    w.fake.fail_next(*[503] * 4)  # retries exhausted: PayPal may have refunded
+    with pytest.raises(PayPalError):
+        w.money.refund(f.id, 4725, approval_id="apr_refund1")
+    with pytest.raises(FundingError) as e:  # the whole capture is reserved by the unknown one
+        w.money.refund(f.id, 1, approval_id="apr_refund2")
+    assert e.value.code == "refund_amount"
+    step = w.money.refund(f.id, 4725, approval_id="apr_refund1")  # same approval: settles
+    assert step.funding.state == "refunded" and len(w.fake.refunds) == 1
+
+
+def test_a_void_runs_once_without_an_approval(w):
+    to_authorized(w)
+    f = funding.of_item(w.conn, "cre_1")[0]
+    w.money.void(f.id, reason="lapsed")
+    with pytest.raises(FundingError):
+        w.money.void(f.id, reason="activation_refused")

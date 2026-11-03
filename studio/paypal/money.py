@@ -119,14 +119,15 @@ class Money:
         funding.check_move(f, "authorized")
         order_id = self._need(f.order_id, "no_order")
         self._approval(approval_id)
+        self._claim(approval_id, f, "authorize", f.total_minor)
         rid, idem = _idem(f.id, "authorize", approval_id)
         res = self._call(f, "paypal.authorize", idem, None,
                          lambda: orders.authorize(self.client, order_id, request_id=rid),
-                         approval_id)
+                         approval_id, claim=approval_id)
         self._expect(f, "paypal.authorize", idem, None, res, status=frozenset({"CREATED"}),
                      amount=f.total_minor, approval_id=approval_id)
         return self._commit(f, "paypal.authorize", idem, None, res, to="authorized",
-                            move="authorization", approval_id=approval_id,
+                            move="authorization", approval_id=approval_id, claim=approval_id,
                             fields={"authorization_id": res.id,
                                     "authorized_minor": res.amount_minor},
                             amount=res.amount_minor)
@@ -138,21 +139,23 @@ class Money:
         auth_id = self._need(f.authorization_id, "no_authorization")
         self._approval(approval_id)
         amount = f.authorized_minor
-        rid, idem = _idem(f.id, "capture", approval_id)
+        self._claim(approval_id, f, "capture", amount)
+        rid, idem = _idem(f.id, "capture", approval_id, str(amount))
         body = {"amount_minor": amount, "currency": f.currency, "invoice_id": f.id}
         res = self._call(f, "paypal.capture", idem, body, lambda: orders.capture(
             self.client, auth_id, amount_minor=amount, currency=f.currency, invoice_id=f.id,
-            request_id=rid), approval_id)
+            request_id=rid), approval_id, claim=approval_id)
         self._expect(f, "paypal.capture", idem, body, res, status=CAPTURE_OK, amount=amount,
                      approval_id=approval_id, custom="if_present")
         return self._commit(f, "paypal.capture", idem, body, res, to="captured",
-                            move="capture", approval_id=approval_id,
+                            move="capture", approval_id=approval_id, claim=approval_id,
                             fields={"capture_id": res.id, "captured_minor": res.amount_minor},
-                            amount=res.amount_minor)
+                            guard={"captured_minor": 0}, amount=res.amount_minor)
 
     def void(self, funding_id: str, *, approval_id: str = "", reason: str = "lapsed") -> Step:
         """Release a hold that will not be captured: ``authorized`` → ``voided``. Without an
-        approval (a lapse or a refused activation) the key names the reason instead."""
+        approval (a lapse or a refused activation) the claim key is the funding's single
+        void key, so at most one void runs."""
         f = funding.get(self.conn, funding_id)
         funding.check_move(f, "voided")
         auth_id = self._need(f.authorization_id, "no_authorization")
@@ -160,39 +163,46 @@ class Money:
             self._approval(approval_id)
         if not is_opaque(reason):
             raise ValueError("a void reason must be a short code")
-        rid, idem = _idem(f.id, "void", approval_id or f"reason:{reason}")
+        key = approval_id or f"{f.id}:void"
+        self._claim(key, f, "void", 0)
+        rid, idem = _idem(f.id, "void", key)
         res = self._call(f, "paypal.void", idem, None, lambda: orders.void(
-            self.client, auth_id, request_id=rid), approval_id, reason=reason)
+            self.client, auth_id, request_id=rid), approval_id, claim=key, reason=reason)
         self._expect(f, "paypal.void", idem, None, res, status=frozenset({"VOIDED"}),
                      amount=None, approval_id=approval_id, custom="if_present",
                      reason=reason)
         return self._commit(f, "paypal.void", idem, None, res, to="voided", move="void",
-                            approval_id=approval_id, amount=0, reason=reason)
+                            approval_id=approval_id, claim=key, amount=0, reason=reason,
+                            guard={"captured_minor": 0})
 
     def refund(self, funding_id: str, amount_minor: int, *, approval_id: str) -> Step:
-        """Return ``amount_minor`` of the capture; at most what is left of it."""
-        f = funding.get(self.conn, funding_id)
-        left = f.captured_minor - f.refunded_minor
-        to = "refunded" if amount_minor == left else "partially_refunded"
-        funding.check_move(f, to)
-        capture_id = self._need(f.capture_id, "no_capture")
-        self._approval(approval_id)
+        """Return ``amount_minor`` of the capture; at most what is left of it, counting
+        refunds still in flight. One approval authorises exactly one refund."""
         if (not isinstance(amount_minor, int) or isinstance(amount_minor, bool)
-                or not 0 < amount_minor <= left):
+                or amount_minor <= 0):
             raise FundingError("a refund must be more than zero and at most what is left of "
                                "the capture", "refund_amount")
-        n = len([m for m in funding.moves(self.conn, f.id) if m["move"] == "refund"]) + 1
-        invoice = f"{f.id}-r{n}"
-        rid, idem = _idem(f.id, "refund", approval_id)
+        self._approval(approval_id)
+        f = funding.get(self.conn, funding_id)
+        if f.state not in ("captured", "partially_refunded"):
+            raise FundingError(f"a funding in state {f.state!r} cannot be refunded",
+                               "wrong_state")
+        capture_id = self._need(f.capture_id, "no_capture")
+        # reserves the amount against the capture, refunds in flight included
+        self._claim(approval_id, f, "refund", amount_minor)
+        f = funding.get(self.conn, funding_id)  # as of the claim
+        invoice = f"{f.id}-{approval_id}"[:127]
+        rid, idem = _idem(f.id, "refund", approval_id, str(amount_minor))
         body = {"amount_minor": amount_minor, "currency": f.currency, "invoice_id": invoice}
         res = self._call(f, "paypal.refund", idem, body, lambda: orders.refund(
             self.client, capture_id, amount_minor=amount_minor, currency=f.currency,
-            invoice_id=invoice, request_id=rid), approval_id)
+            invoice_id=invoice, request_id=rid), approval_id, claim=approval_id)
         self._expect(f, "paypal.refund", idem, body, res, status=REFUND_OK,
                      amount=amount_minor, approval_id=approval_id, custom="if_present")
-        return self._commit(f, "paypal.refund", idem, body, res, to=to, move="refund",
-                            approval_id=approval_id,
-                            fields={"refunded_minor": f.refunded_minor + res.amount_minor},
+        # the state and the guard are read at commit time, inside the transaction
+        return self._commit(f, "paypal.refund", idem, body, res, to="refund", move="refund",
+                            approval_id=approval_id, claim=approval_id,
+                            add={"refunded_minor": res.amount_minor},
                             amount=res.amount_minor)
 
     def statement(self, funding_id: str, spend_minor: int) -> Statement:
@@ -212,6 +222,10 @@ class Money:
         if not value:
             raise FundingError(f"the funding is missing a PayPal id ({code})", code)
         return value
+
+    def _claim(self, key: str, f: Funding, step: str, amount: int) -> None:
+        funding.claim(self.conn, key, funding_id=f.id, step=step, amount_minor=amount,
+                      now=self._now())
 
     @staticmethod
     def _approval(approval_id: str) -> None:
@@ -258,10 +272,16 @@ class Money:
 
     def _call(self, f: Funding, step: str, idem: str, body: Any,
               fn: Callable[[], orders.Result], approval_id: str = "",
-              **extra: Any) -> orders.Result:
+              claim: str = "", **extra: Any) -> orders.Result:
+        """Call PayPal. On a definitive refusal (a 4xx answer: nothing moved) the step's
+        claim is released so the owner can retry; on a 5xx, a network error or an unknown
+        outcome it stays pending (fail closed): only a retry with the same approval, hence
+        the same request id, can settle it."""
         try:
             return fn()
         except PayPalError as exc:
+            if claim and 400 <= exc.status < 500 and not exc.unknown:
+                funding.release_claim(self.conn, claim)
             self._receipt(f, self._details(
                 f, step, idem, body, None, approval_id=approval_id, ok=False,
                 error=exc.name or "HTTP_ERROR", issue=exc.issue, http_status=exc.status,
@@ -291,10 +311,44 @@ class Money:
                            f"built ({', '.join(problems)})", "mismatch")
 
     def _commit(self, f: Funding, step: str, idem: str, body: Any, res: orders.Result, *,
-                to: str, move: str, amount: int, approval_id: str = "",
-                fields: dict[str, Any] | None = None, **extra: Any) -> Step:
+                to: str, move: str, amount: int, approval_id: str = "", claim: str = "",
+                fields: dict[str, Any] | None = None, add: dict[str, int] | None = None,
+                guard: dict[str, Any] | None = None, **extra: Any) -> Step:
+        """Receipt, state, money move and claim in one transaction. A replayed PayPal
+        object (``replayed``), a concurrent change (``conflict``) or a broken invariant
+        (the table's CHECK) rolls all of it back; the refusal is then receipted on its own
+        and the claim stays pending, so the inconsistency is visible, never silently
+        counted."""
         new_fields = dict(fields or {})
+        try:
+            return self._commit_txn(f, step, idem, body, res, to=to, move=move,
+                                    amount=amount, approval_id=approval_id, claim=claim,
+                                    fields=new_fields, add=add, guard=guard, **extra)
+        except (FundingError, sqlite3.IntegrityError) as exc:
+            code = exc.code if isinstance(exc, FundingError) else "invariant"
+            self._receipt(f, self._details(f, step, idem, body, res, approval_id=approval_id,
+                                           ok=False, error="NOT_RECORDED",
+                                           issue=code.upper(), **extra),
+                          output=res.body_sha256)
+            if isinstance(exc, FundingError):
+                raise
+            raise FundingError("the money step would break a funding invariant",
+                               "invariant") from exc
+
+    def _commit_txn(self, f: Funding, step: str, idem: str, body: Any, res: orders.Result,
+                    *, to: str, move: str, amount: int, approval_id: str, claim: str,
+                    fields: dict[str, Any], add: dict[str, int] | None,
+                    guard: dict[str, Any] | None, **extra: Any) -> Step:
+        new_fields = fields
         with funding.atomic(self.conn):
+            if to == "refund":  # read inside the transaction: the version the update checks
+                f = funding.get(self.conn, f.id)
+                left = f.captured_minor - f.refunded_minor - res.amount_minor
+                if left < 0:
+                    raise FundingError("the refund is more than what is left of the capture",
+                                       "refund_amount")
+                to = "refunded" if left == 0 else "partially_refunded"
+                guard = {"refunded_minor": f.refunded_minor}
             if "order_id" in new_fields:  # the order exists from here on: name it
                 f = Funding(**{**f.__dict__, "order_id": new_fields["order_id"]})
             details = self._details(f, step, idem, body, res, approval_id=approval_id,
@@ -302,8 +356,10 @@ class Money:
             inputs = [details["request_sha256"]] if "request_sha256" in details else []
             receipt = self._receipt(f, details, output=res.body_sha256, inputs=inputs)
             after = funding.advance(self.conn, f.id, to, expect=f.state, now=self._now(),
-                                    **new_fields)
+                                    add=add, guard=guard, **new_fields)
             funding.record_move(self.conn, after, move, paypal_id=res.id, status=res.status,
                                 amount_minor=amount, approval_id=approval_id,
                                 receipt_id=receipt.id, now=self._now())
+            if claim:
+                funding.settle_claim(self.conn, claim, res.id, now=self._now())
         return Step(after, receipt, res)

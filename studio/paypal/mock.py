@@ -159,9 +159,10 @@ class FakePayPal:
 
     def _token(self, request: httpx.Request) -> httpx.Response:
         if request.headers.get("Authorization") != self._basic:
-            return httpx.Response(401, json={"error": "invalid_client",
-                                             "error_description": "Client Authentication "
-                                                                  "failed"})
+            # PayPal's OAuth error shape (not a studio API error code)
+            oauth_error = dict(error="invalid_client",
+                               error_description="Client Authentication failed")
+            return httpx.Response(401, json=oauth_error)
         token = f"A21AA{self._next('T')}"
         self.tokens.add(token)
         return httpx.Response(200, json={"scope": "https://uri.paypal.com/services/payments",

@@ -283,6 +283,22 @@ CREATE TABLE IF NOT EXISTS funding_moves (
     ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS funding_moves_by_funding ON funding_moves (funding_id, id);
+-- a PayPal object is recorded once: a replayed answer cannot be counted twice
+CREATE UNIQUE INDEX IF NOT EXISTS funding_moves_once ON funding_moves (move, paypal_id)
+    WHERE paypal_id != '';
+-- one claim per authorising key (an approval id): a signed approval moves money once.
+-- A pending refund claim reserves its amount, so concurrent refunds cannot exceed the
+-- capture between the check and PayPal's answer.
+CREATE TABLE IF NOT EXISTS funding_claims (
+    key TEXT PRIMARY KEY,
+    funding_id TEXT NOT NULL REFERENCES fundings(id),
+    step TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'done')),
+    paypal_id TEXT NOT NULL DEFAULT '',
+    created_ts REAL NOT NULL,
+    updated_ts REAL NOT NULL
+);
 """
 
 
@@ -397,12 +413,20 @@ def check_move(f: Funding, to: str) -> None:
 
 
 def advance(conn: sqlite3.Connection, funding_id: str, to: str, *, expect: str,
-            now: float | None = None, **fields: Any) -> Funding:
+            now: float | None = None, add: Mapping[str, int] | None = None,
+            guard: Mapping[str, Any] | None = None, **fields: Any) -> Funding:
     """Move ``funding_id`` from ``expect`` to ``to`` and set ``fields``, atomically; a
     concurrent move (the state is no longer ``expect``) or an edge not in ``TRANSITIONS``
     raises ``FundingError``. ``to == expect`` updates fields only (``created`` gaining its
-    order id), allowed only where ``TRANSITIONS`` has the self-edge or for ``created``."""
-    bad = set(fields) - _UPDATABLE
+    order id), allowed only where ``TRANSITIONS`` has the self-edge or for ``created``.
+
+    ``add`` increments columns relative to their stored value (``refunded_minor =
+    refunded_minor + ?``) and ``guard`` names column values the row must still have (a
+    version check against what was read before the PayPal call); a guard that no longer
+    holds is a ``conflict``. The table's CHECK constraint re-checks captured ≤ authorized ≤
+    total and refunded ≤ captured inside the same statement."""
+    add, guard = dict(add or {}), dict(guard or {})
+    bad = (set(fields) | set(add) | set(guard)) - _UPDATABLE
     if bad:
         raise ValueError(f"not updatable: {sorted(bad)}")
     if to != expect or expect != "created":
@@ -410,16 +434,74 @@ def advance(conn: sqlite3.Connection, funding_id: str, to: str, *, expect: str,
             raise FundingError(f"a funding in state {expect!r} cannot become {to!r}",
                                "wrong_state")
     ts = time.time() if now is None else now
-    sets = "".join(f", {k} = ?" for k in fields)
+    sets = "".join(f", {k} = ?" for k in fields) + "".join(f", {k} = {k} + ?" for k in add)
+    where = "".join(f" AND {k} IS ?" for k in guard)
     with atomic(conn):
         cur = conn.execute(
             f"UPDATE fundings SET state = ?, updated_ts = ?{sets} "  # noqa: S608
-            "WHERE id = ? AND state = ?",
-            (to, ts, *fields.values(), funding_id, expect))
+            f"WHERE id = ? AND state = ?{where}",
+            (to, ts, *fields.values(), *add.values(), funding_id, expect, *guard.values()))
         if cur.rowcount != 1:
             raise FundingError("the funding changed meanwhile (or does not exist)",
                                "conflict")
     return get(conn, funding_id)
+
+
+def claim(conn: sqlite3.Connection, key: str, *, funding_id: str, step: str,
+          amount_minor: int = 0, now: float | None = None) -> bool:
+    """Reserve the money step ``step`` of ``funding_id`` for the authorising ``key`` (an
+    approval id) before PayPal is called. ``True`` for a new claim; ``False`` for a retry of
+    the same pending step (same funding, step and amount: PayPal gets the same request id
+    and answers with its first result). ``FundingError`` ``approval_used`` when the key
+    already moved money or is held by another step, and ``refund_amount`` when a refund
+    would exceed the capture minus what is refunded and what pending refunds reserve."""
+    ts = time.time() if now is None else now
+    with atomic(conn):
+        row = conn.execute("SELECT funding_id, step, amount_minor, status FROM "
+                           "funding_claims WHERE key = ?", (key,)).fetchone()
+        if row is not None:
+            if row[3] == "done" or tuple(row[:3]) != (funding_id, step, amount_minor):
+                raise FundingError("this approval has already authorised a money step",
+                                   "approval_used")
+            return False
+        if step == "refund":
+            f = get(conn, funding_id)
+            reserved = conn.execute(
+                "SELECT COALESCE(SUM(amount_minor), 0) FROM funding_claims WHERE "
+                "funding_id = ? AND step = 'refund' AND status = 'pending'",
+                (funding_id,)).fetchone()[0]
+            if not 0 < amount_minor <= f.captured_minor - f.refunded_minor - reserved:
+                raise FundingError("the refund is more than what is left of the capture "
+                                   "(counting refunds in flight)", "refund_amount")
+        conn.execute("INSERT INTO funding_claims (key, funding_id, step, amount_minor, "
+                     "status, created_ts, updated_ts) VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+                     (key, funding_id, step, amount_minor, ts, ts))
+    return True
+
+
+def settle_claim(conn: sqlite3.Connection, key: str, paypal_id: str,
+                 now: float | None = None) -> None:
+    """Mark the claim done (inside the step's commit transaction)."""
+    with atomic(conn):
+        cur = conn.execute("UPDATE funding_claims SET status = 'done', paypal_id = ?, "
+                           "updated_ts = ? WHERE key = ? AND status = 'pending'",
+                           (paypal_id, time.time() if now is None else now, key))
+        if cur.rowcount != 1:
+            raise FundingError("the money step's claim is gone or already settled",
+                               "conflict")
+
+
+def release_claim(conn: sqlite3.Connection, key: str) -> None:
+    """Drop a pending claim after PayPal definitively refused the step (nothing moved)."""
+    with atomic(conn):
+        conn.execute("DELETE FROM funding_claims WHERE key = ? AND status = 'pending'", (key,))
+
+
+def claims(conn: sqlite3.Connection, funding_id: str) -> list[dict[str, Any]]:
+    cols = ("key", "step", "amount_minor", "status", "paypal_id")
+    rows = conn.execute(f"SELECT {', '.join(cols)} FROM funding_claims "  # noqa: S608
+                        "WHERE funding_id = ? ORDER BY created_ts", (funding_id,)).fetchall()
+    return [dict(zip(cols, r, strict=True)) for r in rows]
 
 
 def record_move(conn: sqlite3.Connection, f: Funding, move: str, *, paypal_id: str = "",
@@ -428,6 +510,10 @@ def record_move(conn: sqlite3.Connection, f: Funding, move: str, *, paypal_id: s
     if move not in MOVES:
         raise ValueError(f"unknown money move {move!r}")
     with atomic(conn):
+        if paypal_id and conn.execute("SELECT 1 FROM funding_moves WHERE move = ? AND "
+                                      "paypal_id = ?", (move, paypal_id)).fetchone():
+            raise FundingError(f"PayPal {move} {paypal_id} is already recorded (a replayed "
+                               "answer)", "replayed")
         conn.execute(
             "INSERT INTO funding_moves (funding_id, move, paypal_id, status, amount_minor, "
             "currency, approval_id, receipt_id, ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
