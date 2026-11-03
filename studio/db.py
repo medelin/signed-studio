@@ -174,7 +174,8 @@ MIGRATIONS: dict[str, dict[str, str]] = {
     },
     "approvals": {"brief_sha256": "TEXT NOT NULL DEFAULT ''",
                   "superseded_by": "TEXT NOT NULL DEFAULT ''",
-                  "spec_sha256": "TEXT NOT NULL DEFAULT ''"},
+                  "spec_sha256": "TEXT NOT NULL DEFAULT ''",
+                  "funding_sha256": "TEXT NOT NULL DEFAULT ''"},
     "briefs": {
         "draft_run_id": "TEXT NOT NULL DEFAULT ''",  # the run the draft's receipts are in
         "draft": "TEXT NOT NULL DEFAULT ''",  # Brief v1 as drafted (JSON)
@@ -271,6 +272,9 @@ def init(conn: sqlite3.Connection) -> None:
     api_tokens.ensure_schema(conn)  # assistants: personal access tokens, API-drafted briefs
     mandates.ensure_schema(conn)  # assistants: the owner's signed mandates
     funding.ensure_schema(conn)  # PayPal: each campaign's funding and its money moves
+    from studio.paypal import webhooks as paypal_webhooks
+
+    paypal_webhooks.ensure_schema(conn)  # PayPal: verified events (once each), pinned certs
 
 
 def _strings(value: Any) -> list[str]:

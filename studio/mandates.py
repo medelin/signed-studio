@@ -626,7 +626,8 @@ def execute(conn: Any, ledger: Ledger, pending_id: str, token_id: str, *, accoun
     verified = Verified(pending_id=pending.id, run_id=pending.run_id, action=pending.action,
                         item_id=pending.item_id, content_sha256=pending.content_sha256,
                         approver=approver, signature=m.sha256,
-                        brief_sha256=pending.brief_sha256, spec_sha256=pending.spec_sha256)
+                        brief_sha256=pending.brief_sha256, spec_sha256=pending.spec_sha256,
+                        funding_sha256=pending.funding_sha256)
     out: dict[str, Any] = {"fits": True, "mandate_id": m.id, "approval_id": pending.id,
                            "checked": seen, "executed": False}
     if executor is None:

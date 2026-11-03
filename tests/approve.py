@@ -26,7 +26,24 @@ def approve(conn, ledger, action, item_id, payload, run_id, *, key=None, now=Non
     approval = Approval(pending_id=pending.id, action=action, item_id=item_id,
                         content_sha256=pending.content_sha256, chain_head=pending.chain_head,
                         approver=approver, nonce=pending.nonce, ts=pending.ts, signature=sig,
-                        spec_sha256=pending.spec_sha256)
+                        spec_sha256=pending.spec_sha256,
+                        funding_sha256=pending.funding_sha256)
+    with db.transaction(conn):
+        return verify_and_consume(conn, approval, payload, ledger=ledger, session_id=SESSION,
+                                  now=now)
+
+
+def sign_pending(conn, ledger, pending, payload, *, key=None, now=None):
+    """Sign and consume an existing pending approval (e.g. one with a funding block)."""
+    key = key or Ed25519PrivateKey.generate()
+    with db.transaction(conn):
+        approver = Keys.register(conn, SESSION, public_key_raw(key.public_key()))
+    sig = key.sign(pending.message(approver)).hex()
+    approval = Approval(pending_id=pending.id, action=pending.action, item_id=pending.item_id,
+                        content_sha256=pending.content_sha256, chain_head=pending.chain_head,
+                        approver=approver, nonce=pending.nonce, ts=pending.ts, signature=sig,
+                        brief_sha256=pending.brief_sha256, spec_sha256=pending.spec_sha256,
+                        funding_sha256=pending.funding_sha256)
     with db.transaction(conn):
         return verify_and_consume(conn, approval, payload, ledger=ledger, session_id=SESSION,
                                   now=now)

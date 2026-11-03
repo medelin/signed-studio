@@ -26,14 +26,19 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from studio.receipts import (
     APPROVAL_BRIEF_FIELD,
+    APPROVAL_FUNDING_FIELD,
     APPROVAL_SIGNED_FIELDS,
     APPROVAL_SPEC_FIELD,
     APPROVAL_TTL_S,
     BRIEF_BOUND_ACTIONS,
     BRIEF_KIND,
+    FUNDED_ACTIONS,
+    FUNDING_FIELD,
+    FUNDING_REFUND,
     GENESIS,
     MANDATE_FIELD,
     MANDATE_GRANT,
+    REFUND_FIELD,
     Ledger,
     approval_message,
     canonical,
@@ -71,7 +76,9 @@ ACTIONS = frozenset({"campaign.create", "campaign.activate", "campaign.update", 
                      "comment.hide", "google.create", "google.activate",
                      # the owner's signed limits for an assistant (studio.mandates): no
                      # external write of its own, its receipt carries the signed body
-                     MANDATE_GRANT})
+                     MANDATE_GRANT,
+                     # a refund of unspent budget through PayPal (studio.paypal.money)
+                     FUNDING_REFUND})
 SPEC_BLOCKS = {"campaign.create": "delivery", "google.create": "google"}
 SIGNED_FIELDS = APPROVAL_SIGNED_FIELDS
 TTL_S = APPROVAL_TTL_S  # the verifier enforces the same window between approval and write
@@ -102,7 +109,8 @@ CREATE TABLE IF NOT EXISTS approvals (
     decided_ts INTEGER,
     brief_sha256 TEXT NOT NULL DEFAULT '',
     superseded_by TEXT NOT NULL DEFAULT '',  -- set when a renewal replaced this approval
-    spec_sha256 TEXT NOT NULL DEFAULT ''  -- a campaign's delivery block, signed by hash
+    spec_sha256 TEXT NOT NULL DEFAULT '',  -- a campaign's delivery block, signed by hash
+    funding_sha256 TEXT NOT NULL DEFAULT ''  -- a campaign's PayPal funding block, by hash
 );
 CREATE TABLE IF NOT EXISTS nonces (
     nonce TEXT PRIMARY KEY,
@@ -214,6 +222,21 @@ def spec_of(action: str, payload: bytes | Mapping[str, Any]) -> str:
         return ""
     spec = payload.get(SPEC_BLOCKS[action])
     return sha256_hex(canonical(dict(spec))) if isinstance(spec, Mapping) else ""
+
+
+def funding_of(action: str, payload: bytes | Mapping[str, Any]) -> str:
+    """``funding_sha256`` a funded ``campaign.create`` approval signs: the hash of the
+    payload's closed ``funding`` block (``studio.funding``); ``""`` when there is none."""
+    if action not in FUNDED_ACTIONS or not isinstance(payload, Mapping):
+        return ""
+    block = payload.get(FUNDING_FIELD)
+    return sha256_hex(canonical(dict(block))) if isinstance(block, Mapping) else ""
+
+
+def ad_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """The payload without its funding block: what the ad is, whose hash PayPal's order
+    carries as ``custom_id`` (the order exists before the block can name it)."""
+    return {k: v for k, v in payload.items() if k != FUNDING_FIELD}
 
 
 @contextmanager
@@ -337,6 +360,7 @@ class Pending:
     ts: int
     brief_sha256: str = ""
     spec_sha256: str = ""
+    funding_sha256: str = ""
 
     @classmethod
     def create(
@@ -371,21 +395,24 @@ class Pending:
             ts=int(time.time() if now is None else now),
             brief_sha256=brief_sha256,
             spec_sha256=spec_of(action, payload),
+            funding_sha256=funding_of(action, payload),
         )
 
     def save(self, conn: sqlite3.Connection) -> None:
         conn.execute(
             "INSERT INTO approvals (id, run_id, action, item_id, content_sha256, chain_head, "
-            "nonce, ts, brief_sha256, spec_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "nonce, ts, brief_sha256, spec_sha256, funding_sha256) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (self.id, self.run_id, self.action, self.item_id, self.content_sha256,
-             self.chain_head, self.nonce, self.ts, self.brief_sha256, self.spec_sha256),
+             self.chain_head, self.nonce, self.ts, self.brief_sha256, self.spec_sha256,
+             self.funding_sha256),
         )
 
     @classmethod
     def load(cls, conn: sqlite3.Connection, pending_id: str) -> Pending:
         row = conn.execute(
             "SELECT id, run_id, action, item_id, content_sha256, chain_head, nonce, ts, "
-            "brief_sha256, spec_sha256 FROM approvals WHERE id = ?",
+            "brief_sha256, spec_sha256, funding_sha256 FROM approvals WHERE id = ?",
             (pending_id,),
         ).fetchone()
         if row is None:
@@ -406,6 +433,8 @@ class Pending:
             out[APPROVAL_BRIEF_FIELD] = self.brief_sha256
         if self.spec_sha256:
             out[APPROVAL_SPEC_FIELD] = self.spec_sha256
+        if self.funding_sha256:
+            out[APPROVAL_FUNDING_FIELD] = self.funding_sha256
         return out
 
     def message(self, approver: str) -> bytes:
@@ -428,6 +457,7 @@ class Approval:
     signature: str
     brief_sha256: str = ""
     spec_sha256: str = ""
+    funding_sha256: str = ""
 
 
 @dataclass(frozen=True)
@@ -443,6 +473,7 @@ class Verified:
     signature: str
     brief_sha256: str = ""
     spec_sha256: str = ""
+    funding_sha256: str = ""
 
     def write_details(self) -> dict[str, str]:
         """``details`` for the ``external_write`` receipt this approval authorises."""
@@ -498,6 +529,10 @@ def verify_and_consume(
         raise FieldMismatch("brief hash does not match the pending approval")
     if approval.spec_sha256 != pending.spec_sha256:
         raise FieldMismatch("delivery hash does not match the pending approval")
+    if approval.funding_sha256 != pending.funding_sha256:
+        raise FieldMismatch("funding hash does not match the pending approval")
+    if pending.funding_sha256 and funding_of(pending.action, payload) != pending.funding_sha256:
+        raise ContentMismatch("the funding block was changed after the approval was requested")
     if pending.brief_sha256 and confirmed_brief(ledger, pending.run_id) != pending.brief_sha256:
         raise BriefChanged("the run's confirmed brief changed after the approval was requested")
     clock = time.time() if now is None else now
@@ -535,6 +570,14 @@ def verify_and_consume(
     # hash), so ``studio verify`` can check every campaign made under it
     body = payload.get(MANDATE_FIELD) if (pending.action == MANDATE_GRANT
                                           and isinstance(payload, Mapping)) else None
+    # a funded campaign's receipt carries its funding block (ids, codes, integers and the
+    # ad's hash only), so `studio verify` can tie every PayPal step to this signature
+    block = payload.get(FUNDING_FIELD) if (pending.funding_sha256
+                                           and isinstance(payload, Mapping)) else None
+    # a refund's receipt carries its closed body: `studio verify` rebuilds the signed
+    # payload from it and checks the refund PayPal made against it (P-V4)
+    refund = payload.get(REFUND_FIELD) if (pending.action == FUNDING_REFUND
+                                           and isinstance(payload, Mapping)) else None
     ledger.append(
         pending.run_id,
         agent="human",
@@ -546,6 +589,8 @@ def verify_and_consume(
             "sig": approval.signature,
             "pending_id": pending.id,
             **({MANDATE_FIELD: body} if body is not None else {}),
+            **({FUNDING_FIELD: dict(block)} if block is not None else {}),
+            **({REFUND_FIELD: dict(refund)} if isinstance(refund, Mapping) else {}),
         },
     )
     return Verified(
@@ -558,6 +603,7 @@ def verify_and_consume(
         signature=approval.signature,
         brief_sha256=pending.brief_sha256,
         spec_sha256=pending.spec_sha256,
+        funding_sha256=pending.funding_sha256,
     )
 
 
@@ -602,3 +648,43 @@ def renew(conn: sqlite3.Connection, pending_id: str, payload: bytes | Mapping[st
                      (fresh.id, fresh.run_id, canonical(dict(payload)).decode()
                       if not isinstance(payload, bytes) else payload.decode(), clock))
     return fresh, True
+
+
+def attach_funding(conn: sqlite3.Connection, pending_id: str, payload: Mapping[str, Any],
+                   block: Mapping[str, Any], *, ledger: Ledger,
+                   now: float | None = None) -> tuple[Pending, dict[str, Any]]:
+    """Supersede an unsigned ``campaign.create`` approval with one whose payload carries
+    the PayPal ``funding`` block, so the owner signs the money with the ad: same item,
+    brief and delivery, the block added (``funding_sha256`` signed), a fresh nonce. The
+    block's ``content_sha256`` must be the ad's hash (the payload without a block), which
+    is what PayPal's order carries as ``custom_id``. One write transaction; returns the
+    new pending approval and its payload."""
+    clock = time.time() if now is None else now
+    with transaction(conn):
+        pending = Pending.load(conn, pending_id)
+        status, superseded = conn.execute(
+            "SELECT status, superseded_by FROM approvals WHERE id = ?", (pending_id,)
+        ).fetchone()
+        if superseded:
+            raise Superseded("this approval was already replaced")
+        if status != "pending":
+            raise NotPending("this approval is no longer waiting for a signature")
+        if pending.action not in FUNDED_ACTIONS:
+            raise UnknownAction("only a campaign creation is funded")
+        ad = ad_payload(payload)
+        if block.get("content_sha256") != payload_sha256(ad) or block.get(
+                "item_id") != pending.item_id:
+            raise ContentMismatch("the funding block names another ad")
+        if payload_sha256(payload) != pending.content_sha256:
+            raise ContentMismatch("payload was changed after the approval was requested")
+        funded = {**ad, FUNDING_FIELD: dict(block)}
+        fresh = Pending.create(pending.action, pending.item_id, funded, ledger=ledger,
+                               run_id=pending.run_id, now=clock,
+                               brief_sha256=pending.brief_sha256)
+        fresh.save(conn)
+        conn.execute("UPDATE approvals SET superseded_by = ? WHERE id = ?",
+                     (fresh.id, pending_id))
+        conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
+                     "VALUES (?, ?, ?, ?)",
+                     (fresh.id, fresh.run_id, canonical(funded).decode(), clock))
+    return fresh, funded
