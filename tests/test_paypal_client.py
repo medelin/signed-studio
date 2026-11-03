@@ -324,3 +324,35 @@ def test_void_answered_with_no_content():
 
     c = PayPalClient(CID, SECRET, transport=httpx.MockTransport(handler))
     assert orders.void(c, "0VF52814937998046", request_id="ss-1").status == "VOIDED"
+
+
+# -- the real sandbox recording (scripts/paypal_record.py) ---------------------------------
+
+
+def test_the_recorded_sandbox_answers_parse_and_hold_no_credentials():
+    data = load("paypal_sandbox")
+    assert data["_provenance"] == "recorded"
+    text = json.dumps(data)
+    assert "A21AA" not in text and "access_token" not in text and '"payer"' not in text
+    (create, get, auth) = data["interactions"]
+    sent = create["request"]["json"]
+    script = [create, get, auth]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        i = script.pop(0)
+        assert (request.method, request.url.path) == (i["request"]["method"],
+                                                      i["request"]["path"])
+        return httpx.Response(i["response"]["status"], json=i["response"]["json"])
+
+    c = PayPalClient(CID, SECRET, transport=httpx.MockTransport(handler))
+    order = orders.create(c, sent, request_id="ss-1")
+    unit = sent["purchase_units"][0]
+    assert order.custom_id == unit["custom_id"]  # PayPal keeps the ad hash
+    assert (order.amount_minor, order.currency) == (4725, "GBP")
+    assert order.status == "PAYER_ACTION_REQUIRED" and order.approve_url
+    assert orders.get(c, order.id).custom_id == unit["custom_id"]
+    with pytest.raises(PayPalError) as e:
+        orders.authorize(c, order.id, request_id="ss-2")
+    assert e.value.issue == "ORDER_NOT_APPROVED"

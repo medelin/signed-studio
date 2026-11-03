@@ -1,0 +1,236 @@
+{
+ "_provenance": "recorded",
+ "_note": "Recorded from api-m.sandbox.paypal.com by scripts/paypal_record.py: one AUTHORIZE order nobody approved (no money moved), read back, and the ORDER_NOT_APPROVED refusal. OAuth not recorded; payer and payee blocks and debug_ids replaced by placeholders.",
+ "interactions": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v2/checkout/orders",
+    "json": {
+     "intent": "AUTHORIZE",
+     "purchase_units": [
+      {
+       "reference_id": "rec_3cd012953bf3",
+       "custom_id": "4756374a6a51579ca02ae99531e5152bc7fa83e925d68a295b4ded3938f97b05",
+       "invoice_id": "fund_rec3cd012953bf3",
+       "description": "Ad budget and studio fee (Signed Studio)",
+       "soft_descriptor": "SIGNEDSTUDIO",
+       "amount": {
+        "currency_code": "GBP",
+        "value": "47.25",
+        "breakdown": {
+         "item_total": {
+          "currency_code": "GBP",
+          "value": "47.25"
+         }
+        }
+       },
+       "items": [
+        {
+         "name": "Ad budget",
+         "quantity": "1",
+         "category": "DIGITAL_GOODS",
+         "description": "3 day(s) of ads",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "45.00"
+         }
+        },
+        {
+         "name": "Studio fee",
+         "quantity": "1",
+         "category": "DIGITAL_GOODS",
+         "description": "5 % of the ad budget",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "2.25"
+         }
+        }
+       ]
+      }
+     ],
+     "payment_source": {
+      "paypal": {
+       "experience_context": {
+        "brand_name": "Signed Studio",
+        "shipping_preference": "NO_SHIPPING",
+        "user_action": "CONTINUE"
+       }
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "id": "7JM67086PP528134S",
+     "intent": "AUTHORIZE",
+     "status": "PAYER_ACTION_REQUIRED",
+     "payment_source": {
+      "paypal": {}
+     },
+     "purchase_units": [
+      {
+       "reference_id": "rec_3cd012953bf3",
+       "amount": {
+        "currency_code": "GBP",
+        "value": "47.25",
+        "breakdown": {
+         "item_total": {
+          "currency_code": "GBP",
+          "value": "47.25"
+         }
+        }
+       },
+       "payee": {
+        "email_address": "sb-business@business.example.com",
+        "merchant_id": "SANDBOXMERCH01"
+       },
+       "description": "Ad budget and studio fee (Signed Studio)",
+       "custom_id": "4756374a6a51579ca02ae99531e5152bc7fa83e925d68a295b4ded3938f97b05",
+       "invoice_id": "fund_rec3cd012953bf3",
+       "soft_descriptor": "SIGNEDSTUDIO",
+       "items": [
+        {
+         "name": "Ad budget",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "45.00"
+         },
+         "quantity": "1",
+         "description": "3 day(s) of ads",
+         "category": "DIGITAL_GOODS"
+        },
+        {
+         "name": "Studio fee",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "2.25"
+         },
+         "quantity": "1",
+         "description": "5 % of the ad budget",
+         "category": "DIGITAL_GOODS"
+        }
+       ]
+      }
+     ],
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v2/checkout/orders/7JM67086PP528134S",
+       "rel": "self",
+       "method": "GET"
+      },
+      {
+       "href": "https://www.sandbox.paypal.com/checkoutnow?token=7JM67086PP528134S",
+       "rel": "payer-action",
+       "method": "GET"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "path": "/v2/checkout/orders/7JM67086PP528134S"
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "id": "7JM67086PP528134S",
+     "intent": "AUTHORIZE",
+     "status": "PAYER_ACTION_REQUIRED",
+     "payment_source": {
+      "paypal": {}
+     },
+     "purchase_units": [
+      {
+       "reference_id": "rec_3cd012953bf3",
+       "amount": {
+        "currency_code": "GBP",
+        "value": "47.25",
+        "breakdown": {
+         "item_total": {
+          "currency_code": "GBP",
+          "value": "47.25"
+         }
+        }
+       },
+       "payee": {
+        "email_address": "sb-business@business.example.com",
+        "merchant_id": "SANDBOXMERCH01"
+       },
+       "description": "Ad budget and studio fee (Signed Studio)",
+       "custom_id": "4756374a6a51579ca02ae99531e5152bc7fa83e925d68a295b4ded3938f97b05",
+       "invoice_id": "fund_rec3cd012953bf3",
+       "soft_descriptor": "SIGNEDSTUDIO",
+       "items": [
+        {
+         "name": "Ad budget",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "45.00"
+         },
+         "quantity": "1",
+         "description": "3 day(s) of ads",
+         "category": "DIGITAL_GOODS"
+        },
+        {
+         "name": "Studio fee",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "2.25"
+         },
+         "quantity": "1",
+         "description": "5 % of the ad budget",
+         "category": "DIGITAL_GOODS"
+        }
+       ]
+      }
+     ],
+     "create_time": "2026-11-03T15:47:54Z",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v2/checkout/orders/7JM67086PP528134S",
+       "rel": "self",
+       "method": "GET"
+      },
+      {
+       "href": "https://www.sandbox.paypal.com/checkoutnow?token=7JM67086PP528134S",
+       "rel": "payer-action",
+       "method": "GET"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v2/checkout/orders/7JM67086PP528134S/authorize",
+    "json": {}
+   },
+   "response": {
+    "status": 422,
+    "json": {
+     "name": "UNPROCESSABLE_ENTITY",
+     "details": [
+      {
+       "issue": "ORDER_NOT_APPROVED",
+       "description": "Payer has not yet approved the Order for payment. Please redirect the payer to the 'rel':'approve' url returned as part of the HATEOAS links within the Create Order call or provide a valid payment_source in the request."
+      }
+     ],
+     "message": "The requested action could not be performed, semantically incorrect, or failed business validation.",
+     "debug_id": "scrubbed",
+     "links": [
+      {
+       "href": "https://developer.paypal.com/api/rest/reference/orders/v2/errors/#ORDER_NOT_APPROVED",
+       "rel": "information_link",
+       "method": "GET"
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
