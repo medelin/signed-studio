@@ -48,7 +48,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - **For your accountant:** a monthly statement ties every ad expense to the signature that allowed it (approval id, receipt hash, Meta spend, the studio's model costs) — CSV for Xero, QuickBooks or wFirma, an hledger journal, or JSON; leads export as CSV, JSON or vCard and import from CSV/JSON/vCard; the same data over the API (`/api/v1/statement`, `/api/v1/leads`) ([docs/export.md](docs/export.md)).
 - **Your own clip:** a short vertical phone video (from the brief page or sent on WhatsApp) becomes the ad's 9:16 video; it is probed, cut to 15 s and signed by hash like every image.
 - **WhatsApp:** notices (approval waiting → link to sign in the browser, new leads, ad disapproved) and voice-note briefs that become a Brief v1 draft; links only, nothing signed or run from WhatsApp ([docs/whatsapp.md](docs/whatsapp.md)).
-- **3-minute video:** <!-- VIDEO_URL -->
+- **3-minute video:** **https://youtu.be/_UEMnIl29T8**
 - **Built during the event:** first commit 2026-10-27; solo.
 
 | Meta model | What it does | File |
