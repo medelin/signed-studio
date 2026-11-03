@@ -227,8 +227,33 @@ def _migrate(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
+# Tables the removed Stripe billing kept (``studio.billing`` of the base project). A row in
+# any of them means the database comes from a deployment that sold plans: its accounts may
+# hold a ``full`` tier that billing granted and whose expiry sweep no longer exists here.
+LEGACY_BILLING_TABLES = ("billing", "stripe_events", "renewal_reminders", "billing_consents",
+                         "spend_usage")
+
+
+class LegacyBillingState(executor.SchemaError):
+    """The database carries Stripe billing state: refuse to start rather than keep its paid
+    tiers forever (this edition has no plan billing and no access-expiry sweep)."""
+
+
+def refuse_legacy_billing(conn: sqlite3.Connection) -> None:
+    present = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    for table in LEGACY_BILLING_TABLES:
+        if table in present and conn.execute(
+                f"SELECT 1 FROM {table} LIMIT 1").fetchone():  # noqa: S608 - fixed names
+            raise LegacyBillingState(
+                f"the database has Stripe billing state (table {table!r}); this edition "
+                "sells no plans and cannot expire paid tiers. Start from a fresh database "
+                "(a new STUDIO_DATA_DIR), never a copy of the Meta sandbox's.")
+
+
 def init(conn: sqlite3.Connection) -> None:
-    """Create every table (idempotent) and add columns introduced later."""
+    """Create every table (idempotent) and add columns introduced later. Refuses a database
+    with Stripe billing state (``refuse_legacy_billing``)."""
+    refuse_legacy_billing(conn)
     conn.executescript(store.SCHEMA)
     approvals.ensure_schema(conn)
     executor.ensure_schema(conn)
