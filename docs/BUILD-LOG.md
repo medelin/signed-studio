@@ -218,7 +218,15 @@ the same two orders.
   - When the API read fails, nothing is stored and the route answers 503, so PayPal's
     retry is checked afresh instead of being dropped as a duplicate. A resource the
     API does not know is refused (400).
-- *No transmission id reused with another body.* A signature-valid transmission that is
-  refused (an unknown resource, a malformed body) leaves a tombstone: its id is refused
-  for good. One that failed the API read (503) leaves a pending record with its body's
-  SHA-256: PayPal's retry is accepted only with the identical body.
+- *Dedupe on what PayPal attests, not on the body.* PayPal's signature binds the body only
+  through CRC32, which is easy to collide, so no state is keyed on a body. (A first
+  attempt kept tombstones per transmission id; that would let a colliding body poison a
+  genuine delivery, so it was replaced the same evening.) Refusals store nothing.
+  - An event is recorded once per state PayPal's API attests for one of our resources:
+    (kind, id, API status). Its order, authorization or capture must be in `fundings`,
+    and its `custom_id` must be that funding's ad hash.
+  - A replayed or colliding body that points at a recorded state is a no-op. A new
+    genuine state, such as a capture becoming partially refunded, is recorded.
+  - A recorded delivery is also a no-op on redelivery (transmission id + body hash).
+  - `studio verify` checks one receipt per attested state. The body's event id is
+    only a label (`body_event_id`).

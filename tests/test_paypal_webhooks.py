@@ -246,7 +246,7 @@ def test_recheck_uses_the_verifiers_webhook_id_not_the_exports(env, tmp_path):
                             for p in problems)
 
 
-def test_a_reused_transmission_id_is_refused(env):
+def test_a_reused_transmission_id_with_another_body_is_judged_on_its_merits(env):
     from studio import funding as fmod
 
     f = fmod.of_item(env.conn, "cmp_paid1")[0]
@@ -255,21 +255,29 @@ def test_a_reused_transmission_id_is_refused(env):
                           "COMPLETED", "resource": {"id": f.capture_id}}, transmission_id=tid)
     first = webhooks.apply(env.conn, env.ledger, env.funder.verifier, h1, b1,
                            lookup=env.funder.lookup)
-    assert first.status == "recorded"
+    # the capture's COMPLETED state was already recorded (mock delivery): a no-op
+    assert first.status == "duplicate"
     h2, b2 = signer.sign({"id": "WH-1TRANSMIT00002-0002", "event_type": "PAYMENT.CAPTURE."
                           "COMPLETED", "resource": {"id": f.capture_id}}, transmission_id=tid)
-    with pytest.raises(webhooks.WebhookRefused) as e:
-        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
-                       lookup=env.funder.lookup)
-    assert e.value.code == "transmission_replayed"
+    second = webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
+                            lookup=env.funder.lookup)
+    assert second.status == "duplicate"  # judged on its own merits: nothing new attested
+
+
+def refund_some(env, amount=1000):
+    from studio import funding as fmod
+    from tests.approve import sign_pending
+
+    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    pending, body = env.funder.request_refund(f.id, amount)
+    env.funder.execute_refund(sign_pending(env.conn, env.ledger, pending, body), body)
+    return fmod.get(env.conn, f.id)
 
 
 def test_the_receipt_states_what_paypals_api_says_not_the_body(env):
-    """A genuine signature over a body whose amount was changed before signing (CRC32
-    binds the body weakly): the receipt records the API's amount."""
-    from studio import funding as fmod
-
-    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    """A genuine signature over a body whose amount was changed (CRC32 binds the body
+    weakly): the receipt records the API's facts for the capture's new state."""
+    f = refund_some(env)
     event = {"id": "WH-1BODYLIE000001-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
              "resource": {"id": f.capture_id, "amount": {"currency_code": "PLN",
                                                          "value": "1.00"},
@@ -279,6 +287,7 @@ def test_the_receipt_states_what_paypals_api_says_not_the_body(env):
                          lookup=env.funder.lookup)
     assert out.status == "recorded"
     d = out.receipt.details
+    assert d["event_class"] == "capture.partially_refunded"
     assert d["amount_minor"] == f.captured_minor and d["custom_id_sha256"] == f.content_sha256
     assert d["resource_source"] == "api"
 
@@ -286,10 +295,9 @@ def test_the_receipt_states_what_paypals_api_says_not_the_body(env):
 def test_a_failed_lookup_stores_nothing_and_the_retry_records(env):
     """PayPal's API is down for the first delivery: refused (503 at the route), no row,
     so PayPal's retry of the same event and transmission is checked and recorded."""
-    from studio import funding as fmod
     from studio.paypal.client import PayPalError
 
-    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    f = refund_some(env)  # the capture now has a state not yet recorded
     event = {"id": "WH-1RETRY0000001-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
              "resource": {"id": f.capture_id}}
     headers, body = env.funder.signer.sign(event)
@@ -305,7 +313,7 @@ def test_a_failed_lookup_stores_nothing_and_the_retry_records(env):
     out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
                          lookup=env.funder.lookup)
     assert out.status == "recorded" and out.receipt.details["event_class"] == \
-        "capture.completed"
+        "capture.partially_refunded"
 
 
 def test_the_body_cannot_name_the_event_class(env):
@@ -317,11 +325,11 @@ def test_the_body_cannot_name_the_event_class(env):
     event = {"id": "WH-1LABEL0000001-0001", "event_type": "PAYMENT.CAPTURE.DENIED",
              "resource": {"id": f.capture_id}}
     headers, body = env.funder.signer.sign(event)
+    before = len(env.ledger.receipts())
     out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
                          lookup=env.funder.lookup)
-    d = out.receipt.details
-    assert d["event_class"] == "capture.completed" and d["status"] == "COMPLETED"
-    assert d["body_event_type"] == "PAYMENT.CAPTURE.DENIED"
+    # PayPal's API says COMPLETED, which is already recorded: the label changes nothing
+    assert out.status == "duplicate" and len(env.ledger.receipts()) == before
 
 
 def test_verify_refuses_a_class_that_does_not_match_the_status(env):
@@ -334,61 +342,79 @@ def test_verify_refuses_a_class_that_does_not_match_the_status(env):
     assert any("class does not match" in e for e in report.errors), report.errors
 
 
-# -- transmission ids cannot be reused with another body (push review) ---------------------
+
+# -- dedupe on what PayPal's API attests (CRC32 makes the body collidable) ------------------
 
 
-def _capture_event(env, eid, capture_id=None):
+def test_a_colliding_body_cannot_block_the_genuine_event(env):
+    """An attacker who saw one transmission sends a body with the same CRC32 (here: any
+    body, signed by the test key) under that transmission id first. It names something
+    that is not ours, is refused and leaves no state; the genuine delivery is recorded."""
+    f = refund_some(env)
+    signer, tid = env.funder.signer, "bbbbbbbb-0000-0000-0000-000000000001"
+    h, b = signer.sign({"id": "WH-1COLLIDE000001-0001", "event_type": "PAYMENT.CAPTURE."
+                        "COMPLETED", "resource": {"id": "3C000000NOTOURS0X"}},
+                       transmission_id=tid)
+    with pytest.raises(webhooks.WebhookRefused):
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b,
+                       lookup=env.funder.lookup)
+    refund_id = next(iter(env.funder.fake.refunds))
+    h2, b2 = signer.sign({"id": "WH-1GENUINE000001-0001", "event_type":
+                          "PAYMENT.CAPTURE.REFUNDED", "resource": {"id": refund_id}},
+                         transmission_id=tid)
+    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
+                         lookup=env.funder.lookup)
+    # the refund's COMPLETED state was recorded by the mock delivery; the capture's new
+    # state (partially refunded) is new and recorded
+    assert out.status == "duplicate"
+    h3, b3 = signer.sign({"id": "WH-1GENUINE000002-0002", "event_type":
+                          "PAYMENT.CAPTURE.COMPLETED", "resource": {"id": f.capture_id}},
+                         transmission_id=tid)
+    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, h3, b3,
+                         lookup=env.funder.lookup)
+    assert out.status == "recorded"
+
+
+def test_a_refused_body_leaves_no_state(env):
+    tables = {r[0] for r in env.conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert "paypal_transmissions" not in tables
+    rows = env.conn.execute("SELECT COUNT(*) FROM paypal_events").fetchone()[0]
+    for resource in ({"id": "3C000000NOTOURS0X"}, {}):
+        h, b = env.funder.signer.sign({"id": "WH-1REFUSED000001-0001", "event_type":
+                                       "PAYMENT.CAPTURE.COMPLETED", "resource": resource})
+        with pytest.raises(webhooks.WebhookRefused):
+            webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b,
+                           lookup=env.funder.lookup)
+    assert env.conn.execute("SELECT COUNT(*) FROM paypal_events").fetchone()[0] == rows
+
+
+def test_the_same_resource_state_twice_is_recorded_once(env):
+    f = refund_some(env)
+    outs = []
+    for n in (1, 2):
+        h, b = env.funder.signer.sign({"id": f"WH-1TWICE00000{n}-000{n}", "event_type":
+                                       "PAYMENT.CAPTURE.COMPLETED",
+                                       "resource": {"id": f.capture_id}})
+        outs.append(webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b,
+                                   lookup=env.funder.lookup).status)
+    assert outs == ["recorded", "duplicate"]
+
+
+def test_a_new_genuine_state_of_the_same_resource_is_recorded(env):
     from studio import funding as fmod
 
     f = fmod.of_item(env.conn, "cmp_paid1")[0]
-    return {"id": eid, "event_type": "PAYMENT.CAPTURE.COMPLETED",
-            "resource": {"id": capture_id or f.capture_id}}
-
-
-def test_a_refused_transmission_cannot_come_back_with_another_body(env):
-    tid = "aaaaaaaa-0000-0000-0000-000000000001"
-    h, b = env.funder.signer.sign(_capture_event(env, "WH-1TOMB00000001-0001",
-                                                 "3C000000NOTOURS0X"), transmission_id=tid)
-    with pytest.raises(webhooks.WebhookRefused) as e:
-        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b,
-                       lookup=env.funder.lookup)
-    assert e.value.code == "unknown_resource"
-    h2, b2 = env.funder.signer.sign(_capture_event(env, "WH-1TOMB00000002-0002"),
-                                    transmission_id=tid)  # a real capture this time
-    with pytest.raises(webhooks.WebhookRefused) as e:
-        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
-                       lookup=env.funder.lookup)
-    assert e.value.code == "transmission_refused"
-
-
-def _down(path):
-    from studio.paypal.client import PayPalError
-
-    raise PayPalError(503, "SERVICE_UNAVAILABLE", transient=True)
-
-
-def test_a_503_retry_with_the_same_body_is_recorded(env):
-    tid = "aaaaaaaa-0000-0000-0000-000000000002"
-    h, b = env.funder.signer.sign(_capture_event(env, "WH-1PEND00000001-0001"),
-                                  transmission_id=tid)
-    with pytest.raises(webhooks.WebhookRefused):
-        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b, lookup=_down)
+    classes = lambda: [r.details["event_class"] for r in env.ledger.receipts(RUN)  # noqa: E731
+                       if r.kind == PAYPAL_WEBHOOK_KIND]
+    assert "capture.completed" in classes()
+    refund_some(env)  # the mock delivers the refund event: refund.completed
+    h, b = env.funder.signer.sign({"id": "WH-1NEWSTATE00001-0001", "event_type":
+                                   "PAYMENT.CAPTURE.COMPLETED",
+                                   "resource": {"id": f.capture_id}})
     out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b,
                          lookup=env.funder.lookup)
     assert out.status == "recorded"
-    assert not env.conn.execute("SELECT 1 FROM paypal_transmissions WHERE transmission_id "
-                                "= ?", (tid,)).fetchone()
-
-
-def test_a_503_retry_with_a_changed_body_is_refused(env):
-    tid = "aaaaaaaa-0000-0000-0000-000000000003"
-    h, b = env.funder.signer.sign(_capture_event(env, "WH-1PEND00000002-0002"),
-                                  transmission_id=tid)
-    with pytest.raises(webhooks.WebhookRefused):
-        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b, lookup=_down)
-    h2, b2 = env.funder.signer.sign(_capture_event(env, "WH-1PEND00000003-0003"),
-                                    transmission_id=tid)
-    with pytest.raises(webhooks.WebhookRefused) as e:
-        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
-                       lookup=env.funder.lookup)
-    assert e.value.code == "transmission_body_changed"
+    assert {"capture.completed", "refund.completed", "capture.partially_refunded"} <= set(
+        classes())
+    assert env.verify().ok

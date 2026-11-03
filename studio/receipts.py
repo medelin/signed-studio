@@ -295,12 +295,12 @@ def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
                    if k.endswith("_sha256") and isinstance(v, str) and _SHA256.fullmatch(v)}
         kept: dict[str, Any] = {}
         if kind == PAYPAL_WEBHOOK_KIND:
-            v = details.get("event_id")
+            v = details.get("body_event_id")  # a label from the body (unattested)
             if isinstance(v, str) and PAYPAL_EVENT_ID.fullmatch(v):
-                kept["event_id"] = v
+                kept["body_event_id"] = v
             elif v not in (None, ""):
-                kept["event_id"], digests["event_id_sha256"] = "unrecognized", sha256_hex(
-                    v if isinstance(v, str) else repr(v))
+                kept["body_event_id"], digests["body_event_id_sha256"] = (
+                    "unrecognized", sha256_hex(v if isinstance(v, str) else repr(v)))
         if kind in (PAYPAL_KIND, PAYPAL_WEBHOOK_KIND):
             for k in PAYPAL_ID_FIELDS:
                 v = details.get(k)
@@ -853,11 +853,16 @@ def _check_paypal_webhook(receipt: Receipt, valid: Mapping[str, _Grant], money: 
         # the body is bound to PayPal's signature by CRC32 only: what a receipt states as
         # attested must come from PayPal's API
         errors.append(f"{receipt.id}: PayPal webhook values not re-read from PayPal's API")
-    eid = d.get("event_id")
-    if not isinstance(eid, str) or not eid or eid in money.events:
-        errors.append(f"{receipt.id}: PayPal webhook event replayed or without an id")
+    # one receipt per state PayPal's API attested for a resource (the body's event id is
+    # only a label: a colliding body could reuse it)
+    kind_ = d.get("resource_kind")
+    rid = d.get(f"{kind_}_id") if isinstance(kind_, str) else None
+    state = f"{kind_}|{rid}|{d.get('status')}"
+    if not isinstance(rid, str) or not rid or state in money.events:
+        errors.append(f"{receipt.id}: PayPal webhook state recorded twice (replayed) or "
+                      "without a resource id")
     else:
-        money.events.add(eid)
+        money.events.add(state)
     order = d.get("order_id")
     if not isinstance(order, str) or not order:
         auth = d.get("authorization_id")

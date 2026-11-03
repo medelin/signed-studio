@@ -282,12 +282,14 @@ def test_6_a_forged_webhook_receipt_is_caught(log):
 
 def test_7_a_replayed_webhook_is_applied_once(log):
     headers, body = log.funder.signer.sign(capture_event(log))
+    before = len(log.ledger.receipts(RUN))
     first = webhooks.apply(log.conn, log.ledger, log.funder.verifier, headers, body,
                            lookup=log.funder.lookup)
     again = webhooks.apply(log.conn, log.ledger, log.funder.verifier, headers, body,
                            lookup=log.funder.lookup)
-    assert (first.status, again.status) == ("recorded", "duplicate")
-    assert log.verify().ok
+    # the capture's attested state was recorded when PayPal first sent it: both no-ops
+    assert (first.status, again.status) == ("duplicate", "duplicate")
+    assert len(log.ledger.receipts(RUN)) == before and log.verify().ok
 
 
 def test_7_a_replayed_webhook_receipt_is_caught(log):

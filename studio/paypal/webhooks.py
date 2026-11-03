@@ -15,17 +15,26 @@
    raw bytes, unsigned decimal) is checked against the base64 ``paypal-transmission-sig``
    with the leaf's RSA key, PKCS#1 v1.5, SHA-256.
 
-Only then is the body parsed. Each event id is applied once (``paypal_events`` has
-``UNIQUE(event_id)``). An event for an order the studio funded leaves a ``paypal.webhook``
-receipt in that funding's run: event type and id, resource ids, amount and currency,
-``custom_id`` (the ad hash), ``body_sha256``, the transmission id's hash and time,
-``signature_sha256``, ``cert_sha256`` and ``verified: rsa``. It records no payer e-mail,
-name or address. The raw event goes only into the owner-only export
-(``export_events``), with the cert PEMs (``export_certs``), so ``studio verify
---paypal-events`` can re-check PayPal's signature offline.
+Only then is the body parsed, and it is only a **trigger**: PayPal's signature binds it
+through CRC32, which is easy to collide, so nothing in it is taken as attested and no
+state is ever keyed on it alone. The resource it names (capture, refund, authorization or
+order) is read from PayPal's API with the studio's own credentials; it must belong to a
+funding of ours (its order, authorization or capture id is in ``fundings`` and its
+``custom_id``, when present, is that funding's ad hash). Only the API's facts are
+recorded, once per attested state: ``paypal_events`` is unique on (resource kind,
+resource id, API status), so a replayed or colliding body that points at a state already
+recorded is a no-op, and a new genuine state of our resource is recorded. A delivery that
+was recorded is also remembered by (transmission id, body hash), a no-op on redelivery.
 
-An event for an order the studio did not fund is stored as ``unmatched`` and gets no
-receipt; a forged, stale or replayed event is refused before anything is stored.
+Anything else is refused with nothing stored: a body that is not an event or names no
+checkable resource, a resource PayPal's API does not know or that is not ours
+(``WebhookRefused``, the route answers 400), or a failed API read (``lookup_failed``,
+503, so PayPal delivers again). The receipt (``paypal.webhook``, in the funding's run)
+holds the API's ids, status and class, amount, currency and ``custom_id``, plus the
+body's hash, type and event id as unattested labels, the transmission's hash and time, the
+signature's and cert's hashes and ``verified: rsa``. It records no payer data. The raw
+deliveries go only into the owner-only export (``export_events``), with the cert PEMs
+(``export_certs``), for ``studio verify --paypal-events``.
 """
 
 from __future__ import annotations
@@ -35,7 +44,6 @@ import binascii
 import datetime as dt
 import hashlib
 import json
-import logging
 import re
 import sqlite3
 import time
@@ -56,7 +64,6 @@ from studio import funding
 from studio.funding import FundingError, parse_amount
 from studio.receipts import PAYPAL_WEBHOOK_KIND, Ledger, Receipt, sha256_hex
 
-LOG = logging.getLogger(__name__)
 CERT_HOSTS = frozenset({"api.paypal.com", "api.sandbox.paypal.com"})
 MAX_SKEW_S = 300
 MAX_BODY = 256 * 1024
@@ -68,29 +75,25 @@ _PAYPAL_ID = re.compile(r"[A-Z0-9]{8,36}")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS paypal_events (
-    event_id TEXT PRIMARY KEY,               -- UNIQUE: each event is applied once
-    event_type TEXT NOT NULL,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    resource_kind TEXT NOT NULL,             -- attested by PayPal's API
+    resource_id TEXT NOT NULL,
+    api_status TEXT NOT NULL,
+    event_id TEXT NOT NULL,                  -- from the body: a label, never a key
+    event_type TEXT NOT NULL,                -- from the body: a label
     order_id TEXT NOT NULL DEFAULT '',
-    funding_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL CHECK (status IN ('recorded', 'unmatched')),
+    funding_id TEXT NOT NULL,
     body TEXT NOT NULL,                      -- the raw bytes PayPal signed (owner-only)
-    transmission_id TEXT NOT NULL UNIQUE,    -- a transmission is accepted once
+    body_sha256 TEXT NOT NULL,
+    transmission_id TEXT NOT NULL,
     transmission_time TEXT NOT NULL,
     signature TEXT NOT NULL,
     cert_sha256 TEXT NOT NULL,
     webhook_id TEXT NOT NULL,
-    receipt_id TEXT NOT NULL DEFAULT '',
-    received_ts REAL NOT NULL
-);
--- every signature-valid transmission that was not stored as an event: refused for good
--- (a tombstone), or pending a retry of PayPal's API read (only the identical body may
--- come back under it)
-CREATE TABLE IF NOT EXISTS paypal_transmissions (
-    transmission_id TEXT PRIMARY KEY,
-    body_sha256 TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('refused', 'pending')),
-    reason TEXT NOT NULL,
-    ts REAL NOT NULL
+    receipt_id TEXT NOT NULL,
+    received_ts REAL NOT NULL,
+    UNIQUE (resource_kind, resource_id, api_status),  -- one record per attested state
+    UNIQUE (transmission_id, body_sha256)             -- a recorded delivery, once
 );
 CREATE TABLE IF NOT EXISTS paypal_certs (
     sha256 TEXT PRIMARY KEY,
@@ -365,7 +368,7 @@ def _custom_id(resource: Mapping[str, Any]) -> str:
 
 @dataclass(frozen=True)
 class Applied:
-    status: str  # recorded | unmatched | duplicate
+    status: str  # recorded | duplicate
     event_id: str
     receipt: Receipt | None = None
 
@@ -399,56 +402,11 @@ def _subject(event_type: str, ids: Mapping[str, str]) -> tuple[str, str] | None:
 
 def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
           headers: Mapping[str, str], body: bytes, *, lookup: Lookup | None = None) -> Applied:
-    """Verify, then record the event once. ``WebhookRefused`` for anything untrusted.
-
-    PayPal's signature covers the body only through CRC32, so the body is a trigger: the
-    resource it names is fetched from PayPal's API (``lookup``, a GET with the studio's
-    own credentials) and only the API's answer (ids, status, amount, ``custom_id``) is
-    recorded, and the event's class is derived from the API's status
-    (``event_class``: ``capture.completed``, ``refund.completed``, ``authorization.voided``
-    …); the body's ``event_type`` is kept only as ``body_event_type`` (unattested). When the
-    lookup fails nothing is stored and ``WebhookRefused`` is raised: ``lookup_failed``
-    (transient: the route answers 503, so PayPal delivers again and the retry redoes the
-    lookup) or ``unknown_resource`` (PayPal's API has no such resource). Only stored events
-    (``recorded`` / ``unmatched``) count for dedupe; a transmission id is accepted once.
-    A signature-valid transmission that is refused (``unknown_resource``, a malformed
-    body) leaves a tombstone in ``paypal_transmissions``: its id is refused for good. One
-    that failed the API read leaves a pending record with ``sha256(body)``: its retry is
-    accepted only with the identical body."""
+    """Verify, look the resource up in PayPal's API, and record its attested state once.
+    ``WebhookRefused`` (nothing stored) for anything untrusted or not ours; see the module
+    docstring."""
     t, cert_digest = verifier.verify(headers, body)
-    digest = hashlib.sha256(body).hexdigest()
-    row = conn.execute("SELECT status, body_sha256 FROM paypal_transmissions WHERE "
-                       "transmission_id = ?", (t.transmission_id,)).fetchone()
-    if row is not None and row[0] == "refused":
-        raise WebhookRefused("this transmission was refused before", "transmission_refused")
-    if row is not None and row[1] != digest:
-        LOG.warning("PayPal transmission retried with another body: refused")
-        raise WebhookRefused("this transmission came back with another body",
-                             "transmission_body_changed")
-    try:
-        out = _apply_checked(conn, ledger, verifier, t, cert_digest, body, lookup)
-    except WebhookRefused as exc:
-        status = {"lookup_failed": "pending", "unknown_resource": "refused",
-                  "body": "refused"}.get(exc.code)
-        if status is not None:
-            with funding.atomic(conn):
-                conn.execute(
-                    "INSERT INTO paypal_transmissions (transmission_id, body_sha256, status, "
-                    "reason, ts) VALUES (?, ?, ?, ?, ?) ON CONFLICT(transmission_id) DO "
-                    "UPDATE SET status = excluded.status, reason = excluded.reason, "
-                    "ts = excluded.ts WHERE paypal_transmissions.status = 'pending'",
-                    (t.transmission_id, digest, status, exc.code, verifier.clock()))
-        raise
-    if row is not None:  # a pending retry that went through
-        with funding.atomic(conn):
-            conn.execute("DELETE FROM paypal_transmissions WHERE transmission_id = ? AND "
-                         "status = 'pending'", (t.transmission_id,))
-    return out
-
-
-def _apply_checked(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
-                   t: Transmission, cert_digest: str, body: bytes,
-                   lookup: Lookup | None) -> Applied:
+    body_hash = hashlib.sha256(body).hexdigest()
     try:
         event = json.loads(body)
     except ValueError:
@@ -460,14 +418,9 @@ def _apply_checked(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
     if not (isinstance(eid, str) and _EVENT_ID.fullmatch(eid) and isinstance(etype, str)
             and re.fullmatch(r"[A-Z][A-Z0-9_.-]{2,80}", etype) and isinstance(resource, dict)):
         raise WebhookRefused("the event lacks an id, a type or a resource", "body")
-    now = verifier.clock()
-    with funding.atomic(conn):
-        if conn.execute("SELECT 1 FROM paypal_events WHERE event_id = ?",
-                        (eid,)).fetchone():
-            return Applied("duplicate", eid)
-        if conn.execute("SELECT 1 FROM paypal_events WHERE transmission_id = ?",
-                        (t.transmission_id,)).fetchone():
-            raise WebhookRefused("this transmission was already used", "transmission_replayed")
+    if conn.execute("SELECT 1 FROM paypal_events WHERE transmission_id = ? AND "
+                    "body_sha256 = ?", (t.transmission_id, body_hash)).fetchone():
+        return Applied("duplicate", eid)  # this very delivery was recorded
     subject = _subject(etype, _ids(etype, resource))
     if subject is None:
         raise WebhookRefused("the event names no resource the studio can check",
@@ -487,54 +440,52 @@ def _apply_checked(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
         raise WebhookRefused("PayPal's API could not be read", "lookup_failed") from None
     if not isinstance(api, dict) or api.get("id") != subject[1]:
         raise WebhookRefused("PayPal's API answered about another resource", "lookup_failed")
-    api_ids = _ids(etype, api)
-    api_ids[subject[0]] = subject[1]
-    kind = RESOURCE_KINDS[subject[0]]
     api_status = api.get("status")
     if not (isinstance(api_status, str) and re.fullmatch(r"[A-Z_]{1,40}", api_status)):
         raise WebhookRefused("PayPal's API gave no status", "lookup_failed")
-    ids = api_ids
+    ids = _ids(etype, api)
+    ids[subject[0]] = subject[1]
+    kind = RESOURCE_KINDS[subject[0]]
+    custom = _custom_id(api)
     with funding.atomic(conn):
-        if conn.execute("SELECT 1 FROM paypal_events WHERE event_id = ? OR "
-                        "transmission_id = ?", (eid, t.transmission_id)).fetchone():
-            return Applied("duplicate", eid)
         f = _find_funding(conn, ids)
-        receipt = None
-        status_row = "recorded" if f is not None else "unmatched"
-        if f is not None:
-            if f.order_id and "order_id" not in ids:
-                ids = {**ids, "order_id": f.order_id}
-            details: dict[str, Any] = {
-                # attested by PayPal's API: the resource kind, its status and their class
-                "event_class": f"{kind}.{api_status.lower()}", "resource_kind": kind,
-                "status": api_status,
-                # from the body (CRC32-bound only): a label, never evidence
-                "body_event_type": etype,
-                "event_id": eid, **ids, "funding_id": f.id,
-                "item_id": f.item_id, "body_sha256": hashlib.sha256(body).hexdigest(),
-                "transmission_id_sha256": sha256_hex(t.transmission_id),
-                "transmission_ts": int(t.when()),
-                "signature_sha256": sha256_hex(t.signature), "cert_sha256": cert_digest,
-                "verified": "rsa", "resource_source": "api"}
-            money = _amount(api)
-            if money is not None:
-                details["amount_minor"], details["currency"] = money
-            custom = _custom_id(api)
-            if custom:
-                details["custom_id_sha256"] = (custom if re.fullmatch(r"[0-9a-f]{64}", custom)
-                                               else "0" * 64)  # not an ad hash: mismatch
-            receipt = ledger.append(f.run_id, agent=AGENT, kind=PAYPAL_WEBHOOK_KIND,
-                                    provider="paypal", conn=conn if ledger.joins(conn) else None,
-                                    output_sha256=details["body_sha256"], details=details)
+        if f is None or (custom and custom != f.content_sha256):
+            raise WebhookRefused("the resource is not one of the studio's fundings",
+                                 "not_ours")
+        if conn.execute("SELECT 1 FROM paypal_events WHERE resource_kind = ? AND "
+                        "resource_id = ? AND api_status = ?",
+                        (kind, subject[1], api_status)).fetchone():
+            return Applied("duplicate", eid)  # this attested state is already recorded
+        if f.order_id and "order_id" not in ids:
+            ids = {**ids, "order_id": f.order_id}
+        details: dict[str, Any] = {
+            # attested by PayPal's API: the resource kind, its status and their class
+            "event_class": f"{kind}.{api_status.lower()}", "resource_kind": kind,
+            "status": api_status, **ids, "funding_id": f.id, "item_id": f.item_id,
+            # from the body (CRC32-bound only): labels, never evidence
+            "body_event_type": etype, "body_event_id": eid, "body_sha256": body_hash,
+            "transmission_id_sha256": sha256_hex(t.transmission_id),
+            "transmission_ts": int(t.when()),
+            "signature_sha256": sha256_hex(t.signature), "cert_sha256": cert_digest,
+            "verified": "rsa", "resource_source": "api"}
+        money = _amount(api)
+        if money is not None:
+            details["amount_minor"], details["currency"] = money
+        if custom:
+            details["custom_id_sha256"] = custom  # equal to the funding's ad hash (checked)
+        receipt = ledger.append(f.run_id, agent=AGENT, kind=PAYPAL_WEBHOOK_KIND,
+                                provider="paypal", conn=conn if ledger.joins(conn) else None,
+                                output_sha256=body_hash, details=details)
         conn.execute(
-            "INSERT INTO paypal_events (event_id, event_type, order_id, funding_id, status, "
-            "body, transmission_id, transmission_time, signature, cert_sha256, webhook_id, "
-            "receipt_id, received_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (eid, etype, ids.get("order_id", ""), f.id if f else "", status_row,
-             body.decode("utf-8", "replace"), t.transmission_id, t.transmission_time,
-             t.signature, cert_digest, verifier.webhook_id, receipt.id if receipt else "",
-             now))
-    return Applied(status_row, eid, receipt)
+            "INSERT INTO paypal_events (resource_kind, resource_id, api_status, event_id, "
+            "event_type, order_id, funding_id, body, body_sha256, transmission_id, "
+            "transmission_time, signature, cert_sha256, webhook_id, receipt_id, received_ts) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (kind, subject[1], api_status, eid, etype, ids.get("order_id", ""), f.id,
+             body.decode("utf-8", "replace"), body_hash, t.transmission_id,
+             t.transmission_time, t.signature, cert_digest, verifier.webhook_id, receipt.id,
+             verifier.clock()))
+    return Applied("recorded", eid, receipt)
 
 
 # -- the owner-only export and the offline re-check ------------------------------------------
@@ -546,7 +497,7 @@ def export_events(conn: sqlite3.Connection) -> str:
     cols = ("event_id", "event_type", "body", "transmission_id", "transmission_time",
             "signature", "cert_sha256", "webhook_id")
     rows = conn.execute(f"SELECT {', '.join(cols)} FROM paypal_events "  # noqa: S608
-                        "WHERE status = 'recorded' ORDER BY received_ts").fetchall()
+                        "ORDER BY id").fetchall()
     return "".join(json.dumps(dict(zip(cols, r, strict=True)), sort_keys=True) + "\n"
                    for r in rows)
 
