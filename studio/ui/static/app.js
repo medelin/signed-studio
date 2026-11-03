@@ -518,8 +518,17 @@ async function showApproval(pendingId) {
     $("ap-content").textContent = JSON.stringify(data.content, null, 2);
     $("ap-message").textContent = atob(data.message_b64);
     const pixelFailed = !!px && px.verdict !== "ok" && px.verdict !== "warn";
-    $("approve-button").disabled = data.status !== "pending" || pixelFailed;
+    const funding = data.fields.funding_sha256 || "";
+    $("ap-funding").textContent = funding;
+    $("ap-funding-dt").hidden = $("ap-funding-dd").hidden = !funding;
+    // PayPal first (studio.routes_paypal): the owner signs the approval that carries the
+    // funding block; until the payer approved, signing stays disabled
+    const mustPay = data.status === "pending" && window.StudioPayPal
+      ? await StudioPayPal.prepare(data, (fundedId) => { shownPending = fundedId; showApproval(fundedId); })
+      : false;
+    $("approve-button").disabled = data.status !== "pending" || pixelFailed || mustPay;
     if (pixelFailed && data.status === "pending") status("approve-status", T("pixel_fail"), true);
+    else if (mustPay) status("approve-status", T("paypal_pay_first"));
     else status("approve-status", data.status === "pending" ? T("ready") : T("already", { status: data.status }));
   } catch (e) {
     status("approve-status", e.message, true);

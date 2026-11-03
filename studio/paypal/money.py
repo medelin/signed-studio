@@ -67,8 +67,10 @@ class Money:
     """Money steps for fundings stored in ``conn``, recorded in ``ledger``."""
 
     def __init__(self, conn: sqlite3.Connection, ledger: Ledger, client: PayPalClient,
-                 *, payee: str = "", clock: Callable[[], float] | None = None) -> None:
+                 *, payee: str = "", clock: Callable[[], float] | None = None,
+                 after: Callable[[], Any] | None = None) -> None:
         self.conn = conn
+        self._after = after  # run after each recorded step (mock mode: deliver webhooks)
         self.ledger = ledger
         self.client = client
         self.payee = payee
@@ -391,4 +393,6 @@ class Money:
                                 receipt_id=receipt.id, now=self._now())
             if claim:
                 funding.settle_claim(self.conn, claim, res.id, now=self._now())
+        if self._after is not None:
+            self._after()
         return Step(after, receipt, res)

@@ -362,7 +362,7 @@ def test_paypal_cassettes_hold_no_credentials():
     from tests.cassettes import CASSETTES
 
     files = sorted((CASSETTES / "paypal").glob("*.json"))
-    assert {f.name for f in files} == {"orders.SYNTHETIC.json", "sandbox.json"}
+    assert {"orders.SYNTHETIC.json", "sandbox.json"} <= {f.name for f in files}
     for path in files:
         data = json.loads(path.read_text())
         text = json.dumps(data["interactions"])

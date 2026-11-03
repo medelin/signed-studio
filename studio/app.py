@@ -64,6 +64,7 @@ from studio import (
     routes_mandates,
     routes_meta,
     routes_onboarding,
+    routes_paypal,
     routes_receipts,
     routes_report,
     routes_social,
@@ -77,6 +78,7 @@ from studio.accounts import ACCOUNT_SESSIONS, SESSIONS_SCHEMA, StaleCredentials
 from studio.agents import community, media_buyer
 from studio.approvals import KeyConflict, Keys
 from studio.meta import adapter as meta_adapter
+from studio.paypal import hooks as paypal_hooks
 from studio.receipts import public_key_raw, sha256_hex
 from studio.settings import ReadOnlyMode, Settings
 from studio.ui import i18n
@@ -97,6 +99,20 @@ LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
     "connect-src 'self'; frame-src https://www.facebook.com https://business.facebook.com; "
+    "frame-ancestors 'none'; "
+    "base-uri 'none'; form-action 'self'"
+)
+# PAYPAL_ADAPTER=rest: the PayPal JS SDK's script, its popup frames and calls (sandbox and
+# the shared www/objects hosts the SDK loads from). Nothing else is opened up.
+PAYPAL_ORIGINS = ("https://www.paypal.com https://www.sandbox.paypal.com "
+                  "https://*.paypal.com https://*.paypalobjects.com")
+CSP_PAYPAL = (
+    "default-src 'self'; "
+    f"script-src 'self' {PAYPAL_ORIGINS}; style-src 'self' 'unsafe-inline'; "
+    f"img-src 'self' data: {PAYPAL_ORIGINS}; "
+    f"connect-src 'self' {PAYPAL_ORIGINS}; "
+    "frame-src https://www.facebook.com https://business.facebook.com "
+    f"{PAYPAL_ORIGINS}; "
     "frame-ancestors 'none'; "
     "base-uri 'none'; form-action 'self'"
 )
@@ -570,7 +586,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         response = await call_next(request)
-        response.headers["Content-Security-Policy"] = CSP
+        response.headers["Content-Security-Policy"] = (
+            CSP_PAYPAL if settings.paypal.adapter == "rest" else CSP)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -637,12 +654,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.notifier.event(event)  # after the write; queued, never blocks or raises
         return result
 
+    # PayPal (sandbox only; None when PAYPAL_ADAPTER is unset): no campaign without an
+    # approved, held budget; no activation without the capture (studio.paypal.hooks)
+    app.state.funder = paypal_hooks.make(settings.paypal, conn, ledger)
     app.state.executors["campaign.create"] = (
         lambda verified, payload: announce("campaign_created", media_buyer.create(
-            conn, ledger, app.state.adapter, verified, payload, settings.data_dir)))
+            conn, ledger, app.state.adapter, verified, payload, settings.data_dir,
+            funder=app.state.funder)))
     app.state.executors["campaign.activate"] = (
         lambda verified, payload: announce("campaign_launched", media_buyer.activate(
-            conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget)))
+            conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget,
+            funder=app.state.funder)))
+    routes_paypal.register(app, settings, ledger, conn, write_guard, session_of)
 
     routes_google.register(app, settings, ledger, conn, write_guard, session_of)
     routes_api.install(app)  # /api/v1 and /mcp for the owner's own assistant (bearer tokens)
@@ -680,7 +703,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return JSONResponse({"error": "not_found"}, 404)
         try:
             pending, payload = media_buyer.request_activation(
-                conn, ledger, item_id, settings.max_daily_budget)
+                conn, ledger, item_id, settings.max_daily_budget, funder=app.state.funder)
         except media_buyer.BuyError as exc:
             return JSONResponse({"error": exc.code}, 404 if exc.code == "not_found" else 409)
         app.state.notifier.event("approval_waiting")

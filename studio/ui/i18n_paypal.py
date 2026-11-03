@@ -28,6 +28,30 @@ EN_PAYPAL: dict[str, str] = {
     "pricing.seller_address": "Registered office: {address}.",
     "pricing.terms_html": 'See the <a href="/terms">Terms</a> and the '
                           '<a href="/privacy">Privacy</a> page.',
+    "paypal.h": "Pay with PayPal first (sandbox)",
+    "paypal.lead": "The money is only held when you sign, and taken only when you sign again "
+                   "to turn the campaign on. Your signature names this PayPal order.",
+    "paypal.mock_button": "Approve in the PayPal sandbox (simulated buyer)",
+    "paypal.ap_funding": "PayPal funding sha256",
+    "js.paypal_creating": "Creating the PayPal order…",
+    "js.paypal_amount": "{total}: ad budget {budget} for {days} day(s) + studio fee {fee} "
+                        "({pct}%). PayPal order {order}.",
+    "js.paypal_held_on_sign": "{amount} will be held in PayPal when you sign (order "
+                              "{order}).",
+    "js.paypal_pay_first": "Approve the payment in PayPal first; then sign.",
+    "js.paypal_mock_hint": "Mock PayPal: the button plays the sandbox buyer.",
+    "js.paypal_checking": "Checking the order with PayPal…",
+    "js.paypal_approved": "PayPal approved order {order}. Review and sign.",
+    "js.paypal_ready": "Funded: signing holds the money and creates the campaign PAUSED.",
+    "js.paypal_cancelled": "PayPal was closed before approving. Try again when ready.",
+    "js.paypal_sdk_failed": "PayPal could not be loaded. Try again in a moment.",
+    "err.paypal": "PayPal refused this step. Try again in a moment.",
+    "err.refund_amount": "The refund must be more than zero and at most what is left.",
+    "err.not_fundable": "Only a campaign is paid through PayPal.",
+    "err.not_approved_yet": "PayPal has not approved the order yet.",
+    "err.no_order": "There is no PayPal order for this approval yet.",
+    "err.funded": "This approval is already funded.",
+    "err.refund_changed": "The capture changed since the refund was signed.",
 }
 
 PL_PAYPAL: dict[str, str] = {
@@ -57,4 +81,30 @@ PL_PAYPAL: dict[str, str] = {
     "pricing.seller_address": "Siedziba: {address}.",
     "pricing.terms_html": 'Zobacz <a href="/terms">Regulamin</a> i stronę '
                           '<a href="/privacy">Prywatność</a>.',
+    "paypal.h": "Najpierw zapłać przez PayPal (piaskownica)",
+    "paypal.lead": "Pieniądze są tylko blokowane, gdy podpisujesz, a pobierane dopiero, gdy "
+                   "podpiszesz ponownie, by włączyć kampanię. Twój podpis wskazuje to "
+                   "zamówienie PayPal.",
+    "paypal.mock_button": "Zatwierdź w piaskownicy PayPal (symulowany kupujący)",
+    "paypal.ap_funding": "sha256 finansowania PayPal",
+    "js.paypal_creating": "Tworzę zamówienie PayPal…",
+    "js.paypal_amount": "{total}: budżet reklamowy {budget} na {days} dni + opłata studia "
+                        "{fee} ({pct}%). Zamówienie PayPal {order}.",
+    "js.paypal_held_on_sign": "{amount} zostanie zablokowane w PayPal, gdy podpiszesz "
+                              "(zamówienie {order}).",
+    "js.paypal_pay_first": "Najpierw zatwierdź płatność w PayPal, potem podpisz.",
+    "js.paypal_mock_hint": "Atrapa PayPal: przycisk gra rolę kupującego z piaskownicy.",
+    "js.paypal_checking": "Sprawdzam zamówienie w PayPal…",
+    "js.paypal_approved": "PayPal zatwierdził zamówienie {order}. Sprawdź i podpisz.",
+    "js.paypal_ready": "Opłacone: podpis blokuje pieniądze i tworzy kampanię WSTRZYMANĄ.",
+    "js.paypal_cancelled": "PayPal zamknięto przed zatwierdzeniem. Spróbuj, gdy będziesz "
+                           "gotów.",
+    "js.paypal_sdk_failed": "Nie udało się wczytać PayPal. Spróbuj za chwilę.",
+    "err.paypal": "PayPal odmówił tego kroku. Spróbuj za chwilę.",
+    "err.refund_amount": "Zwrot musi być większy od zera i nie większy niż to, co zostało.",
+    "err.not_fundable": "Przez PayPal opłaca się tylko kampanię.",
+    "err.not_approved_yet": "PayPal jeszcze nie zatwierdził zamówienia.",
+    "err.no_order": "Dla tego zatwierdzenia nie ma jeszcze zamówienia PayPal.",
+    "err.funded": "To zatwierdzenie jest już opłacone.",
+    "err.refund_changed": "Płatność zmieniła się od podpisania zwrotu.",
 }

@@ -420,6 +420,7 @@
     <dt id="ap-pixel-dt" hidden>{{ t("studio.ap.pixel") }}</dt><dd id="ap-pixel-dd" hidden><span id="ap-pixel-badge"></span><ul id="ap-pixel" class="plain"></ul></dd>
     <dt id="ap-diversity-dt" hidden>{{ t("studio.ap.diversity") }}</dt><dd id="ap-diversity-dd" hidden><ul id="ap-diversity" class="plain"></ul></dd>
     <dt id="ap-spec-dt" hidden>{{ t("studio.ap.spec") }}</dt><dd id="ap-spec-dd" hidden><code id="ap-spec"></code></dd>
+    <dt id="ap-funding-dt" hidden>{{ t("paypal.ap_funding") }}</dt><dd id="ap-funding-dd" hidden><code id="ap-funding"></code></dd>
     <dt>{{ t("studio.ap.key") }}</dt><dd><code id="ap-key"></code></dd>
     <dt>{{ t("studio.ap.exp") }}</dt><dd id="ap-exp"></dd>
   </dl>
@@ -429,6 +430,14 @@
   <p class="stamp" id="stamp" hidden><span class="hud-label">{{ t("studio.ap.signed") }}</span> <span class="stamp-hash"></span></p>
   </div>
   <details><summary>{{ t("studio.ap.bytes") }}</summary><pre id="ap-message"></pre></details>
+  <div class="panel-inset" id="ap-paypal" aria-labelledby="ap-paypal-h" hidden>
+    <h3 id="ap-paypal-h">{{ t("paypal.h") }}</h3>
+    <p id="ap-paypal-amount"></p>
+    <p class="hint">{{ t("paypal.lead") }}</p>
+    <div id="paypal-button"></div>
+    <button type="button" id="paypal-mock" hidden>{{ t("paypal.mock_button") }}</button>
+    <p class="status" id="paypal-status" role="status" aria-live="polite"></p>
+  </div>
   <button type="button" id="approve-button">{{ t("studio.ap.button") }}</button>
   <p class="status" id="approve-status" role="status" aria-live="polite"></p>
   <div id="signature" hidden>
@@ -487,6 +496,7 @@
 </section>
 </div>
 <script src="/static/signer.js" defer></script>
+<script src="/static/paypal.js" defer></script>
 <script src="/static/app.js" defer></script>
 <script src="/static/brief.js" defer></script>
 <script src="/static/brief_summary.js" defer></script>

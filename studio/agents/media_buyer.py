@@ -83,9 +83,20 @@ def _uploads(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
-           payload: dict[str, Any], data_dir: Path) -> dict[str, Any]:
+           payload: dict[str, Any], data_dir: Path, funder: Any = None) -> dict[str, Any]:
+    """``funder`` (``studio.paypal.hooks.Funder``, None when PayPal is off): the signed
+    funding must name an approved PayPal order before anything is created, and the order
+    is authorized (money held) once the PAUSED campaign exists."""
     check_paused(payload)  # before anything: an ACTIVE creation payload is never executed
     v: Verified = executor.authorize(conn, verified, "campaign.create", payload)
+    funded = None
+    if funder is not None:
+        try:
+            funded = funder.for_create(v, payload)
+        except Exception as exc:
+            code = getattr(exc, "code", "funding_required")
+            executor.finish(conn, v, "failed", {"error": code})
+            raise BuyError("the campaign's funding is not signed and approved", code) from exc
     if v.brief_sha256 and (confirmed_brief(ledger, v.run_id) != v.brief_sha256
                            or payload.get("brief_sha256") != v.brief_sha256):
         # the facts the ad stands on changed after the signature: nothing is created
@@ -179,6 +190,12 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
     result: dict[str, Any] = {"adapter": adapter.name, "status": PAUSED,
                               "campaign_item_id": v.item_id,
                               **{f"{k}_id": x for k, x in created.items()}}
+    if funder is not None and funded is not None:
+        # the campaign exists, PAUSED: now hold the money (authorize) under this approval
+        try:
+            result["funding"] = funder.authorize(funded, v)
+        except Exception as exc:  # noqa: BLE001 - receipted; the campaign stays unfunded
+            result["funding_error"] = getattr(exc, "code", type(exc).__name__)
     try:
         result["preview"] = asdict(adapter.preview(ad_id))
     except Exception as exc:  # not fatal: the ad exists and is PAUSED in Ads Manager
@@ -209,8 +226,10 @@ def campaign(conn: sqlite3.Connection, item_id: str) -> dict[str, Any] | None:
 
 
 def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
-                       ceiling: int) -> tuple[Pending, dict[str, Any]]:
-    """A pending ``campaign.activate`` for a PAUSED campaign within the budget ceiling."""
+                       ceiling: int, funder: Any = None) -> tuple[Pending, dict[str, Any]]:
+    """A pending ``campaign.activate`` for a PAUSED campaign within the budget ceiling.
+    With PayPal on, the payload names the held funding (``paypal``), so the signature
+    covers the capture; an unfunded campaign cannot be activated."""
     c = campaign(conn, item_id)
     if c is None:
         raise BuyError("no such campaign", "not_found")
@@ -229,6 +248,12 @@ def request_activation(conn: sqlite3.Connection, ledger: Ledger, item_id: str,
                "currency": currency, "run_id": c["run_id"]}
     if c["more_ad_external_ids"]:  # every ad of the ad set goes live (copy A/B, formats)
         payload["more_ad_external_ids"] = list(c["more_ad_external_ids"])
+    if funder is not None:
+        try:
+            payload["paypal"] = funder.activation_block(c["id"])
+        except Exception as exc:
+            raise BuyError("the campaign's budget is not held in PayPal",
+                           getattr(exc, "code", "not_funded")) from exc
     pending = Pending.create("campaign.activate", c["id"], payload, ledger=ledger,
                              run_id=c["run_id"])
     with transaction(conn):
@@ -314,7 +339,9 @@ def _activate_replacement(conn: sqlite3.Connection, ledger: Ledger, adapter: Ada
 
 
 def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
-             payload: dict[str, Any], ceiling: int) -> dict[str, Any]:
+             payload: dict[str, Any], ceiling: int, funder: Any = None) -> dict[str, Any]:
+    """With PayPal on (``funder``) the held money is captured first, under this
+    approval: no capture, no activation."""
     v: Verified = executor.authorize(conn, verified, "campaign.activate", payload)
     if payload.get("kind") == REPLACEMENT_AD:
         return _activate_replacement(conn, ledger, adapter, v, payload)
@@ -338,6 +365,17 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
         executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="activate",
                              status="rejected", details={"reason": problem})
         raise BuyError(f"activation refused: {problem}", problem)
+    captured: dict[str, Any] | None = None
+    if funder is not None:
+        try:
+            captured = funder.capture(v, payload)
+        except Exception as exc:
+            code = getattr(exc, "code", "") or "capture_failed"
+            executor.finish(conn, v, "failed", {"error": code})
+            executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="activate",
+                                 status="rejected", details={"reason": "not_captured"})
+            raise BuyError("activation refused: the budget could not be taken in PayPal",
+                           code) from exc
     activated: list[str] = []
     for level in activation_levels(payload):  # ads → ad set → campaign: parent last
         step = "activate_" + ("ad" if level.startswith("ad_") else level)
@@ -366,7 +404,10 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
 
     # a replacement ad made while the campaign was PAUSED went live with every other ad
     disapprovals.mark_active(conn, v.item_id, list(c["more_ad_external_ids"]) if c else [])
-    result = {"adapter": adapter.name, "status": "ACTIVE", "campaign_item_id": v.item_id}
+    result: dict[str, Any] = {"adapter": adapter.name, "status": "ACTIVE",
+                              "campaign_item_id": v.item_id}
+    if captured is not None:
+        result["funding"] = captured
     executor.finish(conn, v, "done", result)
     return result
 

@@ -1111,6 +1111,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return None
         return "mandate_not_yours" if pending.action == mandates.GRANT else "not_found"
 
+    app.state.approval_refusal = approval_refusal  # studio.routes_paypal: same ownership
+
     @app.get("/api/approvals/{approval_id}/payload")
     def approval_payload(approval_id: str, request: Request) -> Response:
         if app.state.sessions.check(request.cookies.get("studio_session")) is None:
@@ -1233,7 +1235,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                     content_sha256=pending.content_sha256, chain_head=pending.chain_head,
                     approver=approver, nonce=pending.nonce, ts=pending.ts,
                     signature=signature, brief_sha256=pending.brief_sha256,
-                    spec_sha256=pending.spec_sha256)
+                    spec_sha256=pending.spec_sha256, funding_sha256=pending.funding_sha256)
                 verified = verify_and_consume(conn, approval, json.loads(row[0]),
                                               ledger=ledger, session_id=guard)
                 conn.execute("UPDATE run_state SET status = 'approved', updated_ts = ? "

@@ -133,6 +133,31 @@ def _fetch(server: str, path: str) -> Any:
     return resp.json()
 
 
+def run_paypal(args: argparse.Namespace) -> int:
+    """``studio paypal void-lapsed`` (release holds past PayPal's honour period; run it
+    daily) and ``studio paypal export DIR`` (the owner-only ``paypal-events.jsonl`` and
+    the pinned cert PEMs, for ``studio verify --paypal-events``)."""
+    from studio import db
+    from studio.paypal import hooks, webhooks
+
+    settings, conn, ledger, _ = _studio(args.env_file)
+    db.init(conn)
+    if args.paypal_cmd == "export":
+        out = Path(args.dir)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "paypal-events.jsonl").write_text(webhooks.export_events(conn))
+        n = webhooks.export_certs(conn, out / "certs")
+        print(f"wrote {out / 'paypal-events.jsonl'} and {n} cert(s) in {out / 'certs'}")
+        return 0
+    funder = hooks.make(settings.paypal, conn, ledger)
+    if funder is None:
+        print("PayPal is off (PAYPAL_ADAPTER unset)")
+        return 0
+    voided = funder.void_lapsed()
+    print(f"voided={len(voided)}")
+    return 0
+
+
 def run_verify(args: argparse.Namespace) -> int:
     """Verify an export with the published ledger key, latest seq and approver keys."""
     min_seq = args.min_seq
@@ -163,6 +188,20 @@ def run_verify(args: argparse.Namespace) -> int:
                          "(or --skip-approver-signatures to check the chain only)")
 
     report = verify(args.file, key, min_seq=min_seq, approver_keys=approvers)
+    if args.paypal_events:
+        # PayPal's own RSA signature over every recorded webhook, re-checked offline
+        from studio.paypal import webhooks
+        from studio.receipts import Receipt
+
+        if not args.paypal_certs:
+            raise UsageError("--paypal-events needs --paypal-certs (the pinned PEMs)")
+        rows = [json.loads(line) for line in Path(args.file).read_text().splitlines()
+                if line.strip()]
+        receipts = [Receipt(**r) for r in rows if isinstance(r, dict) and "manifest" not in r]
+        problems = webhooks.recheck(Path(args.paypal_events), Path(args.paypal_certs),
+                                    receipts)
+        report.errors.extend(problems)
+        report.ok = report.ok and not problems
     if report.ok:
         line = f"chain OK, {report.count} receipts, {report.signatures} signatures valid"
         if approvers is None:
@@ -222,6 +261,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_verify.add_argument("--key-file", help="file with the ledger public key (ledger.pub)")
     p_verify.add_argument("--approver-keys", help="JSON from /api/approver-keys")
     p_verify.add_argument("--skip-approver-signatures", action="store_true")
+    p_verify.add_argument("--paypal-events", help="paypal-events.jsonl (owner export): "
+                          "re-check PayPal's webhook signatures offline")
+    p_verify.add_argument("--paypal-certs", help="directory of the pinned PayPal cert PEMs")
     p_demo = sub.add_parser("demo", help="run the whole loop headless and verify it "
                             "(replays a recorded set; --record calls the real Model API)")
     p_demo.add_argument("--set", default="demo", help="replay set (fixtures/replay/<set>)")
@@ -237,6 +279,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_ins = sub.add_parser("insights-pull", help="objective-aware insights snapshot of every "
                            "campaign and fresh recommendations (read-only on Meta)")
     p_ins.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_pp = sub.add_parser("paypal", help="PayPal (sandbox) jobs")
+    pp_sub = p_pp.add_subparsers(dest="paypal_cmd", required=True)
+    p_void = pp_sub.add_parser("void-lapsed", help="void authorizations held past the "
+                               "3-day honour period (run daily)")
+    p_void.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_exp = pp_sub.add_parser("export", help="owner-only export of the verified PayPal "
+                              "events and pinned certs, for verify --paypal-events")
+    p_exp.add_argument("dir", type=Path)
+    p_exp.add_argument("--env-file", type=Path, default=Path(".env"))
     p_mcp = sub.add_parser("mcp", help="serve the studio to an MCP client over stdio "
                            "(read and draft only; every send still needs a human signature)")
     p_mcp.add_argument("--account", required=True, help="the studio account the client acts "
@@ -260,6 +311,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return leads_poll(args.env_file)
         if args.cmd == "insights-pull":
             return insights_pull(args.env_file)
+        if args.cmd == "paypal":
+            return run_paypal(args)
         if args.cmd == "mcp":
             return run_mcp(args)
     except (ConfigError, MuseError, ReadOnlyMode, UsageError, cli_account.UsageError, OSError,
