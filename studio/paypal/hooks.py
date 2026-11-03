@@ -22,6 +22,16 @@ is off, so every hook is skipped and the studio behaves as before. With PayPal o
   payload is ``refund_payload`` of a closed ``refund/v1`` body (``request_refund`` /
   ``execute_refund``).
 
+- **A campaign approved by a signed mandate** (Day 3) has no buyer present: the mandate
+  path (``studio.mandates.execute``) calls ``charge``, which pays the ad from the owner's
+  saved PayPal (``studio.paypal.vault``, Vault v3) within the mandate's caps: an
+  ``AUTHORIZE`` order with the vault id, so the money is held before the campaign is
+  created. ``for_create`` then accepts that held funding (``mandate_charges`` row
+  ``done`` for this approval, same item, ad hash and amount) instead of a signed buyer
+  block, and the capture still needs the owner's activation signature. A charge whose
+  mandate was revoked (or whose saved PayPal was deleted) while PayPal was answering is
+  voided at once; ``release`` voids the hold of a campaign that was then not created.
+
 In mock mode (``PAYPAL_ADAPTER=mock``) a ``FakePayPal`` stands in for the API and a
 ``WebhookSigner`` signs its events with a test CA; ``flush`` runs them through the same
 ``webhooks.apply`` verification as real PayPal events, after each money step.
@@ -32,19 +42,21 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from studio import executor, funding
 from studio.approvals import Pending, Verified, ad_payload, payload_sha256, transaction
-from studio.funding import Funding, FundingError, funding_sha256
+from studio.funding import Funding, FundingError, Quote, funding_sha256
 from studio.paypal import PayPalConfig, webhooks
-from studio.paypal.client import PayPalClient
+from studio.paypal.client import PayPalClient, PayPalError
 from studio.paypal.mock import FakePayPal, WebhookSigner
 from studio.paypal.money import Money
+from studio.paypal.vault import Vault
 from studio.receipts import (
     FUNDING_FIELD,
     FUNDING_REFUND,
+    MANDATE_APPROVER,
     Ledger,
     canonical,
     refund_body_problem,
@@ -55,6 +67,24 @@ LOG = logging.getLogger(__name__)
 HONOUR_S = 3 * 86400
 ACTIVATION_KEY = "paypal"  # the funding named in a campaign.activate payload
 DEFAULT_DAYS = 7
+
+
+def days_of(payload: dict[str, Any], asked: Any = None) -> int:
+    """How many days a campaign's funding covers: its schedule when it has one, else the
+    ``days`` asked for (1 to ``funding.MAX_DAYS``), else ``DEFAULT_DAYS``."""
+    schedule = payload.get("schedule")
+    if isinstance(schedule, dict):
+        import datetime as dt
+
+        try:
+            start = dt.date.fromisoformat(str(schedule["start"]))
+            end = dt.date.fromisoformat(str(schedule["end"]))
+            return max(1, (end - start).days + 1)
+        except (KeyError, ValueError):
+            pass
+    if isinstance(asked, int) and not isinstance(asked, bool) and 1 <= asked <= funding.MAX_DAYS:
+        return asked
+    return DEFAULT_DAYS
 
 
 class FundingRefused(Exception):
@@ -76,6 +106,7 @@ class Funder:
         self.verifier = verifier
         self.clock = clock
         self.money = Money(conn, ledger, client, after=self.flush)
+        self.vault = Vault(conn, ledger, client, clock=clock)
 
     @property
     def mock(self) -> bool:
@@ -104,6 +135,8 @@ class Funder:
     # -- campaign.create ---------------------------------------------------------------------
 
     def for_create(self, v: Verified, payload: dict[str, Any]) -> Funding:
+        if v.approver.startswith(MANDATE_APPROVER):
+            return self._mandate_funding(v, payload)
         block = payload.get(FUNDING_FIELD)
         if not v.funding_sha256 or not isinstance(block, dict):
             raise FundingRefused("this studio funds every campaign through PayPal; the "
@@ -127,9 +160,129 @@ class Funder:
             raise FundingRefused(f"the signed funding does not match ({', '.join(problems)})",
                                  "funding_changed")
         assert f is not None
+        if self.conn.execute("SELECT 1 FROM mandate_charges WHERE funding_id = ?",
+                             (f.id,)).fetchone():
+            raise FundingRefused("a vault charge is not a buyer's order", "funding_changed")
         return f
 
+    def _mandate_funding(self, v: Verified, payload: dict[str, Any]) -> Funding:
+        """The money a mandate's charge holds for exactly this approval: the charge is
+        done, its funding is authorized for this item and ad, for the declared amount."""
+        from studio import mandates
+
+        if FUNDING_FIELD in payload:
+            raise FundingRefused("a mandate approval carries no buyer's funding block",
+                                 "funding_changed")
+        c = mandates.charge_of(self.conn, v.pending_id)
+        if c is None or c["status"] != "done" or not c["funding_id"]:
+            raise FundingRefused("the mandate's charge holds no money for this approval",
+                                 "funding_required")
+        f = funding.get(self.conn, str(c["funding_id"]))
+        if (f.state != "authorized" or f.item_id != v.item_id
+                or f.content_sha256 != v.content_sha256
+                or [f.total_minor, f.authorized_minor, f.currency] != [
+                    c["amount_minor"], c["amount_minor"], c["currency"]]):
+            raise FundingRefused("the held money is not the mandate's charge for this ad",
+                                 "funding_changed")
+        return f
+
+    # -- a mandate's charge of the saved PayPal (studio.mandates.Money) ---------------------
+
+    def mandate_quote(self, payload: Mapping[str, Any]) -> Quote:
+        """The amount a mandate charges for a campaign: the same quote as a buyer's order
+        (daily budget × days + the studio fee), computed by code from the payload."""
+        camp = payload.get("campaign")
+        camp = camp if isinstance(camp, dict) else {}
+        daily = camp.get("daily_budget_minor")
+        if not isinstance(daily, int) or isinstance(daily, bool):
+            raise FundingError("the campaign has no daily budget", "amount")
+        return funding.quote(str(camp.get("currency", "")), daily, days_of(dict(payload)),
+                             self.cfg.fee_pct)
+
+    def vault_active(self, account_id: str, digest: str) -> bool:
+        return self.vault.active(account_id, digest) is not None
+
+    def charge(self, verified: Verified, payload: Mapping[str, Any], mandate: Any,
+               charge: Mapping[str, Any]) -> dict[str, Any]:
+        """Pay the approved ad from the saved PayPal named by the mandate: the money is
+        held (``authorized``) before any campaign exists. The amount is recomputed and
+        must be the declared one. ``mandate_charges`` is settled ``done`` with the
+        funding, or ``refused`` on PayPal's definite refusal (an unknown outcome stays
+        pending, its amount reserved; calling ``charge`` again resends the same request
+        id). A mandate revoked, or a saved PayPal deleted, by the time PayPal answered:
+        the hold is voided at once and ``mandate_revoked`` raised."""
+        from studio import mandates
+
+        q = self.mandate_quote(payload)
+        if q.total_minor != charge["amount_minor"] or q.currency != charge["currency"]:
+            raise FundingRefused("the charge is not the declared amount", "charge_changed")
+        c = mandates.charge_of(self.conn, verified.pending_id)
+        if c is None or c["mandate_id"] != mandate.id or c["status"] != "pending" \
+                or c["amount_minor"] != q.total_minor:
+            raise FundingRefused("no pending charge of this mandate for this approval",
+                                 "charge_changed")
+        found = self.vault.active(mandate.account_id, charge["vault_sha256"])
+        if found is None:
+            with transaction(self.conn):
+                mandates.settle_charge(self.conn, verified.pending_id, "refused",
+                                       error="vault")
+            raise FundingRefused("the saved PayPal is gone", "vault")
+        if c["funding_id"]:
+            f = funding.get(self.conn, str(c["funding_id"]))  # a retry: same request id
+        else:
+            ad = ad_payload(payload)
+            f = self.money.open_vault(run_id=verified.run_id, item_id=verified.item_id,
+                                      content_sha256=payload_sha256(ad), q=q)
+            with transaction(self.conn):
+                mandates.note_funding(self.conn, verified.pending_id, f.id)
+        try:
+            step = self.money.charge_vault(f.id, vault_id=found[1],
+                                           approval_id=verified.pending_id,
+                                           mandate_id=mandate.id,
+                                           vault_sha256=charge["vault_sha256"],
+                                           period=charge["period"])
+        except PayPalError as exc:
+            if not exc.sent or (400 <= exc.status < 500 and not exc.unknown):
+                with transaction(self.conn):
+                    mandates.settle_charge(self.conn, verified.pending_id, "refused",
+                                           funding_id=f.id, error=exc.issue or exc.name)
+            raise
+        with transaction(self.conn):
+            mandates.settle_charge(self.conn, verified.pending_id, "done", funding_id=f.id)
+        m = mandates.get(self.conn, mandate.id)
+        if m is None or m.revoked_ts is not None or self.vault.active(
+                mandate.account_id, charge["vault_sha256"]) is None:
+            self.money.void(f.id, reason="mandate_revoked")
+            raise FundingRefused("the mandate was revoked while PayPal answered",
+                                 "mandate_revoked")
+        held = step.funding
+        return {"funding_id": f.id, "state": held.state, "order_id": held.order_id,
+                "authorization_id": held.authorization_id,
+                "amount_minor": held.authorized_minor, "currency": held.currency,
+                "receipt_id": step.receipt.id, "receipt_hash": step.receipt.hash}
+
+    def release(self, approval_id: str, reason: str) -> None:
+        """Void the hold of a mandate's charge whose campaign was not created."""
+        from studio import mandates
+
+        c = mandates.charge_of(self.conn, approval_id)
+        if c is None or not c["funding_id"]:
+            return
+        try:
+            if funding.get(self.conn, str(c["funding_id"])).state == "authorized":
+                self.money.void(str(c["funding_id"]), reason=reason)
+        except Exception as exc:  # noqa: BLE001 - receipted; void_lapsed retries
+            LOG.warning("release of mandate charge failed: %s", type(exc).__name__)
+
     def authorize(self, f: Funding, v: Verified) -> dict[str, Any]:
+        if v.approver.startswith(MANDATE_APPROVER):
+            held = funding.get(self.conn, f.id)  # the mandate's charge already holds it
+            if held.state != "authorized":
+                raise FundingRefused("the mandate's charge holds no money", "not_funded")
+            return {"funding_id": f.id, "state": held.state,
+                    "authorization_id": held.authorization_id,
+                    "amount_minor": held.authorized_minor, "currency": f.currency,
+                    "paid_by": "mandate"}
         step = self.money.authorize(f.id, approval_id=v.pending_id)
         return {"funding_id": f.id, "state": step.funding.state,
                 "authorization_id": step.funding.authorization_id,
@@ -233,6 +386,11 @@ def make(cfg: PayPalConfig, conn: sqlite3.Connection, ledger: Ledger, *,
         return None
     funding.ensure_schema(conn)
     webhooks.ensure_schema(conn)
+    from studio import mandates
+    from studio.paypal import vault
+
+    mandates.ensure_schema(conn)
+    vault.ensure_schema(conn)
     if cfg.adapter == "mock":
         fake = FakePayPal()
         signer = WebhookSigner(cfg.webhook_id or "MOCKWEBHOOK0001", now=clock())

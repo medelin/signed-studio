@@ -43,7 +43,7 @@ from studio.funding import FundingError
 from studio.meta.currency import to_minor
 from studio.paypal import webhooks
 from studio.paypal.client import PayPalError
-from studio.paypal.hooks import DEFAULT_DAYS, Funder, FundingRefused
+from studio.paypal.hooks import Funder, FundingRefused, days_of
 from studio.receipts import Ledger
 from studio.settings import Settings
 
@@ -55,19 +55,7 @@ NO_STORE = {"Cache-Control": "no-store"}
 
 
 def _days(payload: dict[str, Any], asked: Any) -> int:
-    schedule = payload.get("schedule")
-    if isinstance(schedule, dict):
-        import datetime as dt
-
-        try:
-            start = dt.date.fromisoformat(str(schedule["start"]))
-            end = dt.date.fromisoformat(str(schedule["end"]))
-            return max(1, (end - start).days + 1)
-        except (KeyError, ValueError):
-            pass
-    if isinstance(asked, int) and not isinstance(asked, bool) and 1 <= asked <= funding.MAX_DAYS:
-        return asked
-    return DEFAULT_DAYS
+    return days_of(payload, asked)
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_guard: Any,

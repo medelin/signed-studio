@@ -18,7 +18,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -57,6 +57,9 @@ FUNDED_ACTIONS = frozenset({"campaign.create"})
 # The money steps and the approval action each must ride on (P-V1, P-V4, P-V6).
 FUNDING_REFUND = "funding.refund"
 PAYPAL_MONEY_STEPS = {"paypal.authorize": "campaign.create",
+                      # a customer-not-present charge of the saved PayPal (Vault v3), on a
+                      # campaign.create approved by a signed mandate (P-V5)
+                      "paypal.vault_charge": "campaign.create",
                       "paypal.capture": "campaign.activate",
                       "paypal.refund": FUNDING_REFUND,
                       "paypal.void": ""}  # a void names an approval or a lapse reason
@@ -129,6 +132,20 @@ MANDATE_ACTIONS = frozenset({"campaign.create"})  # the only action a mandate ca
 MANDATE_KEYS = frozenset({"scope", "account_id", "token_ids", "objectives", "countries",
                           "landing_hosts", "max_daily_budget", "currency", "max_campaigns",
                           "valid_until"})
+# Optional in a mandate body (Day 3, ``studio.mandates``): the owner's saved PayPal (Vault
+# v3) that runs under the mandate may charge, and the caps. A body without it pays nothing.
+MANDATE_FUNDING = "funding"
+MANDATE_FUNDING_SCHEMA = "mandate-funding/v1"
+MANDATE_METHOD = "paypal_vault"
+MANDATE_FUNDING_KEYS = frozenset({"schema", "method", "vault_sha256", "max_charge_minor",
+                                  "funding_cap_minor", "period_days", "period_start",
+                                  "kinds"})
+MANDATE_KINDS = ("lead_form", "link", "message")  # campaign kinds (the creative's kind)
+MANDATE_MAX_PERIOD_DAYS = 30
+# What a by-mandate ``campaign.create`` approval declares it charges (``details.charge``).
+CHARGE_FIELD = "charge"
+CHARGE_SCHEMA = "charge/v1"
+CHARGE_KEYS = frozenset({"schema", "amount_minor", "currency", "period", "vault_sha256"})
 _MANDATE_ACCOUNT = re.compile(r"acct_[0-9a-f]{16}")
 _MANDATE_TOKEN = re.compile(r"tok_[0-9a-f]{12}")
 _COUNTRY = re.compile(r"[A-Z]{2}")
@@ -150,7 +167,7 @@ def mandate_body_problem(body: Any) -> str | None:
     """Why ``body`` is not a well-formed mandate, or ``None``. The schema is closed and
     every value is an id, a code, a host name or a number, so the body can sit in a
     public receipt byte-exact (it is the content the owner signed)."""
-    if not isinstance(body, dict) or set(body) != MANDATE_KEYS:
+    if not isinstance(body, dict) or set(body) - {MANDATE_FUNDING} != MANDATE_KEYS:
         return "fields"
     if body["scope"] != sorted(MANDATE_ACTIONS):
         return "scope"
@@ -172,6 +189,61 @@ def mandate_body_problem(body: Any) -> str | None:
                        ("valid_until", 2**40)):
         if not _int(body[name]) or not 1 <= body[name] <= high:
             return name
+    if MANDATE_FUNDING in body:
+        return mandate_funding_problem(body[MANDATE_FUNDING], body["valid_until"])
+    return None
+
+
+def mandate_funding_problem(block: Any, valid_until: int) -> str | None:
+    """Why a mandate's ``funding`` block (what the assistant may charge to the owner's
+    saved PayPal) is malformed, or ``None``. Closed schema: the method, the SHA-256 of the
+    PayPal vault token id (the id itself never enters a receipt), the per-charge and
+    per-period caps in minor units, the period and the campaign kinds it may pay for."""
+    if not isinstance(block, dict) or set(block) != MANDATE_FUNDING_KEYS:
+        return "funding"
+    if block["schema"] != MANDATE_FUNDING_SCHEMA or block["method"] != MANDATE_METHOD:
+        return "funding"
+    if not isinstance(block["vault_sha256"], str) or not _SHA256.fullmatch(
+            block["vault_sha256"]):
+        return "vault"
+    for name, low, high in (("max_charge_minor", 1, 10**9),
+                            ("funding_cap_minor", 1, 10**10),
+                            ("period_days", 1, MANDATE_MAX_PERIOD_DAYS),
+                            ("period_start", 1, 2**40)):
+        if not _int(block[name]) or not low <= block[name] <= high:
+            return name
+    if block["max_charge_minor"] > block["funding_cap_minor"]:
+        return "max_charge_minor"
+    if block["period_start"] >= valid_until:
+        return "period_start"
+    kinds = block["kinds"]
+    if not _strings_of(kinds, _GOAL, len(MANDATE_KINDS)) or not set(kinds) <= set(
+            MANDATE_KINDS) or kinds != sorted(kinds):
+        return "kinds"
+    return None
+
+
+def charge_period(block: Mapping[str, Any], ts: float) -> int:
+    """The index of the mandate period ``ts`` falls in (0 = the first); -1 before the
+    mandate's ``period_start``. Periods are fixed windows of ``period_days`` from it."""
+    if ts < block["period_start"]:
+        return -1
+    return int((ts - block["period_start"]) // (block["period_days"] * 86400))
+
+
+def charge_body_problem(body: Any) -> str | None:
+    """Why ``body`` is not a closed ``charge/v1`` body (what a by-mandate approval declares
+    it will charge to the saved PayPal), or ``None``."""
+    if not isinstance(body, dict) or set(body) != CHARGE_KEYS or body["schema"] != CHARGE_SCHEMA:
+        return "fields"
+    if not _int(body["amount_minor"]) or not 1 <= body["amount_minor"] <= 10**9:
+        return "amount_minor"
+    if not isinstance(body["currency"], str) or not _CURRENCY.fullmatch(body["currency"]):
+        return "currency"
+    if not _int(body["period"]) or not 0 <= body["period"] <= 10**6:
+        return "period"
+    if not isinstance(body["vault_sha256"], str) or not _SHA256.fullmatch(body["vault_sha256"]):
+        return "vault_sha256"
     return None
 
 
@@ -315,6 +387,9 @@ def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
         return {**dict(redact(rest)), **kept, **digests}
     keep = (*APPROVAL_SIGNED_FIELDS, APPROVAL_BRIEF_FIELD, APPROVAL_SPEC_FIELD,
             APPROVAL_FUNDING_FIELD, "sig", "by_mandate", "mandate_sha256")
+    charge = details.get(CHARGE_FIELD)
+    if charge is not None and charge_body_problem(charge) is not None:
+        raise ValueError("a charge body must match the closed charge/v1 schema")
     for k in keep:
         if k in details and not is_opaque(details[k]):
             raise ValueError(f"approval field {k!r} must be an opaque value, not free text")
@@ -330,7 +405,7 @@ def _redact_details(kind: str, details: Mapping[str, Any]) -> dict[str, Any]:
     refund = details.get(REFUND_FIELD)
     if refund is not None and refund_body_problem(refund) is not None:
         raise ValueError("a refund body must match the closed refund/v1 schema")
-    exact = (*keep, MANDATE_FIELD, FUNDING_FIELD, REFUND_FIELD)
+    exact = (*keep, MANDATE_FIELD, FUNDING_FIELD, REFUND_FIELD, CHARGE_FIELD)
     rest = redact({k: v for k, v in details.items() if k not in exact})
     return {**rest, **{k: details[k] for k in exact if k in details}}
 
@@ -579,6 +654,8 @@ class _Grant:
     funding_sha256: str = ""
     funding: dict[str, Any] | None = None  # the signed funding/v1 block
     refund: dict[str, Any] | None = None  # the signed refund/v1 body
+    mandate_id: str = ""  # an approval made by this signed mandate
+    charge: dict[str, Any] | None = None  # the charge/v1 it declared (P-V5)
 
 
 REFUND_FIELD = "refund"
@@ -733,6 +810,24 @@ class _Money:
     captured: dict[tuple[str, str], tuple[int, str]] = field(default_factory=dict)
     refunded: dict[tuple[str, str], int] = field(default_factory=dict)  # (run, capture)
     events: set[str] = field(default_factory=set)
+    # (run, item) -> what a vault charge under a mandate holds (P-V5): order id, its
+    # funding_sha256, amount, currency and the ad's hash
+    vault: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
+    # (run, authorization id) of vault charges recorded after their mandate's revocation:
+    # each must be voided and never captured
+    after_revoke: dict[tuple[str, str], str] = field(default_factory=dict)
+    vault_orders: set[str] = field(default_factory=set)  # PayPal orders charged from a vault
+
+
+def _order_blocks(valid: Mapping[str, _Grant], money: _Money, run: str
+                  ) -> dict[str, dict[str, Any]]:
+    """order id -> what was signed for it: the funding/v1 blocks of the run's valid
+    campaign.create approvals and the run's vault charges under a mandate."""
+    out = {b["order_id"]: b for b in _funded(valid).values()}
+    for (r, _item), held in money.vault.items():
+        if r == run:
+            out.setdefault(held["order_id"], held)
+    return out
 
 
 def _funded(valid: Mapping[str, _Grant]) -> dict[str, dict[str, Any]]:
@@ -740,8 +835,8 @@ def _funded(valid: Mapping[str, _Grant]) -> dict[str, dict[str, Any]]:
     return {g.item_id: g.funding for g in valid.values() if g.funding is not None}
 
 
-def _check_paypal_call(receipt: Receipt, valid: Mapping[str, _Grant], money: _Money
-                       ) -> list[str]:
+def _check_paypal_call(receipt: Receipt, valid: Mapping[str, _Grant], money: _Money,
+                       mandates: _Mandates | None = None) -> list[str]:
     """P-V6: a PayPal money step names a valid approval of the action it belongs to, used
     once. P-V1: a capture rides on a campaign.activate approval of a campaign whose
     creation signed a funding block with the same order (funding_sha256). P-V2: captured
@@ -753,6 +848,10 @@ def _check_paypal_call(receipt: Receipt, valid: Mapping[str, _Grant], money: _Mo
         return []
     run = receipt.run_id
     approval_id = d.get("approval_id")
+    if step == "paypal.void":
+        auth = d.get("authorization_id")
+        if isinstance(auth, str):
+            money.after_revoke.pop((run, auth), None)
     if step == "paypal.void" and not approval_id:
         return [] if isinstance(d.get("reason"), str) else [
             f"{receipt.id}: void names neither an approval nor a reason"]
@@ -773,6 +872,8 @@ def _check_paypal_call(receipt: Receipt, valid: Mapping[str, _Grant], money: _Mo
         return [f"{receipt.id}: PayPal {step} has no amount"]
     amount = raw_amount if isinstance(raw_amount, int) else 0
     funded = _funded(valid)
+    if step == "paypal.vault_charge":
+        return _check_vault_charge(receipt, grant, money, mandates or _Mandates())
     if step == "paypal.authorize":
         block = grant.funding
         if block is None:
@@ -792,16 +893,24 @@ def _check_paypal_call(receipt: Receipt, valid: Mapping[str, _Grant], money: _Mo
                 money.auth_order[(run, auth)] = block["order_id"]
         return errors
     if step == "paypal.capture":
-        block = funded.get(grant.item_id)
-        if block is None:
-            return [f"{receipt.id}: capture for a campaign whose creation signed no funding "
-                    "(P-V1)"]
+        signed_block = funded.get(grant.item_id)
+        vault_held = money.vault.get((run, grant.item_id))
         from studio.funding import funding_sha256
 
+        if signed_block is not None:
+            block, signed = signed_block, funding_sha256(signed_block)
+        elif vault_held is not None:
+            block, signed = vault_held, vault_held["funding_sha256"]
+        else:
+            return [f"{receipt.id}: capture for a campaign whose creation signed no funding "
+                    "(P-V1)"]
         errors = []
-        if d.get("funding_sha256") != funding_sha256(block) or d.get(
-                "order_id") != block["order_id"]:
+        if d.get("funding_sha256") != signed or d.get("order_id") != block["order_id"]:
             errors.append(f"{receipt.id}: captured another order than the one signed (P-V1)")
+        auth = d.get("authorization_id")
+        if isinstance(auth, str) and (run, auth) in money.after_revoke:
+            errors.append(f"{receipt.id}: captured a vault charge made after its mandate was "
+                          "revoked (P-V5)")
         held = money.authorized.get((run, block["order_id"]))
         if held is None:
             errors.append(f"{receipt.id}: capture without an authorization (P-V1)")
@@ -867,7 +976,7 @@ def _check_paypal_webhook(receipt: Receipt, valid: Mapping[str, _Grant], money: 
     if not isinstance(order, str) or not order:
         auth = d.get("authorization_id")
         order = money.auth_order.get((receipt.run_id, str(auth)), "")
-    block = next((b for b in _funded(valid).values() if b["order_id"] == order), None)
+    block = _order_blocks(valid, money, receipt.run_id).get(str(order))
     if block is None:
         return errors + [f"{receipt.id}: PayPal webhook for an order this run did not "
                          "fund (P-V3)"]
@@ -899,6 +1008,7 @@ class _Mandates:
     grants: dict[str, _Mandate] = field(default_factory=dict)
     revoked: dict[str, tuple[float, str]] = field(default_factory=dict)
     used: dict[str, int] = field(default_factory=dict)
+    charged: dict[tuple[str, int], int] = field(default_factory=dict)  # (mandate, period)
 
 
 def _by_mandate(receipt: Receipt) -> bool:
@@ -992,9 +1102,94 @@ def _check_mandate_approval(
     n = mandates.used.get(mid, 0) + 1
     mandates.used[mid] = n
     errors += _checked_problems(receipt, m.body, n)
+    charge = d.get(CHARGE_FIELD)
+    if charge is not None:
+        errors += _declared_charge_problems(receipt, m, charge)
     if errors:
         return errors, None
-    return [], grant
+    return [], replace(grant, mandate_id=mid,
+                       charge=dict(charge) if isinstance(charge, dict) else None)
+
+
+def _declared_charge_problems(receipt: Receipt, m: _Mandate, charge: Any) -> list[str]:
+    """P-V5, at the approval: a charge declared by a by-mandate approval is a closed
+    ``charge/v1`` body under a mandate that signs a ``funding`` block, for its saved PayPal,
+    in its currency, at most its per-charge cap, in the period of the approval's time."""
+    where = f"{receipt.id}: charge declared under mandate"
+    if charge_body_problem(charge) is not None:
+        return [f"{where} is malformed (P-V5)"]
+    block = m.body.get(MANDATE_FUNDING)
+    if not isinstance(block, dict):
+        return [f"{where} that signs no funding (P-V5)"]
+    errors = []
+    if charge["vault_sha256"] != block["vault_sha256"]:
+        errors.append(f"{where} for another saved PayPal than the one signed (P-V5)")
+    if charge["currency"] != m.body["currency"]:
+        errors.append(f"{where} in another currency than the mandate (P-V5)")
+    if charge["amount_minor"] > block["max_charge_minor"]:
+        errors.append(f"{where} above its per-charge cap (P-V5)")
+    if charge["period"] != charge_period(block, receipt.ts):
+        errors.append(f"{where} names another period than the approval's time (P-V5)")
+    return errors
+
+
+def _check_vault_charge(receipt: Receipt, grant: _Grant, money: _Money,
+                        mandates: _Mandates) -> list[str]:
+    """P-V5: a charge of the saved PayPal rides on a by-mandate ``campaign.create``
+    approval that declared it, under the same mandate and saved PayPal, for the declared
+    amount (at most the per-charge cap), with PayPal's ``custom_id`` the approved ad's
+    hash; cumulative charges of one mandate period never exceed its ``funding_cap``. A
+    charge recorded after the mandate's revocation must be voided, never captured."""
+    d = receipt.details
+    run = receipt.run_id
+    charge, mid = grant.charge, grant.mandate_id
+    m = mandates.grants.get(mid) if mid else None
+    block = m.body.get(MANDATE_FUNDING) if m is not None else None
+    if charge is None or m is None or not isinstance(block, dict):
+        return [f"{receipt.id}: vault charge without a mandate approval that declares it "
+                "(P-V5)"]
+    errors = []
+    if d.get("mandate_id") != mid:
+        errors.append(f"{receipt.id}: vault charge names another mandate than its approval's "
+                      "(P-V5)")
+    if d.get("vault_sha256") != block["vault_sha256"]:
+        errors.append(f"{receipt.id}: charged another saved PayPal than the mandate signs "
+                      "(P-V5)")
+    amount, currency = d.get("amount_minor"), d.get("currency")
+    if amount != charge["amount_minor"] or currency != charge["currency"]:
+        errors.append(f"{receipt.id}: charged another amount than the approval declared "
+                      "(P-V5)")
+    if not _int(amount) or amount > block["max_charge_minor"]:
+        errors.append(f"{receipt.id}: charge above the mandate's per-charge cap (P-V5)")
+    if d.get("custom_id_sha256") != grant.content_sha256 or d.get(
+            "content_sha256") != grant.content_sha256:
+        errors.append(f"{receipt.id}: PayPal's custom_id is not the ad the mandate approved "
+                      "(P-V5)")
+    key = (mid, int(charge["period"]))
+    total = mandates.charged.get(key, 0) + (amount if isinstance(amount, int) else 0)
+    if total > block["funding_cap_minor"]:
+        errors.append(f"{receipt.id}: charges in mandate period {key[1]} exceed its funding "
+                      f"cap ({total} > {block['funding_cap_minor']} minor units) (P-V5)")
+    order, auth = d.get("order_id"), d.get("authorization_id")
+    if not isinstance(order, str) or not order or not isinstance(auth, str) or not auth:
+        errors.append(f"{receipt.id}: vault charge without PayPal's order and "
+                      "authorization ids")
+    elif order in money.vault_orders or auth in {a for (_r, a) in money.auth_order}:
+        errors.append(f"{receipt.id}: PayPal order {order} is charged twice in this log (a "
+                      "replayed charge) (P-V5)")
+    if errors:
+        return errors
+    assert isinstance(amount, int) and isinstance(order, str) and isinstance(auth, str)
+    mandates.charged[key] = total
+    money.vault_orders.add(order)
+    money.authorized[(run, order)] = amount
+    money.auth_order[(run, auth)] = order
+    money.vault[(run, grant.item_id)] = {
+        "order_id": order, "funding_sha256": d.get("funding_sha256"), "amount_minor": amount,
+        "currency": currency, "content_sha256": grant.content_sha256}
+    if mid in mandates.revoked:
+        money.after_revoke[(run, auth)] = receipt.id
+    return []
 
 
 def _spec_changed(receipt: Receipt, grant: _Grant) -> list[str]:
@@ -1206,7 +1401,7 @@ def verify(
             errors += _check_step(receipt, valid.get(run, {}), used.get(run, set()),
                                   briefs.get(run))
         if receipt.kind == PAYPAL_KIND:
-            errors += _check_paypal_call(receipt, valid.get(run, {}), money)
+            errors += _check_paypal_call(receipt, valid.get(run, {}), money, mandates)
         if receipt.kind == PAYPAL_WEBHOOK_KIND:
             errors += _check_paypal_webhook(receipt, valid.get(run, {}), money)
         if receipt.kind == "external_write":
@@ -1217,6 +1412,9 @@ def verify(
         seen.setdefault(run, set()).add(receipt.hash)
         last_ts[run] = receipt.ts
         counts[run] = counts.get(run, 0) + 1
+    for (_run, auth), rid in sorted(money.after_revoke.items()):
+        errors.append(f"{rid}: vault charge {auth} recorded after its mandate was revoked "
+                      "and never voided (P-V5)")
     errors += _check_manifest(manifests, heads, counts, public_key, min_seq, last_ids, latest)
     return Report(ok=not errors, count=count, errors=errors, signatures=signatures)
 

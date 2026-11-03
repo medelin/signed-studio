@@ -25,6 +25,19 @@ its campaign **PAUSED** without a new tap.
   ``checked``. ``studio verify`` checks all of it (``receipts.verify``).
 - **Never through a token.** No API or MCP operation creates, signs or revokes a mandate:
   those are ``/account`` forms (session + CSRF) and the studio's signing screen.
+- **Money (Day 3, PayPal Vault v3).** A mandate may also sign a ``funding`` block: the
+  SHA-256 of the owner's saved PayPal (``studio.paypal.vault``), a per-charge cap, a cap
+  per period (``funding_cap_minor`` over ``period_days`` from ``period_start``) and the
+  campaign kinds it may pay for. With PayPal on, a campaign approved by a mandate is paid
+  from the saved PayPal with no buyer present (``charge_problems``, then the funder's
+  ``charge``): only a mandate that signs ``funding``, only that saved PayPal while it is
+  active, only within both caps (counting charges still in flight), only before the
+  mandate expires or is revoked, and PayPal's ``custom_id`` is the approved ad's hash.
+  Each approval declares its ``charge`` (amount, currency, period, saved PayPal) in its
+  receipt and reserves it in ``mandate_charges`` inside the transaction that consumes
+  it, so concurrent runs cannot pass a cap together. A charge that fails gives the run
+  back to the owner (a fresh approval with the pay-and-sign path); a campaign that is
+  then not created has its hold voided. ``studio verify`` checks all of it (P-V5).
 """
 
 from __future__ import annotations
@@ -36,7 +49,7 @@ import sqlite3
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlsplit
 
 from studio import clip
@@ -53,14 +66,20 @@ from studio.meta import objectives, pixel
 from studio.meta.adapter import NotApproved, PausedOnly, check_paused, delivery_of
 from studio.meta.currency import from_minor, to_minor
 from studio.receipts import (
+    CHARGE_FIELD,
+    CHARGE_SCHEMA,
     HOST,
     MANDATE_ACTIONS,
     MANDATE_APPROVER,
     MANDATE_FIELD,
+    MANDATE_FUNDING,
+    MANDATE_FUNDING_SCHEMA,
     MANDATE_GRANT,
+    MANDATE_METHOD,
     MANDATE_REVOKE,
     Ledger,
     canonical,
+    charge_period,
     is_opaque,
     mandate_body_problem,
 )
@@ -99,6 +118,23 @@ CREATE TABLE IF NOT EXISTS mandate_uses (
     run_id TEXT NOT NULL,
     ts REAL NOT NULL
 );
+-- one charge of the saved PayPal per approval made by a mandate (Day 3). A pending charge
+-- reserves its amount against the period cap until it is done (money held) or refused
+-- (PayPal said no: nothing held); rows are never deleted.
+CREATE TABLE IF NOT EXISTS mandate_charges (
+    approval_id TEXT PRIMARY KEY,
+    mandate_id TEXT NOT NULL,
+    period INTEGER NOT NULL,
+    amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+    currency TEXT NOT NULL,
+    vault_sha256 TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'refused')),
+    funding_id TEXT NOT NULL DEFAULT '',
+    error TEXT NOT NULL DEFAULT '',
+    created_ts REAL NOT NULL,
+    updated_ts REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mandate_charges_period ON mandate_charges (mandate_id, period);
 """
 
 
@@ -206,11 +242,39 @@ def _clean(values: Any) -> list[str]:
     return sorted({str(v).strip() for v in values if str(v).strip()})
 
 
+def funding_block(*, vault_sha256: str, max_charge: Any, funding_cap: Any, period_days: Any,
+                  kinds: Any, currency: str, now: float | None = None) -> dict[str, Any]:
+    """A mandate's ``funding`` block from form values (caps in major units → minor
+    units of ``currency``); ``check`` decides whether it can be signed."""
+    clock = time.time() if now is None else now
+
+    def minor(value: Any) -> Any:
+        try:
+            whole = int(str(value).strip())
+        except (TypeError, ValueError):
+            return value
+        try:
+            return to_minor(whole, currency) if whole > 0 else whole
+        except (ValueError, KeyError):
+            return value
+
+    try:
+        period = int(str(period_days).strip())
+    except (TypeError, ValueError):
+        period = period_days
+    return {"schema": MANDATE_FUNDING_SCHEMA, "method": MANDATE_METHOD,
+            "vault_sha256": vault_sha256, "max_charge_minor": minor(max_charge),
+            "funding_cap_minor": minor(funding_cap), "period_days": period,
+            "period_start": int(clock), "kinds": _clean(kinds)}
+
+
 def build(account_id: str, *, token_ids: Any, objectives_: Any, countries: Any,
           landing_hosts: Any, max_daily_budget: Any, currency: str, max_campaigns: Any,
-          days: Any, now: float | None = None) -> dict[str, Any]:
+          days: Any, now: float | None = None,
+          funding: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """A mandate body from form values (normalised: sorted, upper-case countries,
-    lower-case hosts); ``check`` decides whether it can be signed."""
+    lower-case hosts), with the ``funding`` block (``funding_block``) when the owner lets
+    the assistant pay; ``check`` decides whether it can be signed."""
     clock = time.time() if now is None else now
 
     def num(value: Any) -> Any:
@@ -220,7 +284,9 @@ def build(account_id: str, *, token_ids: Any, objectives_: Any, countries: Any,
             return value
 
     d = num(days)
+    extra = {MANDATE_FUNDING: dict(funding)} if funding is not None else {}
     return {
+        **extra,
         "scope": list(SCOPE),
         "account_id": account_id,
         "token_ids": _clean(token_ids),
@@ -236,13 +302,27 @@ def build(account_id: str, *, token_ids: Any, objectives_: Any, countries: Any,
 
 
 def check(conn: Any, body: Mapping[str, Any], *, account_id: str, ceiling: int,
-          currency: str, now: float | None = None) -> list[str]:
-    """Every reason ``body`` cannot be signed (field names); empty = it can."""
+          currency: str, now: float | None = None,
+          vault_active: Callable[[str], bool] | None = None) -> list[str]:
+    """Every reason ``body`` cannot be signed (field names); empty = it can. A ``funding``
+    block must name an active saved PayPal of the account (``vault_active``, given only
+    when PayPal is on), start its periods now, and keep each charge within the studio's
+    PayPal ceiling."""
     clock = time.time() if now is None else now
     problems: list[str] = []
     shape = mandate_body_problem(dict(body))
     if shape is not None:
         return [shape]
+    block = body.get(MANDATE_FUNDING)
+    if isinstance(block, Mapping):
+        from studio.funding import MAX_TOTAL_MINOR
+
+        if vault_active is None or not vault_active(block["vault_sha256"]):
+            problems.append("vault")
+        if not clock - 3600 <= block["period_start"] <= clock + 60:
+            problems.append("period_start")
+        if block["max_charge_minor"] > MAX_TOTAL_MINOR:
+            problems.append("max_charge_minor")
     if body["account_id"] != account_id:
         problems.append("account_id")
     if any(g not in objectives.GOALS for g in body["objectives"]):
@@ -269,7 +349,8 @@ def check(conn: Any, body: Mapping[str, Any], *, account_id: str, ceiling: int,
 
 def request(conn: Any, ledger: Ledger, account: Any, body: Mapping[str, Any], *,
             ceiling: int, currency: str, meta_adapter: str,
-            now: float | None = None) -> Pending:
+            now: float | None = None,
+            vault_active: Callable[[str], bool] | None = None) -> Pending:
     """A pending ``mandate.grant`` for the owner to sign on the studio's signing screen.
     ``MandateError`` (``mandate_not_allowed``, ``mandate_invalid`` with the fields in
     ``args``) before anything is stored."""
@@ -278,7 +359,7 @@ def request(conn: Any, ledger: Ledger, account: Any, body: Mapping[str, Any], *,
         raise MandateError("mandate_not_allowed", 403)
     with conn.lock:
         problems = check(conn, body, account_id=account.id, ceiling=ceiling,
-                         currency=currency, now=clock)
+                         currency=currency, now=clock, vault_active=vault_active)
     if problems:
         raise MandateError("mandate_invalid", 422, problems)
     payload = payload_of(body)
@@ -509,6 +590,95 @@ def checked(mandate: Mandate, payload: Mapping[str, Any], n: int) -> dict[str, A
             "n_of_max": [n, mandate.body["max_campaigns"]]}
 
 
+class Money(Protocol):
+    """What the mandate needs from PayPal (``studio.paypal.hooks.Funder``); never given
+    to a model or a token."""
+
+    def mandate_quote(self, payload: Mapping[str, Any]) -> Any: ...
+
+    def vault_active(self, account_id: str, digest: str) -> bool: ...
+
+    def charge(self, verified: Verified, payload: Mapping[str, Any], mandate: Mandate,
+               charge: Mapping[str, Any]) -> dict[str, Any]: ...
+
+    def release(self, approval_id: str, reason: str) -> None: ...
+
+
+def charged_in(conn: Any, mandate_id: str, period: int) -> int:
+    """What the mandate's charges of ``period`` hold or may hold: done and still pending
+    (an unknown outcome stays reserved; only PayPal's definite refusal frees it)."""
+    row = conn.execute("SELECT COALESCE(SUM(amount_minor), 0) FROM mandate_charges WHERE "
+                       "mandate_id = ? AND period = ? AND status IN ('pending', 'done')",
+                       (mandate_id, period)).fetchone()
+    return int(row[0])
+
+
+def charge_problems(conn: Any, mandate: Mandate, payload: Mapping[str, Any], money: Money,
+                    now: float) -> tuple[list[str], dict[str, Any] | None]:
+    """With PayPal on: every reason the campaign cannot be paid from the saved PayPal under
+    ``mandate`` (``no_funding``, ``vault``, ``kind``, ``charge_amount``,
+    ``charge_currency``, ``max_charge``, ``funding_cap``, ``period``), and the
+    ``charge/v1`` body it would declare when there is none. Read inside the transaction
+    that reserves it."""
+    block = mandate.body.get(MANDATE_FUNDING)
+    if not isinstance(block, Mapping):
+        return ["no_funding"], None
+    reasons: list[str] = []
+    try:
+        kind = delivery_of(payload).get("creative")
+    except NotApproved:
+        kind = None
+    if kind not in block["kinds"]:
+        reasons.append("kind")
+    if not money.vault_active(mandate.account_id, block["vault_sha256"]):
+        reasons.append("vault")
+    try:
+        q = money.mandate_quote(payload)
+    except Exception:  # noqa: BLE001 - a FundingError: the amount cannot be quoted
+        return [*reasons, "charge_amount"], None
+    if q.currency != mandate.body["currency"]:
+        reasons.append("charge_currency")
+    if q.total_minor > block["max_charge_minor"]:
+        reasons.append("max_charge")
+    period = charge_period(block, now)
+    if period < 0:
+        reasons.append("period")
+    elif charged_in(conn, mandate.id, period) + q.total_minor > block["funding_cap_minor"]:
+        reasons.append("funding_cap")
+    if reasons:
+        return reasons, None
+    return [], {"schema": CHARGE_SCHEMA, "amount_minor": q.total_minor, "currency": q.currency,
+                "period": period, "vault_sha256": block["vault_sha256"]}
+
+
+def charge_of(conn: Any, approval_id: str) -> dict[str, Any] | None:
+    cols = ("approval_id", "mandate_id", "period", "amount_minor", "currency",
+            "vault_sha256", "status", "funding_id", "error")
+    row = conn.execute(f"SELECT {', '.join(cols)} FROM mandate_charges "  # noqa: S608
+                       "WHERE approval_id = ?", (approval_id,)).fetchone()
+    return dict(zip(cols, row, strict=True)) if row else None
+
+
+def settle_charge(conn: Any, approval_id: str, status: str, *, funding_id: str = "",
+                  error: str = "", now: float | None = None) -> None:
+    """``pending`` → ``done`` (money held) or ``refused`` (PayPal definitely said no).
+    Inside the caller's transaction when there is one."""
+    if status not in ("done", "refused"):
+        raise ValueError(status)
+    clock = time.time() if now is None else now
+    conn.execute("UPDATE mandate_charges SET status = ?, funding_id = CASE WHEN ? != '' THEN "
+                 "? ELSE funding_id END, error = ?, updated_ts = ? WHERE approval_id = ? AND "
+                 "status = 'pending'",
+                 (status, funding_id, funding_id, error[:80], clock, approval_id))
+
+
+def note_funding(conn: Any, approval_id: str, funding_id: str) -> None:
+    """The funding a pending charge opened (before PayPal is called), so a retry of an
+    unknown outcome reuses it."""
+    conn.execute("UPDATE mandate_charges SET funding_id = ? WHERE approval_id = ? AND "
+                 "funding_id = ''", (funding_id, approval_id))
+
+
 def candidates(conn: Any, account_id: str, token_id: str) -> list[Mandate]:
     """The account's stored mandates that list ``token_id``, oldest first."""
     rows = conn.execute(f"SELECT {_COLUMNS} FROM mandates WHERE account_id = ? "  # noqa: S608
@@ -535,16 +705,22 @@ class _NoFit(Exception):
 
 
 def _choose(conn: Any, account_id: str, token_id: str, payload: Mapping[str, Any],
-            clock: float) -> tuple[Mandate, list[str]]:
-    """The first of the token's mandates the payload fits, or the best refusal."""
+            clock: float, money: Money | None = None
+            ) -> tuple[Mandate, dict[str, Any] | None]:
+    """The first of the token's mandates the payload fits (and, with PayPal on, whose
+    saved PayPal may pay for it: its ``charge``), or the best refusal."""
     found = [m for m in candidates(conn, account_id, token_id) if _signed_grant(conn, m)]
     if not found:
         raise _NoFit(["no_mandate"])
     best: tuple[Mandate, list[str]] | None = None
     for m in found:
         reasons = fits(m, payload, token_id=token_id, now=clock)
+        charge = None
+        if money is not None:
+            more, charge = charge_problems(conn, m, payload, money, clock)
+            reasons += more
         if not reasons:
-            return m, []
+            return m, charge
         if best is None or len(reasons) < len(best[1]):
             best = (m, reasons)
     assert best is not None
@@ -553,7 +729,7 @@ def _choose(conn: Any, account_id: str, token_id: str, payload: Mapping[str, Any
 
 def execute(conn: Any, ledger: Ledger, pending_id: str, token_id: str, *, account: Any,
             meta_adapter: str, executor: Callable[[Verified, dict[str, Any]], Any] | None,
-            now: float | None = None) -> dict[str, Any]:
+            now: float | None = None, money: Money | None = None) -> dict[str, Any]:
     """Approve a run's pending ``campaign.create`` under a mandate and run its executor.
 
     The decision for the assistant: ``{"fits": False, "reasons": [...]}`` (nothing
@@ -561,6 +737,11 @@ def execute(conn: Any, ledger: Ledger, pending_id: str, token_id: str, *, accoun
     ...}``. Fits are checked again inside the write transaction that consumes the
     approval's nonce, marks it approved by ``mandate:<id>``, counts the use and writes the
     ``approval`` receipt; the executor (the media buyer, PAUSED only) runs after commit.
+
+    With PayPal on (``money``) the same transaction declares the ``charge`` in the receipt
+    and reserves it; after commit the saved PayPal is charged (money held), then the
+    executor runs. A failed charge reopens the run for the owner (``reopened_approval_id``:
+    the pay-and-sign path); a failed execution after a charge voids its hold.
     """
     clock = time.time() if now is None else now
     if not may_grant(account, meta_adapter):
@@ -591,7 +772,7 @@ def execute(conn: Any, ledger: Ledger, pending_id: str, token_id: str, *, accoun
                 raise _NoFit(["token"])
             if run_account(conn, pending.run_id) != account.id:
                 raise _NoFit(["run_not_yours"])
-            m, _ = _choose(conn, account.id, token_id, payload, clock)
+            m, charge = _choose(conn, account.id, token_id, payload, clock, money)
             n = m.used + 1
             approver = MANDATE_APPROVER + m.id
             try:
@@ -611,11 +792,19 @@ def execute(conn: Any, ledger: Ledger, pending_id: str, token_id: str, *, accoun
                          "run_id, ts) VALUES (?, ?, ?, ?, ?)",
                          (pending.id, m.id, token_id, pending.run_id, clock))
             seen = checked(m, payload, n)
+            if charge is not None:
+                conn.execute(
+                    "INSERT INTO mandate_charges (approval_id, mandate_id, period, "
+                    "amount_minor, currency, vault_sha256, status, created_ts, updated_ts) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)",
+                    (pending.id, m.id, charge["period"], charge["amount_minor"],
+                     charge["currency"], charge["vault_sha256"], clock, clock))
             ledger.append(pending.run_id, agent="mandate", kind="approval", conn=conn,
                           output_sha256=pending.content_sha256,
                           details={**pending.fields(approver), "pending_id": pending.id,
                                    "by_mandate": m.id, "mandate_sha256": m.sha256,
-                                   "checked": seen})
+                                   "checked": seen,
+                                   **({CHARGE_FIELD: charge} if charge is not None else {})})
             conn.execute("UPDATE run_state SET status = 'approved', updated_ts = ? "
                          "WHERE run_id = ?", (clock, pending.run_id))
     except _NoFit as exc:
@@ -630,6 +819,16 @@ def execute(conn: Any, ledger: Ledger, pending_id: str, token_id: str, *, accoun
                         funding_sha256=pending.funding_sha256)
     out: dict[str, Any] = {"fits": True, "mandate_id": m.id, "approval_id": pending.id,
                            "checked": seen, "executed": False}
+    if charge is not None:
+        assert money is not None
+        try:
+            out["charge"] = money.charge(verified, payload, m, charge)
+        except Exception as exc:  # noqa: BLE001 - receipted by the money step
+            out["charge_error"] = getattr(exc, "code", "") or type(exc).__name__
+            fresh = reopen(conn, ledger, pending, payload)
+            if fresh is not None:
+                out["reopened_approval_id"] = fresh.id
+            return out
     if executor is None:
         return out
     try:
@@ -637,7 +836,37 @@ def execute(conn: Any, ledger: Ledger, pending_id: str, token_id: str, *, accoun
         out.update(executed=True, result=result)
     except Exception as exc:  # noqa: BLE001 - reported; the approval stays consumed
         out["execution_error"] = getattr(exc, "code", "") or type(exc).__name__
+        if charge is not None and money is not None:
+            money.release(pending.id, "campaign_not_created")  # no campaign: no hold
     return out
+
+
+def reopen(conn: Any, ledger: Ledger, pending: Pending, payload: Mapping[str, Any],
+           now: float | None = None) -> Pending | None:
+    """The mandate could not pay: a fresh approval of the same ad for the owner (the
+    studio's pay-and-sign path) and the run waits for them again. ``None`` when the run
+    has moved on (another approval is open, or the brief changed)."""
+    clock = time.time() if now is None else now
+    try:
+        with transaction(conn):
+            fresh = Pending.create(pending.action, pending.item_id, dict(payload),
+                                   ledger=ledger, run_id=pending.run_id, now=clock,
+                                   brief_sha256=pending.brief_sha256)
+            fresh.save(conn)
+            conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, "
+                         "created_ts) VALUES (?, ?, ?, ?)",
+                         (fresh.id, fresh.run_id, canonical(dict(payload)).decode(), clock))
+            row = conn.execute("SELECT state FROM run_state WHERE run_id = ?",
+                               (pending.run_id,)).fetchone()
+            if row is not None:
+                state = json.loads(row[0])
+                state["pending_id"] = fresh.id
+                conn.execute("UPDATE run_state SET status = 'awaiting_approval', state = ?, "
+                             "updated_ts = ? WHERE run_id = ?",
+                             (json.dumps(state, ensure_ascii=False), clock, pending.run_id))
+    except Exception:  # noqa: BLE001 - the owner can still start again from the brief
+        return None
+    return fresh
 
 
 def execution_problem(conn: Any, verified: Verified, payload: Mapping[str, Any],

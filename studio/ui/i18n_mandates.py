@@ -85,6 +85,52 @@ EN_MANDATES: dict[str, str] = {
     "err.mandate_wrong_action": "A mandate can only create paused campaigns.",
     "err.mandate_unused": "No use of the mandate was recorded for this approval.",
     "err.mandate_limits": "The campaign is outside the mandate's limits.",
+    "vault.title": "Saved PayPal",
+    "vault.lead": "Save your PayPal once (you approve it in PayPal) so that an assistant "
+                  "working under a mandate you sign can pay for campaigns without you. "
+                  "Signed Studio keeps only PayPal's reference to it, never your PayPal "
+                  "details. Removing it stops every charge at once.",
+    "vault.save": "Save my PayPal",
+    "vault.saved_line": "Saved PayPal {ref} (since {date} UTC)",
+    "vault.delete": "Remove",
+    "vault.delete_label": "Remove saved PayPal {ref}",
+    "vault.status_saved": "Your PayPal is saved. You can now let a mandate pay from it.",
+    "vault.status_deleted": "The saved PayPal is removed. No mandate can charge it any more.",
+    "vault.status_cancelled": "Saving PayPal was cancelled. Nothing was saved.",
+    "mandate.pay": "Paying for campaigns",
+    "mandate.pay_hint": "Optional. Without it, every campaign still waits for you to pay "
+                        "with PayPal and sign. With it, the assistant may pay from your "
+                        "saved PayPal, only within these caps. The money is held, not taken: "
+                        "it is taken only when you sign to turn a campaign on.",
+    "mandate.pay_check": "Let the assistant pay from my saved PayPal",
+    "mandate.vault": "Saved PayPal",
+    "mandate.max_charge": "Most per campaign, fee included ({currency})",
+    "mandate.funding_cap": "Most in each period ({currency})",
+    "mandate.period_days": "Period (days, 1 to {days})",
+    "mandate.kinds": "Campaign kinds it may pay for",
+    "mandate.kind.link": "ads that link to a website",
+    "mandate.kind.message": "ads that open a chat",
+    "mandate.kind.lead_form": "ads with a lead form",
+    "mandate.limits_pay": "Pays from the saved PayPal: up to {charge} {currency} per campaign, "
+                          "{cap} {currency} every {days} days, for: {kinds}.",
+    "mandate.field.vault": "saved PayPal",
+    "mandate.field.funding": "payment limits",
+    "mandate.field.max_charge_minor": "most per campaign",
+    "mandate.field.funding_cap_minor": "most per period",
+    "mandate.field.period_days": "period",
+    "mandate.field.period_start": "period start",
+    "mandate.field.kinds": "campaign kinds",
+    "js.mandate_pay": "Pays from your saved PayPal: at most {charge} {currency} per campaign "
+                      "and {cap} {currency} every {days} days, for these kinds: {kinds}. The "
+                      "money is only held until you sign to turn a campaign on.",
+    "js.mandate_no_pay": "It cannot pay: each campaign still waits for you to pay with "
+                         "PayPal and sign.",
+    "err.paypal_vault_failed": "PayPal did not answer as expected. Nothing was saved; try "
+                               "again in a minute.",
+    "err.paypal_vault_not_found": "No such saved PayPal on your account.",
+    "err.paypal_vault_wrong_state": "This saved PayPal is no longer being set up.",
+    "err.paypal_vault_not_approved_yet": "PayPal has not confirmed the approval yet.",
+    "err.paypal_vault_conflict": "The saved PayPal changed meanwhile; reload the page.",
 }
 
 PL_MANDATES: dict[str, str] = {
@@ -168,4 +214,51 @@ PL_MANDATES: dict[str, str] = {
     "err.mandate_wrong_action": "Pełnomocnictwo pozwala tylko tworzyć wstrzymane kampanie.",
     "err.mandate_unused": "Dla tej zgody nie zapisano użycia pełnomocnictwa.",
     "err.mandate_limits": "Kampania wykracza poza limity pełnomocnictwa.",
+    "vault.title": "Zapisany PayPal",
+    "vault.lead": "Zapisz swój PayPal raz (zatwierdzasz to w PayPal), aby asystent działający "
+                  "w ramach podpisanego przez Ciebie pełnomocnictwa mógł płacić za kampanie "
+                  "bez Ciebie. Signed Studio przechowuje tylko odnośnik PayPal, nigdy Twoich "
+                  "danych z PayPal. Usunięcie go od razu wstrzymuje wszystkie obciążenia.",
+    "vault.save": "Zapisz mój PayPal",
+    "vault.saved_line": "Zapisany PayPal {ref} (od {date} UTC)",
+    "vault.delete": "Usuń",
+    "vault.delete_label": "Usuń zapisany PayPal {ref}",
+    "vault.status_saved": "Twój PayPal jest zapisany. Pełnomocnictwo może teraz z niego płacić.",
+    "vault.status_deleted": "Zapisany PayPal usunięty. Żadne pełnomocnictwo nie może go już "
+                            "obciążyć.",
+    "vault.status_cancelled": "Zapisywanie PayPal anulowane. Nic nie zapisano.",
+    "mandate.pay": "Płacenie za kampanie",
+    "mandate.pay_hint": "Opcjonalne. Bez tego każda kampania nadal czeka, aż zapłacisz "
+                        "PayPal i podpiszesz. Z tym asystent może płacić z zapisanego PayPal, "
+                        "tylko w tych limitach. Pieniądze są zablokowane, nie pobrane: "
+                        "pobranie następuje dopiero, gdy podpiszesz włączenie kampanii.",
+    "mandate.pay_check": "Pozwól asystentowi płacić z mojego zapisanego PayPal",
+    "mandate.vault": "Zapisany PayPal",
+    "mandate.max_charge": "Najwyżej za kampanię, z opłatą ({currency})",
+    "mandate.funding_cap": "Najwyżej w każdym okresie ({currency})",
+    "mandate.period_days": "Okres (dni, od 1 do {days})",
+    "mandate.kinds": "Rodzaje kampanii, za które może płacić",
+    "mandate.kind.link": "reklamy z linkiem do strony",
+    "mandate.kind.message": "reklamy otwierające czat",
+    "mandate.kind.lead_form": "reklamy z formularzem",
+    "mandate.limits_pay": "Płaci z zapisanego PayPal: do {charge} {currency} za kampanię, "
+                          "{cap} {currency} co {days} dni, za: {kinds}.",
+    "mandate.field.vault": "zapisany PayPal",
+    "mandate.field.funding": "limity płatności",
+    "mandate.field.max_charge_minor": "najwyżej za kampanię",
+    "mandate.field.funding_cap_minor": "najwyżej na okres",
+    "mandate.field.period_days": "okres",
+    "mandate.field.period_start": "początek okresu",
+    "mandate.field.kinds": "rodzaje kampanii",
+    "js.mandate_pay": "Płaci z zapisanego PayPal: najwyżej {charge} {currency} za kampanię "
+                      "i {cap} {currency} co {days} dni, za te rodzaje: {kinds}. Pieniądze są "
+                      "tylko zablokowane, dopóki nie podpiszesz włączenia kampanii.",
+    "js.mandate_no_pay": "Nie może płacić: każda kampania nadal czeka, aż zapłacisz PayPal i "
+                         "podpiszesz.",
+    "err.paypal_vault_failed": "PayPal nie odpowiedział zgodnie z oczekiwaniem. Nic nie "
+                               "zapisano; spróbuj za minutę.",
+    "err.paypal_vault_not_found": "Na Twoim koncie nie ma takiego zapisanego PayPal.",
+    "err.paypal_vault_wrong_state": "Ten zapisany PayPal nie jest już w trakcie zapisywania.",
+    "err.paypal_vault_not_approved_yet": "PayPal jeszcze nie potwierdził zgody.",
+    "err.paypal_vault_conflict": "Zapisany PayPal zmienił się w międzyczasie; odśwież stronę.",
 }

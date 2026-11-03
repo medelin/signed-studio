@@ -60,6 +60,24 @@
     {% if mandate_problems %}{% set ns = namespace(f=[]) %}{% for f in mandate_problems %}{% set ns.f = ns.f + [t("mandate.field." ~ f)] %}{% endfor %}
     <p class="status error" role="alert">{{ t("mandate.problems", fields=ns.f | join(", ")) }}</p>{% endif %}
     {% if request.query_params.get("mandate") == "revoked" %}<p class="status" role="status">{{ t("mandate.revoked") }}</p>{% endif %}
+    {% if mandate_paypal %}
+    <section id="saved-paypal" aria-labelledby="saved-paypal-h">
+      <h4 id="saved-paypal-h">{{ t("vault.title") }}</h4>
+      <p class="hint" id="saved-paypal-lead">{{ t("vault.lead") }}</p>
+      {% set pp = request.query_params.get("paypal") %}{% if pp in ("saved", "deleted", "cancelled") %}<p class="status" role="status">{{ t("vault.status_" ~ pp) }}</p>{% endif %}
+      {% set active_vaults = mandate_vaults | selectattr("status", "equalto", "active") | list %}
+      {% if active_vaults %}
+      <ul class="plain">
+      {% for v in active_vaults %}<li>{{ t("vault.saved_line", ref=v.vault_ref, date=v.created_ts | utc) }} <form method="post" action="/account/paypal/vault/delete" class="inline-form"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><input type="hidden" name="vault_ref" value="{{ v.vault_ref }}"><button type="submit" class="secondary small-button" aria-label="{{ t('vault.delete_label', ref=v.vault_ref) }}">{{ t("vault.delete") }}</button></form></li>
+      {% endfor %}
+      </ul>
+      {% endif %}
+      <form method="post" action="/account/paypal/vault/start" class="inline-form" aria-describedby="saved-paypal-lead">
+        <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
+        <button type="submit">{{ t("vault.save") }}</button>
+      </form>
+    </section>
+    {% endif %}
     {% if mandate_tokens %}
     <form method="post" action="/account/mandates/prepare" class="stack" aria-describedby="mandates-lead">
       <input type="hidden" name="csrf" value="{{ request.state.csrf }}">
@@ -81,6 +99,26 @@
       <input id="mandate-max" name="max_campaigns" type="number" min="1" max="{{ mandate_max_campaigns }}" step="1" value="3" required>
       <label for="mandate-days">{{ t("mandate.days", days=mandate_max_days) }}</label>
       <input id="mandate-days" name="days" type="number" min="1" max="{{ mandate_max_days }}" step="1" value="7" required>
+      {% if mandate_paypal and active_vaults %}
+      <fieldset aria-describedby="mandate-pay-hint">
+        <legend>{{ t("mandate.pay") }}</legend>
+        <p class="hint" id="mandate-pay-hint">{{ t("mandate.pay_hint") }}</p>
+        <label><input type="checkbox" name="pay" value="1"> {{ t("mandate.pay_check") }}</label>
+        <label for="mandate-vault">{{ t("mandate.vault") }}</label>
+        <select id="mandate-vault" name="vault_ref">{% for v in active_vaults %}<option value="{{ v.vault_ref }}">{{ v.vault_ref }}</option>{% endfor %}</select>
+        <label for="mandate-max-charge">{{ t("mandate.max_charge", currency=mandate_currency) }}</label>
+        <input id="mandate-max-charge" name="max_charge" type="number" min="1" step="1">
+        <label for="mandate-cap">{{ t("mandate.funding_cap", currency=mandate_currency) }}</label>
+        <input id="mandate-cap" name="funding_cap" type="number" min="1" step="1">
+        <label for="mandate-period">{{ t("mandate.period_days", days=mandate_max_period) }}</label>
+        <input id="mandate-period" name="period_days" type="number" min="1" max="{{ mandate_max_period }}" step="1" value="7">
+        <fieldset>
+          <legend>{{ t("mandate.kinds") }}</legend>
+          {% for k in mandate_kinds %}<label><input type="checkbox" name="kind" value="{{ k }}"{% if k == "link" %} checked{% endif %}> {{ t("mandate.kind." ~ k) }}</label>
+          {% endfor %}
+        </fieldset>
+      </fieldset>
+      {% endif %}
       <fieldset>
         <legend>{{ t("mandate.tokens") }}</legend>
         {% for k in mandate_tokens %}<label><input type="checkbox" name="token" value="{{ k.id }}"> {{ k.label }}</label>
@@ -99,7 +137,7 @@
       <thead><tr><th scope="col">{{ t("mandate.col.limits") }}</th><th scope="col">{{ t("mandate.col.used") }}</th><th scope="col">{{ t("mandate.col.until") }}</th><th scope="col">{{ t("mandate.col.status") }}</th><th scope="col">{{ t("mandate.col.action") }}</th></tr></thead>
       <tbody>
       {% for m in mandate_list %}{% set l = m.limits %}{% set ns = namespace(names=[]) %}{% for k in l.token_ids %}{% set ns.names = ns.names + [mandate_labels.get(k, k)] %}{% endfor %}
-        <tr><td>{{ t("mandate.limits", objectives=l.objectives | join(", "), countries=l.countries | join(", "), hosts=l.landing_hosts | join(", "), budget=l.max_daily_budget, currency=l.currency, tokens=ns.names | join(", ")) }}</td>
+        <tr><td>{{ t("mandate.limits", objectives=l.objectives | join(", "), countries=l.countries | join(", "), hosts=l.landing_hosts | join(", "), budget=l.max_daily_budget, currency=l.currency, tokens=ns.names | join(", ")) }}{% if l.funding %} {{ t("mandate.limits_pay", charge=(l.funding.max_charge_minor / 100) | round(2), cap=(l.funding.funding_cap_minor / 100) | round(2), currency=l.currency, days=l.funding.period_days, kinds=l.funding.kinds | join(", ")) }}{% endif %}</td>
         <td>{{ t("mandate.used", used=m.used, max=l.max_campaigns) }}</td><td>{{ l.valid_until | utc }}</td><td>{{ t("mandate.status." ~ m.status) }}</td>
         <td>{% if m.status == "active" or m.status == "used_up" %}<form method="post" action="/account/mandates/revoke" class="inline-form"><input type="hidden" name="csrf" value="{{ request.state.csrf }}"><input type="hidden" name="mandate" value="{{ m.mandate_id }}"><button type="submit" class="secondary small-button" aria-label="{{ t('mandate.revoke_label', id=m.mandate_id) }}">{{ t("mandate.revoke_button") }}</button></form>{% endif %}</td></tr>
       {% endfor %}

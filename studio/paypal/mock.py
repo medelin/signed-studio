@@ -102,6 +102,9 @@ class FakePayPal:
         self.auths: dict[str, _Auth] = {}
         self.captures: dict[str, _Capture] = {}
         self.refunds: dict[str, dict[str, Any]] = {}
+        # Vault v3: setup token id -> status; payment (vault) token id -> status
+        self.setup_tokens: dict[str, str] = {}
+        self.vault_tokens: dict[str, str] = {}
         self.idempotent: dict[str, tuple[str, int, bytes]] = {}  # key -> (path, status, body)
         self.calls: list[tuple[str, str]] = []  # (method, path) of every request
         self.approve_on_create = approve_on_create
@@ -122,6 +125,12 @@ class FakePayPal:
             order = self.orders[order_id]
             if order.status == "CREATED":
                 order.status = "APPROVED"
+
+    def approve_setup(self, setup_token_id: str) -> None:
+        """What the buyer's approval of "save PayPal" does."""
+        with self._lock:
+            if self.setup_tokens.get(setup_token_id) == "PAYER_ACTION_REQUIRED":
+                self.setup_tokens[setup_token_id] = "APPROVED"
 
     def expire_tokens(self) -> None:
         self.tokens.clear()
@@ -159,6 +168,8 @@ class FakePayPal:
                 return _err(self._fail.pop(0), "INTERNAL_SERVER_ERROR", "")
             if request.method == "GET":
                 return self._get(path)
+            if request.method == "DELETE":
+                return self._delete(path)
             key = request.headers.get("PayPal-Request-Id", "")
             if not key:
                 return _err(400, "INVALID_REQUEST", "PAYPAL_REQUEST_ID_REQUIRED")
@@ -187,7 +198,17 @@ class FakePayPal:
                                          "app_id": "APP-80W284485P519543T",
                                          "expires_in": EXPIRES_IN, "nonce": "mock"})
 
+    def _delete(self, path: str) -> httpx.Response:
+        m = re.fullmatch(r"/v3/vault/payment-tokens/([A-Za-z0-9-]+)", path)
+        if m and self.vault_tokens.get(m[1]) == "ACTIVE":
+            self.vault_tokens[m[1]] = "DELETED"
+            return httpx.Response(204)
+        return _err(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID")
+
     def _get(self, path: str) -> httpx.Response:
+        m = re.fullmatch(r"/v3/vault/setup-tokens/([A-Z0-9]+)", path)
+        if m and m[1] in self.setup_tokens:
+            return httpx.Response(200, json=self._setup_json(m[1]))
         m = re.fullmatch(r"/v2/checkout/orders/([A-Z0-9]+)", path)
         if m and m[1] in self.orders:
             return httpx.Response(200, json=self._order_json(self.orders[m[1]]))
@@ -209,6 +230,30 @@ class FakePayPal:
     def _post(self, path: str, body: dict[str, Any]) -> httpx.Response:
         if path == "/v2/checkout/orders":
             return self._create(body)
+        if path == "/v3/vault/setup-tokens":
+            paypal = (body.get("payment_source") or {}).get("paypal") or {}
+            ctx = paypal.get("experience_context") or {}
+            if paypal.get("usage_type") != "MERCHANT" or not ctx.get("return_url"):
+                return _err(400, "INVALID_REQUEST", "MISSING_REQUIRED_PARAMETER")
+            sid = self._next("7")
+            self.setup_tokens[sid] = "PAYER_ACTION_REQUIRED"
+            return httpx.Response(201, json=self._setup_json(sid))
+        if path == "/v3/vault/payment-tokens":
+            token = (body.get("payment_source") or {}).get("token") or {}
+            sid = token.get("id", "")
+            if token.get("type") != "SETUP_TOKEN" or sid not in self.setup_tokens:
+                return _err(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID")
+            if self.setup_tokens[sid] != "APPROVED":
+                return _err(422, "UNPROCESSABLE_ENTITY", "SETUP_TOKEN_NOT_APPROVED")
+            self.setup_tokens[sid] = "VAULTED"
+            vid = self._next("9").lower()
+            self.vault_tokens[vid] = "ACTIVE"
+            return httpx.Response(201, json={
+                "id": vid, "customer": {"id": "mockcustomer01"},
+                "payment_source": {"paypal": {"email_address": "sb-buyer@personal.example.com",
+                                              "payer_id": "MOCKPAYER0000"}},
+                "links": [{"href": "https://api.sandbox.paypal.com/v3/vault/payment-tokens/"
+                                   f"{vid}", "rel": "self", "method": "GET"}]})
         m = re.fullmatch(r"/v2/checkout/orders/([A-Z0-9]+)/authorize", path)
         if m:
             return self._authorize(m[1])
@@ -242,10 +287,16 @@ class FakePayPal:
             return _err(422, "UNPROCESSABLE_ENTITY", "ITEM_TOTAL_MISMATCH")
         if len(unit.get("custom_id", "")) > 127:
             return _err(400, "INVALID_REQUEST", "INVALID_STRING_LENGTH")
+        vault_id = ((body.get("payment_source") or {}).get("paypal") or {}).get("vault_id")
+        if vault_id is not None and self.vault_tokens.get(vault_id) != "ACTIVE":
+            return _err(422, "UNPROCESSABLE_ENTITY", "PAYMENT_SOURCE_CANNOT_BE_USED")
         order = _Order(self._next("5"), body,
-                       "APPROVED" if self.approve_on_create else "CREATED")
+                       "APPROVED" if self.approve_on_create or vault_id else "CREATED")
         self.orders[order.id] = order
         del currency
+        if vault_id is not None and body["intent"] == "AUTHORIZE":
+            # no buyer present: PayPal holds the money from the saved PayPal at once
+            self._authorize(order.id)
         return httpx.Response(201, json=self._order_json(order))
 
     def _authorize(self, order_id: str) -> httpx.Response:
@@ -356,6 +407,17 @@ class FakePayPal:
                             "sb-buyer@personal.example.com", "name": {"given_name": "Sandbox",
                                                                       "surname": "Buyer"}}
         return out
+
+    def _setup_json(self, sid: str) -> dict[str, Any]:
+        status = self.setup_tokens[sid]
+        return {"id": sid, "customer": {"id": "mockcustomer01"},
+                "status": "APPROVED" if status == "VAULTED" else status,
+                "payment_source": {"paypal": {"usage_type": "MERCHANT"}},
+                "links": [{"href": "https://www.sandbox.paypal.com/agreements/approve?"
+                                   f"approval_session_id={sid}", "rel": "approve",
+                           "method": "GET"},
+                          {"href": f"https://api.sandbox.paypal.com/v3/vault/setup-tokens/{sid}",
+                           "rel": "self", "method": "GET"}]}
 
     @staticmethod
     def _auth_json(auth: _Auth) -> dict[str, Any]:

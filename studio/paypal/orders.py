@@ -41,6 +41,7 @@ class Result:
     approve_url: str = ""
     expiration_time: str = ""
     authorization_id: str = ""  # an order's first authorization (after authorize)
+    order_id: str = ""  # the order an authorization belongs to (vault charges)
 
 
 def _money(minor: int, currency: str) -> dict[str, str]:
@@ -73,6 +74,41 @@ def order_body(q: Quote, *, content_sha256: str, invoice_id: str,
             "brand_name": BRAND, "shipping_preference": "NO_SHIPPING",
             "user_action": "CONTINUE"}}},
     }
+
+
+def vault_order_body(q: Quote, *, content_sha256: str, invoice_id: str, reference_id: str,
+                     vault_id: str) -> dict[str, Any]:
+    """The order for a customer-not-present charge of the owner's saved PayPal (Vault v3):
+    the same purchase unit as ``order_body`` (``custom_id`` = the ad's hash, items "Ad
+    budget" and "Studio fee", ``intent: AUTHORIZE``), paid from ``vault_id``. No buyer is
+    present: PayPal holds the money at once, or answers that it cannot."""
+    body = order_body(q, content_sha256=content_sha256, invoice_id=invoice_id,
+                      reference_id=reference_id)
+    body["payment_source"] = {"paypal": {"vault_id": path_id(vault_id)}}
+    return body
+
+
+def charge_vault(client: PayPalClient, body: dict[str, Any], *, request_id: str) -> Result:
+    """Create the vault order and return its authorization (the money held). PayPal
+    usually completes an ``AUTHORIZE`` order paid from a vault token at creation; when it
+    answers ``APPROVED`` instead, the order is authorized under a request id derived from
+    this one. Any other status (the buyer would have to act) is an error: no buyer is
+    present to act."""
+    reply = client.post("/v2/checkout/orders", body, request_id=request_id)
+    order = _order(reply)
+    if order.status == "APPROVED":
+        reply = client.post(f"/v2/checkout/orders/{path_id(order.id)}/authorize", None,
+                            request_id=request_id[:-6] + "-auth0")
+        order = _order(reply)
+    if order.status != "COMPLETED":
+        raise PayPalError(422, "UNPROCESSABLE_ENTITY", "PAYER_ACTION_REQUIRED")
+    auths = (_unit(reply.json).get("payments") or {}).get("authorizations")
+    if not isinstance(auths, list) or len(auths) != 1 or not isinstance(auths[0], dict):
+        raise _bad("not one authorization")
+    auth = _payment("authorization", auths[0], reply.body_sha256)
+    return Result(**{**auth.__dict__, "custom_id": auth.custom_id or order.custom_id,
+                     "invoice_id": auth.invoice_id or order.invoice_id,
+                     "order_id": order.id})
 
 
 def _bad(what: str) -> PayPalError:

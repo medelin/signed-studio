@@ -515,9 +515,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if account is None:
             decision: dict[str, Any] = {"fits": False, "reasons": ["token"]}
         else:
+            # with PayPal on, the campaign is paid from the owner's saved PayPal within
+            # the mandate's caps (money held before anything is created)
             decision = mandates.execute(conn, ledger, pending_id, token_id, account=account,
                                         meta_adapter=settings.meta_adapter,
-                                        executor=app.state.executors.get("campaign.create"))
+                                        executor=app.state.executors.get("campaign.create"),
+                                        money=getattr(app.state, "funder", None))
         with db.transaction(conn):
             row = conn.execute("SELECT state FROM run_state WHERE run_id = ?",
                                (run_id,)).fetchone()
@@ -526,7 +529,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                 fresh["mandate"] = decision
                 conn.execute("UPDATE run_state SET state = ? WHERE run_id = ?",
                              (json.dumps(fresh, ensure_ascii=False), run_id))
-        return bool(decision.get("fits"))
+        # a charge that failed reopened the run for the owner: it waits for a signature
+        return bool(decision.get("fits")) and "charge_error" not in decision
 
     def worker(run_id: str, brief: str, brief_source: str = "operator",
                confirmed: brief_v1.BriefV1 | None = None, digest: str = "",

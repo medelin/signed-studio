@@ -455,7 +455,19 @@ function showMandate(m) {
     T("mandate_count", { n: m.max_campaigns }),
     T("mandate_until", { date: new Date(m.valid_until * 1000).toLocaleString() }),
     T("mandate_tokens", { list: join(m.token_ids) }),
+    mandatePay(m),
   ]) list.append(el("li", line));
+}
+
+// The mandate's funding block (Day 3): what the assistant may charge to the saved PayPal.
+function mandatePay(m) {
+  const f = m.funding;
+  if (!f) return T("mandate_no_pay");
+  const major = (minor) => (["HUF", "JPY", "TWD"].includes(m.currency)
+    ? String(minor) : (minor / 100).toFixed(2));
+  return T("mandate_pay", { charge: major(f.max_charge_minor), cap: major(f.funding_cap_minor),
+                            currency: m.currency, days: f.period_days,
+                            kinds: (f.kinds || []).join(", ") });
 }
 
 async function showApproval(pendingId) {

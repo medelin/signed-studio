@@ -99,6 +99,41 @@ class Money:
                             move="order", fields={"order_id": res.id},
                             amount=res.amount_minor)
 
+    def open_vault(self, *, run_id: str, item_id: str, content_sha256: str, q: Any
+                   ) -> Funding:
+        """Store a funding for a vault charge (no PayPal call yet; ``charge_vault`` makes
+        the order and holds the money in one step)."""
+        Ledger.validate_ids(run_id, AGENT)
+        return funding.create(self.conn, run_id=run_id, item_id=item_id,
+                              content_sha256=content_sha256, q=q, now=self._now())
+
+    def charge_vault(self, funding_id: str, *, vault_id: str, approval_id: str,
+                     **extra: Any) -> Step:
+        """Charge the owner's saved PayPal (Vault v3, no buyer present) for this funding,
+        under a ``campaign.create`` approval made by a signed mandate: an ``AUTHORIZE``
+        order with ``payment_source.paypal.vault_id``; PayPal holds the money at once.
+        ``created`` → ``authorized``. ``extra`` (mandate id, the vault id's SHA-256, the
+        period) goes into the receipt; the vault id itself never does."""
+        f = funding.get(self.conn, funding_id)
+        if f.state != "created" or f.order_id:
+            raise FundingError(f"a funding in state {f.state!r} cannot be charged",
+                               "wrong_state")
+        self._approval(approval_id)
+        self._claim(approval_id, f, "vault_charge", f.total_minor)
+        body = orders.vault_order_body(f.quote, content_sha256=f.content_sha256,
+                                       invoice_id=f.id, reference_id=f.item_id,
+                                       vault_id=vault_id)
+        rid, idem = _idem(f.id, "vault_charge", approval_id)
+        res = self._call(f, "paypal.vault_charge", idem, body, lambda: orders.charge_vault(
+            self.client, body, request_id=rid), approval_id, claim=approval_id, **extra)
+        self._expect(f, "paypal.vault_charge", idem, body, res, status=frozenset({"CREATED"}),
+                     amount=f.total_minor, approval_id=approval_id, **extra)
+        return self._commit(f, "paypal.vault_charge", idem, body, res, to="authorized",
+                            move="authorization", approval_id=approval_id, claim=approval_id,
+                            fields={"order_id": res.order_id, "authorization_id": res.id,
+                                    "authorized_minor": res.amount_minor},
+                            amount=res.amount_minor, **extra)
+
     def sync_order(self, funding_id: str) -> Step | None:
         """Read the order; when the buyer has approved it, ``created`` → ``payer_approved``.
         ``None`` while the buyer has not approved yet (no receipt for an unchanged read)."""
@@ -118,7 +153,9 @@ class Money:
     def authorize(self, funding_id: str, *, approval_id: str) -> Step:
         """Hold the money of an approved order: ``payer_approved`` → ``authorized``."""
         f = funding.get(self.conn, funding_id)
-        funding.check_move(f, "authorized")
+        if f.state != "payer_approved":  # created → authorized is a vault charge's edge
+            raise FundingError(f"a funding in state {f.state!r} cannot be authorized",
+                               "wrong_state")
         order_id = self._need(f.order_id, "no_order")
         self._approval(approval_id)
         self._claim(approval_id, f, "authorize", f.total_minor)
@@ -224,6 +261,9 @@ class Money:
             return self.capture(funding_id, approval_id=key)
         if step == "authorize":
             return self.authorize(funding_id, approval_id=key)
+        if step == "vault_charge":
+            raise FundingError("a vault charge is settled by its funder (it needs the "
+                               "saved PayPal)", "no_claim")
         return self.void(funding_id, approval_id="" if key.endswith(":void") else key)
 
     def statement(self, funding_id: str, spend_minor: int) -> Statement:

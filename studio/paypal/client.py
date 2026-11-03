@@ -180,6 +180,10 @@ class PayPalClient:
     def get(self, path: str) -> Reply:
         return self._call("GET", path, None, None)
 
+    def delete(self, path: str) -> Reply:
+        """A DELETE (idempotent by nature: deleting a deleted vault token is a 404)."""
+        return self._call("DELETE", path, None, None)
+
     def post(self, path: str, body: Mapping[str, Any] | None, *, request_id: str) -> Reply:
         """A write. ``request_id`` (``PayPal-Request-Id``) is required: without it a retry
         could act twice."""

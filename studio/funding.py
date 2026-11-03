@@ -14,7 +14,9 @@ PayPal expects (``"48.00"``) and ``parse_amount`` reads one back, strictly.
   sit in a public receipt byte-exact.
 - States: ``created`` (order made, ``custom_id`` = the ad's content hash) →
   ``payer_approved`` (the buyer approved in PayPal) → ``authorized`` (money held) →
-  ``captured`` (money taken) → ``partially_refunded`` / ``refunded``. ``voided`` ends an
+  ``captured`` (money taken) → ``partially_refunded`` / ``refunded``. A charge of the
+  owner's saved PayPal under a signed mandate goes ``created`` → ``authorized`` in one
+  step (no buyer is present to approve). ``voided`` ends an
   authorization that was never captured; ``expired`` ends an order never authorized.
   ``TRANSITIONS`` is the whole graph: any other move is refused.
 - ``reconcile``: what the owner owes and gets back once the ad spend is known. The studio
@@ -51,7 +53,10 @@ MAX_TOTAL_MINOR = 10_000_000  # 100,000.00: a sandbox demo never needs more
 STATES = ("created", "payer_approved", "authorized", "captured", "partially_refunded",
           "refunded", "voided", "expired")
 TRANSITIONS: dict[str, frozenset[str]] = {
-    "created": frozenset({"payer_approved", "expired"}),
+    # created → authorized: a charge of the owner's saved PayPal under a signed mandate
+    # (Vault v3), where PayPal holds the money when the order is made; only
+    # ``Money.charge_vault`` takes this edge, a buyer's order needs ``payer_approved``
+    "created": frozenset({"payer_approved", "authorized", "expired"}),
     "payer_approved": frozenset({"authorized", "expired"}),
     "authorized": frozenset({"captured", "voided"}),
     "captured": frozenset({"partially_refunded", "refunded"}),

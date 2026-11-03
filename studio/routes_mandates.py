@@ -12,6 +12,13 @@ mandate (``studio.mandates``).
   shared judge account, and no trial account while the Meta adapter is live); the same
   rule is checked again by ``mandates.request``, by the signing route and when a run
   would use the mandate. No bearer-token path reaches any of this.
+- **Saved PayPal (Vault v3, PayPal on only).** ``POST /account/paypal/vault/start`` sends
+  the owner to PayPal to approve saving their PayPal (buyer present); PayPal returns them
+  to ``GET /account/paypal/vault/return``, where the setup token becomes a vault token
+  (``studio.paypal.vault``). ``POST /account/paypal/vault/delete`` stops charges at once
+  and deletes it at PayPal. A mandate prepared with "pay from my saved PayPal" signs a
+  ``funding`` block naming that saved PayPal by SHA-256, with a per-charge cap, a cap per
+  period, the period and the campaign kinds.
 """
 
 from __future__ import annotations
@@ -26,11 +33,11 @@ from fastapi.responses import JSONResponse, RedirectResponse, Response
 from studio import auth, mandates
 from studio.meta import objectives
 from studio.meta.adapter import AdapterError
-from studio.receipts import Ledger
+from studio.receipts import MANDATE_KINDS, MANDATE_MAX_PERIOD_DAYS, Ledger
 from studio.settings import Settings
 
 NO_STORE = {"Cache-Control": "no-store"}
-MAX_FIELDS = 40  # checkboxes: up to 6 objectives and 10 tokens
+MAX_FIELDS = 50  # checkboxes: up to 6 objectives, 10 tokens and 3 campaign kinds
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> None:
@@ -65,6 +72,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> Non
             "mandate_currency": currency(), "mandate_ceiling": settings.max_daily_budget,
             "mandate_max_campaigns": mandates.MAX_CAMPAIGNS,
             "mandate_max_days": mandates.MAX_DAYS})
+        funder = getattr(app.state, "funder", None)
+        out["mandate_paypal"] = bool(show and funder is not None)
+        out["mandate_vaults"] = [v.view() for v in funder.vault.of_account(account.id)] \
+            if show and funder is not None else []
+        out["mandate_kinds"] = list(MANDATE_KINDS)
+        out["mandate_max_period"] = MANDATE_MAX_PERIOD_DAYS
         return out
 
     app.state.account_extras = extras
@@ -109,18 +122,112 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> Non
 
         if account.is_demo or not mandates.may_grant(account, settings.meta_adapter):
             return refuse(request, sid, account, "mandate_not_allowed", 403)
+        funder = getattr(app.state, "funder", None)
+        block = None
+        if one("pay") == "1":
+            # pay from the saved PayPal: the mandate signs it by SHA-256 (never the id)
+            digest = ""
+            if funder is not None:
+                try:
+                    saved = funder.vault.get(one("vault_ref"))
+                    if saved.account_id == account.id and saved.status == "active":
+                        digest = saved.token_sha256
+                except Exception:  # noqa: BLE001,S110 - an unknown reference: "vault"
+                    pass
+            block = mandates.funding_block(
+                vault_sha256=digest, max_charge=one("max_charge"),
+                funding_cap=one("funding_cap"), period_days=one("period_days"),
+                kinds=form.get("kind", []), currency=currency())
         body = mandates.build(
             account.id, token_ids=form.get("token", []), objectives_=form.get("objective", []),
             countries=one("countries"), landing_hosts=one("hosts"),
             max_daily_budget=one("max_daily_budget"), currency=currency(),
-            max_campaigns=one("max_campaigns"), days=one("days"))
+            max_campaigns=one("max_campaigns"), days=one("days"), funding=block)
         try:
-            pending = mandates.request(conn, ledger, account, body,
-                                       ceiling=settings.max_daily_budget, currency=currency(),
-                                       meta_adapter=settings.meta_adapter)
+            pending = mandates.request(
+                conn, ledger, account, body, ceiling=settings.max_daily_budget,
+                currency=currency(), meta_adapter=settings.meta_adapter,
+                vault_active=(lambda d: funder.vault_active(account.id, d))
+                if funder is not None else None)
         except mandates.MandateError as exc:
             return refuse(request, sid, account, exc.code, exc.status, exc.fields)
         return RedirectResponse(f"/studio?approval={pending.id}", 303, headers=NO_STORE)
+
+    # -- the saved PayPal (Vault v3) ---------------------------------------------------------
+
+    def vault_service() -> Any:
+        funder = getattr(app.state, "funder", None)
+        return funder
+
+    def base(request: Request) -> str:
+        return (settings.public_url or str(request.base_url)).rstrip("/")
+
+    @app.post("/account/paypal/vault/start")
+    async def vault_start(request: Request) -> Response:
+        got = await posted(request)  # same-origin, CSRF and session before anything
+        if isinstance(got, Response):
+            return got
+        funder = vault_service()
+        if funder is None:
+            return JSONResponse({"error": "not_found"}, 404)
+        sid, account, form = got
+        if account.is_demo or not mandates.may_grant(account, settings.meta_adapter):
+            return refuse(request, sid, account, "mandate_not_allowed", 403)
+        from studio.paypal.client import PayPalError
+        from studio.paypal.vault import VaultError
+
+        try:
+            ref, approve = funder.vault.start(
+                account.id, return_url=base(request) + "/account/paypal/vault/return",
+                cancel_url=base(request) + "/account?paypal=cancelled#mandates")
+        except (PayPalError, VaultError):
+            return refuse(request, sid, account, "paypal_vault_failed", 502)
+        if funder.fake is not None:  # mock mode: the fake plays the buyer's approval
+            funder.fake.approve_setup(funder.vault.setup_token_of(account.id, ref))
+            return RedirectResponse(f"/account/paypal/vault/return?vault_ref={ref}", 303,
+                                    headers=NO_STORE)
+        return RedirectResponse(approve, 303, headers=NO_STORE)
+
+    @app.get("/account/paypal/vault/return")
+    def vault_return(request: Request, vault_ref: str = "",
+                     approval_token_id: str = "") -> Response:
+        funder = vault_service()
+        if funder is None:
+            return JSONResponse({"error": "not_found"}, 404)
+        cookie = request.cookies.get(COOKIE)
+        sid = app.state.sessions.check(cookie)
+        account = app.state.sessions.account_of(cookie) if sid else None
+        if not sid or account is None:
+            return JSONResponse({"error": "login_required"}, 401)
+        if settings.read_only:
+            return JSONResponse({"error": "read_only"}, 503)
+        from studio.paypal.client import PayPalError
+        from studio.paypal.vault import VaultError
+
+        try:
+            funder.vault.finish(account.id, vault_ref[:40], approval_token_id[:64])
+        except VaultError as exc:
+            return refuse(request, sid, account, "paypal_vault_" + exc.code, exc.status)
+        except PayPalError:
+            return refuse(request, sid, account, "paypal_vault_failed", 502)
+        return RedirectResponse("/account?paypal=saved#mandates", 303, headers=NO_STORE)
+
+    @app.post("/account/paypal/vault/delete")
+    async def vault_delete(request: Request) -> Response:
+        got = await posted(request)  # same-origin, CSRF and session before anything
+        if isinstance(got, Response):
+            return got
+        funder = vault_service()
+        if funder is None:
+            return JSONResponse({"error": "not_found"}, 404)
+        sid, account, form = got
+        from studio.paypal.vault import VaultError
+
+        try:
+            funder.vault.delete(account.id, (form.get("vault_ref") or [""])[0][:40])
+        except VaultError as exc:
+            return refuse(request, sid, account, "paypal_vault_" + exc.code, exc.status)
+        return RedirectResponse("/account?paypal=deleted#mandates", 303, headers=NO_STORE)
 
     @app.post("/account/mandates/revoke")
     async def revoke(request: Request) -> Response:

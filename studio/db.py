@@ -272,9 +272,11 @@ def init(conn: sqlite3.Connection) -> None:
     api_tokens.ensure_schema(conn)  # assistants: personal access tokens, API-drafted briefs
     mandates.ensure_schema(conn)  # assistants: the owner's signed mandates
     funding.ensure_schema(conn)  # PayPal: each campaign's funding and its money moves
+    from studio.paypal import vault as paypal_vault
     from studio.paypal import webhooks as paypal_webhooks
 
     paypal_webhooks.ensure_schema(conn)  # PayPal: verified events (once each), pinned certs
+    paypal_vault.ensure_schema(conn)  # PayPal Vault v3: saved PayPal references, no payer data
 
 
 def _strings(value: Any) -> list[str]:

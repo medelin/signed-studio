@@ -453,7 +453,9 @@ def account_posts(app):
 def test_every_account_form_needs_the_csrf_field(app, client):
     login(client)
     paths = account_posts(app)
-    assert len(paths) == 16  # + whatsapp/code, tokens/create, /revoke, mandates/prepare, /revoke
+    # + whatsapp/code, tokens/create, /revoke, mandates/prepare, /revoke,
+    # paypal/vault/start, /delete
+    assert len(paths) == 18
     for path in paths:
         assert client.post(path, data={"password": PASSWORD}).status_code == 403, path
         r = client.post(path, data={"password": PASSWORD, "csrf": "x" * 43})

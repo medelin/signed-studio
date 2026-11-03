@@ -418,7 +418,7 @@ ATTACK_FILES = ["test_dispatcher.py", "test_paused_only.py", "test_injection.py"
                 "test_brief_binding.py", "test_approval_renew.py", "test_objective_binding.py",
                 "test_lead_ads.py", "test_recommendations.py", "test_google_binding.py",
                 "test_mcp.py", "test_assistants.py", "test_token_revocation.py",
-                "test_paypal_money.py"]
+                "test_paypal_money.py", "test_paypal_vault.py"]
 
 
 def attack_suites() -> list[dict[str, Any]]:
