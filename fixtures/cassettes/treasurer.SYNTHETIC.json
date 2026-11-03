@@ -1,0 +1,48 @@
+{
+ "_provenance": "synthetic",
+ "_synthetic": true,
+ "_note": "Hand-written, NOT a recording: no Model API key is configured for the PayPal edition yet (3 Nov 2026). The request and response follow the Responses API shape of the other Muse Spark cassettes (POST /responses, strict json_schema text format, no tools). Replace with a real recording once the Model API key for judging is confirmed (decision D3).",
+ "interactions": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/responses",
+    "json": {
+     "model": "muse-spark-1.3",
+     "store": true
+    }
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "id": "resp_treasurer_synthetic_1",
+     "object": "response",
+     "model": "muse-spark-1.3",
+     "status": "completed",
+     "output": [
+      {
+       "type": "message",
+       "role": "assistant",
+       "content": [
+        {
+         "type": "output_text",
+         "text": "{\"split\": [{\"campaign\": \"cmp_a1\", \"amount_minor\": 12000, \"why\": \"It brought more visits per zloty last week.\"}, {\"campaign\": \"cmp_b2\", \"amount_minor\": 8000, \"why\": \"Keep it running at a lower level while it learns.\"}], \"figures\": {\"captured_minor\": 22050, \"spend_counted_minor\": 14700, \"fee_due_minor\": 735, \"refunded_minor\": 0, \"refundable_minor\": 6615}, \"explanation\": \"PayPal took 220.50 PLN for this campaign. Meta reports 147.00 PLN of real ad spend, and the studio fee on that spend is 7.35 PLN. Nothing has been refunded yet, so 66.15 PLN can come back to you, but only once you sign the refund.\"}"
+        }
+       ]
+      }
+     ],
+     "usage": {
+      "input_tokens": 1450,
+      "output_tokens": 210,
+      "input_tokens_details": {
+       "cached_tokens": 0
+      },
+      "output_tokens_details": {
+       "reasoning_tokens": 64
+      }
+     }
+    }
+   }
+  }
+ ]
+}

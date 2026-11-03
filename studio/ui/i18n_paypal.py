@@ -47,6 +47,8 @@ EN_PAYPAL: dict[str, str] = {
     "js.paypal_sdk_failed": "PayPal could not be loaded. Try again in a moment.",
     "err.paypal": "PayPal refused this step. Try again in a moment.",
     "err.refund_amount": "The refund must be more than zero and at most what is left.",
+    "err.amount": "An amount must be a whole number of minor units (pence, grosze), from 0 "
+                  "up to the studio's ceiling.",
     "err.not_fundable": "Only a campaign is paid through PayPal.",
     "err.not_approved_yet": "PayPal has not approved the order yet.",
     "err.no_order": "There is no PayPal order for this approval yet.",
@@ -102,6 +104,8 @@ PL_PAYPAL: dict[str, str] = {
     "js.paypal_sdk_failed": "Nie udało się wczytać PayPal. Spróbuj za chwilę.",
     "err.paypal": "PayPal odmówił tego kroku. Spróbuj za chwilę.",
     "err.refund_amount": "Zwrot musi być większy od zera i nie większy niż to, co zostało.",
+    "err.amount": "Kwota musi być liczbą całkowitą w groszach (centach), od 0 do limitu "
+                  "studia.",
     "err.not_fundable": "Przez PayPal opłaca się tylko kampanię.",
     "err.not_approved_yet": "PayPal jeszcze nie zatwierdził zamówienia.",
     "err.no_order": "Dla tego zatwierdzenia nie ma jeszcze zamówienia PayPal.",

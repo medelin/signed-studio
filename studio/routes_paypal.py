@@ -32,6 +32,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from studio import funding
+from studio.agents import treasurer
 from studio.approvals import (
     ApprovalError,
     Pending,
@@ -242,6 +243,46 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             return refused(exc)
         return JSONResponse({"approval_id": pending.id, "content": payload,
                              "content_sha256": pending.content_sha256}, 201)
+
+    @app.post("/api/funding/{funding_id}/treasurer")
+    async def treasurer_advice(funding_id: str, request: Request) -> Response:
+        """The treasurer (Muse Spark, no tools) explains this funding's reconciliation and
+        proposes how to split an amount across the owner's campaigns; code recomputes
+        every number (``studio.agents.treasurer``). Moves nothing."""
+        guard = write_guard(request)
+        if isinstance(guard, JSONResponse):
+            return guard
+        account = caller(guard)
+        if not FUNDING_ID.fullmatch(funding_id):
+            return JSONResponse({"error": "not_found"}, 404)
+        try:
+            body = await request.json()
+        except ValueError:
+            body = {}
+        body = body if isinstance(body, dict) else {}
+        spend, total = body.get("spend_minor", 0), body.get("split_total_minor")
+        items = body.get("campaigns")
+        with conn.lock:
+            try:
+                f = funding.get(conn, funding_id)
+            except FundingError:
+                return JSONResponse({"error": "not_found"}, 404)
+            items = items if isinstance(items, list) and items else [f.item_id]
+            if len(items) > treasurer.MAX_CAMPAIGNS or not all(
+                    isinstance(i, str) and ITEM_ID.fullmatch(i) and owns_item(i, account)
+                    for i in items + [f.item_id]):
+                return JSONResponse({"error": "not_found"}, 404)
+        total = f.budget_minor if total is None else total
+        for v in (spend, total):
+            if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= \
+                    funding.MAX_TOTAL_MINOR:
+                return JSONResponse({"error": "amount"}, 400)
+        statement = funder.money.statement(f.id, spend) if f.captured_minor else None
+        advice = treasurer.advise(app.state.muse, run_id=f.run_id, currency=f.currency,
+                                  total_minor=total, campaigns=list(items),
+                                  max_each_minor=total, statement=statement,
+                                  fee_pct=f.fee_pct)
+        return JSONResponse({"funding_id": f.id, **advice.as_dict()}, headers=NO_STORE)
 
     @app.post("/webhooks/paypal")
     async def paypal_webhook(request: Request) -> Response:

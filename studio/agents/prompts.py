@@ -12,7 +12,7 @@ from pathlib import Path
 
 PROMPTS = Path(__file__).resolve().parent / "prompts"
 AGENTS = ("producer", "copywriter", "art_director", "reviewer", "community", "lead_scorer",
-          "analyst")
+          "analyst", "treasurer")
 _RULE = re.compile(r"\*\*(P\d+)\b")
 
 
