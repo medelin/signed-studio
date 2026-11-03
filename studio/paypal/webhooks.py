@@ -523,10 +523,14 @@ def recheck(events_path: Path, certs_dir: Path, receipts: Iterable[Receipt], *,
     ``paypal.com`` leaf and CA-only intermediates; every ``paypal.webhook`` receipt has
     exactly one such event with the same body hash and transmission."""
     anchors = roots if roots is not None else load_roots()
-    by_body = {r.details.get("body_sha256"): r for r in receipts
-               if r.kind == PAYPAL_WEBHOOK_KIND}
+    # one delivery = (transmission, body); one body may legitimately recur under another
+    # transmission, so receipts are matched on both, one to one, never by body alone
+    waiting: dict[tuple[Any, Any], list[Receipt]] = {}
+    for r in receipts:
+        if r.kind == PAYPAL_WEBHOOK_KIND:
+            slot = (r.details.get("transmission_id_sha256"), r.details.get("body_sha256"))
+            waiting.setdefault(slot, []).append(r)
     errors: list[str] = []
-    seen: set[str] = set()
     for n, line in enumerate(events_path.read_text().splitlines(), start=1):
         if not line.strip():
             continue
@@ -559,17 +563,16 @@ def recheck(events_path: Path, certs_dir: Path, receipts: Iterable[Receipt], *,
         except (InvalidSignature, AssertionError, ValueError):
             errors.append(f"event line {n}: PayPal's signature does not verify")
             continue
-        body_hash = hashlib.sha256(body).hexdigest()
-        r = by_body.get(body_hash)
-        if r is None:
-            errors.append(f"event line {n}: no paypal.webhook receipt for this body")
+        delivery = (sha256_hex(t.transmission_id), hashlib.sha256(body).hexdigest())
+        matches = waiting.get(delivery) or []
+        if not matches:
+            errors.append(f"event line {n}: no paypal.webhook receipt for this delivery")
             continue
-        seen.add(body_hash)
+        r = matches.pop(0)  # each receipt answers for exactly one export line
         if r.details.get("cert_sha256") != digest or r.details.get(
-                "transmission_id_sha256") != sha256_hex(t.transmission_id) or r.details.get(
                 "signature_sha256") != sha256_hex(t.signature):
             errors.append(f"{r.id}: the receipt does not match PayPal's transmission")
-    for recorded, r in by_body.items():
-        if recorded not in seen:
+    for left in waiting.values():
+        for r in left:
             errors.append(f"{r.id}: paypal.webhook receipt with no signed PayPal event")
     return errors

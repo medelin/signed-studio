@@ -418,3 +418,39 @@ def test_a_new_genuine_state_of_the_same_resource_is_recorded(env):
     assert {"capture.completed", "refund.completed", "capture.partially_refunded"} <= set(
         classes())
     assert env.verify().ok
+
+
+# -- the offline re-check matches deliveries and receipts one to one -------------------------
+
+
+def _recheck(env, out, events="paypal-events.jsonl"):
+    return webhooks.recheck(out / events, out / "certs", env.ledger.receipts(),
+                            webhook_id=env.funder.signer.webhook_id,
+                            roots=env.funder.signer.roots)
+
+
+def test_a_receipt_sharing_a_body_hash_cannot_hide_behind_the_valid_one(env, tmp_path):
+    out = exported(env, tmp_path)
+    assert _recheck(env, out) == []
+    real = next(r for r in env.ledger.receipts(RUN) if r.kind == PAYPAL_WEBHOOK_KIND)
+    env.ledger.append(RUN, agent="paypal", kind=PAYPAL_WEBHOOK_KIND, provider="paypal",
+                      details={**real.details, "amount_minor": 1})  # same body, altered
+    problems = _recheck(env, out)
+    assert any("no signed PayPal event" in p for p in problems), problems
+
+
+def test_an_extra_receipt_without_an_export_line_fails(env, tmp_path):
+    out = exported(env, tmp_path)
+    real = next(r for r in env.ledger.receipts(RUN) if r.kind == PAYPAL_WEBHOOK_KIND)
+    env.ledger.append(RUN, agent="paypal", kind=PAYPAL_WEBHOOK_KIND, provider="paypal",
+                      details={**real.details, "body_sha256": "a" * 64,
+                               "transmission_id_sha256": "b" * 64})
+    assert any("no signed PayPal event" in p for p in _recheck(env, out))
+
+
+def test_an_extra_export_line_without_a_receipt_fails(env, tmp_path):
+    out = exported(env, tmp_path)
+    lines = (out / "paypal-events.jsonl").read_text().splitlines()
+    (out / "dup.jsonl").write_text("\n".join([*lines, lines[0]]) + "\n")
+    assert any("no paypal.webhook receipt for this delivery" in p
+               for p in _recheck(env, out, "dup.jsonl"))

@@ -230,3 +230,7 @@ the same two orders.
   - A recorded delivery is also a no-op on redelivery (transmission id + body hash).
   - `studio verify` checks one receipt per attested state. The body's event id is
     only a label (`body_event_id`).
+- *The offline re-check matches one to one.* `studio verify --paypal-events` now pairs
+  each export line with exactly one `paypal.webhook` receipt on (transmission, body
+  hash), never by body alone. Unpaired items on either side fail, so a tampered receipt
+  cannot hide behind a valid one with the same body.
