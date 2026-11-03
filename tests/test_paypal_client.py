@@ -374,3 +374,36 @@ def test_paypal_cassettes_hold_no_credentials():
             assert token is None or "synthetic" in token, path.name
         if data["_provenance"] == "recorded":
             assert "access_token" not in text and '"payer"' not in text
+
+
+def test_the_recorded_money_loop_parses():
+    """fixtures/cassettes/paypal/sandbox_full.json: two orders a sandbox buyer approved in
+    a browser; A authorized, captured, partly refunded; B authorized, voided."""
+    data = load("paypal/sandbox_full")
+    assert data["_provenance"] == "recorded"
+    text = json.dumps(data)
+    assert '"payer"' not in text and '"shipping"' not in text and "access_token" not in text
+    posts = [i for i in data["interactions"] if i["request"]["method"] == "POST"]
+    by_path = {i["request"]["path"].rsplit("/", 1)[-1]: i for i in posts}
+
+    def replay_one(i):
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/oauth2/token":
+                return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+            return httpx.Response(i["response"]["status"], json=i["response"].get("json"))
+        return PayPalClient(CID, SECRET, transport=httpx.MockTransport(handler))
+
+    auths = [i for i in posts if i["request"]["path"].endswith("/authorize")]
+    assert len(auths) == 2
+    a = orders.authorize(replay_one(auths[0]), auths[0]["request"]["path"].split("/")[4],
+                         request_id="ss-1")
+    assert a.kind == "authorization" and a.status == "CREATED" and a.amount_minor == 4725
+    assert len(a.custom_id) == 64  # PayPal kept the ad hash
+    cap = orders.capture(replay_one(by_path["capture"]), a.id, amount_minor=4725,
+                         currency="GBP", invoice_id="x", request_id="ss-2")
+    assert cap.status in ("COMPLETED", "PENDING") and cap.amount_minor == 4725
+    ref = orders.refund(replay_one(by_path["refund"]), cap.id, amount_minor=1449,
+                        currency="GBP", invoice_id="x", request_id="ss-3")
+    assert ref.kind == "refund" and ref.amount_minor == 1449
+    void = orders.void(replay_one(by_path["void"]), "0VF52814937998046", request_id="ss-4")
+    assert void.status == "VOIDED"

@@ -74,7 +74,12 @@ def say(text: str) -> None:
 def wait_approved(client: PayPalClient, order_id: str, minutes: float) -> None:
     deadline = time.monotonic() + minutes * 60
     while time.monotonic() < deadline:
-        status = orders.get(client, order_id).status
+        try:
+            status = orders.get(client, order_id).status
+        except PayPalError as exc:  # a sandbox hiccup while polling: try again
+            say(f"order {order_id}: poll failed ({exc.status} {exc.name}), retrying")
+            time.sleep(5)
+            continue
         if status == "APPROVED":
             say(f"order {order_id}: APPROVED by the buyer")
             return
@@ -89,6 +94,8 @@ def main() -> int:
     ap.add_argument("--full", action="store_true",
                     help="authorize/capture/refund/void: a person approves two orders")
     ap.add_argument("--wait", type=float, default=30.0, help="minutes to wait for approval")
+    ap.add_argument("--orders", default="", help="--full: resume with existing order ids "
+                    "A,B (already sent to the buyer) instead of creating new ones")
     args = ap.parse_args()
     env = read_env_file(args.env)
     interactions: list[dict[str, Any]] = []
@@ -102,7 +109,10 @@ def main() -> int:
             interactions.pop()  # polling: keep only the last read
         response.read()
         body = json.loads(req.content) if req.content else None
-        answer = scrub(response.json()) if response.content else None
+        try:
+            answer = scrub(response.json()) if response.content else None
+        except ValueError:  # a transient non-JSON page: noted, the client retries
+            answer = {"_non_json": True}
         interactions.append({"request": {"method": req.method, "path": req.url.path,
                                          **({"json": body} if body is not None else {})},
                              "response": {"status": response.status_code,
@@ -129,7 +139,11 @@ def main() -> int:
             "one AUTHORIZE order nobody approved (no money moved), read back, and the "
             "ORDER_NOT_APPROVED refusal")
     else:
-        a, b = create("a"), create("b")
+        if args.orders:
+            ids = args.orders.split(",")
+            a, b = (orders.get(client, i) for i in ids)
+        else:
+            a, b = create("a"), create("b")
         say("Approve BOTH orders as the sandbox buyer (Personal account), in a browser:")
         say(f"  order A {a.id}: {a.approve_url}")
         say(f"  order B {b.id}: {b.approve_url}")

@@ -174,8 +174,17 @@ disabled until PayPal reports the payer approved.
   documented in depth. I could not test v6 in a browser here; it remains an option.
 - **CSP:** the PayPal origins are added only when `PAYPAL_ADAPTER=rest`.
 
+**Recorded sandbox money loop.** The sandbox buyer approved two real `AUTHORIZE`
+orders in a browser (the coordinator did it; the agent never had the buyer's password).
+`scripts/paypal_record.py --full` then:
+- order A: authorized, captured (47.25 GBP) and partly refunded (14.49 GBP);
+- order B: authorized and voided.
+
+All of it is recorded, scrubbed, in `fixtures/cassettes/paypal/sandbox_full.json`. The
+client parses every answer (`tests/test_paypal_client.py`). The first recorder run
+crashed on a transient non-JSON page while polling; it was hardened and resumed with
+the same two orders.
+
 **Not yet.**
-- The recorded authorize/capture/refund/void cassette waits for the sandbox buyer to
-  approve two orders in a browser (`scripts/paypal_record.py --full`).
 - With PayPal on, a campaign created under a signed mandate is refused
   (`funding_required`) until Day 3 adds Vault charges under the mandate.
