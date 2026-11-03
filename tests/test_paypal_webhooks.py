@@ -332,3 +332,63 @@ def test_verify_refuses_a_class_that_does_not_match_the_status(env):
                                "status": "PENDING"})
     report = env.verify()
     assert any("class does not match" in e for e in report.errors), report.errors
+
+
+# -- transmission ids cannot be reused with another body (push review) ---------------------
+
+
+def _capture_event(env, eid, capture_id=None):
+    from studio import funding as fmod
+
+    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    return {"id": eid, "event_type": "PAYMENT.CAPTURE.COMPLETED",
+            "resource": {"id": capture_id or f.capture_id}}
+
+
+def test_a_refused_transmission_cannot_come_back_with_another_body(env):
+    tid = "aaaaaaaa-0000-0000-0000-000000000001"
+    h, b = env.funder.signer.sign(_capture_event(env, "WH-1TOMB00000001-0001",
+                                                 "3C000000NOTOURS0X"), transmission_id=tid)
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b,
+                       lookup=env.funder.lookup)
+    assert e.value.code == "unknown_resource"
+    h2, b2 = env.funder.signer.sign(_capture_event(env, "WH-1TOMB00000002-0002"),
+                                    transmission_id=tid)  # a real capture this time
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
+                       lookup=env.funder.lookup)
+    assert e.value.code == "transmission_refused"
+
+
+def _down(path):
+    from studio.paypal.client import PayPalError
+
+    raise PayPalError(503, "SERVICE_UNAVAILABLE", transient=True)
+
+
+def test_a_503_retry_with_the_same_body_is_recorded(env):
+    tid = "aaaaaaaa-0000-0000-0000-000000000002"
+    h, b = env.funder.signer.sign(_capture_event(env, "WH-1PEND00000001-0001"),
+                                  transmission_id=tid)
+    with pytest.raises(webhooks.WebhookRefused):
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b, lookup=_down)
+    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b,
+                         lookup=env.funder.lookup)
+    assert out.status == "recorded"
+    assert not env.conn.execute("SELECT 1 FROM paypal_transmissions WHERE transmission_id "
+                                "= ?", (tid,)).fetchone()
+
+
+def test_a_503_retry_with_a_changed_body_is_refused(env):
+    tid = "aaaaaaaa-0000-0000-0000-000000000003"
+    h, b = env.funder.signer.sign(_capture_event(env, "WH-1PEND00000002-0002"),
+                                  transmission_id=tid)
+    with pytest.raises(webhooks.WebhookRefused):
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h, b, lookup=_down)
+    h2, b2 = env.funder.signer.sign(_capture_event(env, "WH-1PEND00000003-0003"),
+                                    transmission_id=tid)
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2,
+                       lookup=env.funder.lookup)
+    assert e.value.code == "transmission_body_changed"

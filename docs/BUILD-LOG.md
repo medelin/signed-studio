@@ -218,3 +218,7 @@ the same two orders.
   - When the API read fails, nothing is stored and the route answers 503, so PayPal's
     retry is checked afresh instead of being dropped as a duplicate. A resource the
     API does not know is refused (400).
+- *No transmission id reused with another body.* A signature-valid transmission that is
+  refused (an unknown resource, a malformed body) leaves a tombstone: its id is refused
+  for good. One that failed the API read (503) leaves a pending record with its body's
+  SHA-256: PayPal's retry is accepted only with the identical body.

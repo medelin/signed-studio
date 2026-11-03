@@ -35,6 +35,7 @@ import binascii
 import datetime as dt
 import hashlib
 import json
+import logging
 import re
 import sqlite3
 import time
@@ -55,6 +56,7 @@ from studio import funding
 from studio.funding import FundingError, parse_amount
 from studio.receipts import PAYPAL_WEBHOOK_KIND, Ledger, Receipt, sha256_hex
 
+LOG = logging.getLogger(__name__)
 CERT_HOSTS = frozenset({"api.paypal.com", "api.sandbox.paypal.com"})
 MAX_SKEW_S = 300
 MAX_BODY = 256 * 1024
@@ -79,6 +81,16 @@ CREATE TABLE IF NOT EXISTS paypal_events (
     webhook_id TEXT NOT NULL,
     receipt_id TEXT NOT NULL DEFAULT '',
     received_ts REAL NOT NULL
+);
+-- every signature-valid transmission that was not stored as an event: refused for good
+-- (a tombstone), or pending a retry of PayPal's API read (only the identical body may
+-- come back under it)
+CREATE TABLE IF NOT EXISTS paypal_transmissions (
+    transmission_id TEXT PRIMARY KEY,
+    body_sha256 TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('refused', 'pending')),
+    reason TEXT NOT NULL,
+    ts REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS paypal_certs (
     sha256 TEXT PRIMARY KEY,
@@ -398,8 +410,45 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
     lookup fails nothing is stored and ``WebhookRefused`` is raised: ``lookup_failed``
     (transient: the route answers 503, so PayPal delivers again and the retry redoes the
     lookup) or ``unknown_resource`` (PayPal's API has no such resource). Only stored events
-    (``recorded`` / ``unmatched``) count for dedupe; a transmission id is accepted once."""
+    (``recorded`` / ``unmatched``) count for dedupe; a transmission id is accepted once.
+    A signature-valid transmission that is refused (``unknown_resource``, a malformed
+    body) leaves a tombstone in ``paypal_transmissions``: its id is refused for good. One
+    that failed the API read leaves a pending record with ``sha256(body)``: its retry is
+    accepted only with the identical body."""
     t, cert_digest = verifier.verify(headers, body)
+    digest = hashlib.sha256(body).hexdigest()
+    row = conn.execute("SELECT status, body_sha256 FROM paypal_transmissions WHERE "
+                       "transmission_id = ?", (t.transmission_id,)).fetchone()
+    if row is not None and row[0] == "refused":
+        raise WebhookRefused("this transmission was refused before", "transmission_refused")
+    if row is not None and row[1] != digest:
+        LOG.warning("PayPal transmission retried with another body: refused")
+        raise WebhookRefused("this transmission came back with another body",
+                             "transmission_body_changed")
+    try:
+        out = _apply_checked(conn, ledger, verifier, t, cert_digest, body, lookup)
+    except WebhookRefused as exc:
+        status = {"lookup_failed": "pending", "unknown_resource": "refused",
+                  "body": "refused"}.get(exc.code)
+        if status is not None:
+            with funding.atomic(conn):
+                conn.execute(
+                    "INSERT INTO paypal_transmissions (transmission_id, body_sha256, status, "
+                    "reason, ts) VALUES (?, ?, ?, ?, ?) ON CONFLICT(transmission_id) DO "
+                    "UPDATE SET status = excluded.status, reason = excluded.reason, "
+                    "ts = excluded.ts WHERE paypal_transmissions.status = 'pending'",
+                    (t.transmission_id, digest, status, exc.code, verifier.clock()))
+        raise
+    if row is not None:  # a pending retry that went through
+        with funding.atomic(conn):
+            conn.execute("DELETE FROM paypal_transmissions WHERE transmission_id = ? AND "
+                         "status = 'pending'", (t.transmission_id,))
+    return out
+
+
+def _apply_checked(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
+                   t: Transmission, cert_digest: str, body: bytes,
+                   lookup: Lookup | None) -> Applied:
     try:
         event = json.loads(body)
     except ValueError:
