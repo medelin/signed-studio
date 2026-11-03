@@ -288,13 +288,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS funding_moves_once ON funding_moves (move, pay
     WHERE paypal_id != '';
 -- one claim per authorising key (an approval id): a signed approval moves money once.
 -- A pending refund claim reserves its amount, so concurrent refunds cannot exceed the
--- capture between the check and PayPal's answer.
+-- capture between the check and PayPal's answer. Claims are never deleted: done and
+-- refused spend the key; released (the request never left the studio) can be taken
+-- again only for exactly the same funding, step and amount.
 CREATE TABLE IF NOT EXISTS funding_claims (
     key TEXT PRIMARY KEY,
     funding_id TEXT NOT NULL REFERENCES fundings(id),
     step TEXT NOT NULL,
     amount_minor INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL CHECK (status IN ('pending', 'done')),
+    status TEXT NOT NULL CHECK (status IN ('pending', 'done', 'refused', 'released')),
     paypal_id TEXT NOT NULL DEFAULT '',
     created_ts REAL NOT NULL,
     updated_ts REAL NOT NULL
@@ -450,20 +452,24 @@ def advance(conn: sqlite3.Connection, funding_id: str, to: str, *, expect: str,
 def claim(conn: sqlite3.Connection, key: str, *, funding_id: str, step: str,
           amount_minor: int = 0, now: float | None = None) -> bool:
     """Reserve the money step ``step`` of ``funding_id`` for the authorising ``key`` (an
-    approval id) before PayPal is called. ``True`` for a new claim; ``False`` for a retry of
-    the same pending step (same funding, step and amount: PayPal gets the same request id
-    and answers with its first result). ``FundingError`` ``approval_used`` when the key
-    already moved money or is held by another step, and ``refund_amount`` when a refund
-    would exceed the capture minus what is refunded and what pending refunds reserve."""
+    approval id) before PayPal is called. ``True`` for a new claim (or a released one taken
+    again with the same parameters); ``False`` for a retry of the same pending step (same
+    funding, step and amount: PayPal gets the same request id and answers with its first
+    result). ``FundingError`` ``approval_used`` when the key is done or refused (a fresh
+    signed approval is needed) or was claimed with other parameters, and ``refund_amount``
+    when a refund would exceed the capture minus what is refunded and what pending refunds
+    reserve."""
     ts = time.time() if now is None else now
     with atomic(conn):
         row = conn.execute("SELECT funding_id, step, amount_minor, status FROM "
                            "funding_claims WHERE key = ?", (key,)).fetchone()
         if row is not None:
-            if row[3] == "done" or tuple(row[:3]) != (funding_id, step, amount_minor):
+            if row[3] in ("done", "refused") or tuple(row[:3]) != (funding_id, step,
+                                                                   amount_minor):
                 raise FundingError("this approval has already authorised a money step",
                                    "approval_used")
-            return False
+            if row[3] == "pending":
+                return False
         if step == "refund":
             f = get(conn, funding_id)
             reserved = conn.execute(
@@ -473,6 +479,10 @@ def claim(conn: sqlite3.Connection, key: str, *, funding_id: str, step: str,
             if not 0 < amount_minor <= f.captured_minor - f.refunded_minor - reserved:
                 raise FundingError("the refund is more than what is left of the capture "
                                    "(counting refunds in flight)", "refund_amount")
+        if row is not None:  # released, same parameters: take it again
+            conn.execute("UPDATE funding_claims SET status = 'pending', updated_ts = ? "
+                         "WHERE key = ? AND status = 'released'", (ts, key))
+            return True
         conn.execute("INSERT INTO funding_claims (key, funding_id, step, amount_minor, "
                      "status, created_ts, updated_ts) VALUES (?, ?, ?, ?, 'pending', ?, ?)",
                      (key, funding_id, step, amount_minor, ts, ts))
@@ -491,10 +501,17 @@ def settle_claim(conn: sqlite3.Connection, key: str, paypal_id: str,
                                "conflict")
 
 
-def release_claim(conn: sqlite3.Connection, key: str) -> None:
-    """Drop a pending claim after PayPal definitively refused the step (nothing moved)."""
+def end_claim(conn: sqlite3.Connection, key: str, status: str,
+              now: float | None = None) -> None:
+    """Close a pending claim without money moving: ``refused`` (PayPal answered with a
+    definite refusal; the key stays spent) or ``released`` (the request never left the
+    studio; the same parameters may claim it again). The row is never deleted."""
+    if status not in ("refused", "released"):
+        raise ValueError(status)
     with atomic(conn):
-        conn.execute("DELETE FROM funding_claims WHERE key = ? AND status = 'pending'", (key,))
+        conn.execute("UPDATE funding_claims SET status = ?, updated_ts = ? WHERE key = ? "
+                     "AND status = 'pending'", (status, time.time() if now is None else now,
+                                                key))
 
 
 def claims(conn: sqlite3.Connection, funding_id: str) -> list[dict[str, Any]]:

@@ -273,15 +273,23 @@ class Money:
     def _call(self, f: Funding, step: str, idem: str, body: Any,
               fn: Callable[[], orders.Result], approval_id: str = "",
               claim: str = "", **extra: Any) -> orders.Result:
-        """Call PayPal. On a definitive refusal (a 4xx answer: nothing moved) the step's
-        claim is released so the owner can retry; on a 5xx, a network error or an unknown
-        outcome it stays pending (fail closed): only a retry with the same approval, hence
-        the same request id, can settle it."""
+        """Call PayPal and close the claim on failure, failing closed:
+
+        - the request never left the studio (``not exc.sent``: no connection, no token):
+          ``released``, the same parameters may try again;
+        - PayPal may have acted (``exc.unknown``, a 5xx or a network error after sending):
+          stays ``pending`` with its amount reserved; only a retry with the same approval
+          and amount, hence the same request id, can settle it;
+        - any other answer (a definite 4xx refusal): ``refused``, the approval is spent and
+          a new signed approval is needed."""
         try:
             return fn()
         except PayPalError as exc:
-            if claim and 400 <= exc.status < 500 and not exc.unknown:
-                funding.release_claim(self.conn, claim)
+            if claim:
+                if not exc.sent:
+                    funding.end_claim(self.conn, claim, "released", now=self._now())
+                elif not (exc.unknown or exc.status == 0 or exc.status >= 500):
+                    funding.end_claim(self.conn, claim, "refused", now=self._now())
             self._receipt(f, self._details(
                 f, step, idem, body, None, approval_id=approval_id, ok=False,
                 error=exc.name or "HTTP_ERROR", issue=exc.issue, http_status=exc.status,

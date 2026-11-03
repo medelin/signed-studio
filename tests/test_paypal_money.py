@@ -354,3 +354,101 @@ def test_a_void_runs_once_without_an_approval(w):
     w.money.void(f.id, reason="lapsed")
     with pytest.raises(FundingError):
         w.money.void(f.id, reason="activation_refused")
+
+
+# -- fail-closed claims (security review, 3 Nov, second round) ----------------------------
+
+
+def refund_answers(w: World, *answers):
+    """The next refund POSTs get these answers (an exception class is raised); everything
+    else goes to the fake PayPal."""
+    inner, queue = w.fake.handle, list(answers)
+
+    def handler(request):
+        if request.url.path.endswith("/refund") and queue:
+            a = queue.pop(0)
+            if isinstance(a, type) and issubclass(a, Exception):
+                raise a("simulated", request=request)
+            return httpx.Response(a[0], json=a[1])
+        return inner(request)
+
+    w.client._http._transport = httpx.MockTransport(handler)
+
+
+def claim_of(w, f, key):
+    return next(c for c in funding.claims(w.conn, f.id) if c["key"] == key)
+
+
+UNPROC = {"name": "UNPROCESSABLE_ENTITY", "details": [{"issue": "REFUND_AMOUNT_EXCEEDED"}]}
+
+
+def test_a_timeout_then_a_4xx_on_retry_keeps_the_approval_spent(w):
+    f = captured(w)
+    refund_answers(w, httpx.ReadTimeout, (422, UNPROC))
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert e.value.unknown and e.value.sent  # the timeout may have refunded
+    assert claim_of(w, f, "apr_refund1")["status"] == "pending"
+    with pytest.raises(FundingError) as e2:  # not reusable for another amount
+        w.money.refund(f.id, 2000, approval_id="apr_refund1")
+    assert e2.value.code == "approval_used"
+
+
+def test_a_409_in_progress_keeps_the_approval_spent(w):
+    f = captured(w)
+    refund_answers(w, (409, {"name": "RESOURCE_CONFLICT",
+                             "details": [{"issue": "PREVIOUS_REQUEST_IN_PROGRESS"}]}))
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert e.value.unknown
+    assert claim_of(w, f, "apr_refund1")["status"] == "pending"
+    with pytest.raises(FundingError) as e2:
+        w.money.refund(f.id, 999, approval_id="apr_refund1")
+    assert e2.value.code == "approval_used"
+
+
+@pytest.mark.parametrize("issue", ["DUPLICATE_REQUEST_ID", "DUPLICATE_INVOICE_ID"])
+def test_a_duplicate_type_422_is_never_a_release(w, issue):
+    f = captured(w)
+    refund_answers(w, (422, {"name": "UNPROCESSABLE_ENTITY", "details": [{"issue": issue}]}))
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert e.value.unknown and claim_of(w, f, "apr_refund1")["status"] == "pending"
+
+
+def test_a_definite_4xx_answer_marks_the_claim_refused_and_spends_the_approval(w):
+    f = captured(w)
+    refund_answers(w, (400, {"name": "INVALID_REQUEST",
+                             "details": [{"issue": "INVALID_PARAMETER_VALUE"}]}))
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert not e.value.unknown
+    assert claim_of(w, f, "apr_refund1")["status"] == "refused"
+    with pytest.raises(FundingError) as e2:  # a fresh signed approval is needed
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert e2.value.code == "approval_used"
+    assert w.money.refund(f.id, 1000, approval_id="apr_refund2").funding.refunded_minor == 1000
+
+
+def test_a_request_that_never_left_releases_the_claim_for_the_same_parameters_only(w):
+    f = captured(w)
+    refund_answers(w, *[httpx.ConnectError] * 4)  # every attempt fails to connect
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert not e.value.sent and not e.value.unknown
+    assert claim_of(w, f, "apr_refund1")["status"] == "released"
+    with pytest.raises(FundingError) as e2:  # another amount under the released key
+        w.money.refund(f.id, 1500, approval_id="apr_refund1")
+    assert e2.value.code == "approval_used"
+    step = w.money.refund(f.id, 1000, approval_id="apr_refund1")  # the same: allowed
+    assert step.funding.refunded_minor == 1000
+    assert claim_of(w, f, "apr_refund1")["status"] == "done"
+
+
+def test_claims_are_never_deleted(w):
+    f = captured(w)
+    refund_answers(w, (400, {"name": "INVALID_REQUEST"}))
+    with pytest.raises(PayPalError):
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    keys = {c["key"]: c["status"] for c in funding.claims(w.conn, f.id)}
+    assert keys == {"apr_create1": "done", "apr_activate1": "done", "apr_refund1": "refused"}

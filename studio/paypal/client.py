@@ -67,14 +67,27 @@ REASONS: dict[str, str] = {
 }
 
 
+# Answers that do not say whether the request was acted on: another attempt with the same
+# key is still in flight, or PayPal reports a duplicate (an earlier attempt may have won).
+AMBIGUOUS_STATUS = frozenset({409})
+AMBIGUOUS_ISSUES = frozenset({"DUPLICATE_REQUEST_ID", "PREVIOUS_REQUEST_IN_PROGRESS",
+                              "RESOURCE_CONFLICT", "DUPLICATE_INVOICE_ID",
+                              "DUPLICATE_TRANSACTION"})
+
+
 class PayPalError(Exception):
     """A PayPal call failed. ``transient`` when sending it again may succeed (429, 5xx,
-    network); ``unknown`` when the request may have been acted on (a network error after
-    sending): retry with the same request id to learn the outcome."""
+    network). ``sent`` when any attempt of this call may have reached PayPal; ``unknown``
+    when PayPal may have acted on it: any attempt timed out after sending, answered 5xx,
+    or was answered 409 / a duplicate or in-progress issue. Both are carried across the
+    client's retries, so a final definite-looking 4xx after an ambiguous attempt is still
+    ``unknown``. Retry only with the same request id to learn the outcome."""
 
     def __init__(self, status: int, name: str = "", issue: str = "", *,
-                 debug_id: str = "", transient: bool = False, unknown: bool = False) -> None:
+                 debug_id: str = "", transient: bool = False, unknown: bool = False,
+                 sent: bool = True) -> None:
         self.status = status
+        self.sent = sent
         self.name = name
         self.issue = issue
         self.debug_id = debug_id
@@ -180,8 +193,20 @@ class PayPalClient:
         content = None if body is None else json.dumps(body, separators=(",", ":")).encode()
         refreshed = False
         attempt = 0
+        sent = ambiguous = False  # over every attempt of this call
+
+        def fail(err: PayPalError) -> PayPalError:
+            err.sent = sent or err.sent
+            err.unknown = err.unknown or ambiguous
+            return err
+
         while True:
-            token = self.access_token()
+            try:
+                token = self.access_token()  # nothing of the call itself is sent yet
+            except PayPalError as exc:
+                raise fail(PayPalError(exc.status, exc.name, exc.issue,
+                                       debug_id=exc.debug_id, transient=exc.transient,
+                                       sent=False)) from None
             headers = {"Authorization": f"Bearer {token}", "Accept": "application/json",
                        "Prefer": "return=representation"}
             if content is not None:
@@ -191,11 +216,17 @@ class PayPalClient:
             try:
                 resp = self._send(method, path, headers=headers, content=content)
             except PayPalError as exc:
+                sent = sent or exc.sent
+                ambiguous = ambiguous or exc.unknown
                 if attempt < RETRIES:
                     attempt += 1
                     self._sleep(0.5 * 2 ** attempt)
                     continue
-                raise exc
+                raise fail(exc) from None
+            sent = True
+            if method == "POST" and (resp.status_code >= 500
+                                     or resp.status_code in AMBIGUOUS_STATUS):
+                ambiguous = True
             if resp.status_code == 401 and not refreshed:
                 refreshed = True
                 self._drop_token(token)
@@ -205,7 +236,11 @@ class PayPalClient:
                 self._sleep(_retry_after(resp, 0.5 * 2 ** attempt))
                 continue
             if resp.status_code >= 400:
-                raise _error(resp)
+                err = _error(resp)
+                if method == "POST" and (err.status in AMBIGUOUS_STATUS
+                                         or err.issue in AMBIGUOUS_ISSUES):
+                    err.unknown = True
+                raise fail(err)
             return Reply(resp.status_code, _json(resp),
                          hashlib.sha256(resp.content).hexdigest())
 
@@ -216,7 +251,7 @@ class PayPalClient:
         except httpx.TransportError as exc:
             sent = not isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout)
             raise PayPalError(0, "NETWORK_ERROR", transient=True,
-                              unknown=sent and method == "POST") from None
+                              unknown=sent and method == "POST", sent=sent) from None
 
 
 def _json(resp: httpx.Response) -> dict[str, Any]:
