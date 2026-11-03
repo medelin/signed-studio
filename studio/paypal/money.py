@@ -205,6 +205,25 @@ class Money:
                             add={"refunded_minor": res.amount_minor},
                             amount=res.amount_minor)
 
+    def reconcile_claim(self, funding_id: str, key: str) -> Step:
+        """Settle a ``pending`` claim (an ambiguous outcome: a timeout, a 5xx, a 409, a
+        success whose body could not be read) by sending the same step again with the
+        same ``PayPal-Request-Id``: PayPal answers with the result of the first request
+        instead of acting again, and that answer is checked and recorded like any other.
+        ``FundingError`` ``no_claim`` when ``key`` has no pending claim on the funding."""
+        pending = [c for c in funding.claims(self.conn, funding_id)
+                   if c["key"] == key and c["status"] == "pending"]
+        if not pending:
+            raise FundingError("no pending money step for this key", "no_claim")
+        step, amount = pending[0]["step"], pending[0]["amount_minor"]
+        if step == "refund":
+            return self.refund(funding_id, amount, approval_id=key)
+        if step == "capture":
+            return self.capture(funding_id, approval_id=key)
+        if step == "authorize":
+            return self.authorize(funding_id, approval_id=key)
+        return self.void(funding_id, approval_id="" if key.endswith(":void") else key)
+
     def statement(self, funding_id: str, spend_minor: int) -> Statement:
         f = funding.get(self.conn, funding_id)
         return funding.reconcile(currency=f.currency, budget_minor=f.budget_minor,
@@ -280,15 +299,17 @@ class Money:
         - PayPal may have acted (``exc.unknown``, a 5xx or a network error after sending):
           stays ``pending`` with its amount reserved; only a retry with the same approval
           and amount, hence the same request id, can settle it;
-        - any other answer (a definite 4xx refusal): ``refused``, the approval is spent and
-          a new signed approval is needed."""
+        - a definite 4xx refusal (and only that): ``refused``, the approval is spent and a
+          new signed approval is needed;
+        - anything else, including a 2xx whose body could not be read or checked
+          (``unknown``): stays ``pending``; ``reconcile_claim`` settles it."""
         try:
             return fn()
         except PayPalError as exc:
             if claim:
                 if not exc.sent:
                     funding.end_claim(self.conn, claim, "released", now=self._now())
-                elif not (exc.unknown or exc.status == 0 or exc.status >= 500):
+                elif 400 <= exc.status < 500 and not exc.unknown:
                     funding.end_claim(self.conn, claim, "refused", now=self._now())
             self._receipt(f, self._details(
                 f, step, idem, body, None, approval_id=approval_id, ok=False,

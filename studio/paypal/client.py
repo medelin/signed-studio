@@ -260,9 +260,10 @@ def _json(resp: httpx.Response) -> dict[str, Any]:
     try:
         data = resp.json()
     except ValueError:
-        raise PayPalError(resp.status_code, "INVALID_JSON") from None
+        raise PayPalError(resp.status_code, "INVALID_JSON",
+                          unknown=resp.status_code < 400) from None
     if not isinstance(data, dict):
-        raise PayPalError(resp.status_code, "INVALID_JSON")
+        raise PayPalError(resp.status_code, "INVALID_JSON", unknown=resp.status_code < 400)
     return data
 
 

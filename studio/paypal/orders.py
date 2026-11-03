@@ -76,7 +76,10 @@ def order_body(q: Quote, *, content_sha256: str, invoice_id: str,
 
 
 def _bad(what: str) -> PayPalError:
-    return PayPalError(200, "UNEXPECTED_RESPONSE", what.upper().replace(" ", "_"))
+    """PayPal answered with success but the body is not what was expected: the step may
+    well have happened, so the outcome is ``unknown`` (never a refusal)."""
+    return PayPalError(200, "UNEXPECTED_RESPONSE", what.upper().replace(" ", "_"),
+                       unknown=True)
 
 
 def _str(data: Any, key: str) -> str:

@@ -452,3 +452,91 @@ def test_claims_are_never_deleted(w):
         w.money.refund(f.id, 1000, approval_id="apr_refund1")
     keys = {c["key"]: c["status"] for c in funding.claims(w.conn, f.id)}
     assert keys == {"apr_create1": "done", "apr_activate1": "done", "apr_refund1": "refused"}
+
+
+# -- success answers that cannot be read, and reconciliation (review, third round) --------
+
+
+def garble_first_refund(w: World):
+    """PayPal performs the refund, but the answer that reaches the studio is malformed."""
+    inner, state = w.fake.handle, {"done": False}
+
+    def handler(request):
+        resp = inner(request)
+        if request.url.path.endswith("/refund") and not state["done"]:
+            state["done"] = True
+            return httpx.Response(201, json={"id": "1JU08902781691411"})  # no amount/status
+        return resp
+
+    w.client._http._transport = httpx.MockTransport(handler)
+
+
+def test_a_success_with_a_malformed_body_keeps_the_claim_pending(w):
+    f = captured(w)
+    garble_first_refund(w)
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert e.value.unknown and 200 <= e.value.status < 300 and e.value.sent
+    assert claim_of(w, f, "apr_refund1")["status"] == "pending"
+    assert len(w.fake.refunds) == 1  # PayPal did refund
+    # the reservation holds: nothing beyond what is left after the unknown refund
+    with pytest.raises(FundingError) as e2:
+        w.money.refund(f.id, 4725 - 999, approval_id="apr_refund2")
+    assert e2.value.code == "refund_amount"
+    with pytest.raises(FundingError) as e3:  # nor the same approval for another amount
+        w.money.refund(f.id, 500, approval_id="apr_refund1")
+    assert e3.value.code == "approval_used"
+    assert len(w.fake.refunds) == 1
+
+
+def test_reconciliation_settles_the_pending_claim_with_paypals_first_result(w):
+    f = captured(w)
+    garble_first_refund(w)
+    with pytest.raises(PayPalError):
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    step = w.money.reconcile_claim(f.id, "apr_refund1")
+    assert len(w.fake.refunds) == 1  # the same PayPal-Request-Id: no second refund
+    assert step.funding.refunded_minor == 1000 and step.funding.state == "partially_refunded"
+    assert claim_of(w, f, "apr_refund1")["status"] == "done"
+    assert step.receipt.details["refund_id"] == next(iter(w.fake.refunds))
+    with pytest.raises(FundingError) as e:
+        w.money.reconcile_claim(f.id, "apr_refund1")
+    assert e.value.code == "no_claim"
+    assert w.verify().ok
+
+
+def test_reconciliation_settles_an_ambiguous_capture(w):
+    to_authorized(w)
+    f = funding.of_item(w.conn, "cre_1")[0]
+    w.fake.fail_next(*[503] * 4)
+    with pytest.raises(PayPalError):
+        w.money.capture(f.id, approval_id="apr_activate1")
+    assert claim_of(w, f, "apr_activate1")["status"] == "pending"
+    step = w.money.reconcile_claim(f.id, "apr_activate1")
+    assert step.funding.state == "captured" and len(w.fake.captures) == 1
+
+
+def test_a_failure_before_anything_is_sent_releases(w):
+    f = captured(w)
+    inner = w.fake.handle
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(400, json={"error": "invalid_request"})
+        return inner(request)
+
+    w.client._token = None  # the next call must fetch a token first
+    w.client._http._transport = httpx.MockTransport(handler)
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert not e.value.sent and e.value.status == 400
+    assert claim_of(w, f, "apr_refund1")["status"] == "released"
+    assert not w.fake.refunds
+
+
+def test_a_timeout_alone_keeps_the_claim_pending(w):
+    f = captured(w)
+    refund_answers(w, *[httpx.ReadTimeout] * 4)
+    with pytest.raises(PayPalError) as e:
+        w.money.refund(f.id, 1000, approval_id="apr_refund1")
+    assert e.value.unknown and claim_of(w, f, "apr_refund1")["status"] == "pending"
