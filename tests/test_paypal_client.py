@@ -26,7 +26,7 @@ H = "9b2f4c1d8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c"
 
 
 def fixture(name: str) -> dict:
-    for i in load("paypal_orders.SYNTHETIC")["interactions"]:
+    for i in load("paypal/orders.SYNTHETIC")["interactions"]:
         if i["name"] == name:
             return i
     raise KeyError(name)
@@ -330,7 +330,7 @@ def test_void_answered_with_no_content():
 
 
 def test_the_recorded_sandbox_answers_parse_and_hold_no_credentials():
-    data = load("paypal_sandbox")
+    data = load("paypal/sandbox")
     assert data["_provenance"] == "recorded"
     text = json.dumps(data)
     assert "A21AA" not in text and "access_token" not in text and '"payer"' not in text
@@ -356,3 +356,21 @@ def test_the_recorded_sandbox_answers_parse_and_hold_no_credentials():
     with pytest.raises(PayPalError) as e:
         orders.authorize(c, order.id, request_id="ss-2")
     assert e.value.issue == "ORDER_NOT_APPROVED"
+
+
+def test_paypal_cassettes_hold_no_credentials():
+    from tests.cassettes import CASSETTES
+
+    files = sorted((CASSETTES / "paypal").glob("*.json"))
+    assert {f.name for f in files} == {"orders.SYNTHETIC.json", "sandbox.json"}
+    for path in files:
+        data = json.loads(path.read_text())
+        text = json.dumps(data["interactions"])
+        assert "Basic " not in text and "Bearer A" not in text
+        assert "client_secret" not in text.lower()
+        for item in data["interactions"]:
+            assert "headers" not in item["request"]  # never an Authorization header
+            token = item["response"]["json"].get("access_token")
+            assert token is None or "synthetic" in token, path.name
+        if data["_provenance"] == "recorded":
+            assert "access_token" not in text and '"payer"' not in text

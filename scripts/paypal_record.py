@@ -1,4 +1,4 @@
-"""Record real PayPal sandbox answers into ``fixtures/cassettes/paypal_sandbox.json``.
+"""Record real PayPal sandbox answers into ``fixtures/cassettes/paypal/sandbox.json``.
 
     .venv/bin/python scripts/paypal_record.py [--env ~/.config/muse-pay/paypal-sandbox.env]
 
@@ -30,7 +30,7 @@ from studio.paypal import orders  # noqa: E402
 from studio.paypal.client import PayPalClient, PayPalError, request_id  # noqa: E402
 from studio.settings import read_env_file  # noqa: E402
 
-OUT = ROOT / "fixtures" / "cassettes" / "paypal_sandbox.json"
+OUT = ROOT / "fixtures" / "cassettes" / "paypal" / "sandbox.json"
 
 
 PAYEE = {"email_address": "sb-business@business.example.com", "merchant_id": "SANDBOXMERCH01"}
