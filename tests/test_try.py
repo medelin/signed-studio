@@ -111,8 +111,8 @@ def test_the_tour_makes_no_call_and_writes_nothing(app, client, monkeypatch):
 @pytest.mark.parametrize("name", [
     "../replay.json", "..%2Fmuse%2Freplay.json", "%2e%2e%2fstudio.db",
     "5380d46ee37ab1750e7840c785d83e70.txt",  # a blob of the set, but not an image
-    "324162357B3554699511A8EB908F0C1B.png",  # case matters
-    "324162357b3554699511a8eb908f0c1b.png/..",
+    "E64B5121F2A1B3609D6B2D8CDD802125.png",  # case matters
+    "e64b5121f2a1b3609d6b2d8cdd802125.png/..",
     "00000000000000000000000000000000.png",
 ])
 def test_image_route_refuses_traversal_and_unknown_names(client, name):

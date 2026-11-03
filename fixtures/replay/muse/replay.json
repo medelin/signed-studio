@@ -1454,7 +1454,7 @@
        "type": "image_generation_call",
        "id": "ig_eyJwZXJtYW5lbnRfdXJsIjoiR05NUDNETVBCc1BaaVBjREFOUWFuOHd2LUZWcWJnMWlBUUFEIiwicmVzdW1lX2lkIjoiczoyYTI3ZmE2ZS1jYTVlLTQyMTctYmMwNC0xZTZiNmUyMGYwZDU6R0FDOUF6VDdCZTVPbHdzSkFOTVUxQUZkbTU1Z2JnMWlBUUJqIiwiYmluZGluZyI6eyJhcHBfaWQiOjIyMjAyMzIzMzIyNTA3NTEsIm1vZGVsIjoibXVzZS1pbWFnZS0xLjAifSwidmVyc2lvbiI6MSwiY3JlYXRlZF9hdCI6MTc5MzE4NDMwMn0.Q8WLFwHDOfbyuu08pULf6m3V49JH",
        "status": "completed",
-       "result": "@blob:324162357b3554699511a8eb908f0c1b.png#1600x1600"
+       "result": "@blob:e64b5121f2a1b3609d6b2d8cdd802125.png#1600x1600"
       }
      ],
      "instructions": null,
@@ -1499,7 +1499,7 @@
      "created": 1793184315,
      "data": [
       {
-       "b64_json": "@blob:9ac3574125dd16910fa40c87495579a5.png#1152x2048"
+       "b64_json": "@blob:57c684349272a56c87dcd99f718d72ec.png#1152x2048"
       }
      ],
      "output_format": "png",
