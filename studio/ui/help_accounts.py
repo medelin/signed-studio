@@ -22,9 +22,7 @@ ACCOUNT_ENTRIES: tuple[tuple[str, str, str, dict[str, str], dict[str, str]], ...
                "other sessions. The profile keeps your display name, an optional e-mail, "
                "your language and display defaults, and whether you advertise as a person "
                "or a company (legal name, country and a tax id in any country's format, not "
-               "checked). Where the operator turned billing on, the subscription is under "
-               "<a href=\"/account#billing\">Billing</a>: Stripe takes the card and issues "
-               "every invoice. Judges use the shared <code>judge</code> account.",
+               "checked). Judges use the shared <code>judge</code> account.",
          "pl": "Zarejestruj się na <a href=\"/login\">stronie logowania</a> przez Google "
                "lub Facebooka, jeśli operator to włączył. Nowe konto zaczyna od okresu "
                "próbnego: przygotowujesz i podpisujesz kampanie, które powstają wstrzymane, "
@@ -36,35 +34,25 @@ ACCOUNT_ENTRIES: tuple[tuple[str, str, str, dict[str, str], dict[str, str]], ...
                "sesje. Profil przechowuje wyświetlaną nazwę, nieobowiązkowy e-mail, "
                "ustawienia języka i wyglądu oraz to, czy reklamujesz się jako osoba czy "
                "firma (nazwa prawna, kraj i numer podatkowy w formacie dowolnego kraju, bez "
-               "sprawdzania). Jeśli operator włączył rozliczenia, subskrypcja jest w części "
-               "<a href=\"/account#billing\">Rozliczenia</a>: kartę przyjmuje Stripe i "
-               "wystawia każdą fakturę. Jury używa wspólnego konta <code>judge</code>."},
+               "sprawdzania). Jury używa wspólnego konta <code>judge</code>."},
     ),
-    (  # studio/pricing.py, studio/routes_billing.py, legal_texts "terms"
+    (  # studio/funding.py, studio/paypal, legal_texts "terms"
         "pricing", "diego", "budget",
         {"en": "How much does it cost?",
          "pl": "Ile to kosztuje?"},
-        {"en": "Pay monthly, for 3, 6 or 12 months upfront (the longer plans include free "
-               "months), or once for one month that does not renew. The current plans and "
-               "prices are on the <a href=\"/pricing\">Pricing</a> page. Every plan covers "
-               "the studio and its model costs for normal use. Your Meta ad spend is not "
-               "part of it: you pay Meta directly, on Meta's invoices; where the operator "
-               "set an ad-spend fee, the Pricing page states its percentage. Before paying "
-               "you choose the plan on your account page, say whether you buy as a private "
-               "person or for a company, and agree to the payment and the "
-               "<a href=\"/terms\">Terms</a>. Cancel any time in the Stripe customer "
-               "portal; the plan then does not renew and runs to the end of the paid period.",
-         "pl": "Płać co miesiąc, z góry za 3, 6 lub 12 miesięcy (dłuższe plany mają miesiące "
-               "gratis) albo jednorazowo za jeden miesiąc, który się nie odnawia. Aktualne "
-               "plany i ceny są w <a href=\"/pricing\">Cenniku</a>. Każdy plan obejmuje "
-               "studio i koszty modeli przy zwykłym użyciu. Budżet reklamowy w Mecie nie "
-               "wchodzi w cenę: płacisz go bezpośrednio Mecie, na jej fakturach; jeśli "
-               "operator ustawił opłatę od wydatków na reklamy, Cennik podaje jej procent. "
-               "Przed płatnością wybierasz na stronie konta plan, wskazujesz, czy kupujesz "
-               "jako osoba prywatna, czy dla firmy, i akceptujesz płatność oraz "
-               "<a href=\"/terms\">Regulamin</a>. Zrezygnujesz w każdej chwili w portalu "
-               "klienta Stripe; plan się wtedy nie odnowi i działa do końca opłaconego "
-               "okresu."},
+        {"en": "There is no subscription. You fund each campaign through PayPal: the ad "
+               "budget plus a studio fee, a percentage of the budget stated on the "
+               "<a href=\"/pricing\">Pricing</a> page. The money is held when you sign the "
+               "campaign, taken only when you sign again to turn it on, and released if you "
+               "never do. Budget Meta did not spend comes back with its share of the fee, "
+               "through a PayPal refund you sign. See the <a href=\"/terms\">Terms</a>.",
+         "pl": "Nie ma abonamentu. Każdą kampanię opłacasz przez PayPal: budżet reklamowy "
+               "plus opłata studia, procent budżetu podany w "
+               "<a href=\"/pricing\">Cenniku</a>. Pieniądze są blokowane, gdy podpisujesz "
+               "kampanię, pobierane dopiero, gdy podpiszesz ponownie, by ją włączyć, i "
+               "zwalniane, jeśli tego nie zrobisz. Budżet, którego Meta nie wydała, wraca "
+               "wraz z częścią opłaty jako zwrot w PayPal, który podpisujesz. Zobacz "
+               "<a href=\"/terms\">Regulamin</a>."},
     ),
     (
         "two-step-sign-in", "priya", "signed",

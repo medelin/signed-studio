@@ -37,7 +37,7 @@ EN_ACCOUNTS: dict[str, str] = {
     "account.help_html": 'Questions? See <a href="/help#accounts">accounts</a>, '
                          '<a href="/help#two-step-sign-in">two-step sign-in</a> and '
                          '<a href="/help#delete-account">deleting an account</a> in the help.',
-    "account.group.profile": "Profile & billing",
+    "account.group.profile": "Profile",
     "account.group.security": "Security",
     "account.group.assistants": "Assistants & API",
     "account.group.notifications": "Notifications",
@@ -68,8 +68,8 @@ EN_ACCOUNTS: dict[str, str] = {
     "account.profile.tax_id": "Tax id",
     "account.profile.tax_hint": "Any country's tax or VAT number, as you write it. It is not "
                                 "checked.",
-    "account.profile.billing_note": "These details are yours to keep here; Stripe asks for "
-                                    "the ones it puts on an invoice at checkout (Billing).",
+    "account.profile.billing_note": "These details are yours to keep here; PayPal asks for "
+                                    "its own when you fund a campaign.",
     "account.profile.save": "Save profile",
     "account.profile.invalid": "Check this field: {field}.",
     "account.profile.online": "Your business online",
@@ -210,7 +210,6 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.no_such_account": "There is no such account.",
     "err.confirmation_mismatch": "The confirmation does not match your user name.",
     "err.two_factor_state": "Two-step sign-in changed meanwhile; reload the page.",
-    "err.billing_off": "Billing is not turned on for this studio.",
     "err.invalid_event": "That webhook event could not be read.",
     "err.invalid_form": "The form could not be read.",
     "err.unknown_session": "That session is not active any more.",
@@ -219,29 +218,6 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.stale_credentials": "The account's password or sign-in settings changed meanwhile; "
                              "sign in again.",
     "err.too_many_sessions": "Too many people are signed in right now; try again in a minute.",
-    "account.section.billing": "Billing",
-    "account.done.billing": "Thank you. Your subscription appears here once Stripe confirms "
-                            "the payment, usually within a minute.",
-    "billing.lead": "Pay monthly, for 3, 6 or 12 months in advance, or once for one month, "
-                    "by card through Stripe. Stripe issues the invoice for every payment; "
-                    "you can cancel a plan any time.",
-    "billing.subscribe": "Continue to payment",
-    "billing.portal": "Manage card, invoices and cancellation",
-    "billing.status": "Subscription",
-    "billing.renews": "renews on",
-    "billing.cancels": "ends on",
-    "billing.last_invoice": "Latest invoice (Stripe)",
-    "billing.test_mode": "Test mode: no real money moves. Pay with the test card 4242 4242 "
-                         "4242 4242, any future date and any CVC.",
-    "billing.error": "Billing is not reachable right now. Try again in a moment.",
-    "billing.status.active": "active",
-    "billing.status.trialing": "trial period",
-    "billing.status.past_due": "payment overdue",
-    "billing.status.canceled": "ended",
-    "billing.status.unpaid": "unpaid",
-    "billing.status.incomplete": "waiting for payment",
-    "billing.status.incomplete_expired": "expired",
-    "billing.status.paused": "paused",
     "social.heading": "New here? Register in one step",
     "social.lead": "Continue with Google or Facebook to sign in or create your account. A "
                    "new account starts on trial: campaigns are created paused, on the "
@@ -295,7 +271,7 @@ PL_ACCOUNTS: dict[str, str] = {
     "account.help_html": 'Pytania? Zobacz w pomocy: <a href="/pl/help#accounts">konta</a>, '
                          '<a href="/pl/help#two-step-sign-in">logowanie dwuetapowe</a> i '
                          '<a href="/pl/help#delete-account">usuwanie konta</a>.',
-    "account.group.profile": "Profil i rozliczenia",
+    "account.group.profile": "Profil",
     "account.group.security": "Bezpieczeństwo",
     "account.group.assistants": "Asystenci i API",
     "account.group.notifications": "Powiadomienia",
@@ -325,8 +301,8 @@ PL_ACCOUNTS: dict[str, str] = {
     "account.profile.tax_id": "Numer podatkowy",
     "account.profile.tax_hint": "Numer podatkowy lub VAT dowolnego kraju, tak jak go zapisujesz. "
                                 "Nie jest sprawdzany.",
-    "account.profile.billing_note": "Te dane przechowujesz tutaj; te, które trafiają na "
-                                    "fakturę, Stripe pobiera przy płatności (Rozliczenia).",
+    "account.profile.billing_note": "Te dane przechowujesz tutaj; PayPal pyta o własne, gdy "
+                                    "opłacasz kampanię.",
     "account.profile.save": "Zapisz profil",
     "account.profile.invalid": "Sprawdź to pole: {field}.",
     "account.profile.online": "Twoja firma w sieci",
@@ -460,7 +436,6 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.no_such_account": "Nie ma takiego konta.",
     "err.confirmation_mismatch": "Potwierdzenie nie zgadza się z Twoją nazwą użytkownika.",
     "err.two_factor_state": "Logowanie dwuetapowe w międzyczasie się zmieniło; odśwież stronę.",
-    "err.billing_off": "Rozliczenia nie są włączone w tym studiu.",
     "err.invalid_event": "Nie udało się odczytać tego zdarzenia webhooka.",
     "err.invalid_form": "Nie udało się odczytać formularza.",
     "err.unknown_session": "Ta sesja nie jest już aktywna.",
@@ -469,30 +444,6 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.stale_credentials": "W międzyczasie zmieniło się hasło lub ustawienia logowania "
                              "konta; zaloguj się ponownie.",
     "err.too_many_sessions": "Zalogowanych jest teraz zbyt wiele osób; spróbuj za minutę.",
-    "account.section.billing": "Rozliczenia",
-    "account.done.billing": "Dziękujemy. Subskrypcja pojawi się tu, gdy Stripe potwierdzi "
-                            "płatność, zwykle w ciągu minuty.",
-    "billing.lead": "Płać co miesiąc, z góry za 3, 6 lub 12 miesięcy albo jednorazowo za "
-                    "jeden miesiąc, kartą przez Stripe. Stripe wystawia fakturę za każdą "
-                    "płatność; z planu zrezygnujesz w każdej chwili.",
-    "billing.subscribe": "Przejdź do płatności",
-    "billing.portal": "Karta, faktury i rezygnacja",
-    "billing.status": "Subskrypcja",
-    "billing.renews": "odnawia się",
-    "billing.cancels": "kończy się",
-    "billing.last_invoice": "Ostatnia faktura (Stripe)",
-    "billing.test_mode": "Tryb testowy: żadne prawdziwe pieniądze nie przepływają. Zapłać "
-                         "kartą testową 4242 4242 4242 4242, dowolną przyszłą datą i "
-                         "dowolnym CVC.",
-    "billing.error": "Rozliczenia są teraz niedostępne. Spróbuj za chwilę.",
-    "billing.status.active": "aktywna",
-    "billing.status.trialing": "okres próbny",
-    "billing.status.past_due": "zaległa płatność",
-    "billing.status.canceled": "zakończona",
-    "billing.status.unpaid": "nieopłacona",
-    "billing.status.incomplete": "czeka na płatność",
-    "billing.status.incomplete_expired": "wygasła",
-    "billing.status.paused": "wstrzymana",
     "social.heading": "Pierwszy raz? Zarejestruj się jednym krokiem",
     "social.lead": "Kontynuuj przez Google lub Facebooka, żeby się zalogować albo założyć "
                    "konto. Nowe konto zaczyna od okresu próbnego: kampanie powstają "

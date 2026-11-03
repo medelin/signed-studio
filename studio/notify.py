@@ -80,13 +80,8 @@ EVENTS: dict[str, Event] = {
     "signin": Event("security", "/account#sessions"),
     "deletion_requested": Event("security", ""),
     "export_ready": Event("security", "/account#export"),
-    # account and billing mails (studio.billing): to the one account, cannot be turned off
+    # account mails: to the one account, cannot be turned off
     "welcome": Event("billing", "/start"),
-    "subscription_started": Event("billing", "/account#billing"),
-    "subscription_ended": Event("billing", "/account#billing"),
-    "payment_received": Event("billing", "/account#billing"),
-    "payment_failed": Event("billing", "/account#billing"),
-    "renewal_reminder": Event("billing", "/account#billing"),  # 3-, 6-, 12-month plans
 }
 
 ALIASES = {"ad.disapproved": "ad_disapproved"}

@@ -42,7 +42,7 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie track · Build for 
 - **No login:** a recorded run replayed and verifiable in your browser at https://muse.udun.eu/try
 - **How it works in 1 minute:** https://muse.udun.eu/start
 - **From your own assistant:** with your own account (tokens are off for `judge`), make a token on `/account#assistants`, then `claude mcp add --transport http muse https://muse.udun.eu/mcp --header "Authorization: Bearer …"` (or the HTTPS API, `/api/v1/openapi.json`); it drafts and runs, a human still signs every send ([docs/assistants.md](docs/assistants.md)).
-- **Sign up in one step:** "Continue with Facebook" or "Continue with Google" creates a trial account (campaigns stay PAUSED on the studio's own page until the operator lifts the trial); Stripe Checkout runs in test mode on the sandbox.
+- **Sign up in one step:** "Continue with Facebook" or "Continue with Google" creates a trial account (campaigns stay PAUSED on the studio's own page until the operator lifts the trial).
 - **A short check, not a long form:** after "Draft my brief" the owner sees a six-sentence summary of what the studio understood, and an assistant asks only what is missing or unconfirmed, one question at a time with one-click answers (countries, page, budget); the full Brief v1 form is folded under "All details".
 - **Business profile:** website, the countries you sell in and your pixel (picked from the ad account's list) are saved once in Account → Profile; every draft starts from them, marked "from your profile".
 - **For your accountant:** a monthly statement ties every ad expense to the signature that allowed it (approval id, receipt hash, Meta spend, the studio's model costs) — CSV for Xero, QuickBooks or wFirma, an hledger journal, or JSON; leads export as CSV, JSON or vCard and import from CSV/JSON/vCard; the same data over the API (`/api/v1/statement`, `/api/v1/leads`) ([docs/export.md](docs/export.md)).
@@ -234,8 +234,8 @@ Tools, receipts and limits: [docs/mcp.md](docs/mcp.md).
   (it sees no one's personal data, its campaigns stay PAUSED) until the operator promotes
   it (`studio account promote`); operator-made accounts (`studio account create`) start
   full. Optional TOTP two-step sign-in, sessions, export and deletion at `/account`.
-  Billing: Stripe Checkout and the customer portal, a signature-checked webhook; the
-  sandbox uses Stripe test mode only, and a test-mode payment never lifts a trial.
+  Money: each campaign is funded through the PayPal sandbox (no subscription; see
+  `docs/BUILD-LOG.md`).
 - The studio is single-tenant today: one operator's ad account, page and pixel; leads and
   comments are masked for trial and demo accounts. Per-client tenancy is the next step.
 - Day-by-day changes: [CHANGELOG.md](CHANGELOG.md).

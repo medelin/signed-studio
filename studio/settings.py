@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
 
-from studio.billing import BillingConfig
 from studio.notify import MailConfig
+from studio.paypal import PayPalConfig
 from studio.social_login import SocialLoginConfig
 from studio.whatsapp import WhatsAppConfig
 
@@ -164,14 +164,12 @@ class Settings:
     # only with that account's recorded consent; off unless STUDIO_CAPI=1
     capi: bool = False
     capi_test_event_code: str = ""  # Events Manager → Test events (nothing is counted)
-    # Stripe subscription, invoices and payment mails (studio.billing)
-    billing: BillingConfig = field(default_factory=BillingConfig)
-    # the seller named on /pricing and /terms (studio.pricing); a missing line is left out
+    # PayPal (sandbox only): each campaign's budget plus the studio fee (studio.paypal)
+    paypal: PayPalConfig = field(default_factory=PayPalConfig)
+    # the seller named on /pricing and /terms; a missing line is left out
     seller_name: str = "Dwarven Stronghold Ltd"
     seller_number: str = ""  # company number
     seller_address: str = ""  # registered office
-    price_display: str = ""  # shown when Stripe's price cannot be read, e.g. "£9"
-    fair_use_runs: int = 60  # campaign runs a month the price covers
     # Google Ads (a second, minimal channel): mock unless GOOGLE_ADS_ADAPTER=rest
     google_adapter: str = "mock"
     google_client_id: str = field(default="", repr=False)
@@ -290,15 +288,9 @@ class Settings:
         try:
             whatsapp = WhatsAppConfig.from_env(e)
             social = SocialLoginConfig.from_env(e)
-            billing = BillingConfig.from_env(e)
+            paypal = PayPalConfig.from_env(e)  # SandboxOnly for a live PAYPAL_ENV
         except ValueError as exc:
             raise ConfigError(str(exc)) from None
-        try:
-            fair_use = int(e.get("STUDIO_FAIR_USE_RUNS", "") or 60)
-        except ValueError:
-            raise ConfigError("STUDIO_FAIR_USE_RUNS must be an integer") from None
-        if not 1 <= fair_use <= 10_000:
-            raise ConfigError("STUDIO_FAIR_USE_RUNS must be 1-10000")
         seller = {k: _one_line(e, f"STUDIO_SELLER_{k.upper()}", limit)
                   for k, limit in (("name", 120), ("number", 40), ("address", 300))}
         replay = _bool(e, "STUDIO_REPLAY", False)
@@ -371,12 +363,10 @@ class Settings:
             public_url=public_url,
             whatsapp=whatsapp,
             social=social,
-            billing=billing,
+            paypal=paypal,
             seller_name=seller["name"] or "Dwarven Stronghold Ltd",
             seller_number=seller["number"],
             seller_address=seller["address"],
-            price_display=_one_line(e, "STUDIO_PRICE_DISPLAY", 40),
-            fair_use_runs=fair_use,
             brand_scan=_bool(e, "STUDIO_BRAND_SCAN", False) and not replay,
             capi=_bool(e, "STUDIO_CAPI", False),
             capi_test_event_code=test_code,

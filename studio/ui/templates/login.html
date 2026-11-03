@@ -22,7 +22,6 @@
     <div class="social-signin" aria-labelledby="social-h">
       <h2 id="social-h">{{ t("social.heading") }}</h2>
       <p class="hint">{{ t("social.lead") }}</p>
-      {% if price %}<p class="hint">{{ t("login.price_hint_html", price=price | e, fee=price_fee) }}</p>{% endif %}
       {% if social_error %}<p class="status error" role="alert">{{ t("social.error") }}</p>{% endif %}
       {% for p in social %}<a class="ob-button social-{{ p }}" href="/auth/{{ p }}/start?next={{ next | urlencode }}">{{ t("social.continue_" ~ p) }}</a>
       {% endfor %}

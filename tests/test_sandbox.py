@@ -220,9 +220,9 @@ def test_every_write_needs_the_judge(make_client, path):
         assert r.json() == {"error": "login_required"}
 
 
-@pytest.mark.parametrize("path", ["/webhooks/stripe", "/webhooks/whatsapp"])
+@pytest.mark.parametrize("path", ["/webhooks/whatsapp"])
 def test_signed_webhooks_reach_their_own_check_without_a_session(make_client, path):
-    with make_client() as client:  # the senders (Stripe, Meta) have no studio session
+    with make_client() as client:  # the sender (Meta) has no studio session
         r = client.post(path, content=b"{}", headers={"Content-Type": "application/json"})
         assert r.status_code != 401 and r.json() != {"error": "login_required"}
 

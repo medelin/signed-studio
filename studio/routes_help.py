@@ -15,7 +15,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from studio.billing import ONCE_DAYS, PLAN_MONTHS
 from studio.receipts import Ledger
 from studio.settings import Settings
 from studio.ui import cast, help_texts, legal_texts
@@ -65,11 +64,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2
 
     facts = {"seller_name": settings.seller_name, "seller_number": settings.seller_number,
              "seller_address": settings.seller_address, "contact": legal_texts.CONTACT,
-             "fair_use_runs": settings.fair_use_runs, "once_days": ONCE_DAYS,
-             # the ad-spend fee paragraphs appear only when the fee is charged
-             "fee_pct": settings.billing.fee_pct_text if settings.billing.spend_fee else "",
-             "when_fee": settings.billing.spend_fee,
-             "when_no_fee": not settings.billing.spend_fee}
+             # the studio fee on each campaign's PayPal funding (STUDIO_FEE_PCT)
+             "fee_pct": settings.paypal.fee_pct_text}
 
     def legal_page(request: Request, name: str) -> Response:
         title, sections = legal_texts.page(name, request.state.lang, facts)
@@ -87,21 +83,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, templates: Jinja2
 
     @app.get("/pricing", response_class=HTMLResponse)
     def pricing_page(request: Request) -> Response:
-        """One plan; the amount from Stripe (cached 12 h) or ``STUDIO_PRICE_DISPLAY``, or
-        none at all (``studio.pricing``)."""
-        lang = request.state.lang
-        cache = app.state.price
-        plans = [{"plan": p, "amount": cache.amount(lang, p), "months": PLAN_MONTHS[p],
-                  "per_month": cache.per_month(lang, p), "free_months": cache.free_months(p),
-                  "others": cache.others(lang, p)} for p in cache.plans()]
-        if not plans:  # billing off: the monthly plan, with STUDIO_PRICE_DISPLAY or no amount
-            plans = [{"plan": "monthly", "amount": cache.amount(lang), "months": 1,
-                      "per_month": "", "free_months": 0, "others": []}]
-        fee = settings.billing
+        """No plan: each campaign is funded through PayPal, budget plus the studio fee
+        (``studio.paypal``, ``studio.funding``)."""
         return templates.TemplateResponse(request, "pricing.html", {
-            **base(request), "plans": plans, "once_days": ONCE_DAYS,
-            "fee_pct": fee.fee_pct_text if fee.spend_fee else "",
-            "fair_use_runs": settings.fair_use_runs, "seller": facts})
+            **base(request), "fee_pct": settings.paypal.fee_pct_text, "seller": facts})
 
     @app.get("/data-deletion", response_class=HTMLResponse)
     def data_deletion(request: Request) -> Response:

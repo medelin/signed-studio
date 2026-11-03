@@ -93,31 +93,6 @@ def insights_pull(env_file: Path) -> int:
     return 0
 
 
-def billing_report_usage(env_file: Path, day: str = "") -> int:
-    """The ad-spend fee of one UTC day (default: yesterday) to Stripe's Billing Meter, one
-    event per account (``studio.billing.report_spend``); prints counts only."""
-    import datetime as dt
-
-    from studio import billing
-    from studio.meta import measurement
-
-    if not Settings.load(env_file=env_file).billing.spend_fee:
-        print("spend fee off (STRIPE_SPEND_PRICE_ID unset or STUDIO_SPEND_FEE_PCT=0)")
-        return 0
-    settings, conn, ledger, _ = _studio(env_file)
-    billing.ensure_schema(conn)
-    measurement.ensure_schema(conn)
-    day = day or (dt.datetime.now(dt.UTC).date() - dt.timedelta(days=1)).isoformat()
-    try:
-        out = billing.report_spend(conn, billing.StripeApi(settings.billing), day,
-                                   ledger=ledger)
-    except billing.BillingError as exc:
-        print(f"error: {exc.code}", file=sys.stderr)
-        return EXIT_ERROR
-    print(f"day={day} " + " ".join(f"{k}={v}" for k, v in out.items()))
-    return 0
-
-
 def leads_poll(env_file: Path) -> int:
     """New instant-form leads (``GET /{form_id}/leads``) → lead store → lead scorer; prints
     counts only."""
@@ -262,12 +237,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_ins = sub.add_parser("insights-pull", help="objective-aware insights snapshot of every "
                            "campaign and fresh recommendations (read-only on Meta)")
     p_ins.add_argument("--env-file", type=Path, default=Path(".env"))
-    p_bill = sub.add_parser("billing", help="Stripe billing jobs")
-    bill_sub = p_bill.add_subparsers(dest="billing_cmd", required=True)
-    p_usage = bill_sub.add_parser("report-usage", help="send one day's ad-spend fee to the "
-                                  "Stripe Billing Meter (one event per account; rerun-safe)")
-    p_usage.add_argument("--day", default="", help="UTC day YYYY-MM-DD (default: yesterday)")
-    p_usage.add_argument("--env-file", type=Path, default=Path(".env"))
     p_mcp = sub.add_parser("mcp", help="serve the studio to an MCP client over stdio "
                            "(read and draft only; every send still needs a human signature)")
     p_mcp.add_argument("--account", required=True, help="the studio account the client acts "
@@ -291,8 +260,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             return leads_poll(args.env_file)
         if args.cmd == "insights-pull":
             return insights_pull(args.env_file)
-        if args.cmd == "billing":
-            return billing_report_usage(args.env_file, args.day)
         if args.cmd == "mcp":
             return run_mcp(args)
     except (ConfigError, MuseError, ReadOnlyMode, UsageError, cli_account.UsageError, OSError,

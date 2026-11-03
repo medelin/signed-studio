@@ -4,55 +4,18 @@
 {% block content %}
 <section class="pricing" aria-labelledby="pricing-h">
   <h1 id="pricing-h">{{ t("pricing.title") }}</h1>
-  <p class="lead">{{ t("pricing.lead") }}</p>
-  <ul class="plan-cards">
-    {% for p in plans %}
-    <li class="panel plan-card" aria-labelledby="plan-{{ p.plan }}-h">
-      <h2 id="plan-{{ p.plan }}-h">{{ t("billing.plan." ~ p.plan) }}</h2>
-      {% if p.free_months %}<p class="plan-badge">{{ t("billing.plan.free_" ~ ("one" if p.free_months == 1 else "many"), n=p.free_months) }}</p>{% endif %}
-      {% if p.amount %}
-      <p class="plan-price">{% if p.plan == "monthly" %}{{ t("billing.plan.per_month", price=p.amount) }}{% elif p.plan == "once" %}{{ t("billing.plan.once_price", price=p.amount, days=once_days) }}{% else %}{{ t("billing.plan.per_term", price=p.amount, months=p.months) }}{% endif %}</p>
-      {% if p.per_month %}<p>{{ t("pricing.equivalent", price=p.per_month) }}</p>{% endif %}
-      {% if p.others %}<p class="hint">{{ t("pricing.other_currencies", list=p.others | join(" · ")) }}</p>{% endif %}
-      {% else %}
-      <p class="plan-price">{{ t("pricing.no_amount") }}</p>
-      <p class="hint">{{ t("pricing.no_amount_hint") }}</p>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-  {% if fee_pct %}
-  <p><strong>{{ t("pricing.fee", pct=fee_pct) }}</strong>{% if plans | selectattr("plan", "equalto", "once") | list %} {{ t("pricing.fee_once", pct=fee_pct, days=once_days) }}{% endif %}</p>
-  {% endif %}
+  <p class="lead">{{ t("pricing.lead", pct=fee_pct) }}</p>
   <div class="panel">
-    <h2 id="plan-inc">{{ t("pricing.included") }}</h2>
-    <ul aria-labelledby="plan-inc">
-      <li>{{ t("pricing.inc.studio") }}</li>
-      <li>{{ t("pricing.inc.models", runs=fair_use_runs) }}</li>
-      <li>{{ t("pricing.inc.invoices") }}</li>
-    </ul>
-    <h2 id="plan-exc">{{ t("pricing.not_included") }}</h2>
-    <ul aria-labelledby="plan-exc">
-      <li>{{ t("pricing.exc.ad_spend") }}</li>
-      <li>{% if fee_pct %}{{ t("pricing.exc.fees_with_fee", pct=fee_pct) }}{% else %}{{ t("pricing.exc.fees") }}{% endif %}</li>
-    </ul>
-    <p><strong>{{ t("pricing.cancel") }}</strong></p>
-    <p>{{ t("pricing.buyers") }}</p>
-    {% if logged_in %}
-    <p><a class="ob-button" href="/account#billing">{{ t("pricing.cta") }}</a></p>
-    {% else %}
-    <p><a class="ob-button" href="/login?next=/account" aria-describedby="plan-cta-hint">{{ t("pricing.cta") }}</a></p>
-    <p class="hint" id="plan-cta-hint">{{ t("pricing.cta_visitor_hint") }}</p>
-    {% endif %}
+    <h2 id="pricing-how">{{ t("pricing.how_h") }}</h2>
+    <ol class="plan-promises" aria-labelledby="pricing-how">
+      <li>{{ t("pricing.step.hold") }}</li>
+      <li>{{ t("pricing.step.capture") }}</li>
+      <li>{{ t("pricing.step.refund") }}</li>
+      <li>{{ t("pricing.step.receipt") }}</li>
+    </ol>
+    {% if fee_pct == "5" %}<p>{{ t("pricing.example") }}</p>{% endif %}
+    <p class="hint">{{ t("pricing.sandbox") }}</p>
   </div>
-  <h2>{{ t("pricing.promises_h") }}</h2>
-  <ol class="plan-promises">
-    <li>{{ t("pricing.promise.signature") }}</li>
-    <li>{{ t("pricing.promise.receipt") }}</li>
-    <li>{{ t("pricing.promise.meta") }}</li>
-  </ol>
-  <h2>{{ t("pricing.compare_h") }}</h2>
-  <p>{{ t("pricing.compare") }}{% if fee_pct %} {{ t("pricing.compare_fee") }}{% endif %}</p>
   <p class="hint">{{ t("pricing.seller", name=seller.seller_name) }}{% if seller.seller_number %} {{ t("pricing.seller_number", number=seller.seller_number) }}{% endif %}{% if seller.seller_address %} {{ t("pricing.seller_address", address=seller.seller_address) }}{% endif %} {{ seller.contact }}</p>
   <p class="hint">{{ t("pricing.terms_html") }}</p>
 </section>

@@ -2,7 +2,7 @@
 ``/terms``), EN and PL.
 
 Plain statements of what this sandbox stores and how to remove it, and the terms of the
-monthly subscription; no consent banner and no tracking. The same facts in both languages
+per-campaign PayPal funding; no consent banner and no tracking. The same facts in both languages
 (``tests/test_legal_pages.py`` checks parity). Paragraphs are plain text, or ``Markup``
 from this file when they hold a link.
 """
@@ -18,7 +18,7 @@ from typing import Final
 from markupsafe import Markup
 
 CONTACT: Final = "muse@udun.eu"
-UPDATED: Final = "2026-10-30"
+UPDATED: Final = "2026-11-03"
 
 # page -> lang -> (title, [(heading, [paragraph, …]), …])
 PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
@@ -136,7 +136,7 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
         "en": ("Terms of Service", [
             ("Who sells", [
                 "Muse Studio Lite is a project of {seller_name}, a company registered in "
-                "England and Wales, which sells the plans described here (\"we\", \"us\"). "
+                "England and Wales, which provides the service described here (\"we\", \"us\"). "
                 "These terms are the agreement between you and us.",
                 "Company number: {seller_number}.",
                 "Registered office: {seller_address}.",
@@ -145,66 +145,39 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
                 "Muse Studio Lite is an online ad studio. From your brief it prepares a "
                 "campaign plan, ad texts and images, and two reviewers check them against "
                 "the facts you confirmed and Meta's rules.",
-                "Nothing is published on its own. A campaign is created in your Meta ad "
-                "account only after you sign the approval, and it is created paused. "
+                "Nothing is published on its own. A campaign is created on Meta only after "
+                "you sign the approval, and it is created paused. "
                 "Turning it on is a second, separate signature.",
                 "Every step leaves a receipt you can read on the Receipts page."]),
-            ("Plans and commitment periods", [
-                "You choose a plan when you pay: a fixed term of 1, 3, 6 or 12 months, paid "
-                "upfront for the whole term, or the one-off month described below. The "
-                "plans on offer and their prices are on the Pricing page and on the payment "
-                "page before you pay.",
-                "A plan renews automatically for the same term unless you cancel it before "
-                "the renewal date. Before a 3-, 6- or 12-month plan renews, we send a "
-                "reminder to the e-mail address on your account 7 days before the renewal.",
-                "If you switch to another plan, the change takes effect at the next "
-                "renewal.",
-                "We change a price only from the next term, and we tell you by e-mail at "
-                "least 30 days before."]),
-            ("The one-off month", [
-                "The one-off month is one payment for {once_days} days of access, starting "
-                "when you pay. It does not renew.",
-                "The ad-spend fee does not apply to the one-off month."]),
-            ("Payment", [
-                "Every payment is made by card through Stripe, in advance, and Stripe "
-                "issues the invoice for it.",
-                "Every plan covers the studio and its model costs for normal use, which we "
-                "take to mean up to {fair_use_runs} campaign runs a month.",
-                "{when_fee}On top of a subscription plan (not the one-off month) we charge "
-                "{fee_pct}% of the ad spend of the campaigns you sign through the studio, "
-                "billed monthly in arrears through "
-                "Stripe. It is calculated from the spend Meta reports for those campaigns, "
-                "day by day. The ad spend itself is paid to Meta."]),
-            ("Cancelling", [
-                "You can cancel a plan any time in the Stripe customer portal (Account → "
-                "Billing). Cancelling stops the next renewal; the service runs to the end "
-                "of the term you have paid for.",
-                "We do not refund the unused part of a paid term, except under the 14-day "
-                "right to cancel below and where the law requires it.",
-                "{when_fee}The ad-spend fee for the last month is billed after it ends."]),
-            ("Buying as a company or as a private person", [
-                "When you pay, you tell us whether you buy as a private person or for a "
-                "company.",
-                "A company can give a VAT or tax number; it goes on the invoice with the "
-                "company's name and address. A company buys for its business, so the "
-                "14-day right to cancel below does not apply to it."]),
+            ("How you pay", [
+                "There is no subscription and no plan. You fund each campaign separately "
+                "through PayPal: the ad budget (daily budget times days) plus a studio fee "
+                "of {fee_pct}% of that budget. The amount is computed by the studio, shown "
+                "before you approve it in PayPal, and named in what you sign.",
+                "When you approve the payment in PayPal and then sign the campaign, the "
+                "money is held (authorized), not taken. It is taken (captured) only when "
+                "you sign a second time to turn the campaign on.",
+                "PayPal handles the payment; its own terms apply between you and PayPal."]),
+            ("Holds, refunds and fees", [
+                "If you never turn the campaign on, the hold is released and nothing is "
+                "taken.",
+                "After the campaign, the budget Meta did not spend is refunded to you "
+                "through PayPal, with its share of the studio fee: the fee is due only on "
+                "what was spent. A refund is proposed to you and made after you sign it.",
+                "Every hold, payment and refund leaves a receipt that names the PayPal "
+                "order and the exact ad you signed."]),
             ("Your right to cancel within 14 days", [
                 "If you buy as a private person (a consumer) in the United Kingdom or the "
-                "European Union, you may withdraw from the contract within 14 days of "
-                "paying, without giving a reason. This applies to every plan, including the "
-                "one-off month.",
-                "The service starts straight away because you ask for it when you pay. You "
-                "acknowledge there that you lose this right once the service has been fully "
-                "provided. If you withdraw within the 14 days, we refund what you paid, "
-                "less a proportional amount for the days you used.",
+                "European Union, you may withdraw within 14 days of paying, without giving "
+                "a reason.",
+                "A campaign starts only when you turn it on, at your request. Once it has "
+                "run, you lose the right to withdraw for the budget already spent; budget "
+                "that was not spent is refunded in any case.",
                 "To withdraw, write to {contact} within the 14 days."]),
             ("Ad spend and Meta's terms", [
-                "Ads run in your own Meta ad account. Meta charges you for them directly "
-                "and issues its own invoices; this money does not pass through us and is "
-                "not part of any plan.",
-                "{when_no_fee}We take no commission on your ad spend.",
-                "When you advertise on Meta, Meta's own terms and policies apply between "
-                "you and Meta."]),
+                "We run the campaign you signed on Meta and pay Meta for it from the budget "
+                "you funded. The studio fee is our only charge.",
+                "Meta's own advertising terms and policies apply to every ad."]),
             ("Acceptable use", [
                 "Do not use the studio to make ads that break Meta's Advertising Standards.",
                 "The reviewers point out problems and explain them; the decision to sign and "
@@ -227,7 +200,7 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
         "pl": ("Regulamin", [
             ("Kto sprzedaje", [
                 "Muse Studio Lite to projekt spółki {seller_name}, zarejestrowanej w "
-                "Anglii i Walii, która sprzedaje opisane tu plany („my”). Ten regulamin "
+                "Anglii i Walii, która świadczy opisaną tu usługę („my”). Ten regulamin "
                 "jest umową między Tobą a nami.",
                 "Numer spółki: {seller_number}.",
                 "Siedziba: {seller_address}.",
@@ -236,67 +209,41 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
                 "Muse Studio Lite to internetowe studio reklam. Na podstawie Twojego briefu "
                 "przygotowuje plan kampanii, teksty i grafiki reklam, a dwóch recenzentów "
                 "sprawdza je z potwierdzonymi przez Ciebie faktami i zasadami Mety.",
-                "Nic nie jest publikowane samo. Kampania powstaje na Twoim koncie "
-                "reklamowym w Mecie dopiero po podpisaniu zatwierdzenia i powstaje "
-                "wstrzymana. Jej włączenie to drugi, osobny podpis.",
+                "Nic nie jest publikowane samo. Kampania powstaje w Mecie dopiero po "
+                "podpisaniu zatwierdzenia i powstaje wstrzymana. Jej włączenie to drugi, "
+                "osobny podpis.",
                 "Każdy krok zostawia pokwitowanie, które przeczytasz na stronie "
                 "Pokwitowania."]),
-            ("Plany i okresy umowy", [
-                "Plan wybierasz przy płatności: stały okres 1, 3, 6 lub 12 miesięcy, płatny "
-                "z góry za cały okres, albo opisany niżej jednorazowy miesiąc. Oferowane "
-                "plany i ich ceny są w Cenniku i na stronie płatności, zanim zapłacisz.",
-                "Plan odnawia się automatycznie na ten sam okres, chyba że zrezygnujesz "
-                "przed datą odnowienia. Przed odnowieniem planu 3-, 6- lub 12-miesięcznego "
-                "wysyłamy przypomnienie na adres e-mail zapisany w koncie, 7 dni przed "
-                "odnowieniem.",
-                "Jeśli zmienisz plan na inny, zmiana działa od następnego odnowienia.",
-                "Cenę zmieniamy tylko od następnego okresu i informujemy o tym e-mailem co "
-                "najmniej 30 dni wcześniej."]),
-            ("Jednorazowy miesiąc", [
-                "Jednorazowy miesiąc to jedna płatność za {once_days} dni dostępu, liczonych "
-                "od płatności. Nie odnawia się.",
-                "Opłata od wydatków na reklamy nie dotyczy jednorazowego miesiąca."]),
-            ("Płatności", [
-                "Każda płatność odbywa się kartą przez Stripe, z góry, a Stripe wystawia za "
-                "nią fakturę.",
-                "Każdy plan obejmuje studio i koszty modeli przy zwykłym użyciu, czyli do "
-                "{fair_use_runs} przebiegów kampanii miesięcznie.",
-                "{when_fee}Oprócz planu abonamentowego (nie jednorazowego miesiąca) pobieramy "
-                "{fee_pct}% wydatków na reklamy kampanii, "
-                "które podpiszesz w studiu, rozliczane co miesiąc z dołu przez Stripe. "
-                "Liczymy je z wydatków, które Meta podaje dla tych kampanii, dzień po dniu. "
-                "Same wydatki na reklamy płacisz Mecie."]),
-            ("Rezygnacja", [
-                "Z planu zrezygnujesz w każdej chwili w portalu klienta Stripe (Konto → "
-                "Rozliczenia). Rezygnacja zatrzymuje następne odnowienie; usługa działa do "
-                "końca opłaconego okresu.",
-                "Nie zwracamy niewykorzystanej części opłaconego okresu, z wyjątkiem "
-                "opisanego niżej 14-dniowego prawa odstąpienia i przypadków, w których "
-                "wymaga tego prawo.",
-                "{when_fee}Opłatę od wydatków na reklamy za ostatni miesiąc rozliczamy po "
-                "jego zakończeniu."]),
-            ("Zakup jako firma lub osoba prywatna", [
-                "Przy płatności podajesz, czy kupujesz jako osoba prywatna, czy dla firmy.",
-                "Firma może podać numer VAT lub podatkowy; trafia on na fakturę z nazwą i "
-                "adresem firmy. Firma kupuje w ramach swojej działalności, więc opisane "
-                "niżej 14-dniowe prawo odstąpienia jej nie przysługuje."]),
+            ("Jak płacisz", [
+                "Nie ma abonamentu ani planu. Każdą kampanię opłacasz osobno przez PayPal: "
+                "budżet reklamowy (budżet dzienny razy liczba dni) plus opłata studia w "
+                "wysokości {fee_pct}% tego budżetu. Kwotę wylicza studio, pokazuje ją przed "
+                "zatwierdzeniem w PayPal i wskazuje w tym, co podpisujesz.",
+                "Gdy zatwierdzisz płatność w PayPal, a potem podpiszesz kampanię, pieniądze "
+                "są blokowane (autoryzowane), a nie pobierane. Pobieramy je dopiero, gdy "
+                "podpiszesz po raz drugi, by włączyć kampanię.",
+                "Płatność obsługuje PayPal; między Tobą a PayPal obowiązują jego własne "
+                "warunki."]),
+            ("Blokady, zwroty i opłaty", [
+                "Jeśli nie włączysz kampanii, blokada zostaje zwolniona i nic nie jest "
+                "pobierane.",
+                "Po kampanii budżet, którego Meta nie wydała, wraca do Ciebie przez PayPal "
+                "wraz z odpowiednią częścią opłaty studia: opłata należy się tylko od tego, "
+                "co wydano. Zwrot jest Ci proponowany i wykonywany po Twoim podpisie.",
+                "Każda blokada, płatność i zwrot zostawia pokwitowanie, które wskazuje "
+                "zamówienie PayPal i dokładnie tę reklamę, którą podpisałeś."]),
             ("Prawo odstąpienia w ciągu 14 dni", [
                 "Jeśli kupujesz jako osoba prywatna (konsument) w Wielkiej Brytanii lub w "
                 "Unii Europejskiej, możesz odstąpić od umowy w ciągu 14 dni od płatności, "
-                "bez podawania przyczyny. Dotyczy to każdego planu, także jednorazowego "
-                "miesiąca.",
-                "Usługa zaczyna się od razu, bo o to prosisz przy płatności. Potwierdzasz "
-                "tam, że tracisz to prawo, gdy usługa zostanie w pełni wykonana. Jeśli "
-                "odstąpisz w ciągu 14 dni, zwracamy zapłaconą kwotę pomniejszoną "
-                "proporcjonalnie o wykorzystane dni.",
+                "bez podawania przyczyny.",
+                "Kampania zaczyna się dopiero, gdy ją włączysz, na Twoją prośbę. Gdy już "
+                "działała, tracisz prawo odstąpienia co do budżetu już wydanego; budżet "
+                "niewydany wraca do Ciebie w każdym przypadku.",
                 "Aby odstąpić, napisz na {contact} w ciągu 14 dni."]),
             ("Wydatki na reklamy i zasady Mety", [
-                "Reklamy działają na Twoim własnym koncie reklamowym w Mecie. Meta pobiera "
-                "za nie opłaty bezpośrednio od Ciebie i wystawia własne faktury; te "
-                "pieniądze nie przechodzą przez nas i nie są częścią żadnego planu.",
-                "{when_no_fee}Nie pobieramy prowizji od Twoich wydatków na reklamy.",
-                "Gdy reklamujesz się w Mecie, między Tobą a Metą obowiązują jej własne "
-                "warunki i zasady."]),
+                "Kampanię, którą podpisałeś, prowadzimy w Mecie i płacimy za nią Mecie z "
+                "budżetu, który opłaciłeś. Opłata studia to nasza jedyna należność.",
+                "Do każdej reklamy stosują się własne warunki i zasady reklamowe Mety."]),
             ("Dozwolone użycie", [
                 "Nie używaj studia do reklam, które łamią Standardy reklamowe Mety.",
                 "Recenzenci wskazują problemy i je wyjaśniają; decyzja o podpisaniu i "
@@ -323,9 +270,8 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
 # page -> one anchor per section (the same in every language), for links such as
 # /terms#withdrawal
 ANCHORS: Final[dict[str, tuple[str, ...]]] = {
-    "terms": ("seller", "service", "plans", "one-off", "payment", "cancelling", "buyers",
-              "withdrawal", "ad-spend", "acceptable-use", "data", "liability", "changes",
-              "law"),
+    "terms": ("seller", "service", "payment", "refunds", "withdrawal", "ad-spend",
+              "acceptable-use", "data", "liability", "changes", "law"),
 }
 
 

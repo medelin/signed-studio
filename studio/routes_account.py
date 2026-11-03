@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs
@@ -25,7 +24,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from studio import accounts, auth, billing, db, notify, prefs, whatsapp
+from studio import accounts, auth, db, notify, prefs, whatsapp
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
 from studio.meta import capi
 from studio.meta.adapter import AdapterError
@@ -36,12 +35,12 @@ from studio.ui import i18n
 CHALLENGE_COOKIE = "studio_2fa"
 DONE = frozenset({"profile", "password", "2fa_started", "2fa_cancelled", "2fa_off",
                   "session_revoked", "sessions_revoked", "notify", "token_revoked",
-                  "linked", "billing"})
+                  "linked"})
 SECTIONS = ("profile", "password", "two-factor", "sessions", "assistants", "notifications",
             "export", "delete")
 # the tabs of /account (studio/ui/static/account.js shows one group; without JavaScript
 # every section stays on the page)
-GROUPS = (("profile", ("profile", "billing")),
+GROUPS = (("profile", ("profile",)),
           ("security", ("password", "two-factor", "sessions")),
           ("assistants", ("assistants",)), ("notifications", ("notifications",)),
           ("data", ("export", "delete")))
@@ -131,10 +130,6 @@ def _extras(app: FastAPI, account: Account) -> dict[str, Any]:
     return dict(hook(account)) if hook is not None else {}
 
 
-def _day(ts: float) -> str:
-    return time.strftime("%Y-%m-%d", time.gmtime(ts)) if ts else ""
-
-
 def _fields(raw: bytes) -> dict[str, str] | None:
     try:
         form = parse_qs(raw.decode("utf-8"), keep_blank_values=True, max_num_fields=MAX_FIELDS)
@@ -187,7 +182,6 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         done = request.query_params.get("done", "")
         pending = store.totp_pending_secret(account.id) if account.totp_pending else None
         uri = accounts.provisioning_uri(pending, account.username) if pending else ""
-        bill = billing.of(conn, account.id) if settings.billing.enabled else None
         response = templates.TemplateResponse(request, "account.html", {
             **base(request, True), "account": account, "errors": errors or {},
             "done": done if done in DONE else "", "codes": codes or [],
@@ -197,21 +191,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             "values": values or account.profile(), "langs": i18n.LANGS,
             "themes": prefs.THEMES, "palettes": prefs.PALETTES,
             "advertiser_types": accounts.ADVERTISER_TYPES, "pixels": pixels(account),
-            "sections": (SECTIONS[:1] + ("billing",) + SECTIONS[1:]
-                         if settings.billing.enabled and not account.is_demo else SECTIONS),
-            "billing": bill,
-            "groups": [(g, [s for s in members if s != "billing" or (
-                settings.billing.enabled and not account.is_demo)]) for g, members in GROUPS],
-            "billing_on": settings.billing.enabled and not account.is_demo,
-            "billing_test": not settings.billing.live,
-            "billing_error": request.query_params.get("billing_error", "")[:40],
-            "billing_until": _day(bill.period_end) if bill else "",
-            "billing_access_until": _day(bill.access_until)
-            if bill and bill.access_until > time.time() else "",
-            # plans, prices and consent texts (studio.routes_billing); cached prices only:
-            # page() also answers async handlers (GET /account warms the cache)
-            **(app.state.billing_view(request, account)
-               if settings.billing.enabled and not account.is_demo else {}),
+            "sections": SECTIONS, "groups": GROUPS,
             "min_password": accounts.MIN_PASSWORD_LEN,
             "identities": store.identities(account.id), "social": settings.social.enabled,
             "first_password": not account.has_password and routes_social.external_fresh(
@@ -286,8 +266,6 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         me = current(request)
         if me is None:
             return RedirectResponse("/login?next=/account", 303)
-        if settings.billing.enabled:
-            app.state.price.warm()  # Stripe at most every 12 h per plan (studio.pricing)
         return page(request, *me)
 
     @app.get("/account/export.json")

@@ -57,7 +57,6 @@ from studio import (
     prefs,
     routes_account,
     routes_api,
-    routes_billing,
     routes_export,
     routes_google,
     routes_help,
@@ -613,7 +612,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_account.register(app, settings, ledger, conn, templates, session_of)
     routes_whatsapp.register(app, settings, ledger, conn, session_of)
     routes_social.register(app, settings)
-    routes_billing.register(app, settings, ledger, conn)
 
     # The Meta adapter (mock unless META_ADAPTER=graph) and the executors that use it:
     # each runs only for a consumed, signed approval (studio.executor.authorize).
@@ -738,19 +736,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "social_error": request.query_params.get("social_error", "")[:32],
             "read_only": settings.read_only,
             "next": auth.safe_next(nxt), "error": error, "noindex": True,
-            # cached only (the POST handler is async); GET /login warms the cache
-            "price": app.state.price.amount(request.state.lang, fetch=False),
-            "price_fee": i18n.text(request.state.lang, "login.fee_hint",
-                                   pct=settings.billing.fee_pct_text)
-            if settings.billing.spend_fee else "",
         }, status_code=status, headers=headers)
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page(request: Request, next: str = "") -> Response:  # noqa: A002 - query name
         if session_of(request) is not None:
             return RedirectResponse(auth.safe_next(next), 303)
-        if settings.social.enabled:
-            app.state.price.get()  # the sign-up box's price hint (studio.pricing)
         return login_html(request, next)
 
     @app.post("/login")
