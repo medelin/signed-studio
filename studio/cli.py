@@ -193,13 +193,16 @@ def run_verify(args: argparse.Namespace) -> int:
         from studio.paypal import webhooks
         from studio.receipts import Receipt
 
-        if not args.paypal_certs:
-            raise UsageError("--paypal-events needs --paypal-certs (the pinned PEMs)")
+        if not args.paypal_certs or not args.paypal_webhook_id:
+            raise UsageError("--paypal-events needs --paypal-certs (the pinned PEMs) and "
+                             "--paypal-webhook-id (from your PayPal app, not the export)")
         rows = [json.loads(line) for line in Path(args.file).read_text().splitlines()
                 if line.strip()]
         receipts = [Receipt(**r) for r in rows if isinstance(r, dict) and "manifest" not in r]
+        roots = (webhooks.load_roots(Path(args.paypal_roots).read_bytes())
+                 if args.paypal_roots else None)
         problems = webhooks.recheck(Path(args.paypal_events), Path(args.paypal_certs),
-                                    receipts)
+                                    receipts, webhook_id=args.paypal_webhook_id, roots=roots)
         report.errors.extend(problems)
         report.ok = report.ok and not problems
     if report.ok:
@@ -264,6 +267,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_verify.add_argument("--paypal-events", help="paypal-events.jsonl (owner export): "
                           "re-check PayPal's webhook signatures offline")
     p_verify.add_argument("--paypal-certs", help="directory of the pinned PayPal cert PEMs")
+    p_verify.add_argument("--paypal-webhook-id", help="the webhook id PayPal gave your app "
+                          "(part of what PayPal signs; never taken from the export)")
+    p_verify.add_argument("--paypal-roots", help="PEM bundle of trusted roots (default: the "
+                          "certifi bundle)")
     p_demo = sub.add_parser("demo", help="run the whole loop headless and verify it "
                             "(replays a recorded set; --record calls the real Model API)")
     p_demo.add_argument("--set", default="demo", help="replay set (fixtures/replay/<set>)")

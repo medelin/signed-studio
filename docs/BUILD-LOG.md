@@ -188,3 +188,25 @@ the same two orders.
 **Not yet.**
 - With PayPal on, a campaign created under a signed mandate is refused
   (`funding_required`) until Day 3 adds Vault charges under the mandate.
+
+**Security review fixes (Day 2).**
+- *Who sees the money.* `GET /api/funding/item/…` and the refund request now apply the
+  same ownership as the campaign's approval (`approval_refusal`). Another account's
+  items are 404; order creation and payer approval already went through it.
+- *Webhook bodies are only a trigger.* PayPal's signature binds the body through CRC32
+  only, so the webhook no longer attests anything by itself. The resource it names
+  (capture, refund, authorization or order) is re-fetched from PayPal's API with the
+  studio's own credentials, and only the API's ids, status, amount and `custom_id` go
+  into the receipt (`resource_source: api`, required by `studio verify`). Without that
+  read the event is stored `unchecked`, with no receipt. A transmission id is accepted
+  once.
+- *Offline re-check anchored.* `studio verify --paypal-events` now:
+  - takes the webhook id from the verifier (`--paypal-webhook-id`), never from the
+    export;
+  - requires the cert file's leaf DER hash to equal its name, the event's and the
+    receipt's `cert_sha256`;
+  - walks the chain to a trusted root (certifi, or `--paypal-roots`) as of the
+    transmission time, with a PayPal leaf and CA-only intermediates.
+
+  A self-signed leaf, a swapped cert file, a malformed digest, a reused transmission id
+  and a wrong webhook id are each refused in tests.

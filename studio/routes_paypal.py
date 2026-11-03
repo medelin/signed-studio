@@ -82,6 +82,20 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
         aid = accounts.session_account(guard) if accounts is not None else None
         return accounts.get(aid) if accounts is not None and aid else None
 
+    def owns_item(item_id: str, account: Any) -> bool:
+        """The caller may see this item's money: the same ownership as its campaign
+        approval (``approval_refusal``: the account whose run it is, or the studio's own
+        work for a signed-in caller). Unknown items are nobody's. Call under conn.lock."""
+        row = conn.execute("SELECT id FROM approvals WHERE item_id = ? AND action = "
+                           "'campaign.create' ORDER BY ts DESC LIMIT 1", (item_id,)).fetchone()
+        if row is None:
+            return False
+        try:
+            pending = Pending.load(conn, row[0])
+        except ApprovalError:
+            return False
+        return app.state.approval_refusal(pending, account) is None
+
     def pending_for(approval_id: str, guard: str) -> tuple[Pending, dict[str, Any]]:
         """An open ``campaign.create`` approval the caller may sign, and its payload."""
         if not APPROVAL_ID.fullmatch(approval_id):
@@ -199,11 +213,14 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
 
     @app.get("/api/funding/item/{item_id}")
     def funding_of_item(item_id: str, request: Request) -> Response:
-        if session_of(request) is None:
+        sid = session_of(request)
+        if sid is None:
             return JSONResponse({"error": "login_required"}, 401)
         if not ITEM_ID.fullmatch(item_id):
             return JSONResponse({"error": "not_found"}, 404)
         with conn.lock:
+            if not owns_item(item_id, caller(sid)):
+                return JSONResponse({"error": "not_found"}, 404)  # as if it did not exist
             out = [{**view(f), "moves": funding.moves(conn, f.id)}
                    for f in funding.of_item(conn, item_id)]
         return JSONResponse({"fundings": out}, headers=NO_STORE)
@@ -218,6 +235,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             return JSONResponse({"error": "not_found"}, 404)  # full accounts only
         if not FUNDING_ID.fullmatch(funding_id):
             return JSONResponse({"error": "not_found"}, 404)
+        with conn.lock:
+            try:
+                item = funding.get(conn, funding_id).item_id
+            except FundingError:
+                return JSONResponse({"error": "not_found"}, 404)
+            if not owns_item(item, account):
+                return JSONResponse({"error": "not_found"}, 404)
         try:
             amount = (await request.json()).get("amount_minor")
         except (ValueError, AttributeError):
@@ -235,7 +259,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
     async def paypal_webhook(request: Request) -> Response:
         body = await request.body()
         try:
-            applied = webhooks.apply(conn, ledger, funder.verifier, request.headers, body)
+            applied = webhooks.apply(conn, ledger, funder.verifier, request.headers, body,
+                                     lookup=funder.lookup)
         except webhooks.WebhookRefused as exc:
             LOG.warning("PayPal webhook refused: %s", exc.code)
             return JSONResponse({"error": exc.code}, 400)

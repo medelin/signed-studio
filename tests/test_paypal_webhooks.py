@@ -120,7 +120,8 @@ def test_the_route_needs_no_session_and_refuses_forgeries(tmp_path):
                                      "event_type": "PAYMENT.CAPTURE.COMPLETED",
                                      "resource": {"id": "3C000000NOTOURS0X"}})
         ok = c.post("/webhooks/paypal", content=body, headers=headers)
-        assert ok.status_code == 200 and ok.json()["status"] == "unmatched"
+        # PayPal's API does not know that capture: nothing is attested, no receipt
+        assert ok.status_code == 200 and ok.json()["status"] == "unchecked"
         again = c.post("/webhooks/paypal", content=body, headers=headers)
         assert again.json()["status"] == "duplicate"
         forged = c.post("/webhooks/paypal", content=body.replace(b"0X", b"0Y"),
@@ -134,14 +135,17 @@ def test_export_and_offline_recheck(env, tmp_path, capsys):
     (out / "paypal-events.jsonl").write_text(webhooks.export_events(env.conn))
     assert webhooks.export_certs(env.conn, out / "certs") == 1
     receipts = env.ledger.receipts()
-    assert webhooks.recheck(out / "paypal-events.jsonl", out / "certs", receipts) == []
+    wid, roots = env.funder.signer.webhook_id, env.funder.signer.roots
+    assert webhooks.recheck(out / "paypal-events.jsonl", out / "certs", receipts,
+                            webhook_id=wid, roots=roots) == []
     # one byte of a recorded event changed: PayPal's signature no longer verifies
     lines = (out / "paypal-events.jsonl").read_text().splitlines()
     ev = json.loads(lines[0])
     ev["body"] = ev["body"].replace('"COMPLETED"', '"COMPLETEX"').replace(
         '"CREATED"', '"CREATEX"')
     (out / "bad.jsonl").write_text("\n".join([json.dumps(ev), *lines[1:]]) + "\n")
-    problems = webhooks.recheck(out / "bad.jsonl", out / "certs", receipts)
+    problems = webhooks.recheck(out / "bad.jsonl", out / "certs", receipts, webhook_id=wid,
+                                roots=roots)
     assert any("does not verify" in p for p in problems)
     # the CLI: a valid log and events verify; tampered events fail with exit 2
     from studio.approvals import Keys
@@ -149,9 +153,130 @@ def test_export_and_offline_recheck(env, tmp_path, capsys):
     (tmp_path / "r.jsonl").write_text(env.ledger.export_jsonl())
     keys = {a: k.public_bytes_raw().hex() for a, k in Keys.registry(env.conn).items()}
     (tmp_path / "keys.json").write_text(json.dumps(keys))
+    from cryptography.hazmat.primitives.serialization import Encoding
+
+    (tmp_path / "roots.pem").write_bytes(b"".join(r.public_bytes(Encoding.PEM) for r in roots))
     base = [str(tmp_path / "r.jsonl"), "--key", env.ledger.public_key.public_bytes_raw().hex(),
             "--approver-keys", str(tmp_path / "keys.json"), "--paypal-certs",
-            str(out / "certs")]
+            str(out / "certs"), "--paypal-webhook-id", wid,
+            "--paypal-roots", str(tmp_path / "roots.pem")]
     assert cli.main(["verify", *base, "--paypal-events", str(out / "paypal-events.jsonl")]) == 0
     assert cli.main(["verify", *base, "--paypal-events", str(out / "bad.jsonl")]) == 2
     assert "does not verify" in capsys.readouterr().out
+
+
+# -- tampering with the offline evidence (security review, Day 2) ----------------------------
+
+
+def exported(env, tmp_path):
+    out = tmp_path / "export"
+    out.mkdir(exist_ok=True)
+    (out / "paypal-events.jsonl").write_text(webhooks.export_events(env.conn))
+    webhooks.export_certs(env.conn, out / "certs")
+    return out
+
+
+def test_recheck_refuses_a_self_signed_leaf(env, tmp_path):
+    """The server swaps PayPal's cert for its own self-signed 'paypal.com' cert and re-signs
+    the events with that key: the chain no longer reaches a trusted root."""
+    import base64
+    import hashlib
+    import zlib
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding
+    from cryptography.hazmat.primitives.serialization import Encoding
+
+    out = exported(env, tmp_path)
+    fake = WebhookSigner(env.funder.signer.webhook_id)  # its own CA, not the trusted one
+    pem = fake.leaf.public_bytes(Encoding.PEM)
+    digest = hashlib.sha256(fake.leaf.public_bytes(Encoding.DER)).hexdigest()
+    (out / "certs" / f"{digest}.pem").write_bytes(pem)
+    lines = []
+    for line in (out / "paypal-events.jsonl").read_text().splitlines():
+        ev = json.loads(line)
+        msg = (f"{ev['transmission_id']}|{ev['transmission_time']}|{fake.webhook_id}|"
+               f"{zlib.crc32(ev['body'].encode()) & 0xFFFFFFFF}").encode()
+        ev["signature"] = base64.b64encode(
+            fake.key.sign(msg, padding.PKCS1v15(), hashes.SHA256())).decode()
+        ev["cert_sha256"] = digest
+        lines.append(json.dumps(ev))
+    (out / "forged.jsonl").write_text("\n".join(lines) + "\n")
+    problems = webhooks.recheck(out / "forged.jsonl", out / "certs", env.ledger.receipts(),
+                                webhook_id=fake.webhook_id, roots=env.funder.signer.roots)
+    assert problems and all("not trusted" in p or "does not match" in p
+                            or "no signed PayPal event" in p for p in problems), problems
+    assert any("not trusted" in p for p in problems)
+
+
+def test_recheck_refuses_a_cert_file_whose_hash_is_not_its_name(env, tmp_path):
+    out = exported(env, tmp_path)
+    (pem_file,) = (out / "certs").glob("*.pem")
+    other = WebhookSigner("X").pem()
+    pem_file.write_bytes(other)  # same file name (the pinned digest), another certificate
+    problems = webhooks.recheck(out / "paypal-events.jsonl", out / "certs",
+                                env.ledger.receipts(), webhook_id=env.funder.signer.webhook_id,
+                                roots=env.funder.signer.roots)
+    assert any("not the pinned certificate" in p for p in problems)
+
+
+def test_recheck_refuses_a_malformed_cert_digest(env, tmp_path):
+    out = exported(env, tmp_path)
+    lines = (out / "paypal-events.jsonl").read_text().splitlines()
+    ev = json.loads(lines[0])
+    ev["cert_sha256"] = "../../etc/passwd"
+    (out / "bad.jsonl").write_text(json.dumps(ev) + "\n")
+    problems = webhooks.recheck(out / "bad.jsonl", out / "certs", env.ledger.receipts(),
+                                webhook_id=env.funder.signer.webhook_id,
+                                roots=env.funder.signer.roots)
+    assert any("unreadable" in p for p in problems)
+
+
+def test_recheck_uses_the_verifiers_webhook_id_not_the_exports(env, tmp_path):
+    out = exported(env, tmp_path)
+    problems = webhooks.recheck(out / "paypal-events.jsonl", out / "certs",
+                                env.ledger.receipts(), webhook_id="ANOTHERWEBHOOK",
+                                roots=env.funder.signer.roots)
+    assert problems and all("does not verify" in p or "no signed PayPal event" in p
+                            for p in problems)
+
+
+def test_a_reused_transmission_id_is_refused(env):
+    signer = env.funder.signer
+    h1, b1 = signer.sign({"id": "WH-1TRANSMIT00001-0001", "event_type": "PAYMENT.CAPTURE."
+                          "COMPLETED", "resource": {"id": "3C000000NOTOURS0X"}},
+                         transmission_id="11111111-2222-3333-4444-555555555555")
+    webhooks.apply(env.conn, env.ledger, env.funder.verifier, h1, b1)
+    h2, b2 = signer.sign({"id": "WH-1TRANSMIT00002-0002", "event_type": "PAYMENT.CAPTURE."
+                          "COMPLETED", "resource": {"id": "3C000000NOTOURS0Y"}},
+                         transmission_id="11111111-2222-3333-4444-555555555555")
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, h2, b2)
+    assert e.value.code == "transmission_replayed"
+
+
+def test_the_receipt_states_what_paypals_api_says_not_the_body(env):
+    """A genuine signature over a body whose amount was changed before signing (CRC32
+    binds the body weakly): the receipt records the API's amount."""
+    from studio import funding as fmod
+
+    f = fmod.of_item(env.conn, "cmp_paid1")[0]
+    event = {"id": "WH-1BODYLIE000001-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
+             "resource": {"id": f.capture_id, "amount": {"currency_code": "PLN",
+                                                         "value": "1.00"},
+                          "custom_id": "f" * 64}}
+    headers, body = env.funder.signer.sign(event)
+    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
+                         lookup=env.funder.lookup)
+    assert out.status == "recorded"
+    d = out.receipt.details
+    assert d["amount_minor"] == f.captured_minor and d["custom_id_sha256"] == f.content_sha256
+    assert d["resource_source"] == "api"
+
+
+def test_without_the_api_nothing_is_attested(env):
+    event = {"id": "WH-1NOAPI00000001-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
+             "resource": {"id": "3C000000NOTOURS0Z"}}
+    headers, body = env.funder.signer.sign(event)
+    out = webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body)
+    assert out.status == "unchecked" and out.receipt is None

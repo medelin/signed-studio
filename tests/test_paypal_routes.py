@@ -141,3 +141,57 @@ def test_a_live_paypal_env_stops_the_start(tmp_path):
 
     with pytest.raises(ConfigError, match="sandbox only"):
         settings(tmp_path, PAYPAL_ADAPTER="mock", PAYPAL_ENV="live")
+
+
+# -- who may see the money (security review, Day 2) -----------------------------------------
+
+
+def test_another_account_cannot_see_or_refund_this_accounts_funding(tmp_path):
+    """A run owned by one account (a brief sent for it): its funding and money moves are
+    404 for another signed-in account, and visible to the owner."""
+    import secrets
+    import time as _time
+
+    from studio.approvals import transaction
+    from studio.receipts import canonical
+    from tests.attack.test_paused_only import RUN, payload
+    from tests.forms import csrf
+
+    pw = "Lp4-" + secrets.token_hex(12)
+    a = create_app(settings(tmp_path, PAYPAL_ADAPTER="mock"))
+    conn, ledger, funder = a.state.conn, a.state.ledger, a.state.funder
+    owner = a.state.accounts.create("ownerola", pw)
+    a.state.accounts.create("strangerbo", pw)
+    with transaction(conn):
+        conn.execute("INSERT INTO briefs (id, run_id, text, created_ts, channel, account_id) "
+                     "VALUES ('brf_owned1', ?, 'mug', ?, 'whatsapp', ?)",
+                     (RUN, _time.time(), owner.id))
+    ledger.append(RUN, agent="producer", kind="model_call")
+    p = payload()
+    from studio.approvals import Pending
+
+    pending = Pending.create("campaign.create", "cmp_owned1", p, ledger=ledger, run_id=RUN)
+    with transaction(conn):
+        pending.save(conn)
+        conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
+                     "VALUES (?, ?, ?, ?)", (pending.id, RUN, canonical(p).decode(), 0.0))
+    step = funder.money.open(run_id=RUN, item_id="cmp_owned1",
+                             content_sha256=pending.content_sha256, currency="PLN",
+                             daily_budget_minor=3000, days=1, fee_pct=funding.Decimal(5))
+
+    def login_as(c, user):
+        r = c.post("/login", data={"username": user, "password": pw, "csrf": csrf(c)})
+        assert r.status_code in (200, 303), r.text
+
+    with new_client(a) as c:
+        login_as(c, "strangerbo")
+        assert c.get("/api/funding/item/cmp_owned1").status_code == 404
+        r = c.post(f"/api/funding/{step.funding.id}/refund", json={"amount_minor": 100})
+        assert r.status_code == 404
+        r = c.post(f"/api/funding/{pending.id}/order", json={})
+        assert r.status_code == 404
+        assert c.get("/api/funding/item/cmp_nosuch1").status_code == 404
+    with new_client(a) as c:
+        login_as(c, "ownerola")
+        r = c.get("/api/funding/item/cmp_owned1")
+        assert r.status_code == 200 and r.json()["fundings"][0]["funding_id"] == step.funding.id

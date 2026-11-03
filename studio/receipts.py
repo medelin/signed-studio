@@ -844,6 +844,10 @@ def _check_paypal_webhook(receipt: Receipt, valid: Mapping[str, _Grant], money: 
     errors = []
     if d.get("verified") not in WEBHOOK_VERIFIED:
         errors.append(f"{receipt.id}: PayPal webhook without a verified signature")
+    if d.get("resource_source") != "api":
+        # the body is bound to PayPal's signature by CRC32 only: what a receipt states as
+        # attested must come from PayPal's API
+        errors.append(f"{receipt.id}: PayPal webhook values not re-read from PayPal's API")
     eid = d.get("event_id")
     if not isinstance(eid, str) or not eid or eid in money.events:
         errors.append(f"{receipt.id}: PayPal webhook event replayed or without an id")

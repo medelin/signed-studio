@@ -81,6 +81,11 @@ class Funder:
     def mock(self) -> bool:
         return self.fake is not None
 
+    def lookup(self, path: str) -> dict[str, Any] | None:
+        """GET a PayPal resource with the studio's own credentials: what a webhook names
+        is attested by PayPal's API, not by the webhook body."""
+        return self.money.client.get(path).json
+
     def flush(self) -> int:
         """Mock mode: deliver the fake's webhook events, signed, through ``apply``."""
         if self.fake is None or self.signer is None:
@@ -89,7 +94,8 @@ class Funder:
         for event in self.fake.drain():
             headers, body = self.signer.sign(event, now=self.clock())
             try:  # the money step already committed: a refused event is logged, not raised
-                webhooks.apply(self.conn, self.ledger, self.verifier, headers, body)
+                webhooks.apply(self.conn, self.ledger, self.verifier, headers, body,
+                               lookup=self.lookup)
                 n += 1
             except webhooks.WebhookRefused as exc:
                 LOG.warning("mock PayPal webhook refused: %s", exc.code)

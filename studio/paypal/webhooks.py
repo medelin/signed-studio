@@ -70,9 +70,9 @@ CREATE TABLE IF NOT EXISTS paypal_events (
     event_type TEXT NOT NULL,
     order_id TEXT NOT NULL DEFAULT '',
     funding_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL CHECK (status IN ('recorded', 'unmatched')),
+    status TEXT NOT NULL CHECK (status IN ('recorded', 'unmatched', 'unchecked')),
     body TEXT NOT NULL,                      -- the raw bytes PayPal signed (owner-only)
-    transmission_id TEXT NOT NULL,
+    transmission_id TEXT NOT NULL UNIQUE,    -- a transmission is accepted once
     transmission_time TEXT NOT NULL,
     signature TEXT NOT NULL,
     cert_sha256 TEXT NOT NULL,
@@ -175,6 +175,12 @@ def check_chain(chain: list[x509.Certificate], roots: Iterable[x509.Certificate]
             child.verify_directly_issued_by(parent)
         except (ValueError, TypeError, InvalidSignature):
             raise WebhookRefused("the certificate chain is broken", "cert_chain") from None
+        try:  # an issuer inside the chain must be a CA
+            ca = parent.extensions.get_extension_for_class(x509.BasicConstraints).value.ca
+        except x509.ExtensionNotFound:
+            ca = False
+        if not ca:
+            raise WebhookRefused("an intermediate certificate is not a CA", "cert_chain")
     last = chain[-1]
     trusted = [r for r in roots if r.subject == last.issuer]
     for root in trusted:
@@ -352,9 +358,41 @@ class Applied:
     receipt: Receipt | None = None
 
 
+# What the event is about: the API path of the resource to re-fetch (the webhook body is
+# only CRC32-bound to PayPal's signature, so its fields are a trigger, never attested).
+RESOURCE_PATHS = {"order_id": "/v2/checkout/orders/{}",
+                  "authorization_id": "/v2/payments/authorizations/{}",
+                  "capture_id": "/v2/payments/captures/{}",
+                  "refund_id": "/v2/payments/refunds/{}"}
+Lookup = Callable[[str], dict[str, Any] | None]
+
+
+def _subject(event_type: str, ids: Mapping[str, str]) -> tuple[str, str] | None:
+    """``(id key, id)`` of the resource an event is about."""
+    if event_type.startswith("CHECKOUT.ORDER."):
+        key = "order_id"
+    elif event_type.startswith("PAYMENT.AUTHORIZATION."):
+        key = "authorization_id"
+    elif event_type == "PAYMENT.CAPTURE.REFUNDED":
+        key = "refund_id"
+    elif event_type.startswith("PAYMENT.CAPTURE."):
+        key = "capture_id"
+    else:
+        return None
+    value = ids.get(key)
+    return (key, value) if value else None
+
+
 def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
-          headers: Mapping[str, str], body: bytes) -> Applied:
-    """Verify, then record the event once. ``WebhookRefused`` for anything untrusted."""
+          headers: Mapping[str, str], body: bytes, *, lookup: Lookup | None = None) -> Applied:
+    """Verify, then record the event once. ``WebhookRefused`` for anything untrusted.
+
+    PayPal's signature covers the body only through CRC32, so the body is a trigger: the
+    resource it names is fetched from PayPal's API (``lookup``, a GET with the studio's
+    own credentials) and only the API's answer (ids, status, amount, ``custom_id``) is
+    recorded. Without a lookup, or when it fails, the event is stored ``unchecked`` and
+    gets no receipt. A transmission id is accepted once (a second event under a used
+    transmission id is refused)."""
     t, cert_digest = verifier.verify(headers, body)
     try:
         event = json.loads(body)
@@ -367,15 +405,34 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
     if not (isinstance(eid, str) and _EVENT_ID.fullmatch(eid) and isinstance(etype, str)
             and re.fullmatch(r"[A-Z][A-Z0-9_.-]{2,80}", etype) and isinstance(resource, dict)):
         raise WebhookRefused("the event lacks an id, a type or a resource", "body")
-    ids = _ids(etype, resource)
     now = verifier.clock()
     with funding.atomic(conn):
         if conn.execute("SELECT 1 FROM paypal_events WHERE event_id = ?",
                         (eid,)).fetchone():
             return Applied("duplicate", eid)
-        f = _find_funding(conn, ids)
+        if conn.execute("SELECT 1 FROM paypal_events WHERE transmission_id = ?",
+                        (t.transmission_id,)).fetchone():
+            raise WebhookRefused("this transmission was already used", "transmission_replayed")
+    subject = _subject(etype, _ids(etype, resource))
+    api: dict[str, Any] | None = None
+    if subject is not None and lookup is not None:
+        try:
+            api = lookup(RESOURCE_PATHS[subject[0]].format(subject[1]))
+        except Exception:  # noqa: BLE001 - the event stays unchecked; nothing is attested
+            api = None
+        if api is not None and api.get("id") != subject[1]:
+            api = None
+    ids = _ids(etype, api) if api is not None else {}
+    status_row = "unchecked"
+    with funding.atomic(conn):
+        if conn.execute("SELECT 1 FROM paypal_events WHERE event_id = ? OR "
+                        "transmission_id = ?", (eid, t.transmission_id)).fetchone():
+            return Applied("duplicate", eid)
+        f = _find_funding(conn, ids) if api is not None else None
         receipt = None
-        if f is not None:
+        if api is not None:
+            status_row = "recorded" if f is not None else "unmatched"
+        if f is not None and api is not None:
             if f.order_id and "order_id" not in ids:
                 ids = {**ids, "order_id": f.order_id}
             details: dict[str, Any] = {
@@ -384,14 +441,14 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
                 "transmission_id_sha256": sha256_hex(t.transmission_id),
                 "transmission_ts": int(t.when()),
                 "signature_sha256": sha256_hex(t.signature), "cert_sha256": cert_digest,
-                "verified": "rsa"}
-            status = resource.get("status")
+                "verified": "rsa", "resource_source": "api"}
+            status = api.get("status")
             if isinstance(status, str) and re.fullmatch(r"[A-Z_]{1,40}", status):
                 details["status"] = status
-            money = _amount(resource)
+            money = _amount(api)
             if money is not None:
                 details["amount_minor"], details["currency"] = money
-            custom = _custom_id(resource)
+            custom = _custom_id(api)
             if custom:
                 details["custom_id_sha256"] = (custom if re.fullmatch(r"[0-9a-f]{64}", custom)
                                                else "0" * 64)  # not an ad hash: mismatch
@@ -402,11 +459,11 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
             "INSERT INTO paypal_events (event_id, event_type, order_id, funding_id, status, "
             "body, transmission_id, transmission_time, signature, cert_sha256, webhook_id, "
             "receipt_id, received_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (eid, etype, ids.get("order_id", ""), f.id if f else "",
-             "recorded" if f else "unmatched", body.decode("utf-8", "replace"),
-             t.transmission_id, t.transmission_time, t.signature, cert_digest,
-             verifier.webhook_id, receipt.id if receipt else "", now))
-    return Applied("recorded" if f else "unmatched", eid, receipt)
+            (eid, etype, ids.get("order_id", ""), f.id if f else "", status_row,
+             body.decode("utf-8", "replace"), t.transmission_id, t.transmission_time,
+             t.signature, cert_digest, verifier.webhook_id, receipt.id if receipt else "",
+             now))
+    return Applied(status_row, eid, receipt)
 
 
 # -- the owner-only export and the offline re-check ------------------------------------------
@@ -432,10 +489,18 @@ def export_certs(conn: sqlite3.Connection, out: Path) -> int:
     return n
 
 
-def recheck(events_path: Path, certs_dir: Path, receipts: Iterable[Receipt]) -> list[str]:
-    """Offline: every exported event's PayPal signature verifies with its pinned cert, and
-    every ``paypal.webhook`` receipt has exactly one such event with the same body hash,
-    cert and transmission."""
+_DIGEST = re.compile(r"[0-9a-f]{64}")
+
+
+def recheck(events_path: Path, certs_dir: Path, receipts: Iterable[Receipt], *,
+            webhook_id: str, roots: list[x509.Certificate] | None = None) -> list[str]:
+    """Offline: every exported event verifies with PayPal's key under the verifier's own
+    ``webhook_id`` (never the export's), from a pinned cert whose leaf DER hash is its file
+    name, the event's and the receipt's ``cert_sha256``, and whose chain reaches a trusted
+    root (``roots``, default the ``certifi`` bundle) as of the transmission time, with a
+    ``paypal.com`` leaf and CA-only intermediates; every ``paypal.webhook`` receipt has
+    exactly one such event with the same body hash and transmission."""
+    anchors = roots if roots is not None else load_roots()
     by_body = {r.details.get("body_sha256"): r for r in receipts
                if r.kind == PAYPAL_WEBHOOK_KIND}
     errors: list[str] = []
@@ -448,30 +513,41 @@ def recheck(events_path: Path, certs_dir: Path, receipts: Iterable[Receipt]) -> 
             body = ev["body"].encode()
             t = Transmission(ev["transmission_id"], ev["transmission_time"], ev["signature"],
                              "https://api.paypal.com/", AUTH_ALGO)
-            pem = (certs_dir / f"{ev['cert_sha256']}.pem").read_bytes()
-        except (ValueError, KeyError, OSError, TypeError) as exc:
+            digest = ev["cert_sha256"]
+            if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
+                raise ValueError("cert_sha256")
+            chain = x509.load_pem_x509_certificates((certs_dir / f"{digest}.pem").read_bytes())
+        except (ValueError, KeyError, OSError, TypeError, AttributeError) as exc:
             errors.append(f"event line {n}: unreadable ({type(exc).__name__})")
             continue
-        leaf = x509.load_pem_x509_certificates(pem)[0]
+        leaf_digest = hashlib.sha256(chain[0].public_bytes(Encoding.DER)).hexdigest()
+        if leaf_digest != digest:
+            errors.append(f"event line {n}: the cert file is not the pinned certificate")
+            continue
+        try:
+            leaf = check_chain(chain, anchors, t.when())
+        except WebhookRefused as exc:
+            errors.append(f"event line {n}: PayPal's certificate is not trusted ({exc.code})")
+            continue
         key = leaf.public_key()
         try:
             assert isinstance(key, rsa.RSAPublicKey)
-            key.verify(base64.b64decode(t.signature), message(t, ev["webhook_id"], body),
+            key.verify(base64.b64decode(t.signature), message(t, webhook_id, body),
                        padding.PKCS1v15(), hashes.SHA256())
         except (InvalidSignature, AssertionError, ValueError):
             errors.append(f"event line {n}: PayPal's signature does not verify")
             continue
-        digest = hashlib.sha256(body).hexdigest()
-        r = by_body.get(digest)
+        body_hash = hashlib.sha256(body).hexdigest()
+        r = by_body.get(body_hash)
         if r is None:
             errors.append(f"event line {n}: no paypal.webhook receipt for this body")
             continue
-        seen.add(digest)
-        if r.details.get("cert_sha256") != ev["cert_sha256"] or r.details.get(
+        seen.add(body_hash)
+        if r.details.get("cert_sha256") != digest or r.details.get(
                 "transmission_id_sha256") != sha256_hex(t.transmission_id) or r.details.get(
                 "signature_sha256") != sha256_hex(t.signature):
             errors.append(f"{r.id}: the receipt does not match PayPal's transmission")
-    for body_hash, r in by_body.items():
-        if body_hash not in seen:
+    for recorded, r in by_body.items():
+        if recorded not in seen:
             errors.append(f"{r.id}: paypal.webhook receipt with no signed PayPal event")
     return errors

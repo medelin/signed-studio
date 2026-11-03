@@ -193,9 +193,17 @@ class FakePayPal:
             return httpx.Response(200, json=self._order_json(self.orders[m[1]]))
         m = re.fullmatch(r"/v2/payments/(authorizations|captures)/([A-Z0-9]+)", path)
         if m and m[1] == "authorizations" and m[2] in self.auths:
-            return httpx.Response(200, json=self._auth_json(self.auths[m[2]]))
+            auth = self.auths[m[2]]
+            return httpx.Response(200, json={**self._auth_json(auth), "supplementary_data": {
+                "related_ids": {"order_id": auth.order_id}}})
         if m and m[1] == "captures" and m[2] in self.captures:
-            return httpx.Response(200, json=self._capture_json(self.captures[m[2]]))
+            cap = self.captures[m[2]]
+            return httpx.Response(200, json={**self._capture_json(cap), "supplementary_data": {
+                "related_ids": {"order_id": self.auths[cap.authorization_id].order_id,
+                                "authorization_id": cap.authorization_id}}})
+        m = re.fullmatch(r"/v2/payments/refunds/([A-Z0-9]+)", path)
+        if m and m[1] in self.refunds:
+            return httpx.Response(200, json=self.refunds[m[1]])
         return _err(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID")
 
     def _post(self, path: str, body: dict[str, Any]) -> httpx.Response:
@@ -320,12 +328,11 @@ class FakePayPal:
         refund = {"id": rid, "status": "COMPLETED", "amount": _fmt(minor, currency),
                   "invoice_id": body.get("invoice_id", ""), "custom_id": cap.custom_id,
                   "links": [{"href": f"https://api.sandbox.paypal.com/v2/payments/refunds/{rid}",
-                             "rel": "self", "method": "GET"}]}
+                             "rel": "self", "method": "GET"},
+                            {"href": "https://api.sandbox.paypal.com/v2/payments/captures/"
+                                     f"{cap.id}", "rel": "up", "method": "GET"}]}
         self.refunds[rid] = refund
-        self._emit("PAYMENT.CAPTURE.REFUNDED", {
-            **refund, "links": [*refund["links"], {
-                "href": f"https://api.sandbox.paypal.com/v2/payments/captures/{cap.id}",
-                "rel": "up", "method": "GET"}]})
+        self._emit("PAYMENT.CAPTURE.REFUNDED", dict(refund))
         return httpx.Response(201, json=refund)
 
     # -- representations -----------------------------------------------------------------
