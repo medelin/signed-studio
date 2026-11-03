@@ -97,7 +97,7 @@ creates the campaign PAUSED → **Community** drafts a reply to a comment → si
 
 ```bash
 make install       # Python 3.12+, uv
-make demo-replay   # the whole loop offline from a recorded run, then studio verify (10–15 s)
+make demo-replay   # the whole loop offline from a recorded run, then studio verify (about 30 s)
 make demo          # the UI at http://localhost:8000/studio (MODEL_API_KEY in .env for live calls)
 ```
 
