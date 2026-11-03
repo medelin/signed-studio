@@ -234,3 +234,116 @@ the same two orders.
   each export line with exactly one `paypal.webhook` receipt on (transmission, body
   hash), never by body alone. Unpaired items on either side fail, so a tampered receipt
   cannot hide behind a valid one with the same body.
+
+## 2026-11-03 (Tue, night): Day 3, agentic commerce (Vault v3 and signed spending mandates)
+
+The owner's own assistant can now pay for campaigns from the owner's saved PayPal, but
+only within a spending mandate the owner signed, and `studio verify` proves it stayed
+within it.
+
+**Vault v3** (`studio/paypal/vault.py`)
+- Save PayPal on `/account`, with the buyer present. The studio creates a setup token
+  (`usage_type: MERCHANT`, `customer_type: CONSUMER`). The buyer approves it at PayPal's
+  `approve` link, and on return the studio exchanges it for a payment token
+  (`POST /v3/vault/payment-tokens`).
+- Stored: the studio's reference (`vlt_…`), the account, the setup token id, PayPal's
+  vault id and its SHA-256. No payer data is stored: PayPal's answers carry the buyer's
+  e-mail and payer id, and both are dropped.
+- The vault id never enters a receipt, a prompt or an API answer; receipts carry its
+  SHA-256.
+- Removing a saved PayPal marks it deleted locally first (no charge can use it from that
+  moment), then calls `DELETE /v3/vault/payment-tokens/{id}`.
+- In mock mode the fake PayPal implements the same setup → payment-token → charge →
+  delete flow.
+
+**The mandate signs the money.**
+- A mandate body may now carry a closed `funding` block (`mandate-funding/v1`):
+  `vault_sha256`, `max_charge_minor` (per campaign, fee included), `funding_cap_minor`
+  (per period), `period_days`, `period_start` and `kinds` (campaign kinds: `link`,
+  `message`, `lead_form`).
+- It is part of the content the owner signs on the signing screen, which lists it in
+  plain words.
+- Creating the mandate refuses a saved PayPal that is not the account's own and active, a
+  backdated period, and a per-charge cap above the period cap.
+
+**Charges under the mandate** (`studio.mandates.execute`, `Funder.charge`)
+- With PayPal on, a token's run that fits a mandate is paid from the saved PayPal. One
+  transaction consumes the approval, declares the charge (`charge/v1`) in the approval
+  receipt, and reserves it in `mandate_charges`.
+- The reservation counts charges still in flight against the period cap, so two
+  concurrent runs cannot pass the cap together.
+- PayPal is then sent an `AUTHORIZE` order with `payment_source.paypal.vault_id` and
+  `custom_id` = the ad's hash. The money is held, and only then is the campaign created
+  PAUSED. The capture still needs the owner's activation signature.
+- The temporary Day-2 `funding_required` refusal of mandate campaigns is gone. A mandate
+  without a `funding` block now gets the explicit reason `no_funding`, and the owner pays
+  and signs.
+- Refusals reach the assistant as reasons: `max_charge`, `funding_cap`, `kind`, `vault`,
+  `charge_currency`, `period`, plus the base reasons (`revoked`, `expired`, …).
+- Fail closed:
+  - On a definite PayPal refusal, the reserved amount is freed and the run is reopened
+    for the owner with a fresh approval (the pay-and-sign path).
+  - On an unknown outcome (a timeout or a 5xx), the amount stays reserved, and only the
+    same request id can settle it.
+  - If the mandate was revoked, or the saved PayPal removed, while PayPal was answering,
+    the hold is voided at once.
+  - A campaign that is then not created has its hold voided.
+- `Funder.for_create` accepts a mandate's held money only for exactly its approval, item,
+  ad hash and amount. A buyer's signed block can never point at a vault charge.
+
+**`studio verify` P-V5** (`receipts.verify`)
+- A `paypal.vault_charge` must name a by-mandate approval that declared it, under an
+  owner-signed `mandate.grant` with a `funding` block.
+- The charge must be under the same mandate and the same saved PayPal (SHA-256), for the
+  declared amount (at most the per-charge cap), with PayPal's `custom_id` equal to the
+  approved ad.
+- Cumulative charges of one period may not exceed the cap, and one PayPal order may be
+  charged only once in the log.
+- A charge recorded after the mandate's revocation must be voided and never captured.
+- P-V1 (capture) and P-V3 (webhooks) accept vault charges as the funding of their order.
+
+**Attack classes 10 to 12** (`tests/attack/test_paypal_vault.py`). Each class is refused
+at run time (nothing reaches PayPal, or the hold is voided) and caught offline when the
+server re-signs a forged log with its own key:
+- 10: a charge over the per-charge cap, over the period cap, over what the approval
+  declared, or never declared;
+- 11: an approval and charge forged after the revocation, or a charge landing after it
+  and left held;
+- 12: a charge relabelled to another mandate, a charge of another saved PayPal, or one
+  PayPal order counted under a second mandate.
+
+**MCP and API: `run_brief`.**
+- A new assistant operation, exposed as an MCP tool and as
+  `POST /api/v1/briefs/{brief_id}/run`.
+- It runs a confirmed brief, waits up to `wait_s` and returns one of these outcomes:
+  - `mandate_charge`, with the receipt of the vault charge (receipt id and hash, order,
+    authorization, amount) and the PAUSED campaign;
+  - `pay_and_sign`, with the `pay_and_sign_url` for the owner and the mandate's reasons;
+  - `running`, while the run is still going.
+- `run_status` has the same `payment` section.
+
+**Treasurer (light)** (`studio/agents/treasurer.py`)
+- Muse Spark 1.3 with strict JSON and no tools proposes a budget split and explains a
+  funding's reconciliation. The prompt holds only code's numbers.
+- Code recomputes everything: a split that does not add up or breaks the cap, figures
+  that differ from `funding.reconcile`, or an amount in the text that code did not
+  compute is replaced by code's version, with the reasons.
+- Route: `POST /api/funding/{id}/treasurer` (owner only).
+- The test fixture is hand-written and labelled synthetic: no Model API key is configured
+  for this edition yet.
+
+**Deploy (prepared, not done).**
+- `deploy/muse-pay.service` runs on 127.0.0.1:8100 with its own user, data and env.
+- `deploy/pay-install.sh` installs the app only: it never writes a web-server config and
+  is not `remote-install.sh`, which replaces Caddy's config.
+- `deploy/apache/…` and `deploy/nginx/…` hold the proxy sites, and
+  `deploy/PAY-DEPLOY.md` covers both targets (an Apache shared host, a fresh VM).
+
+**Docs.** [PAYPAL.md](../PAYPAL.md): how it works, the sandbox buyer flow, the verify
+rules and the honest "significant update" narrative. All PayPal work is dated 3 Nov 2026
+onwards. The base began on 27 Oct 2026, also inside the submission period.
+
+**Not yet.**
+- The Vault sandbox cassette needs the sandbox buyer to approve saving PayPal in a
+  browser (`scripts/paypal_record_vault.py --start` prints the URL, `--finish` records).
+- Webhook registration, deploy, the video and the Devpost text are Day 4.

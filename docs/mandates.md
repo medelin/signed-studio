@@ -56,6 +56,23 @@ runs as after a human signature, `check_paused` first. If it does not fit, nothi
 changes: the run waits for the owner, and `GET /api/v1/runs/{id}` returns
 `"mandate": {"fits": false, "reasons": [...]}` next to the `sign_url`.
 
+## Paying from the saved PayPal (PayPal edition)
+
+With PayPal on, a mandate may also sign a `funding` block (`mandate-funding/v1`): the
+SHA-256 of the owner's saved PayPal (Vault v3, saved on `/account` with the buyer
+present), `max_charge_minor` (per campaign, the studio fee included), `funding_cap_minor`
+for each period of `period_days` from `period_start`, and the campaign `kinds` it pays
+for. A run that fits is then paid from the saved PayPal with no buyer present: the
+approval receipt declares the `charge` (amount, currency, period, saved PayPal), the
+amount is reserved against the period cap inside the same transaction, PayPal holds the
+money (an `AUTHORIZE` order with `vault_id`, `custom_id` = the ad's hash), and only then is
+the campaign created PAUSED. Over a cap, for another kind, with the saved PayPal removed
+or without a `funding` block, nothing reaches PayPal and the run waits for the owner with
+the reasons (`max_charge`, `funding_cap`, `kind`, `vault`, `no_funding`). A failed charge
+reopens the run for the owner; a revocation that lands while PayPal answers voids the
+hold. Capturing still needs the owner's activation signature. `studio verify` checks it
+as P-V5 ([PAYPAL.md](../PAYPAL.md)).
+
 ## What still needs a tap
 
 Everything else: turning a campaign on, budget and status changes, replacing a creative,
