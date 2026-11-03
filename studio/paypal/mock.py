@@ -105,6 +105,8 @@ class FakePayPal:
         self.idempotent: dict[str, tuple[str, int, bytes]] = {}  # key -> (path, status, body)
         self.calls: list[tuple[str, str]] = []  # (method, path) of every request
         self.approve_on_create = approve_on_create
+        # webhook events PayPal would send, in order; ``drain`` hands them out
+        self.outbox: list[dict[str, Any]] = []
         self._fail: list[int] = []
 
     def transport(self) -> httpx.MockTransport:
@@ -123,6 +125,21 @@ class FakePayPal:
 
     def expire_tokens(self) -> None:
         self.tokens.clear()
+
+    def drain(self) -> list[dict[str, Any]]:
+        """The webhook events emitted since the last drain."""
+        with self._lock:
+            out, self.outbox = self.outbox, []
+        return out
+
+    def _emit(self, event_type: str, resource: dict[str, Any]) -> None:
+        self._n += 1
+        self.outbox.append({"id": f"WH-{self._n:06d}MOCK{(self._n * 7919) % 10**6:06d}"
+                                  f"-{self._n:04d}EV",
+                            "event_version": "1.0", "create_time": "2026-11-03T12:00:00Z",
+                            "resource_type": event_type.split(".")[1].lower(),
+                            "event_type": event_type, "summary": event_type,
+                            "resource": resource})
 
     # -- dispatch ----------------------------------------------------------------------
 
@@ -237,6 +254,9 @@ class FakePayPal:
                      unit.get("invoice_id", ""))
         self.auths[auth.id] = auth
         order.status, order.authorization_id = "COMPLETED", auth.id
+        self._emit("PAYMENT.AUTHORIZATION.CREATED", {
+            **self._auth_json(auth),
+            "supplementary_data": {"related_ids": {"order_id": order.id}}})
         return httpx.Response(201, json=self._order_json(order))
 
     # -- authorizations ------------------------------------------------------------------
@@ -257,6 +277,9 @@ class FakePayPal:
         auth.capture_ids.append(cap.id)
         final = body.get("final_capture", False) or auth.captured_minor == auth.amount_minor
         auth.status = "CAPTURED" if final else "PARTIALLY_CAPTURED"
+        self._emit("PAYMENT.CAPTURE.COMPLETED", {
+            **self._capture_json(cap), "supplementary_data": {"related_ids": {
+                "order_id": auth.order_id, "authorization_id": auth.id}}})
         return httpx.Response(201, json=self._capture_json(cap))
 
     def _void(self, auth: _Auth, body: dict[str, Any]) -> httpx.Response:
@@ -265,6 +288,9 @@ class FakePayPal:
         if auth.status != "CREATED":
             return _err(422, "UNPROCESSABLE_ENTITY", "CANNOT_BE_VOIDED")
         auth.status = "VOIDED"
+        self._emit("PAYMENT.AUTHORIZATION.VOIDED", {
+            **self._auth_json(auth),
+            "supplementary_data": {"related_ids": {"order_id": auth.order_id}}})
         return httpx.Response(200, json=self._auth_json(auth))
 
     def _reauthorize(self, auth: _Auth, body: dict[str, Any]) -> httpx.Response:
@@ -296,6 +322,10 @@ class FakePayPal:
                   "links": [{"href": f"https://api.sandbox.paypal.com/v2/payments/refunds/{rid}",
                              "rel": "self", "method": "GET"}]}
         self.refunds[rid] = refund
+        self._emit("PAYMENT.CAPTURE.REFUNDED", {
+            **refund, "links": [*refund["links"], {
+                "href": f"https://api.sandbox.paypal.com/v2/payments/captures/{cap.id}",
+                "rel": "up", "method": "GET"}]})
         return httpx.Response(201, json=refund)
 
     # -- representations -----------------------------------------------------------------
@@ -348,3 +378,83 @@ def _err(status: int, name: str, issue: str) -> httpx.Response:
     if issue:
         body["details"] = [{"issue": issue, "description": issue.replace("_", " ").lower()}]
     return httpx.Response(status, json=body)
+
+
+# -- signed webhooks ------------------------------------------------------------------------
+
+MOCK_CERT_URL = "https://api.sandbox.paypal.com/v1/notifications/certs/CERT-mock-studio"
+
+
+class WebhookSigner:
+    """Signs webhook events the way PayPal does, with a test CA made at start (nothing is
+    stored): an RSA leaf for ``messageverificationcerts.sandbox.paypal.com`` issued by a
+    "Mock PayPal Root". ``roots`` and ``fetch`` plug into ``webhooks.Verifier``, so the
+    mock and the tests go through the same verification as real PayPal events."""
+
+    def __init__(self, webhook_id: str = "MOCKWEBHOOK0001", *,
+                 now: float | None = None) -> None:
+        import datetime as dt
+        import time as _time
+
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID
+
+        self.webhook_id = webhook_id
+        start = dt.datetime.fromtimestamp((now or _time.time()) - 86400, dt.UTC)
+        end = start + dt.timedelta(days=400)
+        self._ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Mock PayPal Root")])
+        self.ca = (x509.CertificateBuilder().subject_name(ca_name).issuer_name(ca_name)
+                   .public_key(self._ca_key.public_key()).serial_number(1)
+                   .not_valid_before(start).not_valid_after(end)
+                   .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+                   .sign(self._ca_key, hashes.SHA256()))
+        self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        leaf_name = x509.Name([x509.NameAttribute(
+            NameOID.COMMON_NAME, "messageverificationcerts.sandbox.paypal.com")])
+        self.leaf = (x509.CertificateBuilder().subject_name(leaf_name).issuer_name(ca_name)
+                     .public_key(self.key.public_key()).serial_number(2)
+                     .not_valid_before(start).not_valid_after(end)
+                     .sign(self._ca_key, hashes.SHA256()))
+
+    @property
+    def roots(self) -> list[Any]:
+        return [self.ca]
+
+    def pem(self) -> bytes:
+        from cryptography.hazmat.primitives.serialization import Encoding
+
+        return self.leaf.public_bytes(Encoding.PEM)
+
+    def fetch(self, url: str) -> bytes:
+        if url != MOCK_CERT_URL:
+            raise ValueError("the mock serves only its own certificate")
+        return self.pem()
+
+    def sign(self, event: dict[str, Any], *, now: float | None = None,
+             transmission_id: str | None = None,
+             key: Any = None) -> tuple[dict[str, str], bytes]:
+        """``(headers, body)`` as PayPal would POST them. ``key`` signs with another key
+        (a forgery, for tests)."""
+        import datetime as dt
+        import time as _time
+        import uuid
+        import zlib
+
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import padding
+
+        body = json.dumps(event, separators=(",", ":")).encode()
+        when = dt.datetime.fromtimestamp(now or _time.time(), dt.UTC)
+        stamp = when.strftime("%Y-%m-%dT%H:%M:%SZ")
+        tid = transmission_id or str(uuid.uuid4())
+        msg = f"{tid}|{stamp}|{self.webhook_id}|{zlib.crc32(body) & 0xFFFFFFFF}".encode()
+        sig = (key or self.key).sign(msg, padding.PKCS1v15(), hashes.SHA256())
+        import base64
+
+        return ({"paypal-transmission-id": tid, "paypal-transmission-time": stamp,
+                 "paypal-transmission-sig": base64.b64encode(sig).decode(),
+                 "paypal-cert-url": MOCK_CERT_URL, "paypal-auth-algo": "SHA256withRSA",
+                 "content-type": "application/json"}, body)
