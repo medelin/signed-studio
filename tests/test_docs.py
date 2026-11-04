@@ -21,10 +21,10 @@ def test_readme_lists_every_model_id_used_in_code(model):
 
 
 def test_readme_has_the_judge_sections():
-    for needle in ("https://muse.udun.eu", "built during the event (27 Oct – 4 Nov 2026)",
-                   "make demo-replay", "docs/eval.md", "docs/architecture.md",
-                   "docs/demo-script.md", "docs/SECURITY.md", "docs/build-log/",
-                   "Muse Code", "studio verify"):
+    for needle in ("https://pay.udun.eu", "base-meta-final", "PayPal sandbox only",
+                   "PAYPAL.md", "docs/eval.md", "docs/architecture.md",
+                   "docs/BUILD-LOG.md", "docs/SECURITY.md", "studio verify",
+                   "Honest status"):
         assert needle in README, needle
 
 

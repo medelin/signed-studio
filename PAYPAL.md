@@ -191,14 +191,13 @@ Each class is refused at run time and caught offline.
 - No model is given PayPal credentials or a PayPal write tool. Money moves only through
   code paths that check an owner's signature or a mandate the owner signed.
 
-## Honest limits (as of 3 Nov 2026)
+## Honest limits (as of 4 Nov 2026)
 
 - The treasurer's test fixture is hand-written and labelled synthetic
-  (`fixtures/cassettes/treasurer.SYNTHETIC.json`). It will be re-recorded once the Model
-  API key for judging is confirmed.
-- The Vault sandbox cassette (`fixtures/cassettes/paypal/sandbox_vault.json`) needs the
-  sandbox buyer to approve saving PayPal in a browser. The recorder stops at that step
-  (`scripts/paypal_record_vault.py --start`). Until it is recorded, the vault flow is
-  tested against the fake PayPal, which follows PayPal's documented shapes.
-- The webhook is not registered with PayPal yet, and the hosted demo is not deployed yet
-  (see [deploy/PAY-DEPLOY.md](deploy/PAY-DEPLOY.md)).
+  (`fixtures/cassettes/treasurer.SYNTHETIC.json`).
+- The Vault flow is recorded against the real sandbox
+  (`fixtures/cassettes/paypal/sandbox_vault.json`: a buyer-approved setup token, a charge
+  without the buyer, a void).
+- The hosted demo runs at https://pay.udun.eu with real PayPal sandbox calls and a
+  registered webhook. Campaign creation there uses the mock Meta adapter, so no real ad is
+  created.
