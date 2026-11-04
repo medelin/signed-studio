@@ -19,7 +19,7 @@ a browser, so this runs in two halves:
 The OAuth exchange is never recorded. Answers are scrubbed like ``paypal_record.py``:
 payer, shipping and payment-source identities, the payee, customer ids and debug ids are
 placeholders; the vault token id (deleted at the end anyway) is replaced everywhere by
-``VAULT_ID``; the file is checked for the client id, the secret and the token before it
+``VAULT-ID``; the file is checked for the client id, the secret and the token before it
 is written.
 """
 
@@ -49,7 +49,7 @@ from studio.settings import read_env_file  # noqa: E402
 
 OUT = ROOT / "fixtures" / "cassettes" / "paypal" / "sandbox_vault.json"
 STATE = Path.home() / ".local" / "state" / "muse-pay" / "vault-record.json"
-VAULT_ID = "VAULT_ID"
+VAULT_ID = "VAULT-ID"  # a valid PayPal path id, so the replay accepts it
 RETURN = "https://example.com/account/paypal/vault/return"
 CANCEL = "https://example.com/account?paypal=cancelled"
 

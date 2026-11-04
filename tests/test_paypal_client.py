@@ -370,7 +370,8 @@ def test_paypal_cassettes_hold_no_credentials():
         assert "client_secret" not in text.lower()
         for item in data["interactions"]:
             assert "headers" not in item["request"]  # never an Authorization header
-            token = item["response"]["json"].get("access_token")
+            # a void answers 204 with no body, so not every response carries json
+            token = (item["response"].get("json") or {}).get("access_token")
             assert token is None or "synthetic" in token, path.name
         if data["_provenance"] == "recorded":
             assert "access_token" not in text and '"payer"' not in text

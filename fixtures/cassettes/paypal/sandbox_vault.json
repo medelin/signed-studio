@@ -1,0 +1,410 @@
+{
+ "_provenance": "recorded",
+ "_note": "Recorded from api-m.sandbox.paypal.com by scripts/paypal_record_vault.py: a Vault v3 setup token approved by the sandbox buyer in a browser, exchanged for a vault token, an AUTHORIZE order paid from it with no buyer present, its authorization voided, and the vault token deleted (sandbox money only). OAuth not recorded; payer, payment_source identities, payee, customer and debug ids replaced by placeholders; the vault token id replaced by VAULT-ID.",
+ "interactions": [
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v3/vault/setup-tokens",
+    "json": {
+     "payment_source": {
+      "paypal": {
+       "description": "Signed Studio: ad budgets your assistant may pay within the mandate you sign",
+       "usage_pattern": "IMMEDIATE",
+       "usage_type": "MERCHANT",
+       "customer_type": "CONSUMER",
+       "permit_multiple_payment_tokens": false,
+       "experience_context": {
+        "brand_name": "Signed Studio",
+        "shipping_preference": "NO_SHIPPING",
+        "return_url": "https://example.com/account/paypal/vault/return",
+        "cancel_url": "https://example.com/account?paypal=cancelled"
+       }
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 201,
+    "json": {
+     "id": "0NX85113M4926491K",
+     "customer": {
+      "id": "SCRUBBEDCUSTOMER"
+     },
+     "status": "PAYER_ACTION_REQUIRED",
+     "payment_source": {
+      "paypal": {
+       "email_address": "sb-buyer@personal.example.com",
+       "account_id": "SANDBOXBUYER01",
+       "account_status": "VERIFIED",
+       "name": {
+        "given_name": "Sandbox",
+        "surname": "Buyer"
+       },
+       "address": {
+        "country_code": "PL"
+       }
+      }
+     },
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v3/vault/setup-tokens/0NX85113M4926491K",
+       "rel": "self",
+       "method": "GET",
+       "encType": "application/json"
+      },
+      {
+       "href": "https://www.sandbox.paypal.com/agreements/approve?approval_session_id=0NX85113M4926491K",
+       "rel": "approve",
+       "method": "GET",
+       "encType": "application/json"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "request": {
+    "method": "GET",
+    "path": "/v3/vault/setup-tokens/0NX85113M4926491K"
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "id": "0NX85113M4926491K",
+     "customer": {
+      "id": "SCRUBBEDCUSTOMER"
+     },
+     "status": "APPROVED",
+     "payment_source": {
+      "paypal": {
+       "email_address": "sb-buyer@personal.example.com",
+       "account_id": "SANDBOXBUYER01",
+       "account_status": "VERIFIED",
+       "name": {
+        "given_name": "Sandbox",
+        "surname": "Buyer"
+       },
+       "address": {
+        "country_code": "PL"
+       }
+      }
+     },
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v3/vault/setup-tokens/0NX85113M4926491K",
+       "rel": "self",
+       "method": "GET",
+       "encType": "application/json"
+      },
+      {
+       "href": "https://api.sandbox.paypal.com/v3/vault/payment-tokens",
+       "rel": "self",
+       "method": "POST",
+       "encType": "application/json"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v3/vault/payment-tokens",
+    "json": {
+     "payment_source": {
+      "token": {
+       "id": "0NX85113M4926491K",
+       "type": "SETUP_TOKEN"
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 201,
+    "json": {
+     "id": "VAULT-ID",
+     "customer": {
+      "id": "SCRUBBEDCUSTOMER"
+     },
+     "payment_source": {
+      "paypal": {
+       "email_address": "sb-buyer@personal.example.com",
+       "account_id": "SANDBOXBUYER01",
+       "account_status": "VERIFIED",
+       "name": {
+        "given_name": "Sandbox",
+        "surname": "Buyer"
+       },
+       "address": {
+        "country_code": "PL"
+       }
+      }
+     },
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v3/vault/payment-tokens/VAULT-ID",
+       "rel": "self",
+       "method": "GET",
+       "encType": "application/json"
+      },
+      {
+       "href": "https://api.sandbox.paypal.com/v3/vault/payment-tokens/VAULT-ID",
+       "rel": "delete",
+       "method": "DELETE",
+       "encType": "application/json"
+      }
+     ],
+     "create_time": "2026-11-04T08:17:11.200Z",
+     "update_time": "2026-11-04T08:17:11.200Z"
+    }
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v2/checkout/orders",
+    "json": {
+     "intent": "AUTHORIZE",
+     "purchase_units": [
+      {
+       "reference_id": "rec_8871377fce34",
+       "custom_id": "9d5f3dba1f031cf66245a1f109c9e956db10751be9aef53cba0263b2565950f0",
+       "invoice_id": "fund_vrec8871377fce34",
+       "description": "Ad budget and studio fee (Signed Studio)",
+       "soft_descriptor": "SIGNEDSTUDIO",
+       "amount": {
+        "currency_code": "GBP",
+        "value": "47.25",
+        "breakdown": {
+         "item_total": {
+          "currency_code": "GBP",
+          "value": "47.25"
+         }
+        }
+       },
+       "items": [
+        {
+         "name": "Ad budget",
+         "quantity": "1",
+         "category": "DIGITAL_GOODS",
+         "description": "3 day(s) of ads",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "45.00"
+         }
+        },
+        {
+         "name": "Studio fee",
+         "quantity": "1",
+         "category": "DIGITAL_GOODS",
+         "description": "5 % of the ad budget",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "2.25"
+         }
+        }
+       ]
+      }
+     ],
+     "payment_source": {
+      "paypal": {
+       "vault_id": "VAULT-ID"
+      }
+     }
+    }
+   },
+   "response": {
+    "status": 201,
+    "json": {
+     "id": "0RS338633H1870220",
+     "intent": "AUTHORIZE",
+     "status": "COMPLETED",
+     "payment_source": {
+      "paypal": {
+       "email_address": "sb-buyer@personal.example.com",
+       "account_id": "SANDBOXBUYER01",
+       "account_status": "VERIFIED",
+       "name": {
+        "given_name": "Sandbox",
+        "surname": "Buyer"
+       },
+       "address": {
+        "country_code": "PL"
+       }
+      }
+     },
+     "purchase_units": [
+      {
+       "reference_id": "rec_8871377fce34",
+       "amount": {
+        "currency_code": "GBP",
+        "value": "47.25",
+        "breakdown": {
+         "item_total": {
+          "currency_code": "GBP",
+          "value": "47.25"
+         },
+         "handling": {
+          "currency_code": "GBP",
+          "value": "0.00"
+         },
+         "insurance": {
+          "currency_code": "GBP",
+          "value": "0.00"
+         },
+         "shipping_discount": {
+          "currency_code": "GBP",
+          "value": "0.00"
+         }
+        }
+       },
+       "payee": {
+        "email_address": "sb-business@business.example.com",
+        "merchant_id": "SANDBOXMERCH01"
+       },
+       "description": "Ad budget and studio fee (Signed Studio)",
+       "custom_id": "9d5f3dba1f031cf66245a1f109c9e956db10751be9aef53cba0263b2565950f0",
+       "invoice_id": "fund_vrec8871377fce34",
+       "items": [
+        {
+         "name": "Ad budget",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "45.00"
+         },
+         "tax": {
+          "currency_code": "GBP",
+          "value": "0.00"
+         },
+         "quantity": "1",
+         "description": "3 day(s) of ads",
+         "category": "DIGITAL_GOODS"
+        },
+        {
+         "name": "Studio fee",
+         "unit_amount": {
+          "currency_code": "GBP",
+          "value": "2.25"
+         },
+         "tax": {
+          "currency_code": "GBP",
+          "value": "0.00"
+         },
+         "quantity": "1",
+         "description": "5 % of the ad budget",
+         "category": "DIGITAL_GOODS"
+        }
+       ],
+       "payments": {
+        "authorizations": [
+         {
+          "status": "CREATED",
+          "id": "2B009559GR391000T",
+          "amount": {
+           "currency_code": "GBP",
+           "value": "47.25"
+          },
+          "invoice_id": "fund_vrec8871377fce34",
+          "custom_id": "9d5f3dba1f031cf66245a1f109c9e956db10751be9aef53cba0263b2565950f0",
+          "seller_protection": {
+           "status": "ELIGIBLE",
+           "dispute_categories": [
+            "ITEM_NOT_RECEIVED",
+            "UNAUTHORIZED_TRANSACTION"
+           ]
+          },
+          "expiration_time": "2026-12-03T08:17:12Z",
+          "links": [
+           {
+            "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2B009559GR391000T",
+            "rel": "self",
+            "method": "GET"
+           },
+           {
+            "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2B009559GR391000T/capture",
+            "rel": "capture",
+            "method": "POST"
+           },
+           {
+            "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2B009559GR391000T/void",
+            "rel": "void",
+            "method": "POST"
+           },
+           {
+            "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2B009559GR391000T/reauthorize",
+            "rel": "reauthorize",
+            "method": "POST"
+           },
+           {
+            "href": "https://api.sandbox.paypal.com/v2/checkout/orders/0RS338633H1870220",
+            "rel": "up",
+            "method": "GET"
+           }
+          ],
+          "create_time": "2026-11-04T08:17:12Z",
+          "update_time": "2026-11-04T08:17:12Z"
+         }
+        ]
+       }
+      }
+     ],
+     "create_time": "2026-11-04T08:17:11Z",
+     "update_time": "2026-11-04T08:17:12Z",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v2/checkout/orders/0RS338633H1870220",
+       "rel": "self",
+       "method": "GET"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "request": {
+    "method": "POST",
+    "path": "/v2/payments/authorizations/2B009559GR391000T/void",
+    "json": {}
+   },
+   "response": {
+    "status": 200,
+    "json": {
+     "id": "2B009559GR391000T",
+     "status": "VOIDED",
+     "amount": {
+      "currency_code": "GBP",
+      "value": "47.25"
+     },
+     "invoice_id": "fund_vrec8871377fce34",
+     "seller_protection": {
+      "status": "ELIGIBLE",
+      "dispute_categories": [
+       "ITEM_NOT_RECEIVED",
+       "UNAUTHORIZED_TRANSACTION"
+      ]
+     },
+     "expiration_time": "2026-12-03T00:17:12-08:00",
+     "create_time": "2026-11-04T00:17:12-08:00",
+     "update_time": "2026-11-04T00:17:13-08:00",
+     "links": [
+      {
+       "href": "https://api.sandbox.paypal.com/v2/payments/authorizations/2B009559GR391000T",
+       "rel": "self",
+       "method": "GET"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "request": {
+    "method": "DELETE",
+    "path": "/v3/vault/payment-tokens/VAULT-ID"
+   },
+   "response": {
+    "status": 204
+   }
+  }
+ ]
+}

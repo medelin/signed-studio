@@ -478,7 +478,7 @@ def test_the_recorded_vault_cassette_parses():
     assert status == "PAYER_ACTION_REQUIRED" and approve
     assert vault.get_setup_token(c, sid)[0] == "APPROVED"
     token, _ = vault.create_payment_token(c, sid, request_id="ss-2")
-    assert token == "VAULT_ID"
+    assert token == "VAULT-ID"
     charge = next(i for i in data["interactions"] if i["request"]["path"] ==
                   "/v2/checkout/orders")
     held = orders.charge_vault(c, charge["request"]["json"], request_id="ss-3" + "0" * 48)
