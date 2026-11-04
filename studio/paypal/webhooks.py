@@ -174,13 +174,34 @@ def load_roots(pem_bundle: bytes | None = None) -> list[x509.Certificate]:
     return x509.load_pem_x509_certificates(pem_bundle)
 
 
+INTERMEDIATES = Path(__file__).with_name("intermediates.pem")
+
+
+def load_intermediates(pem_bundle: bytes | None = None) -> list[x509.Certificate]:
+    """Pinned intermediate CAs (``intermediates.pem``): PayPal serves only the leaf."""
+    if pem_bundle is None:
+        pem_bundle = INTERMEDIATES.read_bytes()
+    return x509.load_pem_x509_certificates(pem_bundle)
+
+
 def check_chain(chain: list[x509.Certificate], roots: Iterable[x509.Certificate],
-                now: float) -> x509.Certificate:
+                now: float, intermediates: Iterable[x509.Certificate] = ()) -> x509.Certificate:
     """The leaf, once every certificate is valid now, each is signed by the next, the last
     by a trusted root, and the leaf names a ``paypal.com`` host. ``WebhookRefused``
-    otherwise."""
+    otherwise. A chain that stops below a root is completed only from the pinned
+    ``intermediates``, which are then checked like any other link (never trusted alone)."""
     if not chain:
         raise WebhookRefused("no certificate", "cert")
+    roots = list(roots)
+    chain = list(chain)
+    pinned = list(intermediates)
+    for _ in range(3):
+        if any(r.subject == chain[-1].issuer for r in roots):
+            break
+        nxt = next((c for c in pinned if c.subject == chain[-1].issuer and c not in chain), None)
+        if nxt is None:
+            break
+        chain.append(nxt)
     moment = dt.datetime.fromtimestamp(now, dt.UTC)
     for cert in chain:
         if not cert.not_valid_before_utc <= moment <= cert.not_valid_after_utc:
@@ -250,6 +271,7 @@ class Verifier:
         self.webhook_id = webhook_id
         self.fetch = fetch
         self.roots = roots if roots is not None else load_roots()
+        self.intermediates = load_intermediates()
         self.clock = clock
 
     def cert(self, url: str) -> tuple[x509.Certificate, str]:
@@ -264,7 +286,7 @@ class Verifier:
             chain = x509.load_pem_x509_certificates(pem)
         except ValueError:
             raise WebhookRefused("the certificate is not PEM", "cert") from None
-        leaf = check_chain(chain, self.roots, now)
+        leaf = check_chain(chain, self.roots, now, self.intermediates)
         digest = hashlib.sha256(leaf.public_bytes(Encoding.DER)).hexdigest()
         if row is None:
             with funding.atomic(self.conn):
@@ -551,7 +573,7 @@ def recheck(events_path: Path, certs_dir: Path, receipts: Iterable[Receipt], *,
             errors.append(f"event line {n}: the cert file is not the pinned certificate")
             continue
         try:
-            leaf = check_chain(chain, anchors, t.when())
+            leaf = check_chain(chain, anchors, t.when(), load_intermediates())
         except WebhookRefused as exc:
             errors.append(f"event line {n}: PayPal's certificate is not trusted ({exc.code})")
             continue

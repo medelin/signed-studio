@@ -37,7 +37,7 @@ build-backend = "setuptools.build_meta"
 include = ["studio*"]
 
 [tool.setuptools.package-data]
-studio = ["ui/templates/*.html", "ui/static/*", "agents/prompts/*.md", "agents/*.yaml"]
+studio = ["ui/templates/*.html", "ui/static/*", "agents/prompts/*.md", "agents/*.yaml", "paypal/intermediates.pem"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

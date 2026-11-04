@@ -454,3 +454,36 @@ def test_an_extra_export_line_without_a_receipt_fails(env, tmp_path):
     (out / "dup.jsonl").write_text("\n".join([*lines, lines[0]]) + "\n")
     assert any("no paypal.webhook receipt for this delivery" in p
                for p in _recheck(env, out, "dup.jsonl"))
+
+
+def test_real_paypal_leaf_needs_the_pinned_intermediate():
+    """PayPal serves only the leaf (messageverificationcerts.sandbox.paypal.com, issued by
+    DigiCert EV RSA CA G2). Without the pinned intermediate every real event was refused
+    with cert_chain (found on pay.udun.eu, 2026-11-04)."""
+    import datetime as _dt
+    from pathlib import Path
+
+    from cryptography import x509
+
+    leaf_pem = (Path(__file__).resolve().parents[1]
+                / "fixtures/paypal-certs/messageverificationcerts.sandbox.2026.pem").read_bytes()
+    chain = x509.load_pem_x509_certificates(leaf_pem)
+    roots = webhooks.load_roots()
+    now = _dt.datetime(2026, 11, 4, 13, 28, tzinfo=_dt.UTC).timestamp()
+    with pytest.raises(webhooks.WebhookRefused) as exc:
+        webhooks.check_chain(chain, roots, now)
+    assert exc.value.code == "cert_chain"
+    leaf = webhooks.check_chain(chain, roots, now, intermediates=webhooks.load_intermediates())
+    assert leaf.subject == chain[0].subject
+
+
+def test_pinned_intermediate_is_not_a_trust_anchor():
+    """The intermediate only completes a chain: it must still chain to a certifi root, and a
+    leaf it did not sign is refused."""
+    import datetime as _dt
+
+    roots = webhooks.load_roots()
+    inter = webhooks.load_intermediates()
+    now = _dt.datetime(2026, 11, 4, tzinfo=_dt.UTC).timestamp()
+    with pytest.raises(webhooks.WebhookRefused):
+        webhooks.check_chain([inter[0]], [], now, intermediates=inter)
