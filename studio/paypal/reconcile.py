@@ -141,8 +141,7 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, receipt
         finally:
             if not read:  # a failed page: one failed receipt for the run
                 reconcile_receipt(ledger=ledger, conn=conn, receipt_key=receipt_key,
-                                  chain_id=chain, record=record,
-                                  answer=None)
+                                  chain_id=chain, record=record, answer=None)
     captured_ok: set[str] = set()  # fundings whose capture is listed
     status: dict[tuple[str, str, str], str] = {}
     for fid, m in wanted:
@@ -171,7 +170,7 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, receipt
     if inside:
         # hashes the account's own lines, never PayPal's pages (shared merchant)
         reconcile_receipt(ledger=ledger, conn=conn, receipt_key=receipt_key,
-                                  chain_id=chain, record=record,
+                          chain_id=chain, record=record,
                           answer=[ln.view() for ln in report.lines])
     return report
 

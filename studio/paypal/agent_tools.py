@@ -294,7 +294,7 @@ def reconcile_receipt(*, ledger: Ledger, conn: Any, receipt_key: bytes, chain_id
     _append(ledger, conn, chain_id, record[0]["target"], {
         "step": RECONCILE_STEP, "tool": "list_transactions", "path": TRANSACTIONS_PATH,
         "ok": ok, "hash": HASH_KIND,
-        "body_sha256": keyed_sha256(receipt_key, answer) if ok else ""})
+        "body_sha256": keyed_sha256(receipt_key, answer, chain_id) if ok else ""})
 
 
 def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, receipt_key: bytes,
@@ -326,7 +326,8 @@ def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, receipt_ke
             _append(ledger, conn, chain_id, record[0]["target"], {
                 "step": STEP, "tool": name, "path": record[0]["path"], "ok": out is not None,
                 "hash": HASH_KIND,
-                "body_sha256": keyed_sha256(receipt_key, out) if out is not None else ""})
+                "body_sha256": keyed_sha256(receipt_key, out, chain_id)
+                               if out is not None else ""})
     return out
 
 

@@ -494,7 +494,7 @@ def test_webhook_lookup_does_not_retry(env):
     spending the delivery window on its own retries."""
     import httpx
 
-    from studio.paypal.client import PayPalClient, PayPalError
+    from studio.paypal.client import PayPalClient
 
     seen: list[str] = []
 
@@ -515,4 +515,3 @@ def test_webhook_lookup_does_not_retry(env):
         webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
                        lookup=env.funder.lookup)
     assert e.value.code == "lookup_failed" and len(seen) == 1
-    assert PayPalError  # imported for clarity

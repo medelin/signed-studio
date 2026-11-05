@@ -496,7 +496,7 @@ def test_agent_receipts_hash_the_callers_answer_not_paypals_body(tmp_path, name,
     if name != "get_dispute":  # get_dispute: the dispute itself is the caller's answer
         assert answers[0] == answers[1]
         assert hashes[0] == hashes[1]
-    assert hashes == [keyed_sha256(KEY, a) for a in answers]
+    assert hashes == [keyed_sha256(KEY, a, CHAIN) for a in answers]
 
 
 def test_order_details_receipt_hashes_the_answer(w):
@@ -504,7 +504,7 @@ def test_order_details_receipt_hashes_the_answer(w):
     out = w.run("get_order_details", {"order_id": OWN_ORDER})
     (r,) = w.receipts()
     assert "status" not in r.details and r.details["ok"] is True
-    assert r.details["body_sha256"] == keyed_sha256(KEY, out)
+    assert r.details["body_sha256"] == keyed_sha256(KEY, out, CHAIN)
 
 
 def test_by_id_search_is_one_receipt_for_the_tool_call(w):
@@ -566,8 +566,9 @@ def test_agent_receipt_hash_is_keyed(tmp_path):
         assert r.details["hash"] == "hmac-sha256"
         hashes.append(r.details["body_sha256"])
     assert hashes[0] != hashes[1]
-    assert hashes[0] == hmac.new(KEY, canonical(out), hashlib.sha256).hexdigest()
-    assert hashes[0] == keyed_sha256(KEY, out)
+    mac = hmac.new(KEY, CHAIN.encode() + b"\x00" + canonical(out), hashlib.sha256)
+    assert hashes[0] == mac.hexdigest()
+    assert hashes[0] == keyed_sha256(KEY, out, CHAIN)
     # not the plain hash anyone could recompute from a guessed answer
     assert hashes[0] != agent_tools.answer_sha256(out)
 
@@ -591,3 +592,35 @@ def test_export_never_contains_the_key(w, tmp_path):
     path = tmp_path / "receipts.jsonl"
     path.write_text(export)
     assert verify(path, w.ledger.public_key).ok  # the hash is opaque to verify
+
+
+def test_concurrent_first_creation_yields_one_key(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    for round_ in range(20):
+        d = tmp_path / str(round_)
+        d.mkdir()
+        with ThreadPoolExecutor(8) as pool:
+            keys = list(pool.map(receipt_key, [d] * 8))
+        assert len(set(keys)) == 1 and len(keys[0]) == 32
+        assert [p.name for p in d.iterdir()] == ["receipt-hmac.key"]  # no temp left
+
+
+def test_a_leftover_empty_key_file_is_reported_clearly(tmp_path):
+    (tmp_path / "receipt-hmac.key").write_bytes(b"")
+    with pytest.raises(RuntimeError, match=r"receipt-hmac\.key.*32 bytes"):
+        receipt_key(tmp_path)
+
+
+def test_same_answer_in_two_chains_hashes_differently(tmp_path):
+    hashes = []
+    for i, chain in enumerate(("acct:acc_1:paypal-tools", "acct:acc_2:paypal-tools")):
+        (tmp_path / str(i)).mkdir()
+        world = World(tmp_path / str(i))
+        out = run_read_tool(client=world.client, ledger=world.ledger, conn=world.conn,
+                            receipt_key=KEY, chain_id=chain, account_refs=world.refs,
+                            name="list_transactions", params={})
+        assert out == {"transaction_details": []}
+        (r,) = world.ledger.receipts(chain)
+        hashes.append(r.details["body_sha256"])
+    assert hashes[0] != hashes[1]
