@@ -6,7 +6,7 @@
 
 **Links:**
 - Try it: https://pay.udun.eu (user `judge`, password in the private judges field below)
-- Code: <public repository URL> (Apache-2.0)
+- Code: https://github.com/medelin/signed-studio (Apache-2.0)
 - Video: <YouTube URL> (2:55)
 
 **Private field for judges (never in the public text):** judge password; PayPal sandbox
@@ -82,6 +82,18 @@ human, enforced by code, and checkable by anyone afterwards.
 
 Per-client accounts for small agencies, more ad channels behind the same signature, and
 PayPal refunds as their own signed approvals in the UI.
+
+## Tools (AI models and services, and how they are used)
+
+| Tool | Used for | Limits we put on it |
+|---|---|---|
+| Muse Spark 1.3 (`muse-spark-1.3`) | Producer (brief → plan), copywriter, vision reviewer, **AI treasurer** (splits a budget, explains a funding's reconciliation) | Never sees a PayPal id, credential or vault reference; code recomputes every amount it states |
+| Muse Spark 1.3 contributor tier | Copy for inputs with no personal data (the reason is in the receipt) | Chosen by a PII check in code |
+| Muse Image 1.0, SAM 3.1 | Ad images, product cut-out check | Reviewed before any signature |
+| Muse Voice Transcribe 1.0 | Spoken briefs | The owner confirms the transcript |
+| Spark Open (open weights) | Second, independent reviewer | Disagreements are shown, not averaged |
+| MCP (Streamable HTTP) + OpenAPI | The owner's own assistant (Claude, ChatGPT, scripts) drafts, runs and pays under a signed mandate | Bearer token scopes; money only inside the mandate |
+| PayPal Orders v2, Vault v3, Webhooks (sandbox) | Holding, capturing, voiding and charging the budget | Every call is a signed, hash-chained receipt; `studio verify` rechecks P-V1…P-V6 offline |
 
 ## Built with
 
