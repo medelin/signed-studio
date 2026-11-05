@@ -370,12 +370,68 @@ def _handler_world(w, answer):
                             sleep=lambda s: None)
 
 
-def test_foreign_transaction_id_search_says_not_found(w):
-    _handler_world(w, {"transaction_details": [tx(OTHER, "7YY99999ZZ888888Q")],
-                       "found": True, "message": "Transaction found for 7YY99999ZZ888888Q"})
-    out = w.run("list_transactions", {"transaction_id": "7YY99999ZZ888888Q",
-                                      "search_months": 1})
-    assert out == {"transaction_details": [], "found": False}
+def test_by_id_search_of_a_foreign_id_makes_no_call(w):
+    with pytest.raises(ToolRefused) as exc:
+        w.run("list_transactions", {"transaction_id": "7YY99999ZZ888888Q",
+                                    "search_months": 1})
+    assert exc.value.code == "not_allowed"
+    assert w.sandbox.requests == [] and w.receipts() == []
+
+
+def test_own_id_search_still_works(w):
+    w.sandbox.transactions = [tx(OWN, OWN_CAPTURE)]
+    out = w.run("list_transactions", {"transaction_id": OWN_CAPTURE, "search_months": 1})
+    assert out["found"] is True
+    assert [t["transaction_info"]["transaction_id"] for t in out["transaction_details"]] == [
+        OWN_CAPTURE]
+
+
+def test_list_disputes_by_a_foreign_transaction_makes_no_call(w):
+    with pytest.raises(ToolRefused) as exc:
+        w.run("list_disputes", {"disputed_transaction_id": "7YY99999ZZ888888Q"})
+    assert exc.value.code == "not_allowed"
+    assert w.sandbox.requests == []
+    assert w.run("list_disputes", {"disputed_transaction_id": OWN_CAPTURE}) == {"items": []}
+
+
+def _dispute_world(w):
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        if request.url.path.endswith("/PP-D-FOREIGN"):
+            return httpx.Response(200, json={"dispute_id": "PP-D-FOREIGN",
+                                             "disputed_transactions": [
+                                                 {"seller_transaction_id": "ZZZ"}]})
+        if request.url.path.endswith("/PP-D-OWN"):
+            return httpx.Response(200, json={"dispute_id": "PP-D-OWN",
+                                             "disputed_transactions": [
+                                                 {"seller_transaction_id": OWN_CAPTURE}]})
+        return httpx.Response(404, json={"name": "RESOURCE_NOT_FOUND"})
+
+    w.client = PayPalClient("id", "secret", transport=httpx.MockTransport(handler),
+                            sleep=lambda s: None)
+
+
+def test_get_dispute_receipts_do_not_tell_unknown_from_foreign(w):
+    _dispute_world(w)
+    seen = []
+    for dispute in ("PP-D-UNKNOWN", "PP-D-FOREIGN"):
+        with pytest.raises(ToolRefused) as exc:
+            w.run("get_dispute", {"dispute_id": dispute})
+        seen.append((exc.value.code, str(exc.value)))
+    assert seen[0] == seen[1] and seen[0][0] == "not_allowed"
+    unknown, foreign = w.receipts()
+
+    def shape(r):
+        return {k: v for k, v in r.details.items() if k != "path"}, r.output_sha256
+
+    assert shape(unknown) == shape(foreign)
+    assert unknown.details["ok"] is False
+    assert w.run("get_dispute", {"dispute_id": "PP-D-OWN"})["dispute_id"] == "PP-D-OWN"
+    assert w.receipts()[-1].details["ok"] is True
+    path = w.tmp / "receipts.jsonl"
+    path.write_text(w.export())
+    assert verify(path, w.ledger.public_key).ok
 
 
 def test_list_answers_are_allowlisted(w):

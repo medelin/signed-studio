@@ -3,7 +3,8 @@
 For each authorization and capture the studio recorded for the account (``funding_moves``,
 the account's fundings by the app's ownership rule) one ``list_transactions`` call (the
 Agent Toolkit tool, ``studio.paypal.agent_tools``: receipted, payer data stripped, own
-money only) says whether PayPal lists it too:
+money only; the whole run is one ``paypal.reconcile`` receipt, whatever its page count)
+says whether PayPal lists it too:
 
 - ``matched``: PayPal lists a transaction whose own ``transaction_id`` is the capture's
   (or refund's) id, with the same amount and currency. An authorization is ``matched``
@@ -39,6 +40,7 @@ from studio.paypal.agent_tools import (
     PAGE_SIZE,
     account_refs,
     owned_funding_ids,
+    reconcile_receipt,
     run_list_page,
     tools_chain,
 )
@@ -111,24 +113,29 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
     infos: dict[str, list[dict[str, Any]]] = {}
     if inside:
         report.window_start = max(start, min(inside) - 3600)
-        for page in range(1, MAX_CALLS_PER_TOOL + 1):
-            answer, report.truncated = run_list_page(
-                client=client, ledger=ledger, conn=conn, chain_id=tools_chain(account_id),
-                account_refs=refs,
-                params={"start_date": _iso(report.window_start), "end_date": _iso(now),
-                        "page_size": PAGE_SIZE, "page": page})
-            report.pages_read += 1
-            for t in answer.get("transaction_details") or []:
-                info = t.get("transaction_info") if isinstance(t, dict) else None
-                if not isinstance(info, dict):
-                    continue
-                if isinstance(info.get("transaction_id"), str):
-                    own_ids.add(info["transaction_id"])
-                    infos.setdefault(info["transaction_id"], []).append(info)
-                if isinstance(info.get("paypal_reference_id"), str):
-                    ref_ids.add(info["paypal_reference_id"])
-            if not report.truncated:
-                break
+        chain = tools_chain(account_id)
+        record: list[dict[str, Any]] = []  # every page's call: one receipt for the run
+        try:
+            for page in range(1, MAX_CALLS_PER_TOOL + 1):
+                answer, report.truncated = run_list_page(
+                    client=client, ledger=ledger, conn=conn, chain_id=chain,
+                    account_refs=refs, record=record,
+                    params={"start_date": _iso(report.window_start), "end_date": _iso(now),
+                            "page_size": PAGE_SIZE, "page": page})
+                report.pages_read += 1
+                for t in answer.get("transaction_details") or []:
+                    info = t.get("transaction_info") if isinstance(t, dict) else None
+                    if not isinstance(info, dict):
+                        continue
+                    if isinstance(info.get("transaction_id"), str):
+                        own_ids.add(info["transaction_id"])
+                        infos.setdefault(info["transaction_id"], []).append(info)
+                    if isinstance(info.get("paypal_reference_id"), str):
+                        ref_ids.add(info["paypal_reference_id"])
+                if not report.truncated:
+                    break
+        finally:
+            reconcile_receipt(ledger=ledger, conn=conn, chain_id=chain, record=record)
     captured_ok: set[str] = set()  # fundings whose capture is listed
     status: dict[tuple[str, str, str], str] = {}
     for fid, m in wanted:

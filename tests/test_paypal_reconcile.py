@@ -207,3 +207,50 @@ def test_the_call_is_receipted_in_the_accounts_tools_chain(w):
     run(w)
     (r,) = w.ledger.receipts("acct:acc_1:paypal-tools")
     assert r.details["tool"] == "list_transactions"
+
+
+def test_reconcile_receipt_count_is_independent_of_pages(w):
+    from studio.receipts import verify
+
+    captured(w.conn, "run_ui", "cre_1")
+    chain = "acct:acc_1:paypal-tools"
+    counts = []
+    for pages in ([[listed(CAP)]], [[listed("9ZZ99999ZZ999999Z")]] * 2 + [[listed(CAP)]]):
+        before = len(w.ledger.receipts(chain))
+        seen = paged(w, pages)
+        report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger,
+                                  account_id="acc_1", now=NOW)
+        assert len(seen) == len(pages) and by_move(report.lines)["capture"] == "matched"
+        new = w.ledger.receipts(chain)[before:]
+        counts.append(len(new))
+        (r,) = new
+        assert r.details["step"] == "paypal.reconcile" and r.details["ok"] is True
+        assert r.details["path"] == "/v1/reporting/transactions"
+        assert not {"page", "pages", "pages_read", "status"} & set(r.details)
+    assert counts == [1, 1]
+    path = w.tmp / "receipts.jsonl"
+    path.write_text(w.export())
+    assert verify(path, w.ledger.public_key).ok
+
+
+def test_a_failed_reconcile_leaves_one_failed_receipt(w):
+    import pytest as _pytest
+
+    from studio.paypal.agent_tools import ToolRefused
+
+    captured(w.conn, "run_ui", "cre_1")
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        if request.url.params.get("page") == "2":
+            return httpx.Response(403, json={"name": "NOT_AUTHORIZED"})
+        return httpx.Response(200, json={"transaction_details": [], "page": 1,
+                                         "total_pages": 3})
+
+    w.client = PayPalClient("id", "secret", transport=httpx.MockTransport(handler),
+                            sleep=lambda s: None)
+    with _pytest.raises(ToolRefused):
+        run(w)
+    (r,) = w.ledger.receipts("acct:acc_1:paypal-tools")
+    assert r.details["step"] == "paypal.reconcile" and r.details["ok"] is False

@@ -571,3 +571,63 @@ def test_paypal_transactions_answer_has_no_paging_fields(tmp_path):
     with TestClient(app, base_url=BASE) as c:
         r = c.get("/api/v1/paypal/transactions", headers=bearer(value))
         assert r.status_code == 200 and not banned & set(r.json())
+
+
+def test_get_dispute_unknown_and_foreign_look_the_same(tmp_path):
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        if request.url.path.endswith("/PP-D-FOREIGN"):
+            return httpx.Response(200, json={"dispute_id": "PP-D-FOREIGN",
+                                             "disputed_transactions": [
+                                                 {"seller_transaction_id": "ZZZ"}]})
+        return httpx.Response(404, json={"name": "RESOURCE_NOT_FOUND"})
+
+    app, f = paypal_world(tmp_path)
+    app.state.funder.money.client = PayPalClient(
+        "id", "secret", transport=httpx.MockTransport(handler), sleep=lambda s: None)
+    tok, value = token(app, scope="read")
+    svc = app.state.assistants
+    out = [svc.call(principal_of(app, tok), "paypal_tool",
+                    {"name": "get_dispute", "params": {"dispute_id": d}})
+           for d in ("PP-D-UNKNOWN", "PP-D-FOREIGN")]
+
+    def same(body):  # receipt_id names the call's own receipt
+        return {k: v for k, v in body.items() if k != "receipt_id"}
+
+    assert out[0][0] == out[1][0] == 403 and out[0][1]["error"] == "not_allowed"
+    assert same(out[0][1]) == same(out[1][1])
+    with TestClient(app, base_url=BASE) as c:
+        rs = [c.post("/api/v1/paypal/tools/get_dispute",
+                     json={"params": {"dispute_id": d}}, headers=bearer(value))
+              for d in ("PP-D-UNKNOWN", "PP-D-FOREIGN")]
+    assert rs[0].status_code == rs[1].status_code == 403
+    assert same(rs[0].json()) == same(rs[1].json())
+
+
+def test_by_id_search_of_a_foreign_id_is_refused_for_assistants(tmp_path):
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+    from tests.test_paypal_agent_tools import Sandbox
+
+    app, f = paypal_world(tmp_path)
+    sandbox = Sandbox([])
+    app.state.funder.money.client = PayPalClient(
+        "id", "secret", transport=httpx.MockTransport(sandbox), sleep=lambda s: None)
+    tok, _ = token(app, scope="read")
+    status, body = app.state.assistants.call(
+        principal_of(app, tok), "paypal_tool",
+        {"name": "list_transactions", "params": {"transaction_id": "7YY99999ZZ888888Q",
+                                                 "search_months": 1}})
+    assert status == 403 and body["error"] == "not_allowed"
+    assert sandbox.requests == []
+    status, body = app.state.assistants.call(
+        principal_of(app, tok), "paypal_tool",
+        {"name": "list_transactions", "params": {"transaction_id": "3C679366HH908993F",
+                                                 "search_months": 1}})
+    assert status == 200 and body["result"]["found"] is False
