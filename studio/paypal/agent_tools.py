@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlencode
 
@@ -33,6 +34,8 @@ from studio.vendor.paypal_agent_toolkit.shared.tools import tools as _REGISTRY
 
 READ_TOOLS: frozenset[str] = frozenset(
     {"list_transactions", "get_order_details", "list_disputes", "get_dispute"})
+MAX_CALLS_PER_TOOL = 12  # HTTP calls one tool run may make (the by-id search pages months)
+MAX_SEARCH_MONTHS = 12
 AGENT = "treasury"
 PROVIDER = "paypal"
 STEP = "paypal.agent_tool"
@@ -42,7 +45,10 @@ TOOLS_CHAIN_PREFIX = "acct:"
 TOOLS_CHAIN_SUFFIX = ":paypal-tools"
 
 DROP_KEYS = frozenset({"payer_info", "shipping_info", "payer", "payment_source", "buyer",
-                       "seller", "email_address", "phone", "name", "address"})
+                       "seller", "email_address", "phone", "name", "address",
+                       # free text a payer or an agent typed
+                       "transaction_subject", "transaction_note", "messages", "note", "notes",
+                       "reason", "buyer_comments", "memo"})
 _EMAIL = re.compile(r"[^\s@<>\"']+@[^\s@<>\"']+\.[^\s@<>\"']+")
 
 
@@ -70,15 +76,35 @@ class AccountRefs:
     paypal_ids: frozenset[str]
 
 
+def _api_owner(conn: Any) -> Any:
+    def owner(brief_id: str) -> str | None:
+        row = conn.execute("SELECT account_id FROM api_briefs WHERE brief_id = ?",
+                           (brief_id,)).fetchone()
+        return str(row[0]) if row else None
+    return owner
+
+
 def account_refs(conn: Any, account_id: str) -> AccountRefs:
-    """The references of the fundings of the runs this account's token confirmed."""
-    rows = conn.execute(
-        "SELECT f.content_sha256, f.order_id, f.authorization_id, f.capture_id FROM fundings f "
-        "JOIN briefs b ON b.run_id = f.run_id JOIN api_briefs a ON a.brief_id = b.id "
-        "WHERE a.account_id = ?", (account_id,)).fetchall()
-    shas = frozenset(r[0] for r in rows if r[0])
-    ids = frozenset(i for r in rows for i in r[1:] if i)
-    return AccountRefs(shas, ids)
+    """The references of the fundings this account may see, by the app's own ownership rule
+    (``routes_studio.approval_owner``, as ``routes_paypal.owns_item``): the account whose
+    token drafted the brief, the account a WhatsApp brief was sent for, and the studio's
+    own work (web-UI briefs, the demo seed), which every signed-in account sees."""
+    from studio.routes_studio import STUDIO, approval_owner  # late: routes import this layer
+
+    api_owner = _api_owner(conn)
+    shas: set[str] = set()
+    ids: set[str] = set()
+    rows = conn.execute("SELECT run_id, item_id, content_sha256, order_id, authorization_id, "
+                        "capture_id FROM fundings").fetchall()
+    for run_id, item_id, sha, *pids in rows:
+        pending = SimpleNamespace(action="campaign.create", id="", run_id=run_id,
+                                  item_id=item_id)
+        owner = approval_owner(conn, pending, api_owner)
+        if owner is not None and (owner == STUDIO or owner == account_id):
+            if sha:
+                shas.add(sha)
+            ids.update(i for i in pids if i)
+    return AccountRefs(frozenset(shas), frozenset(ids))
 
 
 # -- registry ----------------------------------------------------------------------------
@@ -117,8 +143,9 @@ def redact(obj: Any) -> Any:
 
 
 def _own_transaction(info: dict[str, Any], refs: AccountRefs) -> bool:
-    return (info.get("custom_field") in refs.content_sha256
-            or info.get("transaction_id") in refs.paypal_ids
+    # PayPal ids only: a content hash (custom_field) is not unique per account, two
+    # accounts can fund identical ad content, so it is never an access key.
+    return (info.get("transaction_id") in refs.paypal_ids
             or info.get("paypal_reference_id") in refs.paypal_ids)
 
 
@@ -168,11 +195,18 @@ class _Adapter:
         self.client, self.ledger, self.conn = client, ledger, conn
         self.chain_id, self.tool = chain_id, tool
         self.error: ToolRefused | None = None
+        self.calls = 0
 
     def get(self, uri: str, payload: dict[str, Any] | None = None) -> Any:
         """PayPal's answer as a dict, which is what the handlers re-serialise or read with
         ``.get``. The one exception is upstream's transaction-by-id search, the only caller
         that passes ``payload``: it ``json.loads`` the answer, so it gets the JSON text."""
+        if self.error is not None:  # a call failed: no further request
+            raise self.error
+        self.calls += 1
+        if self.calls > MAX_CALLS_PER_TOOL:
+            self.error = ToolRefused("invalid_arguments", "too many PayPal calls for one tool")
+            raise self.error
         path = uri.split("?", 1)[0]
         target = uri
         query = {k: v for k, v in (payload or {}).items() if v is not None}
@@ -214,6 +248,10 @@ def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: 
         checked = entry["args_schema"](**params)
     except (ValidationError, TypeError, ValueError):
         raise ToolRefused("invalid_arguments", f"invalid arguments for {name}") from None
+    months = getattr(checked, "search_months", None)
+    if name == "list_transactions" and months is not None \
+            and not 1 <= months <= MAX_SEARCH_MONTHS:
+        raise ToolRefused("invalid_arguments", f"search_months must be 1-{MAX_SEARCH_MONTHS}")
     if name == "get_order_details" and checked.order_id not in account_refs.paypal_ids:
         raise ToolRefused("not_allowed", "not an order of this account")
     adapter = _Adapter(client, ledger, conn, chain_id, name)

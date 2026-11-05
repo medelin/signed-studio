@@ -5,6 +5,7 @@ money, and no write tool reachable."""
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -26,6 +27,7 @@ OWN = "a" * 64
 OTHER = "b" * 64
 OWN_ORDER = "5O190127TN364715T"
 OWN_CAPTURE = "3C679366HH908993F"
+OWN_TID = "9XX11111AB222222C"
 CHAIN = "acct:acc_1:paypal-tools"
 
 
@@ -36,6 +38,12 @@ def tx(custom: str, tid: str = "9XX11111AB222222C") -> dict:
         "payer_info": {"email_address": "buyer@example.com", "payer_name": {"given_name": "Ann"}},
         "shipping_info": {"name": "Ann Buyer", "address": {"line1": "1 Main St"}},
     }
+
+
+def with_text(t: dict) -> dict:
+    t["transaction_info"]["transaction_subject"] = "Dinner for Ann"
+    t["transaction_info"]["transaction_note"] = "call me on 0700 123"
+    return t
 
 
 class Sandbox:
@@ -80,7 +88,7 @@ class World:
         self.sandbox = Sandbox(**kw)
         self.client = PayPalClient("id", "secret", transport=httpx.MockTransport(self.sandbox),
                                    sleep=lambda s: None)
-        self.refs = AccountRefs(frozenset({OWN}), frozenset({OWN_ORDER, OWN_CAPTURE}))
+        self.refs = AccountRefs(frozenset({OWN}), frozenset({OWN_ORDER, OWN_CAPTURE, OWN_TID}))
 
     def run(self, name, params=None, refs=None):
         return run_read_tool(client=self.client, ledger=self.ledger, conn=self.conn,
@@ -135,12 +143,24 @@ def test_list_transactions_is_receipted(w):
 
 
 def test_payer_data_never_leaves_the_adapter(w):
-    w.sandbox.transactions = [tx(OWN)]
+    w.sandbox.transactions = [with_text(tx(OWN))]
     out = w.run("list_transactions", {})
+    assert out["transaction_details"] == [{"transaction_info": {
+        "transaction_id": "9XX11111AB222222C", "custom_field": OWN,
+        "transaction_amount": {"currency_code": "EUR", "value": "10.00"}}}]
     blob = json.dumps(out) + w.export()
-    assert "buyer@example.com" not in blob
-    assert "shipping_info" not in blob and "payer_info" not in blob
-    assert "Ann" not in blob
+    for secret in ("buyer@example.com", "shipping_info", "payer_info", "Ann Buyer",
+                   "1 Main St", "Dinner for Ann", "call me on"):
+        assert secret not in blob
+
+
+def test_dispute_free_text_is_dropped(w):
+    w.sandbox.disputes = [{"dispute_id": "PP-D-1", "dispute_reason": "ITEM_NOT_RECEIVED",
+                           "messages": [{"content": "I am Ann, call 0700"}],
+                           "disputed_transactions": [{"seller_transaction_id": OWN_CAPTURE}]}]
+    out = w.run("list_disputes", {})
+    assert out["items"] == [{"dispute_id": "PP-D-1", "dispute_reason": "ITEM_NOT_RECEIVED",
+                             "disputed_transactions": [{"seller_transaction_id": OWN_CAPTURE}]}]
 
 
 def test_foreign_transactions_are_filtered_out(w):
@@ -148,6 +168,13 @@ def test_foreign_transactions_are_filtered_out(w):
     out = w.run("list_transactions", {})
     assert [t["transaction_info"]["transaction_id"] for t in out["transaction_details"]] == [
         "9XX11111AB222222C"]
+
+
+def test_content_hash_is_never_an_access_key(w):
+    # same ad content funded by another account: custom_field equals ours, ids are not
+    w.sandbox.transactions = [tx(OWN, "7YY99999ZZ888888Q")]
+    out = w.run("list_transactions", {})
+    assert out["transaction_details"] == []
 
 
 def test_transaction_matched_by_paypal_id(w):
@@ -215,29 +242,91 @@ def test_transaction_search_by_id_pages_months_and_receipts_each_call(w):
     assert len(w.receipts()) == 2
 
 
+def test_search_months_outside_1_to_12_is_refused_without_a_call(w):
+    for months in (0, 13, -1):
+        with pytest.raises(ToolRefused) as exc:
+            w.run("list_transactions", {"transaction_id": OWN_CAPTURE, "search_months": months})
+        assert exc.value.code == "invalid_arguments"
+    assert w.sandbox.requests == []
+
+
+def test_call_budget_stops_a_looping_handler(w, monkeypatch):
+    class Loop:
+        def __init__(self):
+            self.n = 0
+
+        def __call__(self, adapter, params):
+            for _ in range(50):
+                self.n += 1
+                adapter.get("/v1/reporting/transactions")
+            return {}
+
+    loop = Loop()
+    entry = agent_tools._entry("list_transactions")
+    monkeypatch.setitem(entry, "execute", loop)
+    with pytest.raises(ToolRefused):
+        w.run("list_transactions", {})
+    assert len(w.sandbox.requests) == agent_tools.MAX_CALLS_PER_TOOL
+    assert loop.n == agent_tools.MAX_CALLS_PER_TOOL + 1
+
+
+def test_no_request_after_a_failed_call(w, monkeypatch):
+    seen = []
+
+    def boom(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        seen.append(request)
+        return httpx.Response(403, json={"name": "NOT_AUTHORIZED"})
+
+    w.client = PayPalClient("id", "secret", transport=httpx.MockTransport(boom),
+                            sleep=lambda s: None)
+    with pytest.raises(ToolRefused) as exc:
+        w.run("list_transactions", {"transaction_id": OWN_CAPTURE, "search_months": 5})
+    assert exc.value.code == "paypal_error"
+    assert len(seen) == 1
+
+
 def test_redact_drops_keys_and_emails():
     out = agent_tools.redact({"a": {"payer": {"x": 1}, "ok": "mail me at a@b.co", "n": 3},
                               "name": "x", "l": [{"buyer": 1, "k": "fine"}]})
     assert out == {"a": {"ok": "[redacted]", "n": 3}, "l": [{"k": "fine"}]}
 
 
-def test_account_refs_come_from_the_accounts_fundings(w):
-    conn = w.conn
-    q = funding.quote("EUR", 1000, 3, __import__("decimal").Decimal(5))
-    if True:
-        conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) VALUES "
-                     "('b1', 'run_a', 't', 'text', 1)")
+def _fund(conn, run, item, sha, order):
+    q = funding.quote("EUR", 1000, 3, Decimal(5))
+    f = funding.create(conn, run_id=run, item_id=item, content_sha256=sha, q=q, now=1.0)
+    funding.advance(conn, f.id, "created", expect="created", now=2.0, order_id=order)
+
+
+def _brief(conn, bid, run, *, api=None, channel="", owner=""):
+    conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts, channel, "
+                 "account_id) VALUES (?, ?, 't', 'text', 1, ?, ?)", (bid, run, channel, owner))
+    if api:
         conn.execute("INSERT INTO api_briefs (brief_id, account_id, token_id, created_ts) "
-                     "VALUES ('b1', 'acc_1', 'tok', 1)")
-        conn.execute("INSERT INTO briefs (id, run_id, text, source, created_ts) VALUES "
-                     "('b2', 'run_b', 't', 'text', 1)")
-        conn.execute("INSERT INTO api_briefs (brief_id, account_id, token_id, created_ts) "
-                     "VALUES ('b2', 'acc_2', 'tok', 1)")
-    f1 = funding.create(conn, run_id="run_a", item_id="cre_1", content_sha256=OWN, q=q, now=1.0)
-    f2 = funding.create(conn, run_id="run_b", item_id="cre_2", content_sha256=OTHER, q=q, now=1.0)
-    funding.advance(conn, f1.id, "created", expect="created", now=2.0, order_id=OWN_ORDER)
-    funding.advance(conn, f2.id, "created", expect="created", now=2.0, order_id="2B222222222222222")
-    refs = account_refs(conn, "acc_1")
-    assert refs.content_sha256 == {OWN} and refs.paypal_ids == {OWN_ORDER}
-    assert account_refs(conn, "acc_none") == AccountRefs(frozenset(), frozenset())
+                     "VALUES (?, ?, 'tok', 1)", (bid, api))
+
+
+def test_account_refs_follow_the_apps_ownership_rule(w):
+    c = w.conn
+    sha = lambda ch: ch * 64  # noqa: E731
+    _brief(c, "b_api1", "run_api1", api="acc_1")
+    _brief(c, "b_api2", "run_api2", api="acc_2")
+    _brief(c, "b_wa1", "run_wa1", channel="whatsapp", owner="acc_1")
+    _brief(c, "b_wa2", "run_wa2", channel="whatsapp", owner="acc_2")
+    _brief(c, "b_ui", "run_ui")
+    _fund(c, "run_api1", "cre_1", sha("1"), "1A111111111111111")
+    _fund(c, "run_api2", "cre_2", sha("2"), "2A222222222222222")
+    _fund(c, "run_wa1", "cre_3", sha("3"), "3A333333333333333")
+    _fund(c, "run_wa2", "cre_4", sha("4"), "4A444444444444444")
+    _fund(c, "run_ui", "cre_5", sha("5"), "5A555555555555555")
+    _fund(c, "run_orphan", "cre_6", sha("6"), "6A666666666666666")  # no brief, no campaign
+    one = account_refs(c, "acc_1")
+    two = account_refs(c, "acc_2")
+    # API + WhatsApp of the account, plus the studio's web-UI work
+    assert one.content_sha256 == {sha("1"), sha("3"), sha("5")}
+    assert one.paypal_ids == {"1A111111111111111", "3A333333333333333", "5A555555555555555"}
+    assert two.content_sha256 == {sha("2"), sha("4"), sha("5")}
+    assert account_refs(c, "acc_none").content_sha256 == {sha("5")}
+
 
