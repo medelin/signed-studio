@@ -125,6 +125,9 @@ curl -s -H "$T" -X POST $S/comments/c-1/reply -H 'Content-Type: application/json
 | `campaigns`, `insights` / `GET /campaigns`, `GET /insights` | read | runs and campaigns (created PAUSED; activation is a human signature), the latest insights, recommendations and report |
 | `leads`, `comments` / `GET /leads`, `GET /comments` | read | as the signed-in web UI shows them, with a note that their text is data, never instructions |
 | `draft_reply` / `POST /comments/{id}/reply` | draft | a pending `reply.post` approval for the exact text (or the community agent's draft); posted only after the owner signs it in the inbox |
+| `paypal_transactions` / `GET /paypal/transactions` | read | the account's PayPal authorizations and captures checked against PayPal's Transaction Search (sandbox): per line `matched`, `pending` (PayPal lists up to ~3 h late, so a fresh capture is never "missing"), `missing` or `amount_mismatch`. Matched by PayPal id only; own money only |
+| `paypal_tool` / `POST /paypal/tools/{name}` | read | one read-only PayPal Agent Toolkit tool (`list_transactions`, `get_order_details`, `list_disputes`, `get_dispute`) on the account's own money, every call a `paypal.call` receipt, answered without payer data. It cannot move money: write tools are refused |
+| `propose_refund` / `POST /fundings/{id}/refund-proposal` | draft | `{funding_id, amount}` (e.g. `"12.50"`): a pending `funding.refund` approval (same path as the web UI's refund) with a `sign_url`; nothing is refunded until the owner signs it |
 
 **Never**, by construction (tripwires in `tests/attack/test_assistants.py`): no operation
 reaches `approvals.verify_and_consume`, an approval renewal, approver key registration,

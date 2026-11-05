@@ -85,6 +85,23 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             return False
         return app.state.approval_refusal(pending, account) is None
 
+    def propose_refund(funding_id: str, amount_minor: int, account: Any
+                       ) -> tuple[Pending, dict[str, Any]]:
+        """A pending ``funding.refund`` approval for ``amount_minor`` of the funding's
+        capture; the one path behind ``POST /api/funding/{id}/refund`` and the
+        assistants' ``propose_refund``. Nothing is refunded until a human signs it. Only a
+        full account (``sees_personal_data``) that owns the funding's item may ask; any
+        other caller, and an unknown funding, get ``FundingError("not_found")``."""
+        if account is None or not account.sees_personal_data:
+            raise FundingError("no such funding", "not_found")
+        with conn.lock:
+            item = funding.get(conn, funding_id).item_id  # FundingError: not_found
+            if not owns_item(item, account):
+                raise FundingError("no such funding", "not_found")
+        return funder.request_refund(funding_id, amount_minor)
+
+    app.state.propose_refund = propose_refund
+
     def pending_for(approval_id: str, guard: str) -> tuple[Pending, dict[str, Any]]:
         """An open ``campaign.create`` approval the caller may sign, and its payload."""
         if not APPROVAL_ID.fullmatch(approval_id):
@@ -224,21 +241,21 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             return JSONResponse({"error": "not_found"}, 404)  # full accounts only
         if not FUNDING_ID.fullmatch(funding_id):
             return JSONResponse({"error": "not_found"}, 404)
-        with conn.lock:
-            try:
-                item = funding.get(conn, funding_id).item_id
-            except FundingError:
-                return JSONResponse({"error": "not_found"}, 404)
-            if not owns_item(item, account):
-                return JSONResponse({"error": "not_found"}, 404)
         try:
             amount = (await request.json()).get("amount_minor")
         except (ValueError, AttributeError):
             amount = None
         if not isinstance(amount, int) or isinstance(amount, bool):
-            return JSONResponse({"error": "refund_amount"}, 400)
+            # the funding is looked up first, so a stranger's id is not_found, not 400
+            with conn.lock:
+                try:
+                    owned = owns_item(funding.get(conn, funding_id).item_id, account)
+                except FundingError:
+                    owned = False
+            return JSONResponse({"error": "refund_amount" if owned else "not_found"},
+                                400 if owned else 404)
         try:
-            pending, payload = funder.request_refund(funding_id, amount)
+            pending, payload = propose_refund(funding_id, amount, account)
         except (FundingRefused, FundingError) as exc:
             return refused(exc)
         return JSONResponse({"approval_id": pending.id, "content": payload,

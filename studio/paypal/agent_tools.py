@@ -84,26 +84,42 @@ def _api_owner(conn: Any) -> Any:
     return owner
 
 
-def account_refs(conn: Any, account_id: str) -> AccountRefs:
-    """The references of the fundings this account may see, by the app's own ownership rule
-    (``routes_studio.approval_owner``, as ``routes_paypal.owns_item``): the account whose
-    token drafted the brief, the account a WhatsApp brief was sent for, and the studio's
-    own work (web-UI briefs, the demo seed), which every signed-in account sees."""
+def _owned_rows(conn: Any, account_id: str) -> list[tuple[Any, ...]]:
+    """``(funding id, content_sha256, order, authorization, capture)`` of the fundings
+    this account may see, by the app's own ownership rule. Call under ``conn.lock``."""
     from studio.routes_studio import STUDIO, approval_owner  # late: routes import this layer
 
     api_owner = _api_owner(conn)
-    shas: set[str] = set()
-    ids: set[str] = set()
-    rows = conn.execute("SELECT run_id, item_id, content_sha256, order_id, authorization_id, "
-                        "capture_id FROM fundings").fetchall()
-    for run_id, item_id, sha, *pids in rows:
+    out = []
+    rows = conn.execute("SELECT run_id, item_id, id, content_sha256, order_id, "
+                        "authorization_id, capture_id FROM fundings").fetchall()
+    for run_id, item_id, *rest in rows:
         pending = SimpleNamespace(action="campaign.create", id="", run_id=run_id,
                                   item_id=item_id)
         owner = approval_owner(conn, pending, api_owner)
         if owner is not None and (owner == STUDIO or owner == account_id):
-            if sha:
-                shas.add(sha)
-            ids.update(i for i in pids if i)
+            out.append(tuple(rest))
+    return out
+
+
+def owned_funding_ids(conn: Any, account_id: str) -> list[str]:
+    """Ids of the fundings this account may see (same rule as ``account_refs``). Call
+    under ``conn.lock``."""
+    return [str(r[0]) for r in _owned_rows(conn, account_id)]
+
+
+def account_refs(conn: Any, account_id: str) -> AccountRefs:
+    """The references of the fundings this account may see, by the app's own ownership rule
+    (``routes_studio.approval_owner``, as ``routes_paypal.owns_item``): the account whose
+    token drafted the brief, the account a WhatsApp brief was sent for, and the studio's
+    own work (web-UI briefs, the demo seed), which every signed-in account sees.
+    ``approval_owner`` reads the database: **call under ``conn.lock``**."""
+    shas: set[str] = set()
+    ids: set[str] = set()
+    for _fid, sha, *pids in _owned_rows(conn, account_id):
+        if sha:
+            shas.add(sha)
+        ids.update(i for i in pids if i)
     return AccountRefs(frozenset(shas), frozenset(ids))
 
 

@@ -44,7 +44,7 @@ from typing import Any
 
 import jsonschema
 
-from studio import api_tokens, db, exports, mandates, routes_report, routes_studio
+from studio import api_tokens, db, exports, funding, mandates, routes_report, routes_studio
 from studio import brief as brief_v1
 from studio.agents import community, producer
 from studio.approvals import TTL_S
@@ -52,6 +52,8 @@ from studio.meta import measurement
 from studio.meta.adapter import AdapterError
 from studio.muse import voice
 from studio.muse.client import MuseError
+from studio.paypal import agent_tools, reconcile
+from studio.paypal import hooks as paypal_hooks
 from studio.receipts import canonical, is_opaque, sha256_hex
 from studio.routes_inbox import COMMENT_ID, list_comments, list_leads
 from studio.sandbox import Window
@@ -82,7 +84,9 @@ _STATUS = {"not_found": 404, "unknown_tool": 404, "invalid_arguments": 422,
            "insufficient_scope": 403, "not_confirmed": 409, "run_in_progress": 409,
            "unknown_draft": 409, "model_error": 502, "meta_error": 502,
            "model_api_unavailable": 503, "read_only": 503, "ReadOnlyMode": 503,
-           "BudgetExceeded": 503, "internal_error": 500, "invalid_request": 400,
+           "BudgetExceeded": 503, "not_allowed": 403, "paypal_error": 502,
+           "paypal_unavailable": 503, "refund_refused": 409, "internal_error": 500,
+           "invalid_request": 400,
            "unsupported_audio_type": 415, "invalid_brief": 400, "brief_too_long": 413,
            "open_weights_unavailable": 503, "invalid_open_weights": 400}
 
@@ -732,6 +736,70 @@ def draft_reply(s: Assistants, p: Principal, comment_id: str, message: str = ""
             "message": str(i18n.text(s.lang(p), "assist.awaiting_signature", url=url))}
 
 
+def _paypal(s: Assistants) -> Any:
+    funder = getattr(s.app.state, "funder", None)
+    if funder is None:
+        raise ApiRefused("paypal_unavailable")
+    return funder
+
+
+def paypal_transactions(s: Assistants, p: Principal) -> dict[str, Any]:
+    """The account's authorizations and captures against PayPal's transaction list."""
+    funder = _paypal(s)
+    try:
+        lines = reconcile.reconcile(conn=s.conn, client=funder.money.client,
+                                    ledger=s.ledger, account_id=p.account_id,
+                                    now=s.clock())
+    except agent_tools.ToolRefused as exc:
+        raise ApiRefused(exc.code) from None
+    return reconcile.summary(lines)
+
+
+def paypal_tool(s: Assistants, p: Principal, name: str, params: dict[str, Any] | None = None
+                ) -> dict[str, Any]:
+    """One read tool of the PayPal Agent Toolkit: redacted, the account's own money only."""
+    funder = _paypal(s)
+    with s.conn.lock:
+        refs = agent_tools.account_refs(s.conn, p.account_id)
+    try:
+        answer = agent_tools.run_read_tool(
+            client=funder.money.client, ledger=s.ledger, conn=s.conn,
+            chain_id=agent_tools.tools_chain(p.account_id), account_refs=refs, name=name,
+            params=params or {})
+    except agent_tools.ToolRefused as exc:
+        raise ApiRefused(exc.code) from None
+    return {"tool": name, "result": answer}
+
+
+def propose_refund(s: Assistants, p: Principal, funding_id: str, amount: str
+                   ) -> dict[str, Any]:
+    """A refund of part of a capture as a pending ``funding.refund`` approval (the same
+    path as the web UI's refund button). It never refunds: a human signs it."""
+    _paypal(s)
+    propose = s.app.state.propose_refund
+    account = s.app.state.accounts.get(p.account_id)
+    with s.conn.lock:
+        try:
+            currency = funding.get(s.conn, funding_id).currency
+        except funding.FundingError:
+            raise ApiRefused("not_found") from None
+    try:
+        minor = funding.parse_amount(amount, currency)
+    except funding.FundingError:
+        raise ApiRefused("invalid_arguments", detail="amount must be like 12.50") from None
+    try:
+        pending, payload = propose(funding_id, minor, account)
+    except (funding.FundingError, paypal_hooks.FundingRefused) as exc:
+        code = getattr(exc, "code", "") or "refund_refused"
+        raise ApiRefused("not_found" if code == "not_found" else "refund_refused",
+                         detail_code=code) from None
+    url = s.sign_url(p, "funding.refund", pending.run_id)
+    return {"funding_id": funding_id, "approval_id": pending.id, "action": "funding.refund",
+            "content": payload, "content_sha256": pending.content_sha256,
+            "status": AWAITING, "sign_url": url,
+            "message": str(i18n.text(s.lang(p), "assist.awaiting_signature", url=url))}
+
+
 OPS: dict[str, Op] = {o.name: o for o in (
     Op("whoami", "Who this token acts for, its scopes and expiry, and what an assistant "
        "may and may not do. " + CANNOT, "read", _schema(), whoami),
@@ -816,6 +884,26 @@ OPS: dict[str, Op] = {o.name: o for o in (
                 "message": {"type": "string", "maxLength": community.MAX_REPLY,
                             "description": "The exact reply text (optional)."}},
                ("comment_id",)), draft_reply),
+    Op("paypal_transactions", "Your PayPal authorizations and captures checked against "
+       "PayPal's own transaction list (sandbox): per line matched, pending (PayPal lists "
+       "transactions up to 3 hours late), missing or amount_mismatch. Only your own money; "
+       "no payer data. " + CANNOT, "read", _schema(), paypal_transactions),
+    Op("paypal_tool", "Read-only PayPal Agent Toolkit tools on your own sandbox money, "
+       "answered without payer data: list_transactions, get_order_details, list_disputes, "
+       "get_dispute. It cannot move money; refunds go through propose_refund and a human's "
+       "signature. " + CANNOT, "read",
+       _schema({"name": {"type": "string", "enum": sorted(agent_tools.READ_TOOLS)},
+                "params": {"type": "object", "description": "The tool's arguments; see "
+                           "tool_specs of the PayPal Agent Toolkit."}}, ("name",)),
+       paypal_tool),
+    Op("propose_refund", "Propose a refund of part of a captured funding: it becomes a "
+       "pending funding.refund approval the owner signs (sign_url). Nothing is refunded "
+       "until a human signs. Needs a draft token. " + CANNOT, "draft",
+       _schema({"funding_id": {"type": "string", "pattern": r"^fund_[0-9a-f]{16}$"},
+                "amount": {"type": "string", "pattern": r"^(0|[1-9][0-9]{0,11})(\.[0-9]{1,2})?$",
+                           "description": "Amount to refund in the funding's currency, "
+                                          "e.g. \"12.50\"."}},
+               ("funding_id", "amount")), propose_refund),
     # downloads of /api/v1 (GET /leads?format=…, GET /statement): not MCP tools
     Op("export_leads", "Every lead as export rows (masked for a trial or demo account).",
        "read", _schema(), export_leads, mcp=False),
