@@ -14,7 +14,7 @@ EN_ONBOARDING: dict[str, str] = {
     "start.href": "/start",
     "start.link": "How it works (1 min)",
     "nav.start": "How it works",
-    "meta.start": "How Muse Studio Lite works in one minute: six illustrated steps from one "
+    "meta.start": "How Signed Studio works in one minute: six illustrated steps from one "
                   "brief to a PAUSED campaign in your own Meta ad account, signed by you.",
     "start.title": "How it works in one minute",
     "start.kicker": "Six steps · no account needed",
@@ -86,7 +86,7 @@ PL_ONBOARDING: dict[str, str] = {
     "start.href": "/pl/start",
     "start.link": "Jak to działa (1 min)",
     "nav.start": "Jak to działa",
-    "meta.start": "Jak działa Muse Studio Lite w minutę: sześć ilustrowanych kroków od "
+    "meta.start": "Jak działa Signed Studio w minutę: sześć ilustrowanych kroków od "
                   "jednego briefu do wstrzymanej (PAUSED) kampanii na twoim koncie reklamowym "
                   "Meta, podpisanej przez ciebie.",
     "start.title": "Jak to działa — w minutę",

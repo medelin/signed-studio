@@ -234,5 +234,5 @@ def bounce_page(target: str, label: str) -> str:
     url = escape(target, quote=True)
     return ("<!doctype html><html><head><meta charset=\"utf-8\">"
             f"<meta http-equiv=\"refresh\" content=\"0;url={url}\">"
-            "<meta name=\"robots\" content=\"noindex\"><title>Muse Studio Lite</title></head>"
+            "<meta name=\"robots\" content=\"noindex\"><title>Signed Studio</title></head>"
             f"<body><p><a href=\"{url}\">{escape(label)}</a></p></body></html>")

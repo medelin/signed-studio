@@ -224,7 +224,7 @@ EN_ACCOUNTS: dict[str, str] = {
                    "studio's own page, until the operator lifts the trial.",
     "social.continue_google": "Continue with Google",
     "social.continue_facebook": "Continue with Facebook",
-    "social.continue": "Continue to Muse Studio Lite",
+    "social.continue": "Continue to Signed Studio",
     "social.error": "That sign-in did not go through. Try again, or use your user name "
                     "and password.",
     "social.google": "Google",
@@ -450,7 +450,7 @@ PL_ACCOUNTS: dict[str, str] = {
                    "wstrzymane, na stronie studia, dopóki operator go nie zniesie.",
     "social.continue_google": "Kontynuuj przez Google",
     "social.continue_facebook": "Kontynuuj przez Facebooka",
-    "social.continue": "Przejdź do Muse Studio Lite",
+    "social.continue": "Przejdź do Signed Studio",
     "social.error": "To logowanie się nie udało. Spróbuj ponownie albo użyj nazwy "
                     "użytkownika i hasła.",
     "social.google": "Google",

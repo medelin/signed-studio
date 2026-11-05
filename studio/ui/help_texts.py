@@ -28,8 +28,8 @@ LANGS = ("en", "pl")  # page chrome strings are in studio/ui/i18n.py
 ENTRIES: tuple[Entry, ...] = (
     Entry(
         "what-it-does", "amara", "signed",
-        {"en": "What does Muse Studio Lite do for me?",
-         "pl": "Co Muse Studio Lite dla mnie robi?"},
+        {"en": "What does Signed Studio do for me?",
+         "pl": "Co Signed Studio dla mnie robi?"},
         {"en": "You give it one brief, typed or spoken. A team of Muse agents writes a plan "
                "(producer), three ad texts (copywriter), cuts your product out of its photo "
                "and draws three placements for feed and stories (art director), and checks "

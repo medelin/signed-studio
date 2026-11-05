@@ -41,7 +41,7 @@ NAMES = {"en": "English", "pl": "Polski"}
 
 EN: dict[str, str] = {
     # header, footer, language
-    "brand": "Muse Studio Lite",
+    "brand": "Signed Studio",
     "nav.studio": "Studio", "nav.inbox": "Inbox", "nav.leads": "Leads", "nav.report": "Report",
     "nav.receipts": "Receipts", "nav.help": "Help", "nav.label": "Main",
     "tagline": "every agent leaves a receipt · a human signs every send",
@@ -348,9 +348,9 @@ EN: dict[str, str] = {
     "js.no_webcrypto": "WebCrypto is not available in this browser.",
     "js.triage_failed": "triage failed: {error}", "js.cannot_prepare": "cannot prepare: {error}",
     # audit: meta, enums, errors, script strings
-    "meta.default": "Muse Studio Lite: AI agents plan, write and draw ads for small businesses; a"
+    "meta.default": "Signed Studio: AI agents plan, write and draw ads for small businesses; a"
                     " person signs every send, and every step leaves a signed receipt.",
-    "meta.index": "The latest signed receipts from Muse Studio Lite: every model call, tool call,"
+    "meta.index": "The latest signed receipts from Signed Studio: every model call, tool call,"
                   " review and human signature, in one hash-chained ledger.",
     "meta.studio": "Write or speak a brief, follow the agents live, then sign the exact campaign "
                    "before anything is created (always paused).",
@@ -365,7 +365,7 @@ EN: dict[str, str] = {
     "meta.help": "Plain answers for the owner of a one-person business: what the studio does, "
                  "what it costs, and who checks what.",
     "meta.login": "Sign in to run the studio, triage comments and sign approvals.",
-    "meta.cast": "The cast of owners drawn for Muse Studio Lite, in light and dark themes.",
+    "meta.cast": "The cast of owners drawn for Signed Studio, in light and dark themes.",
     "meta.nf": "This page does not exist.",
     "receipts.chip_title": "hash {hash} · prev {prev} · id {id}",
     "enum.status.new": "new",
@@ -495,7 +495,7 @@ EN: dict[str, str] = {
 }
 
 PL: dict[str, str] = {
-    "brand": "Muse Studio Lite",
+    "brand": "Signed Studio",
     "nav.studio": "Studio", "nav.inbox": "Skrzynka", "nav.leads": "Leady",
     "nav.report": "Raport", "nav.receipts": "Pokwitowania", "nav.help": "Pomoc",
     "nav.label": "Główna",
@@ -812,10 +812,10 @@ PL: dict[str, str] = {
     "js.triage_failed": "segregowanie nie powiodło się: {error}",
     "js.cannot_prepare": "nie można przygotować: {error}",
     # audit: meta, enums, errors, script strings
-    "meta.default": "Muse Studio Lite: agenci AI planują, piszą i rysują reklamy dla małych firm;"
+    "meta.default": "Signed Studio: agenci AI planują, piszą i rysują reklamy dla małych firm;"
                     " każdą publikację podpisuje człowiek, a każdy krok zostawia podpisane "
                     "pokwitowanie.",
-    "meta.index": "Najnowsze podpisane pokwitowania z Muse Studio Lite: każde wywołanie modelu i "
+    "meta.index": "Najnowsze podpisane pokwitowania z Signed Studio: każde wywołanie modelu i "
                   "narzędzia, recenzja oraz podpis człowieka w jednym łańcuchu skrótów.",
     "meta.studio": "Napisz lub nagraj brief, śledź agentów na żywo, a potem podpisz dokładną "
                    "treść kampanii, zanim cokolwiek powstanie (zawsze wstrzymanej).",
@@ -831,7 +831,7 @@ PL: dict[str, str] = {
                  "kosztuje i kto co sprawdza.",
     "meta.login": "Zaloguj się, aby uruchamiać studio, segregować komentarze i podpisywać "
                   "zatwierdzenia.",
-    "meta.cast": "Obsada właścicieli narysowana dla Muse Studio Lite, w jasnym i ciemnym motywie.",
+    "meta.cast": "Obsada właścicieli narysowana dla Signed Studio, w jasnym i ciemnym motywie.",
     "meta.nf": "Takiej strony nie ma.",
     "receipts.chip_title": "skrót {hash} · poprzedni {prev} · id {id}",
     "enum.status.new": "nowy",

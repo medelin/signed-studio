@@ -8,14 +8,14 @@ from __future__ import annotations
 
 EN_NOTIFY: dict[str, str] = {
     "notify.open": "Open it here:",
-    "notify.footer": "You get this because notifications are on for your Muse Studio Lite "
+    "notify.footer": "You get this because notifications are on for your Signed Studio "
                      "account. Choose what you receive:",
-    "notify.footer_billing": "A message about your Muse Studio Lite account.",
-    "notify.welcome.subject": "Welcome to Muse Studio Lite",
+    "notify.footer_billing": "A message about your Signed Studio account.",
+    "notify.welcome.subject": "Welcome to Signed Studio",
     "notify.welcome.body": "Your account is ready. Start with one brief: say or type what "
                            "you sell and to whom. Agents prepare the campaign; nothing goes "
                            "out until you sign it.",
-    "notify.footer_security": "This is a security notice about your Muse Studio Lite account "
+    "notify.footer_security": "This is a security notice about your Signed Studio account "
                               "and cannot be turned off. If it was not you, change your "
                               "password and sign out the other sessions.",
     "notify.approval_waiting.subject": "Something is waiting for your signature",
@@ -70,15 +70,15 @@ EN_NOTIFY: dict[str, str] = {
 
 PL_NOTIFY: dict[str, str] = {
     "notify.open": "Otwórz tutaj:",
-    "notify.footer": "Dostajesz to, bo powiadomienia są włączone na Twoim koncie Muse Studio "
-                     "Lite. Wybierz, co chcesz dostawać:",
-    "notify.footer_billing": "Wiadomość o Twoim koncie Muse Studio Lite.",
-    "notify.welcome.subject": "Witaj w Muse Studio Lite",
+    "notify.footer": "Dostajesz to, bo powiadomienia są włączone na Twoim koncie Signed Studio. "
+                     "Wybierz, co chcesz dostawać:",
+    "notify.footer_billing": "Wiadomość o Twoim koncie Signed Studio.",
+    "notify.welcome.subject": "Witaj w Signed Studio",
     "notify.welcome.body": "Twoje konto jest gotowe. Zacznij od jednego briefu: powiedz "
                            "albo napisz, co sprzedajesz i komu. Agenci przygotują kampanię; "
                            "nic nie wyjdzie, dopóki jej nie podpiszesz.",
-    "notify.footer_security": "To powiadomienie o bezpieczeństwie Twojego konta Muse Studio "
-                              "Lite i nie da się go wyłączyć. Jeśli to nie Ty, zmień hasło "
+    "notify.footer_security": "To powiadomienie o bezpieczeństwie Twojego konta Signed Studio "
+                              "i nie da się go wyłączyć. Jeśli to nie Ty, zmień hasło "
                               "i wyloguj pozostałe sesje.",
     "notify.approval_waiting.subject": "Coś czeka na Twój podpis",
     "notify.approval_waiting.body": "Zatwierdzenie czeka na Ciebie. Nic nie zostanie wysłane "

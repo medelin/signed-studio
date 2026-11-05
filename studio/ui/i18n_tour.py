@@ -10,7 +10,7 @@ from __future__ import annotations
 EN_TOUR: dict[str, str] = {
     "try.link_html": '<a href="/try">Try it without an account</a>: one recorded run, '
                      'replayed in your browser, nothing sent anywhere.',
-    "meta.try": "Try Muse Studio Lite without an account: one recorded run replayed in your "
+    "meta.try": "Try Signed Studio without an account: one recorded run replayed in your "
                 "browser, from the brief to the signature, with receipts you can verify.",
     "try.title": "Try it: one recorded run",
     "try.kicker": "Public tour · no account",
@@ -151,7 +151,7 @@ EN_TOUR: dict[str, str] = {
 PL_TOUR: dict[str, str] = {
     "try.link_html": '<a href="/pl/try">Wypróbuj bez konta</a>: jeden nagrany przebieg, '
                      'odtwarzany w przeglądarce, nic nie jest nigdzie wysyłane.',
-    "meta.try": "Wypróbuj Muse Studio Lite bez konta: jeden nagrany przebieg odtworzony w "
+    "meta.try": "Wypróbuj Signed Studio bez konta: jeden nagrany przebieg odtworzony w "
                 "przeglądarce, od briefu do podpisu, z pokwitowaniami do sprawdzenia.",
     "try.title": "Wypróbuj: jeden nagrany przebieg",
     "try.kicker": "Publiczna wycieczka · bez konta",

@@ -229,9 +229,9 @@ Day by day: [docs/BUILD-LOG.md](docs/BUILD-LOG.md).
   intended: P-V3 accepts only events for orders a run funded.
 - Holds that are never captured are voided after PayPal's 3-day honour period. Refunds need
   their own signed `funding.refund` approval.
-- Single-tenant: one operator's ad account. The UI header still reads "Muse Studio Lite"
-  (as in the screens above), and package and module names keep the base's `muse-studio-lite`
-  prefix.
+- Single-tenant: one operator's ad account. Package and module names keep the base's
+  `muse-studio-lite` prefix, and names registered on Meta's side (the Facebook app, the
+  WhatsApp sender, the CAPI lead source) still read "Muse Studio Lite".
 
 ## Docs
 

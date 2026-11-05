@@ -204,8 +204,8 @@ def test_main_pages_have_no_leftover_keys_or_foreign_text(client, judge, path, l
 def test_polish_help_page_and_prefix_route_are_polish(client):
     for url in ("/pl/help", "/help?lang=pl"):
         text = visible(client.get(url).text)
-        assert "Co Muse Studio Lite dla mnie robi?" in text and "What does Muse Studio" not in text
-    assert "What does Muse Studio Lite do for me?" in visible(client.get("/help?lang=en").text)
+        assert "Co Signed Studio dla mnie robi?" in text and "What does Signed Studio" not in text
+    assert "What does Signed Studio do for me?" in visible(client.get("/help?lang=en").text)
 
 
 def test_polish_404_and_labels_around_demo_data(client, judge):
