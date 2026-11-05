@@ -62,3 +62,14 @@ def test_no_secret_values():
     assert "api-m.paypal.com" not in text
     for name in ("paypal_client_id", "paypal_client_secret"):
         assert "{{" + name + "}}" in text
+
+
+def test_defaults_and_capture_mock_header():
+    doc = json.loads(COMMITTED.read_text())
+    assert next(v for v in doc["variable"] if v["key"] == "base_url")["value"] == \
+        "https://pay.udun.eu"
+    assert {"content_sha256", "invoice_id"} <= {v["key"] for v in doc["variable"]}
+    assert "<" not in json.dumps([f for f in doc["item"] if f["name"].startswith("PayPal")])
+    cap = next(i for i in walk(doc["item"]) if i["name"] == "Capture authorization")
+    mock = next(h for h in cap["request"]["header"] if h["key"] == "PayPal-Mock-Response")
+    assert mock["disabled"] is True

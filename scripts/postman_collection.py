@@ -122,6 +122,9 @@ def pp(name: str, method: str, path: str, *, body: Any = None, auth: str = "bear
     if query:
         raw += "?" + "&".join(f"{k}={v}" for k, v in sorted(query.items()))
     hdr = [{"key": k, "value": v} for k, v in sorted((headers or {}).items())]
+    if name == "Capture authorization":
+        hdr.append({"key": "PayPal-Mock-Response", "disabled": True,
+                    "value": '{"mock_application_codes":"INSTRUMENT_DECLINED"}'})
     req: dict[str, Any] = {
         "method": method, "header": hdr, "description": desc,
         "url": {"raw": raw, "host": ["{{paypal_base}}"],
@@ -159,8 +162,8 @@ def paypal_items() -> list[dict[str, Any]]:
            desc="Sandbox client credentials -> access token (saved to paypal_access_token)."),
         pp("Create order (AUTHORIZE)", "POST", "/v2/checkout/orders", headers=rid, body={
             "intent": "AUTHORIZE", "purchase_units": [{
-                "reference_id": "default", "custom_id": "<content_sha256 of the funding>",
-                "invoice_id": "<invoice id>", "amount": {**money, "breakdown": {
+                "reference_id": "default", "custom_id": "{{content_sha256}}",
+                "invoice_id": "{{invoice_id}}", "amount": {**money, "breakdown": {
                     "item_total": money}}}],
             "payment_source": {"paypal": {"experience_context": {
                 "shipping_preference": "NO_SHIPPING", "user_action": "CONTINUE"}}}},
@@ -168,14 +171,13 @@ def paypal_items() -> list[dict[str, Any]]:
         pp("Authorize order", "POST", "/v2/checkout/orders/{{order_id}}/authorize",
            headers=rid),
         pp("Capture authorization", "POST",
-           "/v2/payments/authorizations/{{authorization_id}}/capture", headers={
-               **rid, "PayPal-Mock-Response": '{"mock_application_codes":"INSTRUMENT_DECLINED"}'},
-           body={"amount": money, "final_capture": True, "invoice_id": "<invoice id>"},
-           desc="Remove PayPal-Mock-Response for a real sandbox capture."),
+           "/v2/payments/authorizations/{{authorization_id}}/capture", headers=rid,
+           body={"amount": money, "final_capture": True, "invoice_id": "{{invoice_id}}"},
+           desc="Enable the PayPal-Mock-Response header to simulate a decline."),
         pp("Void authorization", "POST", "/v2/payments/authorizations/{{authorization_id}}/void",
            headers=rid),
         pp("Refund capture", "POST", "/v2/payments/captures/{{capture_id}}/refund",
-           headers=rid, body={"amount": money, "invoice_id": "<invoice id>"}),
+           headers=rid, body={"amount": money, "invoice_id": "{{invoice_id}}"}),
         pp("Vault setup token", "POST", "/v3/vault/setup-tokens", headers=rid, body={
             "payment_source": {"paypal": {"usage_type": "MERCHANT", "usage_pattern":
                                           "IMMEDIATE", "experience_context": {
@@ -204,13 +206,14 @@ def build() -> dict[str, Any]:
             {"id": uid("folder", "paypal"), "name": PAYPAL_FOLDER, "item": paypal_items(),
              "auth": {"type": "noauth"}}],
         "variable": [
-            {"key": "base_url", "value": "https://muse.udun.eu"},
+            {"key": "base_url", "value": "https://pay.udun.eu"},
             {"key": "token", "value": ""},
             {"key": "paypal_base", "value": SANDBOX},
             {"key": "paypal_client_id", "value": ""},
             {"key": "paypal_client_secret", "value": ""},
             {"key": "paypal_access_token", "value": ""},
-            {"key": "order_id", "value": ""}, {"key": "authorization_id", "value": ""},
+            {"key": "order_id", "value": ""}, {"key": "content_sha256", "value": ""},
+            {"key": "invoice_id", "value": ""}, {"key": "authorization_id", "value": ""},
             {"key": "capture_id", "value": ""}]}
 
 

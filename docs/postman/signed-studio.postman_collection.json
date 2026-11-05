@@ -838,7 +838,7 @@
                   "language": "json"
                 }
               },
-              "raw": "{\n  \"intent\": \"AUTHORIZE\",\n  \"payment_source\": {\n    \"paypal\": {\n      \"experience_context\": {\n        \"shipping_preference\": \"NO_SHIPPING\",\n        \"user_action\": \"CONTINUE\"\n      }\n    }\n  },\n  \"purchase_units\": [\n    {\n      \"amount\": {\n        \"breakdown\": {\n          \"item_total\": {\n            \"currency_code\": \"EUR\",\n            \"value\": \"10.00\"\n          }\n        },\n        \"currency_code\": \"EUR\",\n        \"value\": \"10.00\"\n      },\n      \"custom_id\": \"<content_sha256 of the funding>\",\n      \"invoice_id\": \"<invoice id>\",\n      \"reference_id\": \"default\"\n    }\n  ]\n}"
+              "raw": "{\n  \"intent\": \"AUTHORIZE\",\n  \"payment_source\": {\n    \"paypal\": {\n      \"experience_context\": {\n        \"shipping_preference\": \"NO_SHIPPING\",\n        \"user_action\": \"CONTINUE\"\n      }\n    }\n  },\n  \"purchase_units\": [\n    {\n      \"amount\": {\n        \"breakdown\": {\n          \"item_total\": {\n            \"currency_code\": \"EUR\",\n            \"value\": \"10.00\"\n          }\n        },\n        \"currency_code\": \"EUR\",\n        \"value\": \"10.00\"\n      },\n      \"custom_id\": \"{{content_sha256}}\",\n      \"invoice_id\": \"{{invoice_id}}\",\n      \"reference_id\": \"default\"\n    }\n  ]\n}"
             },
             "description": "A person approves it as the sandbox buyer; nothing moves before that.",
             "header": [
@@ -927,17 +927,18 @@
                   "language": "json"
                 }
               },
-              "raw": "{\n  \"amount\": {\n    \"currency_code\": \"EUR\",\n    \"value\": \"10.00\"\n  },\n  \"final_capture\": true,\n  \"invoice_id\": \"<invoice id>\"\n}"
+              "raw": "{\n  \"amount\": {\n    \"currency_code\": \"EUR\",\n    \"value\": \"10.00\"\n  },\n  \"final_capture\": true,\n  \"invoice_id\": \"{{invoice_id}}\"\n}"
             },
-            "description": "Remove PayPal-Mock-Response for a real sandbox capture.",
+            "description": "Enable the PayPal-Mock-Response header to simulate a decline.",
             "header": [
-              {
-                "key": "PayPal-Mock-Response",
-                "value": "{\"mock_application_codes\":\"INSTRUMENT_DECLINED\"}"
-              },
               {
                 "key": "PayPal-Request-Id",
                 "value": "{{$guid}}"
+              },
+              {
+                "disabled": true,
+                "key": "PayPal-Mock-Response",
+                "value": "{\"mock_application_codes\":\"INSTRUMENT_DECLINED\"}"
               },
               {
                 "key": "Content-Type",
@@ -1022,7 +1023,7 @@
                   "language": "json"
                 }
               },
-              "raw": "{\n  \"amount\": {\n    \"currency_code\": \"EUR\",\n    \"value\": \"10.00\"\n  },\n  \"invoice_id\": \"<invoice id>\"\n}"
+              "raw": "{\n  \"amount\": {\n    \"currency_code\": \"EUR\",\n    \"value\": \"10.00\"\n  },\n  \"invoice_id\": \"{{invoice_id}}\"\n}"
             },
             "description": "",
             "header": [
@@ -1155,7 +1156,7 @@
   "variable": [
     {
       "key": "base_url",
-      "value": "https://muse.udun.eu"
+      "value": "https://pay.udun.eu"
     },
     {
       "key": "token",
@@ -1179,6 +1180,14 @@
     },
     {
       "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "content_sha256",
+      "value": ""
+    },
+    {
+      "key": "invoice_id",
       "value": ""
     },
     {

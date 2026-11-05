@@ -88,7 +88,7 @@ importers such as GPT Actions); otherwise its server is the relative `/api/v1`.
 
 ### Postman
 
-`docs/postman/signed-studio.postman_collection.json` is a Postman v2.1 collection with one request per `/api/v1` operation (the OpenAPI document above) and a second folder, "PayPal sandbox (what the studio calls)": OAuth token, create order (AUTHORIZE), authorize, capture, void, refund, Vault setup token and Transaction Search, all against `{{paypal_base}}` (the sandbox URL). In Postman choose Import, pick the file, and set the collection variables `base_url`, `token` (your personal access token), and for the PayPal folder `paypal_client_id` and `paypal_client_secret` (sandbox app credentials); the "OAuth token" request fills `paypal_access_token` itself. The file holds variables only, never values; regenerate it with `make postman`.
+`docs/postman/signed-studio.postman_collection.json` is a Postman v2.1 collection with one request per `/api/v1` operation (the OpenAPI document above) and a second folder, "PayPal sandbox (what the studio calls)": OAuth token, create order (AUTHORIZE), authorize, capture, void, refund, Vault setup token and Transaction Search, all against `{{paypal_base}}` (the sandbox URL). In Postman choose Import, pick the file, and set the collection variables `base_url` (per deployment; the default is `https://pay.udun.eu`), `token` (your personal access token), and for the PayPal folder `paypal_client_id` and `paypal_client_secret` (sandbox app credentials); the "OAuth token" request fills `paypal_access_token` itself. The file holds variables only, never values; regenerate it with `make postman`.
 
 ### curl
 
