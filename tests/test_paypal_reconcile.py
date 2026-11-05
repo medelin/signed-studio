@@ -53,8 +53,8 @@ def w(tmp_path):
 
 
 def run(w, account="acc_1", now=NOW):
-    return reconcile(conn=w.conn, client=w.client, ledger=w.ledger, account_id=account,
-                     now=now)
+    return reconcile(conn=w.conn, client=w.client, ledger=w.ledger, receipt_key=w.key,
+                     account_id=account, now=now)
 
 
 def by_move(lines):
@@ -66,7 +66,7 @@ def test_capture_is_matched_by_id(w):
     w.sandbox.transactions = [listed(CAP, ref=AUTH)]
     lines = run(w)
     assert by_move(lines) == {"authorization": "matched", "capture": "matched"}
-    report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger,
+    report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger, receipt_key=w.key,
                               account_id="acc_1", now=NOW)
     out = summary(report)
     assert out["matched"] == 2 and not {"truncated", "pages_read"} & set(out)
@@ -86,7 +86,7 @@ def test_custom_field_alone_never_matches(w):
 
 def test_recent_move_is_pending_not_missing(w):
     captured(w.conn, "run_ui", "cre_1", ts=NOW - 600)
-    out = summary(reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger,
+    out = summary(reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger, receipt_key=w.key,
                                    account_id="acc_1", now=NOW))
     assert out["pending"] == 1 and out["held"] == 1 and out["missing"] == 0
 
@@ -148,7 +148,7 @@ def paged(w, pages):
 def test_second_page_is_read(w):
     captured(w.conn, "run_ui", "cre_1")
     seen = paged(w, [[listed("9ZZ99999ZZ999999Z")], [listed(CAP)]])
-    report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger,
+    report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger, receipt_key=w.key,
                               account_id="acc_1", now=NOW)
     assert seen == [1, 2] and report.pages_read == 2 and report.truncated is False
     assert by_move(report.lines)["capture"] == "matched"
@@ -160,7 +160,7 @@ def test_unread_pages_make_absent_moves_unknown(w, monkeypatch):
     captured(w.conn, "run_ui", "cre_1")
     monkeypatch.setattr(mod, "MAX_CALLS_PER_TOOL", 2)
     seen = paged(w, [[listed("9ZZ99999ZZ999999Z")]] * 5)
-    report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger,
+    report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger, receipt_key=w.key,
                               account_id="acc_1", now=NOW)
     assert seen == [1, 2] and report.truncated is True
     assert by_move(report.lines)["capture"] == "unknown"
@@ -218,7 +218,7 @@ def test_reconcile_receipt_count_is_independent_of_pages(w):
     for pages in ([[listed(CAP)]], [[listed("9ZZ99999ZZ999999Z")]] * 2 + [[listed(CAP)]]):
         before = len(w.ledger.receipts(chain))
         seen = paged(w, pages)
-        report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger,
+        report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger, receipt_key=w.key,
                                   account_id="acc_1", now=NOW)
         assert len(seen) == len(pages) and by_move(report.lines)["capture"] == "matched"
         new = w.ledger.receipts(chain)[before:]

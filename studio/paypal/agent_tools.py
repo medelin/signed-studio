@@ -36,6 +36,7 @@ from urllib.parse import urlencode
 from pydantic import ValidationError
 
 from studio.paypal.client import PayPalClient, PayPalError
+from studio.paypal.receipt_key import keyed_sha256
 from studio.receipts import PAYPAL_KIND, Ledger, canonical, sha256_hex
 from studio.vendor.paypal_agent_toolkit.shared.tools import tools as _REGISTRY
 
@@ -55,6 +56,7 @@ AGENT = "treasury"
 PROVIDER = "paypal"
 STEP = "paypal.agent_tool"
 RECONCILE_STEP = "paypal.reconcile"
+HASH_KIND = "hmac-sha256"  # ``details.hash`` of these receipts: ``body_sha256`` is keyed
 TRANSACTIONS_PATH = "/v1/reporting/transactions"
 # Receipt chains of an account's toolkit calls: ``acct:<account id>:paypal-tools`` (an
 # opaque ledger id: ``Ledger.validate_ids``).
@@ -273,11 +275,12 @@ def _append(ledger: Ledger, conn: Any, chain_id: str, target: str,
 
 
 def answer_sha256(answer: Any) -> str:
-    """The receipt hash of an answer: SHA-256 of its canonical JSON (sorted keys)."""
+    """Plain SHA-256 of an answer's canonical JSON (sorted keys). Not used on receipts
+    (they are keyed, ``keyed_sha256``); kept for callers that compare an answer offline."""
     return sha256_hex(canonical(answer))
 
 
-def reconcile_receipt(*, ledger: Ledger, conn: Any, chain_id: str,
+def reconcile_receipt(*, ledger: Ledger, conn: Any, receipt_key: bytes, chain_id: str,
                       record: list[dict[str, Any]], answer: Any | None) -> None:
     """The one receipt of a reconciliation run (``run_list_page`` calls with ``record``):
     ``ok`` if the run answered (``answer`` not None: every page read), the path, and
@@ -290,11 +293,12 @@ def reconcile_receipt(*, ledger: Ledger, conn: Any, chain_id: str,
     ok = answer is not None
     _append(ledger, conn, chain_id, record[0]["target"], {
         "step": RECONCILE_STEP, "tool": "list_transactions", "path": TRANSACTIONS_PATH,
-        "ok": ok, "body_sha256": answer_sha256(answer) if ok else ""})
+        "ok": ok, "hash": HASH_KIND,
+        "body_sha256": keyed_sha256(receipt_key, answer) if ok else ""})
 
 
-def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
-                  account_refs: AccountRefs, name: str, params: dict[str, Any]
+def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, receipt_key: bytes,
+                  chain_id: str, account_refs: AccountRefs, name: str, params: dict[str, Any]
                   ) -> dict[str, Any]:
     """Run one read tool for an agent. ``ToolRefused``: ``not_allowed`` (not a read
     tool, or another account's order/dispute), ``invalid_arguments``, ``paypal_error``.
@@ -321,7 +325,8 @@ def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: 
         if record:  # one receipt per tool call, whatever the number of HTTP calls
             _append(ledger, conn, chain_id, record[0]["target"], {
                 "step": STEP, "tool": name, "path": record[0]["path"], "ok": out is not None,
-                "body_sha256": answer_sha256(out) if out is not None else ""})
+                "hash": HASH_KIND,
+                "body_sha256": keyed_sha256(receipt_key, out) if out is not None else ""})
     return out
 
 

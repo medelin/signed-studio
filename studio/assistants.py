@@ -54,6 +54,7 @@ from studio.muse import voice
 from studio.muse.client import MuseError
 from studio.paypal import agent_tools, reconcile
 from studio.paypal import hooks as paypal_hooks
+from studio.paypal.receipt_key import receipt_key
 from studio.receipts import canonical, is_opaque, sha256_hex
 from studio.routes_inbox import COMMENT_ID, list_comments, list_leads
 from studio.sandbox import Window
@@ -161,6 +162,7 @@ class Assistants:
         self.conn = app.state.conn
         self.ledger = app.state.ledger
         key = db.load_or_create_ledger_key(self.settings.data_dir / "ledger.key")
+        self.receipt_key = receipt_key(self.settings.data_dir)
         self.tokens = api_tokens.Tokens(self.conn, api_tokens.derive_key(key), clock=clock)
         self.requests = Window(REQUESTS_PER_MIN, 60.0, max_keys=5_000)
         self.drafts = Window(DRAFTS_PER_MIN, 60.0, max_keys=5_000)
@@ -748,7 +750,8 @@ def paypal_transactions(s: Assistants, p: Principal) -> dict[str, Any]:
     funder = _paypal(s)
     try:
         report = reconcile.reconcile_report(conn=s.conn, client=funder.money.client,
-                                            ledger=s.ledger, account_id=p.account_id,
+                                            ledger=s.ledger, receipt_key=s.receipt_key,
+                                            account_id=p.account_id,
                                             now=s.clock())
     except agent_tools.ToolRefused as exc:
         raise ApiRefused(exc.code) from None
@@ -764,6 +767,7 @@ def paypal_tool(s: Assistants, p: Principal, name: str, params: dict[str, Any] |
     try:
         answer = agent_tools.run_read_tool(
             client=funder.money.client, ledger=s.ledger, conn=s.conn,
+            receipt_key=s.receipt_key,
             chain_id=agent_tools.tools_chain(p.account_id), account_refs=refs, name=name,
             params=params or {})
     except agent_tools.ToolRefused as exc:

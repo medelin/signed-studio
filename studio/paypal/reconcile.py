@@ -91,15 +91,16 @@ def _same_amount(move: dict[str, Any], info: dict[str, Any]) -> bool:
     return minor == move["amount_minor"] and amount.get("currency_code") == move["currency"]
 
 
-def reconcile(*, conn: Any, client: PayPalClient, ledger: Ledger, account_id: str,
-              now: float) -> list[ReconLine]:
+def reconcile(*, conn: Any, client: PayPalClient, ledger: Ledger, receipt_key: bytes,
+              account_id: str, now: float) -> list[ReconLine]:
     """The lines of ``reconcile_report``."""
-    return reconcile_report(conn=conn, client=client, ledger=ledger, account_id=account_id,
+    return reconcile_report(conn=conn, client=client, ledger=ledger,
+                            receipt_key=receipt_key, account_id=account_id,
                             now=now).lines
 
 
-def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account_id: str,
-                     now: float) -> ReconReport:
+def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, receipt_key: bytes,
+                     account_id: str, now: float) -> ReconReport:
     """One line per authorization / capture / refund of the account's fundings."""
     start = now - MAX_WINDOW_S
     with conn.lock:
@@ -139,7 +140,8 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
             read = True
         finally:
             if not read:  # a failed page: one failed receipt for the run
-                reconcile_receipt(ledger=ledger, conn=conn, chain_id=chain, record=record,
+                reconcile_receipt(ledger=ledger, conn=conn, receipt_key=receipt_key,
+                                  chain_id=chain, record=record,
                                   answer=None)
     captured_ok: set[str] = set()  # fundings whose capture is listed
     status: dict[tuple[str, str, str], str] = {}
@@ -168,7 +170,8 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
                     for fid, m in wanted]
     if inside:
         # hashes the account's own lines, never PayPal's pages (shared merchant)
-        reconcile_receipt(ledger=ledger, conn=conn, chain_id=chain, record=record,
+        reconcile_receipt(ledger=ledger, conn=conn, receipt_key=receipt_key,
+                                  chain_id=chain, record=record,
                           answer=[ln.view() for ln in report.lines])
     return report
 

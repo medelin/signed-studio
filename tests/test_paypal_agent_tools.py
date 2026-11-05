@@ -21,6 +21,7 @@ from studio.paypal.agent_tools import (
     tool_specs,
 )
 from studio.paypal.client import PayPalClient
+from studio.paypal.receipt_key import keyed_sha256, receipt_key
 from studio.receipts import PAYPAL_KIND, verify
 
 OWN = "a" * 64
@@ -29,6 +30,7 @@ OWN_ORDER = "5O190127TN364715T"
 OWN_CAPTURE = "3C679366HH908993F"
 OWN_TID = "9XX11111AB222222C"
 CHAIN = "acct:acc_1:paypal-tools"
+KEY = bytes(range(32))
 
 
 def tx(custom: str, tid: str = "9XX11111AB222222C") -> dict:
@@ -88,11 +90,13 @@ class World:
         self.sandbox = Sandbox(**kw)
         self.client = PayPalClient("id", "secret", transport=httpx.MockTransport(self.sandbox),
                                    sleep=lambda s: None)
+        self.key = KEY
         self.refs = AccountRefs(frozenset({OWN}), frozenset({OWN_ORDER, OWN_CAPTURE, OWN_TID}))
 
     def run(self, name, params=None, refs=None):
         return run_read_tool(client=self.client, ledger=self.ledger, conn=self.conn,
-                             chain_id=CHAIN, account_refs=refs or self.refs, name=name,
+                             receipt_key=self.key, chain_id=CHAIN,
+                             account_refs=refs or self.refs, name=name,
                              params=params or {})
 
     def receipts(self):
@@ -474,7 +478,6 @@ FOREIGN_TID = "7YY99999ZZ888888Q"
 ])
 def test_agent_receipts_hash_the_callers_answer_not_paypals_body(tmp_path, name, params,
                                                                  raw_a, raw_b):
-    from studio.receipts import canonical, sha256_hex
 
     hashes, answers = [], []
     for i, raw in enumerate((raw_a, raw_b)):
@@ -493,16 +496,15 @@ def test_agent_receipts_hash_the_callers_answer_not_paypals_body(tmp_path, name,
     if name != "get_dispute":  # get_dispute: the dispute itself is the caller's answer
         assert answers[0] == answers[1]
         assert hashes[0] == hashes[1]
-    assert hashes == [sha256_hex(canonical(a)) for a in answers]
+    assert hashes == [keyed_sha256(KEY, a) for a in answers]
 
 
 def test_order_details_receipt_hashes_the_answer(w):
-    from studio.receipts import canonical, sha256_hex
 
     out = w.run("get_order_details", {"order_id": OWN_ORDER})
     (r,) = w.receipts()
     assert "status" not in r.details and r.details["ok"] is True
-    assert r.details["body_sha256"] == sha256_hex(canonical(out))
+    assert r.details["body_sha256"] == keyed_sha256(KEY, out)
 
 
 def test_by_id_search_is_one_receipt_for_the_tool_call(w):
@@ -541,3 +543,51 @@ def test_dispute_state_must_be_known(w):
     assert w.sandbox.requests == []
     for state in sorted(agent_tools.DISPUTE_STATES):
         assert w.run("list_disputes", {"dispute_state": state}) == {"items": []}
+
+
+# -- keyed hashes (public receipts must not confirm a guessed answer) ---------------------
+
+
+def test_agent_receipt_hash_is_keyed(tmp_path):
+    import hashlib
+    import hmac
+
+    from studio.receipts import canonical
+
+    out = None
+    hashes = []
+    for i, key in enumerate((KEY, bytes(32))):
+        (tmp_path / str(i)).mkdir()
+        world = World(tmp_path / str(i))
+        world.key = key
+        world.sandbox.transactions = []
+        out = world.run("list_transactions", {})
+        (r,) = world.receipts()
+        assert r.details["hash"] == "hmac-sha256"
+        hashes.append(r.details["body_sha256"])
+    assert hashes[0] != hashes[1]
+    assert hashes[0] == hmac.new(KEY, canonical(out), hashlib.sha256).hexdigest()
+    assert hashes[0] == keyed_sha256(KEY, out)
+    # not the plain hash anyone could recompute from a guessed answer
+    assert hashes[0] != agent_tools.answer_sha256(out)
+
+
+def test_receipt_key_file_is_private(tmp_path):
+    key = receipt_key(tmp_path)
+    path = tmp_path / "receipt-hmac.key"
+    assert len(key) == 32 and path.read_bytes() == key
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert receipt_key(tmp_path) == key
+
+
+def test_export_never_contains_the_key(w, tmp_path):
+    key = receipt_key(tmp_path)
+    w.key = key
+    w.run("list_transactions", {})
+    export = w.export()
+    assert key.hex() not in export and key.hex().upper() not in export
+    import base64
+    assert base64.b64encode(key).decode() not in export
+    path = tmp_path / "receipts.jsonl"
+    path.write_text(export)
+    assert verify(path, w.ledger.public_key).ok  # the hash is opaque to verify
