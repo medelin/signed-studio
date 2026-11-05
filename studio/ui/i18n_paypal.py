@@ -50,6 +50,11 @@ EN_PAYPAL: dict[str, str] = {
     "js.paypal_capture_declined": "PayPal declined taking the money ({issue}: {reason}). The "
                                   "money is still held and the campaign is still paused; sign "
                                   "the activation again. PayPal debug id: {debug}.",
+    "js.paypal_unconfirmed": "PayPal did not confirm the payment yet ({issue}); nothing was "
+                             "charged. Try again in a moment.",
+    "js.reason.INSTRUMENT_DECLINED": "PayPal declined the buyer's funding source",
+    "js.reason.TRANSACTION_REFUSED": "PayPal refused the transaction",
+    "js.reason.PAYER_CANNOT_PAY": "the buyer cannot pay with this funding source",
     "paypal.simulate_decline": "Sandbox: simulate a declined card on capture",
     "err.invalid_simulate": "That sandbox simulation is not one the studio offers.",
     "err.paypal": "PayPal refused this step. Try again in a moment.",
@@ -115,6 +120,11 @@ PL_PAYPAL: dict[str, str] = {
                                   "Pieniądze nadal są zablokowane, a kampania wstrzymana; "
                                   "podpisz aktywację jeszcze raz. Identyfikator PayPal: "
                                   "{debug}.",
+    "js.paypal_unconfirmed": "PayPal jeszcze nie potwierdził płatności ({issue}); nic nie "
+                             "pobrano. Spróbuj za chwilę.",
+    "js.reason.INSTRUMENT_DECLINED": "PayPal odrzucił źródło płatności kupującego",
+    "js.reason.TRANSACTION_REFUSED": "PayPal odmówił wykonania transakcji",
+    "js.reason.PAYER_CANNOT_PAY": "kupujący nie może zapłacić tym źródłem",
     "paypal.simulate_decline": "Piaskownica: zasymuluj odrzuconą kartę przy pobraniu",
     "err.invalid_simulate": "Studio nie oferuje takiej symulacji w piaskownicy.",
     "err.paypal": "PayPal odmówił tego kroku. Spróbuj za chwilę.",

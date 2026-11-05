@@ -576,9 +576,10 @@ $("approve-button").addEventListener("click", async () => {
     }
     if (r.data.executed && r.data.result) {
       const refused = r.data.result.funding_error;
-      status("approve-status", refused
-        ? T("paypal_declined", { issue: refused, reason: r.data.result.funding_reason || "" })
-        : T("signed_executed", { adapter: r.data.result.adapter }), !!refused);
+      const declined = !!r.data.result.funding_declined;
+      status("approve-status", !refused ? T("signed_executed", { adapter: r.data.result.adapter })
+        : declined ? T("paypal_declined", { issue: refused, reason: reasonOf(refused, r.data.result.funding_reason) })
+        : T("paypal_unconfirmed", { issue: refused }), !!refused);
       showCampaign(currentPayload.content.run_id, r.data.result.campaign_item_id);
     } else if (r.data.execution_error) {
       status("approve-status", T("signed_failed", { error: r.data.execution_error }), true);
@@ -809,6 +810,12 @@ async function showCampaign(runId, itemId) {
   $("campaign-h").focus();
 }
 
+// PayPal's reason for an issue in the page language, else PayPal's own (English) text.
+function reasonOf(issue, fallback) {
+  const t = T("reason." + issue);
+  return t === "reason." + issue ? (fallback || "") : t;
+}
+
 // The sandbox-decline checkbox is offered only when PayPal is on for this studio.
 async function showSimulateRow() {
   try {
@@ -833,7 +840,7 @@ $("activate-button").addEventListener("click", async () => {
     const simulate = $("simulate-decline") && $("simulate-decline").checked ? { simulate: "INSTRUMENT_DECLINED" } : {};
     const done = await Signer.sign(payload, simulate);
     if (!done.executed && done.execution_reason) {
-      status("activate-status", T("paypal_capture_declined", { issue: done.execution_error, reason: done.execution_reason, debug: done.execution_debug_id || "" }), true);
+      status("activate-status", T("paypal_capture_declined", { issue: done.execution_error, reason: reasonOf(done.execution_error, done.execution_reason), debug: done.execution_debug_id || "" }), true);
       btn.disabled = false;
       return;
     }

@@ -197,8 +197,9 @@ class PayPalClient:
         if not request_id or len(request_id) > REQUEST_ID_MAX:
             raise ValueError(f"a PayPal write needs a PayPal-Request-Id of 1-{REQUEST_ID_MAX} "
                              "characters")
-        if mock_response is not None and mock_response not in MOCK_CODES:
-            raise ValueError(f"not a PayPal mock response code: {mock_response!r}")
+        if mock_response is not None and (mock_response not in MOCK_CODES
+                                          or not path.endswith("/capture")):
+            raise ValueError("a PayPal mock response is an allowed code on a capture only")
         return self._call("POST", path, {} if body is None else dict(body), request_id,
                           mock_response=mock_response)
 

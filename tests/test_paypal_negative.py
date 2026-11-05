@@ -175,3 +175,11 @@ def test_signing_with_simulate_through_the_app(tmp_path):
         second = c.post(f"/api/campaigns/{item}/activate").json()["approval_id"]
         done = sign(c, key, approver, second)
         assert done.json()["executed"] and done.json()["result"]["status"] == "ACTIVE"
+
+
+def test_mock_response_only_on_a_capture():
+    spy = Spy()
+    with pytest.raises(ValueError):
+        client(spy).post("/v2/checkout/orders/O1/authorize", {}, request_id="r1",
+                         mock_response="INSTRUMENT_DECLINED")
+    assert spy.requests == []

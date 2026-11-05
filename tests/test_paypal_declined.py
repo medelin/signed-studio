@@ -50,3 +50,24 @@ def test_an_ambiguous_authorize_is_not_failed(env):
                                 funder=env.funder)
     assert "funding_error" in result
     assert funding.get(env.conn, f.id).state == "payer_approved"
+
+
+def test_only_a_definite_refusal_is_called_declined(env):
+    p = payload()
+    fresh, funded, f = env.fund(p)
+    env.funder.fake.decline_authorize = "INSTRUMENT_DECLINED"
+    v = sign_pending(env.conn, env.ledger, fresh, funded)
+    declined = media_buyer.create(env.conn, env.ledger, env.adapter, v, funded, env.tmp,
+                                  funder=env.funder)
+    assert declined["funding_declined"] is True
+
+
+def test_an_unknown_outcome_is_not_called_declined(tmp_path):
+    env = Env(tmp_path)
+    p = payload()
+    fresh, funded, f = env.fund(p)
+    env.funder.fake.fail_next(*[503] * 4)
+    v = sign_pending(env.conn, env.ledger, fresh, funded)
+    result = media_buyer.create(env.conn, env.ledger, env.adapter, v, funded, env.tmp,
+                                funder=env.funder)
+    assert result["funding_declined"] is False and result["funding_error"]
