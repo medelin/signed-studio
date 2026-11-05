@@ -18,7 +18,7 @@ falls inside it, and the git history shows every date:
 - **The base** (agents, Ed25519 signed approvals, the hash-chained receipt ledger, the
   Meta adapter that only creates PAUSED campaigns, mandates for assistants) was written
   from **27 Oct 2026** for a different hackathon. Its last commit is tagged
-  `base-meta-final` (`5f8ffb6`, 3 Nov 2026 13:10 CET).
+  `base-meta-final` (`8d5f854`, 3 Nov 2026 13:10 CET).
 - **Everything PayPal was written from 3 Nov 2026**, after that tag:
   - the PayPal client, plus Orders v2 authorize, capture, void and refund;
   - the signed `funding/v1` block in the owner's approval;

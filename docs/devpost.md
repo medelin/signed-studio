@@ -91,5 +91,5 @@ webcrypto-ed25519 · mcp · muse-spark · sam-3.1 · meta-marketing-api
 ## Submission-period note
 
 The base (agents, signed approvals, receipt ledger, Meta adapter, mandates) was written from
-27 Oct 2026 for another hackathon and is tagged `base-meta-final` (5f8ffb6, 3 Nov 2026).
+27 Oct 2026 for another hackathon and is tagged `base-meta-final` (8d5f854, 3 Nov 2026).
 Everything PayPal was written from 3 Nov 2026; `git log base-meta-final..main` shows it.

@@ -1,9 +1,16 @@
 # Signed Studio (PayPal edition): build log
 
 A dated record of what was built for the PayPal AI Hackathon, and when. Everything here
-came after the base, which is tagged `base-meta-final` (commit `5f8ffb6`, 3 Nov 2026 13:10
+came after the base, which is tagged `base-meta-final` (commit `8d5f854`, 3 Nov 2026 13:10
 CET). The base was written for a different hackathon, from 27 Oct 2026. Check the dates
 yourself with `git log --format='%ad %s' --date=iso base-meta-final..main`.
+
+On 5 Nov 2026 the history was rewritten once before publishing: one author identity
+(`Piotr Kaczmarski`, GitHub noreply address), assistant co-author trailers removed, every
+commit re-signed with the same SSH key. Trees, parents, messages otherwise and all author
+and committer dates are unchanged, so every date below still holds; only hashes changed
+(the base tag moved from `5f8ffb6` to `8d5f854`; `5f8ffb6` is still the same commit in the
+base repository).
 
 ## 2026-11-03 (Tue): repo setup and Day 1, the money core
 

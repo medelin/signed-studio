@@ -222,7 +222,7 @@ account. For the real sandbox set `PAYPAL_ADAPTER=rest` and your sandbox app's
 
 The base (agents, Ed25519 signed approvals, the hash-chained receipt ledger, PAUSED-only
 campaign creation, assistant mandates) was written from 27 Oct 2026 for a different
-hackathon. Its last commit is tagged **`base-meta-final`** (`5f8ffb6`, 3 Nov 2026 13:10 CET).
+hackathon. Its last commit is tagged **`base-meta-final`** (`8d5f854`, 3 Nov 2026 13:10 CET).
 Everything PayPal came after that tag:
 
 - the PayPal client; Orders v2 authorize, capture, void and refund;
