@@ -70,6 +70,36 @@ PayPal's RSA signature of every exported webhook.
 | Webhook signatures | RSA `SHA256withRSA` verified offline, cert chain completed from a pinned DigiCert intermediate |
 | Cost of one campaign run (brief → approval) | $0.0945 (`demo` brief) |
 
+## Screens: one payment, end to end
+
+Recorded on 5 Nov 2026 against the **real PayPal sandbox** (`PAYPAL_ADAPTER=rest`). The
+models ran on recorded answers and the ad platform was mocked. The buyer paid with
+PayPal's public sandbox test card in guest checkout. PayPal's record of this run reads:
+order `6R474500DA285121P`, payer approved, authorization `CREATED`, then capture
+`COMPLETED` for 220.50 PLN after the activation signature. `studio verify` on the export
+printed `chain OK, 287 receipts, 5 signatures valid`.
+
+**1. The approval screen computes the amount and creates the PayPal order.** The order's
+`custom_id` is the ad's `content_sha256`. Signing stays disabled until PayPal reports that
+the payer approved.
+
+<img src="docs/screenshots/paypal/1-approve-and-pay.png" alt="Approve and sign: content, chain and brief hashes above a PayPal box with the amount 220.50 PLN (budget 210.00 for 7 days plus a 5% fee), the order id and the PayPal buttons" width="100%">
+
+**2. The buyer approves in PayPal** (sandbox checkout, the amount PayPal shows is the one
+code computed):
+
+<img src="docs/screenshots/paypal/2-paypal-checkout.png" alt="PayPal sandbox checkout window: log in, or pay with a debit or credit card" width="38%"> <img src="docs/screenshots/paypal/3-sandbox-card.png" alt="PayPal guest checkout for zł220.50 filled with the public sandbox test card" width="38%">
+
+**3. Funded: the signature now covers the PayPal order too.** A new row,
+`PAYPAL FUNDING SHA256`, joins the hashes being signed.
+
+<img src="docs/screenshots/paypal/4-funded-ready-to-sign.png" alt="The same approval screen, now with a PayPal funding SHA-256 row and the text: Funded, signing holds the money and creates the campaign PAUSED" width="100%">
+
+**4. Signed: the campaign is created PAUSED, then the money is held** (authorization, not
+capture). Turning it on is a second signature, and that one captures.
+
+<img src="docs/screenshots/paypal/5-signed-paused-money-held.png" alt="After signing: signed and verified, the media buyer created the campaign, ad set, creative and ad, all PAUSED; the signature and approval receipt below" width="100%">
+
 ## Why this is different
 
 Most "human in the loop" payments are a button. Here the approval is cryptographic, bound to
@@ -199,8 +229,9 @@ Day by day: [docs/BUILD-LOG.md](docs/BUILD-LOG.md).
   intended: P-V3 accepts only events for orders a run funded.
 - Holds that are never captured are voided after PayPal's 3-day honour period. Refunds need
   their own signed `funding.refund` approval.
-- Single-tenant: one operator's ad account. Package and module names keep the base's
-  `muse-studio-lite` prefix.
+- Single-tenant: one operator's ad account. The UI header still reads "Muse Studio Lite"
+  (as in the screens above), and package and module names keep the base's `muse-studio-lite`
+  prefix.
 
 ## Docs
 
