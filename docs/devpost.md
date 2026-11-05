@@ -37,6 +37,11 @@ reviewers check every ad against the facts the owner confirmed and the platform'
   per period, which assistant tokens. Their own AI assistant (Claude, ChatGPT or a script,
   over MCP or the HTTPS API) runs a brief and pays from the saved PayPal, only inside those
   limits. Outside them it gets a pay-and-sign link for the owner instead of money.
+- **Reading and testing.** The assistant reads the account's PayPal transactions (PayPal
+  Agent Toolkit read tools, Transaction Search reconciliation), and can propose a refund
+  that only the owner's signature executes. A sandbox switch simulates a declined card
+  (`PayPal-Mock-Response`) so the failure path is visible. The `/money` page (AG Grid)
+  shows every hold, capture and void.
 - **Proof.** Every PayPal call is a receipt in an Ed25519-signed, hash-chained ledger.
   PayPal's webhooks are verified offline against PayPal's RSA signature and re-read from
   PayPal's API. `studio verify` rechecks six money rules (P-V1…P-V6) on an exported ledger:
@@ -93,11 +98,17 @@ PayPal refunds as their own signed approvals in the UI.
 | Muse Voice Transcribe 1.0 | Spoken briefs | The owner confirms the transcript |
 | Spark Open (open weights) | Second, independent reviewer | Disagreements are shown, not averaged |
 | MCP (Streamable HTTP) + OpenAPI | The owner's own assistant (Claude, ChatGPT, scripts) drafts, runs and pays under a signed mandate | Bearer token scopes; money only inside the mandate |
-| PayPal Orders v2, Vault v3, Webhooks (sandbox) | Holding, capturing, voiding and charging the budget | Every call is a signed, hash-chained receipt; `studio verify` rechecks P-V1…P-V6 offline |
+| PayPal Agent Toolkit (`paypal_agent_toolkit/shared` 1.11.0, vendored) | Read tools for the assistant: transactions, order details, disputes | Own PayPal ids only, payer data stripped, one keyed-hash receipt per call; write tools refused |
+| PayPal MCP server (`mcp.sandbox.paypal.com`) | PayPal's own tools for reading, beside ours | Anything that moves money goes through our server |
+| PayPal AI Toolkit plugin (Claude Code) | `/paypal:doctor` on this repo, 5 Nov 2026: 0 critical, 4 warnings, all fixed | Used while building; not part of the running app |
+| APIMatic Context Plugin for PayPal | Installed in the coding agent while building | Used while building; not part of the running app |
+| AG Grid Community 34.3.1 | The `/money` page (holds, captures, voids, charges) | Vendored, strict CSP |
+| Postman | Collection for the assistant API and the PayPal sandbox calls (`docs/postman/`) | Variables only, no secrets |
+| PayPal Orders v2, Vault v3, Webhooks, Transaction Search (sandbox) | Holding, capturing, voiding and charging the budget | Every call is a signed, hash-chained receipt; `studio verify` rechecks P-V1…P-V6 offline |
 
 ## Built with
 
-python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks ·
+python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks · paypal-agent-toolkit · paypal-mcp-server · paypal-ai-toolkit · apimatic-context-plugin · ag-grid · postman ·
 webcrypto-ed25519 · mcp · muse-spark · sam-3.1 · meta-marketing-api
 
 ## Submission-period note

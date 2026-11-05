@@ -173,9 +173,44 @@ mandate (`tests/attack/test_paypal_money.py`, `tests/attack/test_paypal_vault.py
 | Payments v2 | capture, void, reauthorize, refund, and `GET` of each | `studio/paypal/orders.py`, `money.py` |
 | Vault v3 | setup tokens, payment tokens, `DELETE` of a saved PayPal | `studio/paypal/vault.py` |
 | Webhooks | `POST /webhooks/paypal`: RSA over `transmission_id\|time\|webhook_id\|crc32(body)`, cert chain and host checked, cert pinned by SHA-256 | `studio/paypal/webhooks.py` |
+| Transaction Search | `GET /v1/reporting/transactions` (read; reconciliation) | `studio/paypal/reconcile.py` |
+| Disputes (read) | `GET /v1/customer/disputes`, `…/{id}` through the Agent Toolkit | `studio/paypal/agent_tools.py` |
 | JS SDK | v5 `paypal.Buttons` (`intent=authorize`) on the approval screen | `studio/ui/static/paypal.js` |
 
 The full money flow, step by step, with the failure paths: **[PAYPAL.md](PAYPAL.md)**.
+
+## Agentic commerce, the PayPal way
+
+PayPal's Agent Ready gives an agent a delegated token with a maximum amount, a currency and
+an expiry. Agent Ready and Store Sync are gated (business review), so we built the same
+pattern on public APIs: **Orders v2 + Vault v3**. The owner signs a *spending mandate*
+(`max_charge_minor`, currency, `funding_cap_minor` per period, expiry, which tokens) and
+the studio refuses any charge outside it; the signature is Ed25519 and `studio verify`
+re-checks it offline (P-V5), which a bearer token cannot offer.
+
+Around that, on PayPal's own tooling:
+
+- **PayPal Agent Toolkit** (vendored `paypal_agent_toolkit/shared` 1.11.0, Apache-2.0):
+  four read tools (`list_transactions`, `get_order_details`, `list_disputes`,
+  `get_dispute`) restricted to the account's own PayPal ids, payer data stripped, one
+  keyed-hash receipt per call (`studio/paypal/agent_tools.py`).
+- **Two MCP servers, one rule:** PayPal's `https://mcp.sandbox.paypal.com` for reading, ours
+  (`/mcp`) for anything that moves money ([docs/assistants.md](docs/assistants.md)). The
+  assistant can reconcile (`paypal_transactions`) and `propose_refund`; the proposal is a
+  pending approval with a link, the owner signs, and nothing moves before that.
+- **Negative testing:** on a capture, the sandbox `PayPal-Mock-Response`
+  (`INSTRUMENT_DECLINED`, `TRANSACTION_REFUSED`) is sent when the owner ticks "simulate a
+  declined card" at activation. The studio shows PayPal's reason and keeps the money
+  held; after a declined authorize the owner re-runs the brief to fund again.
+- **Money page** (`/money`, AG Grid Community): holds, captures, voids and mandate charges
+  with receipts, "Check with PayPal" (Transaction Search reconciliation) and "Explain"
+  by the AI treasurer.
+- **Postman:** [docs/postman/](docs/postman/signed-studio.postman_collection.json) (the
+  assistant API and the PayPal sandbox calls; `make postman`).
+
+Built with PayPal's help: `/paypal:doctor` (PayPal AI Toolkit plugin for Claude Code) was run
+on this repo on 5 Nov 2026 (0 critical, 4 warnings, all fixed) and the APIMatic Context
+Plugin for PayPal was installed in the coding agent ([docs/BUILD-LOG.md](docs/BUILD-LOG.md)).
 
 ## AI, and where it stops
 
@@ -231,6 +266,8 @@ Everything PayPal came after that tag:
 - Vault v3 and customer-not-present charges under a signed spending mandate;
 - the `studio verify` rules P-V1 to P-V6 and the 12 attack classes;
 - the AI treasurer;
+- PayPal Agent Toolkit read tools, reconciliation, refund proposals, sandbox negative
+  testing, the AG Grid money page and the Postman collection (5 Nov 2026);
 - the removal of the base's Stripe billing.
 
 ```bash

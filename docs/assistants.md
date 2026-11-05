@@ -37,7 +37,7 @@ judge password's rotation). Judges use the no-login tour (`/try`) or their own a
 
 ## 2. Connect
 
-Endpoints (on the sandbox: `https://muse.udun.eu`):
+Endpoints (on the sandbox: `https://pay.udun.eu`):
 
 | | URL | Auth |
 |---|---|---|
@@ -54,7 +54,7 @@ send a header work today; clients that insist on OAuth do not (see the table bel
 ### Claude Code
 
 ```bash
-claude mcp add --transport http muse https://muse.udun.eu/mcp \
+claude mcp add --transport http muse https://pay.udun.eu/mcp \
   --header "Authorization: Bearer msl_tok_…"
 ```
 
@@ -68,10 +68,30 @@ bridge, which sends the header (`claude_desktop_config.json`):
 ```json
 {"mcpServers": {"muse": {
   "command": "npx",
-  "args": ["-y", "mcp-remote", "https://muse.udun.eu/mcp",
+  "args": ["-y", "mcp-remote", "https://pay.udun.eu/mcp",
            "--header", "Authorization:${MUSE_TOKEN}"],
   "env": {"MUSE_TOKEN": "Bearer msl_tok_…"}}}}
 ```
+
+**With PayPal's own MCP server next to ours.** PayPal's sandbox server
+`https://mcp.sandbox.paypal.com` reads; ours does anything that moves money. Add both and
+tell the assistant: PayPal's tools for reading, our server for anything that moves money.
+PayPal's server needs its own PayPal access token (see PayPal's MCP documentation).
+
+```json
+{"mcpServers": {
+  "muse": {"command": "npx",
+    "args": ["-y", "mcp-remote", "https://pay.udun.eu/mcp",
+             "--header", "Authorization:${MUSE_TOKEN}"],
+    "env": {"MUSE_TOKEN": "Bearer msl_tok_…"}},
+  "paypal": {"command": "npx",
+    "args": ["-y", "mcp-remote", "https://mcp.sandbox.paypal.com",
+             "--header", "Authorization:${PAYPAL_TOKEN}"],
+    "env": {"PAYPAL_TOKEN": "Bearer <PayPal sandbox access token>"}}}}
+```
+
+Ours also offers the read tools on the account's own money (`paypal_transactions`,
+`paypal_tool`) and `propose_refund`, so the assistant works with ours alone.
 
 ### ChatGPT, claude.ai, other assistants
 
@@ -79,7 +99,7 @@ bridge, which sends the header (`claude_desktop_config.json`):
 |---|---|---|
 | Claude Code, Cursor, VS Code, any MCP client with custom headers | yes | MCP at `/mcp` with the header |
 | Claude Desktop | yes | `mcp-remote` bridge above |
-| ChatGPT custom GPT (Actions) | yes, over the API | import `https://muse.udun.eu/api/v1/openapi.json`, authentication "API key", type "Bearer", paste the token |
+| ChatGPT custom GPT (Actions) | yes, over the API | import `https://pay.udun.eu/api/v1/openapi.json`, authentication "API key", type "Bearer", paste the token |
 | ChatGPT / claude.ai connector dialogs (OAuth only) | no | no OAuth server yet; use the rows above |
 | Meta AI, other assistants | if they can call MCP or HTTPS with a header | not verified by us |
 
@@ -93,7 +113,7 @@ importers such as GPT Actions); otherwise its server is the relative `/api/v1`.
 ### curl
 
 ```bash
-T="Authorization: Bearer msl_tok_…"; S=https://muse.udun.eu/api/v1
+T="Authorization: Bearer msl_tok_…"; S=https://pay.udun.eu/api/v1
 
 curl -s -H "$T" $S/me                                     # who am I, scopes, expiry
 curl -s -H "$T" -X POST $S/briefs -H 'Content-Type: application/json' \

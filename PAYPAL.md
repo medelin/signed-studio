@@ -108,6 +108,8 @@ git log --diff-filter=A --format='%ad' --date=short -- studio/paypal/vault.py
 | Payments v2 | `POST /v2/payments/authorizations/{id}/capture`, `…/void`, `…/reauthorize`, `POST /v2/payments/captures/{id}/refund`, `GET` of each | `studio/paypal/orders.py`, `money.py` |
 | Vault v3 | `POST /v3/vault/setup-tokens`, `GET /v3/vault/setup-tokens/{id}`, `POST /v3/vault/payment-tokens`, `DELETE /v3/vault/payment-tokens/{id}` | `studio/paypal/vault.py` |
 | Webhooks | `POST /webhooks/paypal`: RSA `SHA256withRSA` over `transmission_id\|time\|webhook_id\|crc32(body)`, cert chain and host checked, cert pinned by SHA-256 | `studio/paypal/webhooks.py` |
+| Transaction Search | `GET /v1/reporting/transactions` (read only; the reconciliation and `paypal_transactions`; PayPal lists a fresh capture up to about 3 h late) | `studio/paypal/reconcile.py` |
+| Disputes (read) | `GET /v1/customer/disputes` and `…/{id}` through the PayPal Agent Toolkit read tools, on the account's own PayPal ids | `studio/paypal/agent_tools.py` |
 | JS SDK | v5 `paypal.Buttons` (`intent=authorize`) on the approval screen | `studio/ui/static/paypal.js` |
 
 Every POST carries a `PayPal-Request-Id` derived from what authorises the step (the

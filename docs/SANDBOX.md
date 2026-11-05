@@ -224,6 +224,13 @@ A provider is offered on `/login` when both of its variables are set; set `STUDI
 
 ### PayPal (sandbox only) and the brand scan
 
+The data directory must be on a filesystem with hard links: the first receipt of an agent
+read creates `receipt-hmac.key` with `os.link` so two workers cannot create different keys.
+Transaction Search must be enabled for the sandbox app (Apps & Credentials, Features) for
+reconciliation and `paypal_transactions`; scope changes can take a while to apply. To see a
+decline, tick "simulate a declined card" at activation: the capture then carries
+`PayPal-Mock-Response` (sandbox only, capture only).
+
 | Variable | Meaning |
 |---|---|
 | `PAYPAL_ADAPTER` | unset = PayPal off; `mock` = the in-process fake PayPal (`studio.paypal.mock`, no network); `rest` = the PayPal REST API |
