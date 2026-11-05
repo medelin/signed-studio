@@ -347,6 +347,8 @@ def check_confirmation(conn: Any, body: dict[str, Any], *, ceiling: int,
     if len(resolutions) != len(draft.open_questions):
         missing |= {f"open_questions.{i}": "unresolved"
                     for i in range(len(resolutions), len(draft.open_questions))}
+        missing |= {f"open_questions.{i}": "unexpected"
+                    for i in range(len(draft.open_questions), len(resolutions))}
     if missing:
         raise _fields_error(missing)
     confirmed, answered, struck = brief_v1.resolve(draft, resolutions)

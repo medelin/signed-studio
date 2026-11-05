@@ -114,6 +114,9 @@ def test_every_question_must_be_answered_or_struck(app):
             "open_questions.1": "unresolved"}
         r = confirm(c, d, [{"action": "answer", "text": " "}, {"action": "strike"}])
         assert r.json()["fields"] == {"open_questions.0": "answer_required"}
+        r = confirm(c, d, [{"action": "strike"}] * 3)  # one more than there are questions
+        assert r.status_code == 422 and r.json()["fields"] == {
+            "open_questions.2": "unexpected"}
         bad = json.loads(json.dumps(d["brief"]))
         bad["budget"]["amount"] = 400
         r = confirm(c, d, [{"action": "strike"}, {"action": "strike"}], brief=bad)

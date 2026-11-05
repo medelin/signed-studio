@@ -216,7 +216,7 @@ def test_every_error_code_has_an_english_and_polish_message():
     body = (root / "brief.py").read_text().split("def problems")[1].split("def daily_budget")[0]
     codes = set(re.findall(r'= "([a-z_]+)"', body)) - {"daily", "lifetime"}
     codes |= set(re.findall(r'"(required|too_long|too_many|empty_item)"', body))
-    codes |= {"unresolved", "answer_required", "invalid"}  # routes_studio.confirm_and_start
+    codes |= {"unresolved", "unexpected", "answer_required", "invalid"}  # routes_studio.confirm_and_start
     assert len(codes) > 20
     for code in codes:
         assert f"js.brief_err_{code}" in i18n.EN and f"js.brief_err_{code}" in i18n.PL, code
