@@ -44,7 +44,7 @@ Each beat lists the screenshot in `docs/screenshots/paypal/` it matches, as a ba
 
 **6. My assistant pays inside a mandate I signed (1:25-1:55)** — shots 6, 7, 8
 - On screen: Save my PayPal (consent page), the mandate's limits in words, Approve and
-  sign; then Claude Desktop with both MCP servers: `run_brief` → `"outcome":
+  sign; then Claude Desktop with our MCP server: `run_brief` → `"outcome":
   "mandate_charge"`, order id, 220.50 PLN, PAUSED.
 - Say: "I sign limits once. My assistant runs a brief and pays from my saved PayPal, buyer
   not present. Over the limit, it gets a link for me instead of money."

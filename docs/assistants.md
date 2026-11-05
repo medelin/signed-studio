@@ -73,9 +73,10 @@ bridge, which sends the header (`claude_desktop_config.json`):
   "env": {"MUSE_TOKEN": "Bearer msl_tok_…"}}}}
 ```
 
-**With PayPal's own MCP server next to ours.** PayPal's sandbox server
-`https://mcp.sandbox.paypal.com` reads; ours does anything that moves money. Add both and
-tell the assistant: PayPal's tools for reading, our server for anything that moves money.
+**Optional: PayPal's own MCP server next to ours.** You can also connect PayPal's sandbox
+MCP server `https://mcp.sandbox.paypal.com` for read-only questions; we have not tested
+this combination, and the studio itself does not use it. Anything that moves money goes
+through our server.
 Example, not tested by us: PayPal's server may require its own browser sign-in instead of a bearer token, so check PayPal's MCP documentation before relying on the `Authorization` header below.
 
 ```json

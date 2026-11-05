@@ -194,9 +194,10 @@ Around that, on PayPal's own tooling:
   four read tools (`list_transactions`, `get_order_details`, `list_disputes`,
   `get_dispute`) restricted to the account's own PayPal ids, payer data stripped, one
   keyed-hash receipt per call (`studio/paypal/agent_tools.py`).
-- **Two MCP servers, one rule:** PayPal's `https://mcp.sandbox.paypal.com` for reading, ours
-  (`/mcp`) for anything that moves money ([docs/assistants.md](docs/assistants.md)). The
-  assistant can reconcile (`paypal_transactions`) and `propose_refund`; the proposal is a
+- **Our MCP server, one rule:** anything that moves money goes through ours (`/mcp`). An
+  owner can optionally add PayPal's `https://mcp.sandbox.paypal.com` for read-only
+  questions (untested by us, not used by the studio; [docs/assistants.md](docs/assistants.md)).
+  The assistant can reconcile (`paypal_transactions`) and `propose_refund`; the proposal is a
   pending approval with a link, the owner signs, and nothing moves before that.
 - **Negative testing:** on a capture, the sandbox `PayPal-Mock-Response`
   (`INSTRUMENT_DECLINED`, `TRANSACTION_REFUSED`) is sent when the owner ticks "simulate a

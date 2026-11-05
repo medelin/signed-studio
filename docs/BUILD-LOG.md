@@ -374,4 +374,4 @@ onwards. The base began on 27 Oct 2026, also inside the submission period.
   runs in the app.
 - **Transaction Search** was enabled for the sandbox app on 5 Nov 2026 (scope propagation
   was still pending then).
-- **Docs:** README, PAYPAL.md, assistants (both MCP servers), demo script, Devpost text.
+- **Docs:** README, PAYPAL.md, assistants (optional PayPal MCP setup), demo script, Devpost text.

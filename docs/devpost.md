@@ -99,7 +99,7 @@ PayPal refunds as their own signed approvals in the UI.
 | Spark Open (open weights) | Second, independent reviewer | Disagreements are shown, not averaged |
 | MCP (Streamable HTTP) + OpenAPI | The owner's own assistant (Claude, ChatGPT, scripts) drafts, runs and pays under a signed mandate | Bearer token scopes; money only inside the mandate |
 | PayPal Agent Toolkit (`paypal_agent_toolkit/shared` 1.11.0, vendored) | Read tools for the assistant: transactions, order details, disputes | Own PayPal ids only, payer data stripped, one keyed-hash receipt per call; write tools refused |
-| PayPal MCP server (`mcp.sandbox.paypal.com`) | PayPal's own tools for reading, beside ours | Anything that moves money goes through our server |
+| PayPal MCP server (`mcp.sandbox.paypal.com`; optional, documented setup next to ours, not part of the studio) | Read-only questions if the owner adds it | Untested by us; anything that moves money goes through our server |
 | PayPal AI Toolkit plugin (Claude Code) | `/paypal:doctor` on this repo, 5 Nov 2026: 0 critical, 4 warnings, all fixed | Used while building; not part of the running app |
 | APIMatic Context Plugin for PayPal | Installed in the coding agent while building | Used while building; not part of the running app |
 | AG Grid Community 34.3.1 | The `/money` page (holds, captures, voids, charges) | Vendored, strict CSP |
@@ -108,7 +108,7 @@ PayPal refunds as their own signed approvals in the UI.
 
 ## Built with
 
-python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks · paypal-agent-toolkit · paypal-mcp-server · paypal-ai-toolkit ·
+python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks · paypal-agent-toolkit · paypal-ai-toolkit ·
 apimatic-context-plugin · ag-grid · postman · webcrypto-ed25519 · mcp · muse-spark · sam-3.1 · meta-marketing-api
 
 ## Submission-period note
