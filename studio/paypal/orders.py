@@ -195,12 +195,13 @@ def authorize(client: PayPalClient, order_id: str, *, request_id: str) -> Result
 
 
 def capture(client: PayPalClient, authorization_id: str, *, amount_minor: int, currency: str,
-            invoice_id: str, request_id: str) -> Result:
-    """Take ``amount_minor`` of the authorization, as its final capture."""
+            invoice_id: str, request_id: str, mock_response: str | None = None) -> Result:
+    """Take ``amount_minor`` of the authorization, as its final capture.
+    ``mock_response``: a sandbox-simulated refusal (``client.MOCK_CODES``)."""
     body = {"amount": _money(amount_minor, currency), "invoice_id": invoice_id,
             "final_capture": True}
     reply = client.post(f"/v2/payments/authorizations/{path_id(authorization_id)}/capture",
-                        body, request_id=request_id)
+                        body, request_id=request_id, mock_response=mock_response)
     return _payment("capture", reply.json, reply.body_sha256)
 
 

@@ -671,6 +671,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lambda verified, payload: announce("campaign_launched", media_buyer.activate(
             conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget,
             funder=app.state.funder)))
+    app.state.simulating["campaign.activate"] = (
+        lambda verified, payload, simulate: announce("campaign_launched", media_buyer.activate(
+            conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget,
+            funder=app.state.funder, simulate=simulate)))
     routes_paypal.register(app, settings, ledger, conn, write_guard, session_of)
 
     routes_google.register(app, settings, ledger, conn, write_guard, session_of)

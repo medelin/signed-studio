@@ -39,7 +39,7 @@ from typing import Any
 from studio import funding
 from studio.funding import Funding, FundingError, Statement
 from studio.paypal import orders
-from studio.paypal.client import PayPalClient, PayPalError, request_id
+from studio.paypal.client import MOCK_CODES, PayPalClient, PayPalError, request_id
 from studio.receipts import PAYPAL_KIND, Ledger, Receipt, is_opaque, sha256_hex
 
 AGENT = "treasury"
@@ -181,8 +181,14 @@ class Money:
                                     "authorized_minor": res.amount_minor},
                             amount=res.amount_minor)
 
-    def capture(self, funding_id: str, *, approval_id: str) -> Step:
-        """Take the whole authorization (final capture): ``authorized`` → ``captured``."""
+    def capture(self, funding_id: str, *, approval_id: str,
+                mock_response: str | None = None) -> Step:
+        """Take the whole authorization (final capture): ``authorized`` → ``captured``.
+        ``mock_response``: ask the sandbox to simulate a refusal; checked before any call,
+        and recorded in the receipt."""
+        if mock_response is not None and mock_response not in MOCK_CODES:
+            raise ValueError(f"not a PayPal mock response code: {mock_response!r}")
+        sim = {"mock_response": mock_response} if mock_response else {}
         f = funding.get(self.conn, funding_id)
         funding.check_move(f, "captured")
         auth_id = self._need(f.authorization_id, "no_authorization")
@@ -193,7 +199,8 @@ class Money:
         body = {"amount_minor": amount, "currency": f.currency, "invoice_id": f.id}
         res = self._call(f, "paypal.capture", idem, body, lambda: orders.capture(
             self.client, auth_id, amount_minor=amount, currency=f.currency, invoice_id=f.id,
-            request_id=rid), approval_id, claim=approval_id)
+            request_id=rid, mock_response=mock_response), approval_id, claim=approval_id,
+            **sim)
         self._expect(f, "paypal.capture", idem, body, res, status=CAPTURE_OK, amount=amount,
                      approval_id=approval_id, custom="if_present")
         return self._commit(f, "paypal.capture", idem, body, res, to="captured",

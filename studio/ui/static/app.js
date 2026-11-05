@@ -805,7 +805,19 @@ async function showCampaign(runId, itemId) {
     box.append(el("p", T("no_preview", { error: c.preview_error || T("no_preview_default") }), "hint"));
   }
   $("activate-button").disabled = c.status !== "PAUSED" || !loggedIn || readOnly;
+  showSimulateRow();
   $("campaign-h").focus();
+}
+
+// The sandbox-decline checkbox is offered only when PayPal is on for this studio.
+async function showSimulateRow() {
+  try {
+    const r = await fetch("/api/paypal/config", { credentials: "same-origin" });
+    const cfg = r.ok ? await r.json() : {};
+    $("simulate-row").hidden = !(cfg.enabled && cfg.sandbox);
+  } catch (e) {
+    $("simulate-row").hidden = true;
+  }
 }
 
 $("activate-button").addEventListener("click", async () => {
@@ -817,7 +829,14 @@ $("activate-button").addEventListener("click", async () => {
     if (!r.ok) throw new Error(T("activation_refused", { error: E(r.data, r.status) }));
     const payload = await Signer.loadPayload(r.data.approval_id);
     status("activate-status", T("signing_activation", { budget: minor(payload.content.daily_budget_minor, payload.content.currency), currency: payload.content.currency }));
-    const done = await Signer.sign(payload);
+    // sandbox only: PayPal-Mock-Response on the capture; outside the signed bytes
+    const simulate = $("simulate-decline") && $("simulate-decline").checked ? { simulate: "INSTRUMENT_DECLINED" } : {};
+    const done = await Signer.sign(payload, simulate);
+    if (!done.executed && done.execution_reason) {
+      status("activate-status", T("paypal_capture_declined", { issue: done.execution_error, reason: done.execution_reason, debug: done.execution_debug_id || "" }), true);
+      btn.disabled = false;
+      return;
+    }
     if (!done.executed) throw new Error(T("not_activated", { error: done.execution_error || T("no_executor") }));
     status("activate-status", T("activated", { adapter: done.result.adapter, sig: done.signature.slice(0, 16) }));
     showCampaign(currentCampaign.run_id, currentCampaign.id);
