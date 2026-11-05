@@ -100,6 +100,33 @@ capture). Turning it on is a second signature, and that one captures.
 
 <img src="docs/screenshots/paypal/5-signed-paused-money-held.png" alt="After signing: signed and verified, the media buyer created the campaign, ad set, creative and ad, all PAUSED; the signature and approval receipt below" width="100%">
 
+## Screens: the assistant pays under a mandate
+
+Same day, same setup, buyer not present. The owner saved PayPal once (Vault v3, as the
+sandbox Personal buyer), signed a mandate, and an assistant token ran a brief over the API.
+`run_brief` answered `outcome: mandate_charge`: order `2M8004592G627491U`, authorization
+`8L094712BM366352W` for 220.50 PLN, campaign PAUSED. `studio verify` on the export printed
+`chain OK, 342 receipts, 6 signatures valid`.
+
+**5. Save PayPal once.** PayPal asks the buyer to agree to a billing agreement with the
+studio. (The sandbox buyer's account country is Poland, so PayPal shows this page in Polish.)
+
+<img src="docs/screenshots/paypal/6-save-paypal-consent.png" alt="PayPal sandbox, in Polish: set up once and pay faster next time; Signed Studio will take payments from your PayPal account; Visa ending 0892; agree and continue" width="60%">
+
+**6. Sign the limits.** The signing screen lists every limit in words before the hashes:
+goals, countries, hosts, daily budget, number of campaigns, expiry, which tokens, and the
+PayPal caps (per campaign and per period). The signed body carries the `mandate-funding/v1`
+block with the saved PayPal's SHA-256, never its id.
+
+<img src="docs/screenshots/paypal/7-sign-mandate-limits.png" alt="Approve and sign a mandate: may only create paused campaigns; goals engagement and traffic; countries PL; links only to example.com; at most 30 PLN a day; at most 3 campaigns; valid 7 days; for one assistant token; pays from the saved PayPal at most 300 PLN per campaign and 500 PLN every 7 days" width="100%">
+
+**7. The assistant's charge, as a receipt.** `paypal.vault_charge` names the mandate and
+the approval that allowed it, the amount, the PayPal order and authorization, and hashes of
+the request and response. P-V5 re-checks it offline: the charge was declared by a valid
+mandate, fits both caps, and appears once in the whole log.
+
+<img src="docs/screenshots/paypal/8-assistant-charge-receipt.png" alt="Receipt JSON for paypal.vault_charge: amount_minor 22050 PLN, mandate_id, approval_id, order_id 2M8004592G627491U, authorization_id 8L094712BM366352W, status CREATED, vault_sha256" width="100%">
+
 ## Why this is different
 
 Most "human in the loop" payments are a button. Here the approval is cryptographic, bound to

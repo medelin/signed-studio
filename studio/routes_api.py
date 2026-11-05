@@ -128,7 +128,7 @@ class ReplyIn(_Body):
 
 def build_api(svc: assistants.Assistants) -> FastAPI:
     public = svc.settings.public_url  # an absolute server URL for importers (GPT Actions)
-    api = FastAPI(title="Muse Studio Lite API for assistants", version="1",
+    api = FastAPI(title="Signed Studio API for assistants", version="1",
                   description=DESCRIPTION, openapi_url="/openapi.json", docs_url=None,
                   redoc_url=None, dependencies=[Security(HTTPBearer(auto_error=False))],
                   servers=[{"url": public.rstrip("/") + PREFIX}] if public else None,
