@@ -1,6 +1,6 @@
 """The vendored PayPal Agent Toolkit (read tools only) on the studio's receipted sandbox
-client: one ``paypal.call`` receipt per HTTP call, no payer data, only the account's own
-money, and no write tool reachable."""
+client: one ``paypal.call`` receipt per tool call (hashing the caller's answer), no payer
+data, only the account's own money, and no write tool reachable."""
 
 from __future__ import annotations
 
@@ -132,7 +132,7 @@ def test_list_transactions_is_receipted(w):
     (r,) = w.receipts()
     d = r.details
     assert d["step"] == "paypal.agent_tool" and d["tool"] == "list_transactions"
-    assert d["path"] == "/v1/reporting/transactions" and d["status"] == 200 and d["ok"] is True
+    assert d["path"] == "/v1/reporting/transactions" and "status" not in d and d["ok"] is True
     assert len(d["body_sha256"]) == 64
     assert r.agent == "treasury" and r.provider == "paypal"
     assert "?" not in json.dumps(d)
@@ -232,14 +232,16 @@ def test_a_paypal_error_is_receipted_then_refused(w):
         w.run("list_transactions", {})
     assert exc.value.code == "paypal_error"
     (r,) = w.receipts()
-    assert r.details["ok"] is False and r.details["status"] == 403
+    assert r.details["ok"] is False and "status" not in r.details
+    assert r.details["body_sha256"] == ""
 
 
-def test_transaction_search_by_id_pages_months_and_receipts_each_call(w):
+def test_transaction_search_by_id_pages_months_in_one_receipt(w):
     w.sandbox.transactions = []
     out = w.run("list_transactions", {"transaction_id": OWN_CAPTURE, "search_months": 2})
     assert out["transaction_details"] == []
-    assert len(w.receipts()) == 2
+    assert len(w.sandbox.calls("/v1/reporting/transactions")) == 2
+    assert len(w.receipts()) == 1
 
 
 def test_search_months_outside_1_to_12_is_refused_without_a_call(w):
@@ -445,3 +447,97 @@ def test_list_answers_are_allowlisted(w):
         {"seller_transaction_id": OWN_CAPTURE}]}], "total_items": 40, "links": [],
         "message": "m"})
     assert set(w.run("list_disputes", {})) == {"items"}
+
+
+FOREIGN_TID = "7YY99999ZZ888888Q"
+
+
+@pytest.mark.parametrize("name,params,raw_a,raw_b", [
+    ("list_transactions", {},
+     {"transaction_details": [tx(OWN, OWN_TID)]},
+     {"transaction_details": [tx(OWN, OWN_TID), tx(OTHER, FOREIGN_TID)], "total_items": 2}),
+    ("list_disputes", {},
+     {"items": [{"dispute_id": "PP-D-1",
+                 "disputed_transactions": [{"seller_transaction_id": OWN_CAPTURE}]}]},
+     {"items": [{"dispute_id": "PP-D-1",
+                 "disputed_transactions": [{"seller_transaction_id": OWN_CAPTURE}]},
+                {"dispute_id": "PP-D-9",
+                 "disputed_transactions": [{"seller_transaction_id": FOREIGN_TID}]}]}),
+    ("list_disputes", {}, {"items": []},
+     {"items": [{"dispute_id": "PP-D-9",
+                 "disputed_transactions": [{"seller_transaction_id": FOREIGN_TID}]}]}),
+    ("get_dispute", {"dispute_id": "PP-D-1"},
+     {"dispute_id": "PP-D-1", "disputed_transactions": [{"seller_transaction_id": OWN_CAPTURE}]},
+     {"dispute_id": "PP-D-1", "disputed_transactions": [{"seller_transaction_id": OWN_CAPTURE},
+                                                        {"seller_transaction_id": "ZZ"}],
+      "update_time": "x", "messages": [{"content": "hi"}]}),
+])
+def test_agent_receipts_hash_the_callers_answer_not_paypals_body(tmp_path, name, params,
+                                                                 raw_a, raw_b):
+    from studio.receipts import canonical, sha256_hex
+
+    hashes, answers = [], []
+    for i, raw in enumerate((raw_a, raw_b)):
+        (tmp_path / str(i)).mkdir()
+        world = World(tmp_path / str(i))
+        _handler_world(world, raw)
+        out = world.run(name, params)
+        answers.append(out)
+        (r,) = world.receipts()
+        assert "status" not in r.details and r.details["ok"] is True
+        assert r.details["body_sha256"] == r.output_sha256
+        hashes.append(r.details["body_sha256"])
+        path = world.tmp / "receipts.jsonl"
+        path.write_text(world.export())
+        assert verify(path, world.ledger.public_key).ok
+    if name != "get_dispute":  # get_dispute: the dispute itself is the caller's answer
+        assert answers[0] == answers[1]
+        assert hashes[0] == hashes[1]
+    assert hashes == [sha256_hex(canonical(a)) for a in answers]
+
+
+def test_order_details_receipt_hashes_the_answer(w):
+    from studio.receipts import canonical, sha256_hex
+
+    out = w.run("get_order_details", {"order_id": OWN_ORDER})
+    (r,) = w.receipts()
+    assert "status" not in r.details and r.details["ok"] is True
+    assert r.details["body_sha256"] == sha256_hex(canonical(out))
+
+
+def test_by_id_search_is_one_receipt_for_the_tool_call(w):
+    w.sandbox.transactions = []
+    w.run("list_transactions", {"transaction_id": OWN_CAPTURE, "search_months": 3})
+    assert len(w.sandbox.calls("/v1/reporting/transactions")) == 3
+    (r,) = w.receipts()
+    assert r.details["ok"] is True and "status" not in r.details
+
+
+def test_list_disputes_paging_is_pinned(w):
+    seen: list = []
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        seen.append(request)
+        return httpx.Response(200, json={"items": [], "links": [
+            {"rel": "next", "href": "https://api-m.sandbox.paypal.com/v1/customer/disputes"
+                                    "?next_page_token=abc"}]})
+
+    w.client = PayPalClient("id", "secret", transport=httpx.MockTransport(handler),
+                            sleep=lambda s: None)
+    out = w.run("list_disputes", {"page": 4, "page_size": 1, "next_page_token": "abc"})
+    assert out == {"items": []}
+    (req,) = seen
+    q = dict(req.url.params)
+    assert q == {"page_size": str(agent_tools.DISPUTES_PAGE_SIZE)}
+
+
+def test_dispute_state_must_be_known(w):
+    for state in ("NOPE", "resolved", "", 3):
+        with pytest.raises(ToolRefused) as exc:
+            w.run("list_disputes", {"dispute_state": state})
+        assert exc.value.code == "invalid_arguments", state
+    assert w.sandbox.requests == []
+    for state in sorted(agent_tools.DISPUTE_STATES):
+        assert w.run("list_disputes", {"dispute_state": state}) == {"items": []}

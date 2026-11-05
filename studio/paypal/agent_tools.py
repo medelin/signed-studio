@@ -7,13 +7,16 @@ constant sandbox base URL, OAuth, retries), so:
 
 - only four read tools are reachable (``READ_TOOLS``); every write tool and
   ``get_merchant_insights`` (not available in the sandbox) is refused before any call;
-- every HTTP call leaves one ``paypal.call`` receipt (``step: paypal.agent_tool``) with the
-  tool name, the path **without its query**, the status, ``ok`` and the SHA-256 of PayPal's
-  answer: no payer data, no query string. Receipts are public, so two calls whose outcome
-  would tell another account's money apart are receipted by what the caller got:
-  ``get_dispute`` has no status, ``ok`` is "answered" and a refused dispute (unknown at
-  PayPal, failed, or someone else's) has no body hash; a reconciliation run is one
-  receipt (``step: paypal.reconcile``) whatever the number of pages it read;
+- every tool call that reached PayPal leaves one ``paypal.call`` receipt
+  (``step: paypal.agent_tool``) with the tool name, the path **without its query**, ``ok``
+  (the caller got an answer) and ``body_sha256``, the SHA-256 of that answer (canonical
+  JSON, after ``only_own`` and ``redact``; empty when refused): no payer data, no query
+  string, no HTTP status, no hash of PayPal's raw body. Receipts are public and the
+  sandbox merchant is shared, so a receipt says no more than the caller's own answer: a
+  hash of PayPal's body would tell whether the merchant-wide list changed, a status
+  whether an unknown id exists. A tool that pages (the by-id search) is still one
+  receipt; a reconciliation run is one receipt (``step: paypal.reconcile``) hashing the
+  account's own reconciled lines, whatever the number of pages it read;
 - the answer is stripped of payer fields (``redact``) and reduced to the calling account's
   own money (``only_own``): the sandbox merchant is shared by every account, PayPal's
   transaction list is not.
@@ -33,7 +36,7 @@ from urllib.parse import urlencode
 from pydantic import ValidationError
 
 from studio.paypal.client import PayPalClient, PayPalError
-from studio.receipts import PAYPAL_KIND, Ledger, sha256_hex
+from studio.receipts import PAYPAL_KIND, Ledger, canonical, sha256_hex
 from studio.vendor.paypal_agent_toolkit.shared.tools import tools as _REGISTRY
 
 READ_TOOLS: frozenset[str] = frozenset(
@@ -42,6 +45,12 @@ MAX_CALLS_PER_TOOL = 12  # HTTP calls one tool run may make (the by-id search pa
 MAX_SEARCH_MONTHS = 12
 PAGE_SIZE = 500  # list_transactions: the one page size an agent gets (always page 1)
 PAGING_KEYS = ("page", "total_pages", "total_items", "has_more", "links")
+DISPUTES_PAGE_SIZE = 50  # list_disputes: PayPal's maximum, always the first page
+# list_disputes' dispute_state: the vendored parameter model's allowed values
+DISPUTE_STATES: frozenset[str] = frozenset({
+    "REQUIRED_ACTION", "REQUIRED_OTHER_PARTY_ACTION", "UNDER_PAYPAL_REVIEW", "RESOLVED",
+    "OPEN_INQUIRIES", "APPEALABLE"})
+DISPUTE_FILTERS = ("disputed_transaction_id", "dispute_state")
 AGENT = "treasury"
 PROVIDER = "paypal"
 STEP = "paypal.agent_tool"
@@ -219,13 +228,12 @@ def only_own(name: str, answer: dict[str, Any], refs: AccountRefs, *,
 
 
 class _Adapter:
-    """The ``client`` the vendored handlers expect, over the receipted ``PayPalClient``."""
+    """The ``client`` the vendored handlers expect, over ``PayPalClient``. Each call lands
+    in ``record`` (path, target); the caller writes the tool call's one receipt once it
+    knows what the caller is answered (``run_read_tool``, ``reconcile_receipt``)."""
 
-    def __init__(self, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
-                 tool: str, record: list[dict[str, Any]] | None = None) -> None:
-        self.client, self.ledger, self.conn = client, ledger, conn
-        self.chain_id, self.tool = chain_id, tool
-        self.record = record  # not None: the caller writes the receipt (see ``_run``)
+    def __init__(self, client: PayPalClient, record: list[dict[str, Any]]) -> None:
+        self.client, self.record = client, record
         self.error: ToolRefused | None = None
         self.calls = 0
 
@@ -244,26 +252,16 @@ class _Adapter:
         query = {k: v for k, v in (payload or {}).items() if v is not None}
         if query:
             target = path + "?" + urlencode(query)
+        self.record.append({"path": path, "target": target})
         try:
             reply = self.client.get(target)
         except PayPalError as exc:
-            self._receipt(path, target, status=exc.status, ok=False, body="")
             self.error = self.error or ToolRefused("paypal_error", str(exc))
             raise self.error from None
-        self._receipt(path, target, status=reply.status, ok=True, body=reply.body_sha256)
         return json.dumps(reply.json) if payload is not None else reply.json
 
     def post(self, uri: str, payload: Any = None) -> str:  # pragma: no cover - never reached
         raise ToolRefused("not_allowed", "the studio's toolkit client only reads")
-
-    def _receipt(self, path: str, target: str, *, status: int, ok: bool, body: str) -> None:
-        if self.record is not None:
-            self.record.append({"path": path, "target": target, "status": status, "ok": ok,
-                                "body": body})
-            return
-        _append(self.ledger, self.conn, self.chain_id, target, {
-            "step": STEP, "tool": self.tool, "path": path, "status": status, "ok": ok,
-            "body_sha256": body})
 
 
 def _append(ledger: Ledger, conn: Any, chain_id: str, target: str,
@@ -274,20 +272,25 @@ def _append(ledger: Ledger, conn: Any, chain_id: str, target: str,
                   input_sha256=[sha256_hex(target)], details=details)
 
 
+def answer_sha256(answer: Any) -> str:
+    """The receipt hash of an answer: SHA-256 of its canonical JSON (sorted keys)."""
+    return sha256_hex(canonical(answer))
+
+
 def reconcile_receipt(*, ledger: Ledger, conn: Any, chain_id: str,
-                      record: list[dict[str, Any]]) -> None:
+                      record: list[dict[str, Any]], answer: Any | None) -> None:
     """The one receipt of a reconciliation run (``run_list_page`` calls with ``record``):
-    ``ok`` if every page was read, the path, and one ``body_sha256`` chained over the
-    pages' answers. No page count, no status, no per-page receipt: the number of pages
-    would size the shared merchant's transaction list on the public receipts page."""
+    ``ok`` if the run answered (``answer`` not None: every page read), the path, and
+    ``body_sha256`` = ``answer_sha256`` of the account's own reconciled lines (empty when
+    it failed). No page count, no status, no per-page receipt, nothing hashed from
+    PayPal's pages: they would size or fingerprint the shared merchant's transaction
+    list on the public receipts page."""
     if not record:
         return
-    chained = ""
-    for call in record:
-        chained = sha256_hex(chained + call["body"])
+    ok = answer is not None
     _append(ledger, conn, chain_id, record[0]["target"], {
         "step": RECONCILE_STEP, "tool": "list_transactions", "path": TRANSACTIONS_PATH,
-        "ok": all(c["ok"] for c in record), "body_sha256": chained})
+        "ok": ok, "body_sha256": answer_sha256(answer) if ok else ""})
 
 
 def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
@@ -295,14 +298,31 @@ def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: 
                   ) -> dict[str, Any]:
     """Run one read tool for an agent. ``ToolRefused``: ``not_allowed`` (not a read
     tool, or another account's order/dispute), ``invalid_arguments``, ``paypal_error``.
-    ``list_transactions`` is pinned to page 1 at ``PAGE_SIZE`` and the answer has no
-    paging fields (``PAGING_KEYS``): pagination cannot be probed for the shared
-    merchant's totals."""
+    ``list_transactions`` is pinned to page 1 at ``PAGE_SIZE``, ``list_disputes`` to the
+    first page at ``DISPUTES_PAGE_SIZE`` (no ``next_page_token``; ``dispute_state`` one
+    of ``DISPUTE_STATES``), and the answer has no paging fields (``PAGING_KEYS``):
+    pagination cannot be probed for the shared merchant's totals. A call that reached
+    PayPal leaves one receipt hashing the answer returned here (module docstring)."""
     if name == "list_transactions" and isinstance(params, dict):
         params = {**params, "page": 1, "page_size": PAGE_SIZE}
-    out = _run(client=client, ledger=ledger, conn=conn, chain_id=chain_id,
-               account_refs=account_refs, name=name, params=params, agent=True)
-    return {k: v for k, v in out.items() if k not in PAGING_KEYS}
+    if name == "list_disputes" and isinstance(params, dict):
+        state = params.get("dispute_state")
+        if state is not None and not (isinstance(state, str) and state in DISPUTE_STATES):
+            raise ToolRefused("invalid_arguments", "unknown dispute_state")
+        params = {k: params[k] for k in DISPUTE_FILTERS if params.get(k) is not None}
+        params["page_size"] = DISPUTES_PAGE_SIZE
+    record: list[dict[str, Any]] = []
+    out: dict[str, Any] | None = None
+    try:
+        answer = _run(client=client, chain_id=chain_id, account_refs=account_refs,
+                      name=name, params=params, agent=True, record=record)
+        out = {k: v for k, v in answer.items() if k not in PAGING_KEYS}
+    finally:
+        if record:  # one receipt per tool call, whatever the number of HTTP calls
+            _append(ledger, conn, chain_id, record[0]["target"], {
+                "step": STEP, "tool": name, "path": record[0]["path"], "ok": out is not None,
+                "body_sha256": answer_sha256(out) if out is not None else ""})
+    return out
 
 
 def run_list_page(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
@@ -312,16 +332,17 @@ def run_list_page(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: 
     and whether PayPal has more pages. The caller's own code, not an agent's, picks
     ``page``. The call is not receipted here: it lands in ``record`` and the run's one
     receipt is ``reconcile_receipt``."""
-    out = _run(client=client, ledger=ledger, conn=conn, chain_id=chain_id,
-               account_refs=account_refs, name="list_transactions", params=params,
-               record=record)
+    out = _run(client=client, chain_id=chain_id, account_refs=account_refs,
+               name="list_transactions", params=params, record=record)
     more = bool(out.get("has_more"))
     return {k: v for k, v in out.items() if k not in PAGING_KEYS}, more
 
 
-def _run(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
-         account_refs: AccountRefs, name: str, params: dict[str, Any], agent: bool = False,
-         record: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def _run(*, client: PayPalClient, chain_id: str, account_refs: AccountRefs, name: str,
+         params: dict[str, Any], record: list[dict[str, Any]], agent: bool = False
+         ) -> dict[str, Any]:
+    """The tool's answer, reduced to the account's own money and redacted. Writes no
+    receipt: the HTTP calls land in ``record``."""
     if name not in READ_TOOLS:
         raise ToolRefused("not_allowed", f"{name!r} is not a read tool")
     Ledger.validate_ids(chain_id, AGENT, provider=PROVIDER)
@@ -338,53 +359,30 @@ def _run(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
         raise ToolRefused("invalid_arguments", f"search_months must be 1-{MAX_SEARCH_MONTHS}")
     if name == "get_order_details" and checked.order_id not in account_refs.paypal_ids:
         raise ToolRefused("not_allowed", "not an order of this account")
-    # an id filter on a shared-merchant list: PayPal's answer (status, body hash on the
-    # public receipt, pages searched) would say whether a foreign id exists
+    # an id filter on a shared-merchant list: PayPal's answer (status, pages searched)
+    # would say whether a foreign id exists
     tid = getattr(checked, "transaction_id", None) or getattr(
         checked, "disputed_transaction_id", None)
     if agent and tid and tid not in account_refs.paypal_ids:
         raise ToolRefused("not_allowed", "not a transaction of this account")
-    if name == "get_dispute":
-        return _get_dispute(client, ledger, conn, chain_id, entry, params, account_refs)
-    adapter = _Adapter(client, ledger, conn, chain_id, name, record)
+    adapter = _Adapter(client, record)
     try:
         raw = entry["execute"](adapter, params)
-    except ToolRefused:
-        raise
-    except (ValidationError, TypeError, ValueError):
-        raise ToolRefused("invalid_arguments", f"invalid arguments for {name}") from None
-    if adapter.error is not None:  # the handler swallowed it (month-by-month search)
-        raise adapter.error
-    answer = json.loads(raw) if isinstance(raw, str) else raw
-    if not isinstance(answer, dict):
-        raise ToolRefused("paypal_error", "unexpected answer")
-    out: dict[str, Any] = redact(only_own(
-        name, answer, account_refs, searched=bool(getattr(checked, "transaction_id", None))))
-    return out
-
-
-def _get_dispute(client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
-                 entry: dict[str, Any], params: dict[str, Any], refs: AccountRefs
-                 ) -> dict[str, Any]:
-    """A dispute id is not known before the call, so a dispute PayPal does not have (404),
-    any failed call and another account's dispute end the same way: ``not_allowed``, and
-    one receipt with ``ok: false``, no status and no body hash."""
-    record: list[dict[str, Any]] = []
-    adapter = _Adapter(client, ledger, conn, chain_id, "get_dispute", record)
-    released: dict[str, Any] | None = None
-    try:
-        raw = entry["execute"](adapter, params)
+        if adapter.error is not None:  # the handler swallowed it (month-by-month search)
+            raise adapter.error
         answer = json.loads(raw) if isinstance(raw, str) else raw
-        if adapter.error is None and isinstance(answer, dict):
-            released = redact(only_own("get_dispute", answer, refs))
-    except (ToolRefused, ValidationError, TypeError, ValueError):
-        released = None
-    finally:
-        for call in record:  # one call
-            ok = released is not None
-            _append(ledger, conn, chain_id, call["target"], {
-                "step": STEP, "tool": "get_dispute", "path": call["path"], "ok": ok,
-                "body_sha256": call["body"] if ok else ""})
-    if released is None:
-        raise ToolRefused("not_allowed", "not a dispute about this account's money")
-    return released
+        if not isinstance(answer, dict):
+            raise ToolRefused("paypal_error", "unexpected answer")
+        out: dict[str, Any] = redact(only_own(
+            name, answer, account_refs,
+            searched=bool(getattr(checked, "transaction_id", None))))
+    except (ToolRefused, ValidationError, TypeError, ValueError) as exc:
+        if name == "get_dispute":
+            # a dispute id is not known before the call: a dispute PayPal does not have
+            # (404), any failed call and another account's dispute end the same way
+            raise ToolRefused("not_allowed", "not a dispute about this account's money"
+                              ) from None
+        if isinstance(exc, ToolRefused):
+            raise
+        raise ToolRefused("invalid_arguments", f"invalid arguments for {name}") from None
+    return out

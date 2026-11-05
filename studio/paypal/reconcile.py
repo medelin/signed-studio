@@ -3,7 +3,8 @@
 For each authorization and capture the studio recorded for the account (``funding_moves``,
 the account's fundings by the app's ownership rule) one ``list_transactions`` call (the
 Agent Toolkit tool, ``studio.paypal.agent_tools``: receipted, payer data stripped, own
-money only; the whole run is one ``paypal.reconcile`` receipt, whatever its page count)
+money only; the whole run is one ``paypal.reconcile`` receipt, whatever its page count,
+hashing the account's own reconciled lines, not PayPal's pages)
 says whether PayPal lists it too:
 
 - ``matched``: PayPal lists a transaction whose own ``transaction_id`` is the capture's
@@ -115,6 +116,7 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
         report.window_start = max(start, min(inside) - 3600)
         chain = tools_chain(account_id)
         record: list[dict[str, Any]] = []  # every page's call: one receipt for the run
+        read = False
         try:
             for page in range(1, MAX_CALLS_PER_TOOL + 1):
                 answer, report.truncated = run_list_page(
@@ -134,8 +136,11 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
                         ref_ids.add(info["paypal_reference_id"])
                 if not report.truncated:
                     break
+            read = True
         finally:
-            reconcile_receipt(ledger=ledger, conn=conn, chain_id=chain, record=record)
+            if not read:  # a failed page: one failed receipt for the run
+                reconcile_receipt(ledger=ledger, conn=conn, chain_id=chain, record=record,
+                                  answer=None)
     captured_ok: set[str] = set()  # fundings whose capture is listed
     status: dict[tuple[str, str, str], str] = {}
     for fid, m in wanted:
@@ -161,6 +166,10 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
     report.lines = [ReconLine(fid, m["move"], m["paypal_id"], m["amount_minor"],
                               m["currency"], status[(fid, m["move"], m["paypal_id"])])
                     for fid, m in wanted]
+    if inside:
+        # hashes the account's own lines, never PayPal's pages (shared merchant)
+        reconcile_receipt(ledger=ledger, conn=conn, chain_id=chain, record=record,
+                          answer=[ln.view() for ln in report.lines])
     return report
 
 

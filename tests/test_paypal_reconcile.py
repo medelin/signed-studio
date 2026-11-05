@@ -254,3 +254,20 @@ def test_a_failed_reconcile_leaves_one_failed_receipt(w):
         run(w)
     (r,) = w.ledger.receipts("acct:acc_1:paypal-tools")
     assert r.details["step"] == "paypal.reconcile" and r.details["ok"] is False
+
+
+def test_reconcile_receipt_hides_other_accounts_data(w):
+    from studio.receipts import verify
+
+    captured(w.conn, "run_ui", "cre_1")
+    hashes = []
+    for foreign in ([], [listed("8FF11111AB222222C", custom="f" * 64)]):
+        w.sandbox.transactions = [listed(CAP, ref=AUTH), *foreign]
+        assert by_move(run(w)) == {"authorization": "matched", "capture": "matched"}
+        r = w.ledger.receipts("acct:acc_1:paypal-tools")[-1]
+        assert r.details["step"] == "paypal.reconcile" and r.details["ok"] is True
+        hashes.append(r.details["body_sha256"])
+    assert hashes[0] == hashes[1] and len(hashes[0]) == 64
+    path = w.tmp / "receipts.jsonl"
+    path.write_text(w.export())
+    assert verify(path, w.ledger.public_key).ok
