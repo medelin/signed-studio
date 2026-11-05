@@ -161,8 +161,9 @@ def summary(report: ReconReport) -> dict[str, Any]:
     """The answer of the ``paypal_transactions`` operation."""
     out: dict[str, Any] = {
         "lines": [ln.view() for ln in report.lines],
-        "window_start": _iso(report.window_start), "window_end": _iso(report.window_end),
-        "pages_read": report.pages_read, "truncated": report.truncated}
+        # no page count or truncation flag: they would size the shared merchant's list;
+        # incompleteness shows per line as ``unknown``
+        "window_start": _iso(report.window_start), "window_end": _iso(report.window_end)}
     for st in STATUSES:
         out[st] = sum(1 for ln in report.lines if ln.status == st)
     return out

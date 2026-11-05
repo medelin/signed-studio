@@ -331,7 +331,6 @@ def test_account_refs_follow_the_apps_ownership_rule(w):
 
 
 
-
 def _paging_world(w, seen):
     def handler(request):
         if request.url.path == "/v1/oauth2/token":
@@ -359,3 +358,34 @@ def test_agent_page_and_page_size_are_pinned(w):
     w.run("list_transactions", {"page": 3, "page_size": 1})
     q = seen[0].url.params
     assert q["page"] == "1" and q["page_size"] == str(agent_tools.PAGE_SIZE)
+
+
+def _handler_world(w, answer):
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        return httpx.Response(200, json=answer)
+
+    w.client = PayPalClient("id", "secret", transport=httpx.MockTransport(handler),
+                            sleep=lambda s: None)
+
+
+def test_foreign_transaction_id_search_says_not_found(w):
+    _handler_world(w, {"transaction_details": [tx(OTHER, "7YY99999ZZ888888Q")],
+                       "found": True, "message": "Transaction found for 7YY99999ZZ888888Q"})
+    out = w.run("list_transactions", {"transaction_id": "7YY99999ZZ888888Q",
+                                      "search_months": 1})
+    assert out == {"transaction_details": [], "found": False}
+
+
+def test_list_answers_are_allowlisted(w):
+    _handler_world(w, {"transaction_details": [tx(OWN, OWN_TID)], "found": True,
+                       "message": "x", "total_items": 9, "links": [], "account_number": "A1",
+                       "last_refreshed_datetime": "t"})
+    out = w.run("list_transactions", {})
+    assert set(out) == {"transaction_details"}
+    w.sandbox.disputes = []
+    _handler_world(w, {"items": [{"dispute_id": "PP-D-1", "disputed_transactions": [
+        {"seller_transaction_id": OWN_CAPTURE}]}], "total_items": 40, "links": [],
+        "message": "m"})
+    assert set(w.run("list_disputes", {})) == {"items"}

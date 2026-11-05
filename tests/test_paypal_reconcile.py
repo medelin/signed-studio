@@ -69,7 +69,8 @@ def test_capture_is_matched_by_id(w):
     report = reconcile_report(conn=w.conn, client=w.client, ledger=w.ledger,
                               account_id="acc_1", now=NOW)
     out = summary(report)
-    assert out["matched"] == 2 and out["truncated"] is False and out["pages_read"] == 1
+    assert out["matched"] == 2 and not {"truncated", "pages_read"} & set(out)
+    assert report.truncated is False and report.pages_read == 1
     assert out["window_start"] < out["window_end"]
     assert len(w.sandbox.calls("/v1/reporting/transactions")) == 2  # run + report
 
@@ -164,7 +165,7 @@ def test_unread_pages_make_absent_moves_unknown(w, monkeypatch):
     assert seen == [1, 2] and report.truncated is True
     assert by_move(report.lines)["capture"] == "unknown"
     out = summary(report)
-    assert out["truncated"] is True and out["unknown"] == 1 and out["missing"] == 0
+    assert "truncated" not in out and out["unknown"] == 1 and out["missing"] == 0
 
 
 def test_moves_older_than_the_window_are_unknown(w):

@@ -550,3 +550,24 @@ def test_a_trial_accounts_token_gets_not_found_from_propose_refund(tmp_path):
     status, body = app.state.assistants.call(
         principal_of(app, tok), "propose_refund", {"funding_id": f.id, "amount": "1.00"})
     assert status == 404 and body["error"] == "not_found"
+
+
+def test_paypal_transactions_answer_has_no_paging_fields(tmp_path):
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+    from tests.test_paypal_agent_tools import Sandbox
+
+    app, f = paypal_world(tmp_path)
+    app.state.funder.money.client = PayPalClient(
+        "id", "secret", transport=httpx.MockTransport(Sandbox([])), sleep=lambda s: None)
+    tok, value = token(app, scope="read")
+    svc = app.state.assistants
+    svc.clock = lambda: 5.0 + 4 * 3600
+    banned = {"pages_read", "truncated", "total_pages", "total_items", "has_more"}
+    status, body = svc.call(principal_of(app, tok), "paypal_transactions", {})
+    assert status == 200 and not banned & set(body)
+    assert {"window_start", "window_end", "matched", "unknown"} <= set(body)
+    with TestClient(app, base_url=BASE) as c:
+        r = c.get("/api/v1/paypal/transactions", headers=bearer(value))
+        assert r.status_code == 200 and not banned & set(r.json())

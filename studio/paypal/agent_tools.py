@@ -173,19 +173,21 @@ def _disputed_ids(dispute: Any) -> list[str]:
             if isinstance(t, dict) and isinstance(t.get("seller_transaction_id"), str)]
 
 
-def only_own(name: str, answer: dict[str, Any], refs: AccountRefs) -> dict[str, Any]:
+def only_own(name: str, answer: dict[str, Any], refs: AccountRefs, *,
+             searched: bool = False) -> dict[str, Any]:
     """Reduce a tool's answer to the account's own money; ``ToolRefused("not_allowed")``
-    for a single order or dispute that is not the account's."""
+    for a single order or dispute that is not the account's. The list answers are rebuilt
+    from an allowlist, so nothing PayPal says about the shared merchant's other money
+    (``message``, totals, links, a foreign id's ``found``) reaches the caller; ``searched``
+    (a ``transaction_id`` was asked for) adds ``found`` for the account's own match."""
     if name == "list_transactions":
         kept = [t for t in answer.get("transaction_details") or []
                 if isinstance(t, dict) and isinstance(t.get("transaction_info"), dict)
                 and _own_transaction(t["transaction_info"], refs)]
-        out = {**answer, "transaction_details": kept}
-        if "total_items" in out:
-            out["total_items"] = len(kept)
+        out: dict[str, Any] = {"transaction_details": kept}
+        if searched:
+            out["found"] = bool(kept)
         pages, page = answer.get("total_pages"), answer.get("page")
-        for k in ("total_pages", "links"):  # describe PayPal's whole list, not the account's
-            out.pop(k, None)
         if isinstance(pages, int) and isinstance(page, int):
             # internal (reconcile): the public wrapper strips it, it would let a caller
             # binary-search the shared merchant's transaction count
@@ -203,7 +205,7 @@ def only_own(name: str, answer: dict[str, Any], refs: AccountRefs) -> dict[str, 
     if name == "list_disputes":
         kept = [d for d in answer.get("items") or []
                 if any(i in refs.paypal_ids for i in _disputed_ids(d))]
-        return {**answer, "items": kept}
+        return {"items": kept}
     raise ToolRefused("not_allowed", f"{name!r} is not a read tool")
 
 
@@ -313,5 +315,6 @@ def _run(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
     answer = json.loads(raw) if isinstance(raw, str) else raw
     if not isinstance(answer, dict):
         raise ToolRefused("paypal_error", "unexpected answer")
-    out: dict[str, Any] = redact(only_own(name, answer, account_refs))
+    out: dict[str, Any] = redact(only_own(
+        name, answer, account_refs, searched=bool(getattr(checked, "transaction_id", None))))
     return out
