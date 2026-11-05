@@ -588,8 +588,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         response = await call_next(request)
-        response.headers["Content-Security-Policy"] = (
-            CSP_PAYPAL if settings.paypal.adapter == "rest" else CSP)
+        policy = CSP_PAYPAL if settings.paypal.adapter == "rest" else CSP
+        response.headers["Content-Security-Policy"] = policy
+        # A copy for a shared front proxy whose global Header set replaces the policy
+        # (Debian's security.conf): its vhost restores it from here and drops the copy
+        # (deploy/apache/signed-studio-pay.conf).
+        response.headers["X-Studio-CSP"] = policy
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "same-origin"

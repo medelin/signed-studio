@@ -144,6 +144,7 @@ def test_csp_lets_the_save_my_paypal_form_redirect_to_paypal_only(tmp_path):
                                PAYPAL_CLIENT_SECRET="sandbox-secret-value"))
     with TestClient(rest, base_url="https://testserver") as c:
         csp = c.get("/healthz").headers["content-security-policy"]
+        assert c.get("/healthz").headers["x-studio-csp"] == csp  # for the Apache vhost
     action = next(d for d in csp.split("; ") if d.startswith("form-action "))
     assert action.split()[1:] == ["'self'", "https://www.paypal.com",
                                   "https://www.sandbox.paypal.com"]
