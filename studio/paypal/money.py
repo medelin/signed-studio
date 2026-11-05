@@ -51,6 +51,11 @@ REFUND_OK = frozenset({"COMPLETED", "PENDING"})
 PAYMENT_REFUSED = frozenset({"INSTRUMENT_DECLINED", "TRANSACTION_REFUSED", "PAYER_CANNOT_PAY"})
 
 
+def is_declined(exc: PayPalError) -> bool:
+    """A definite refusal of the buyer's funding source (not an unknown outcome or a 5xx)."""
+    return exc.issue in PAYMENT_REFUSED and not exc.unknown and 400 <= exc.status < 500
+
+
 def _idem(*parts: str) -> tuple[str, str]:
     rid = request_id(*parts)
     return rid, hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
@@ -167,7 +172,7 @@ class Money:
                              lambda: orders.authorize(self.client, order_id, request_id=rid),
                              approval_id, claim=approval_id)
         except PayPalError as exc:
-            if exc.issue in PAYMENT_REFUSED and not exc.unknown and 400 <= exc.status < 500:
+            if is_declined(exc):
                 # a definite refusal of the buyer's funding source: this order is spent,
                 # the next ``open`` may create a fresh one
                 funding.advance(self.conn, f.id, "failed", expect="payer_approved",

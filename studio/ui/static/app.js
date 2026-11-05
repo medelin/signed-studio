@@ -839,8 +839,10 @@ $("activate-button").addEventListener("click", async () => {
     // sandbox only: PayPal-Mock-Response on the capture; outside the signed bytes
     const simulate = $("simulate-decline") && $("simulate-decline").checked ? { simulate: "INSTRUMENT_DECLINED" } : {};
     const done = await Signer.sign(payload, simulate);
-    if (!done.executed && done.execution_reason) {
-      status("activate-status", T("paypal_capture_declined", { issue: done.execution_error, reason: reasonOf(done.execution_error, done.execution_reason), debug: done.execution_debug_id || "" }), true);
+    if (!done.executed && "execution_declined" in done) {  // PayPal answered the capture
+      status("activate-status", done.execution_declined
+        ? T("paypal_capture_declined", { issue: done.execution_error, reason: reasonOf(done.execution_error, done.execution_reason), debug: done.execution_debug_id || "" })
+        : T("paypal_capture_unconfirmed", { issue: done.execution_error, debug: done.execution_debug_id || "" }), true);
       btn.disabled = false;
       return;
     }

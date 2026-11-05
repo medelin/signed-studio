@@ -170,8 +170,14 @@ def test_signing_with_simulate_through_the_app(tmp_path):
         assert declined.json()["execution_error"] == "INSTRUMENT_DECLINED"
         assert "declined" in declined.json()["execution_reason"]
         assert declined.json()["execution_debug_id"]
+        assert declined.json()["execution_declined"] is True
         assert a.state.conn.execute("SELECT status FROM campaigns WHERE id = ?",
                                     (item,)).fetchone()[0] == "PAUSED"
+        unsure = c.post(f"/api/campaigns/{item}/activate").json()["approval_id"]
+        a.state.funder.fake.fail_next(*[503] * 4)
+        failed = sign(c, key, approver, unsure)
+        assert failed.json()["executed"] is False
+        assert failed.json()["execution_declined"] is False  # not a definite refusal
         second = c.post(f"/api/campaigns/{item}/activate").json()["approval_id"]
         done = sign(c, key, approver, second)
         assert done.json()["executed"] and done.json()["result"]["status"] == "ACTIVE"

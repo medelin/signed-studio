@@ -61,6 +61,7 @@ from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import StructuredOutputError
 from studio.paypal.client import MOCK_CODES, PayPalError
+from studio.paypal.money import is_declined
 from studio.receipts import BRIEF_KIND, Ledger, Receipt, canonical, sha256_hex
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
@@ -1289,7 +1290,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
                            or type(exc).__name__)
                 cause = exc.__cause__
                 if isinstance(cause, PayPalError):  # PayPal's own words for the owner
-                    out.update(execution_reason=cause.reason, execution_debug_id=cause.debug_id)
+                    out.update(execution_reason=cause.reason, execution_debug_id=cause.debug_id,
+                               execution_declined=is_declined(cause))
         return JSONResponse(out)
 
 

@@ -45,13 +45,16 @@ EN_PAYPAL: dict[str, str] = {
     "js.paypal_ready": "Funded: signing holds the money and creates the campaign PAUSED.",
     "js.paypal_cancelled": "PayPal was closed before approving. Try again when ready.",
     "js.paypal_sdk_failed": "PayPal could not be loaded. Try again in a moment.",
-    "js.paypal_declined": "PayPal declined the funding source ({issue}). Fund the campaign "
-                         "again with another PayPal method.",
+    "js.paypal_declined": "PayPal declined the funding source ({issue}: {reason}). Fund the "
+                         "campaign again with another PayPal method.",
     "js.paypal_capture_declined": "PayPal declined taking the money ({issue}: {reason}). The "
                                   "money is still held and the campaign is still paused; sign "
                                   "the activation again. PayPal debug id: {debug}.",
-    "js.paypal_unconfirmed": "PayPal did not confirm the payment yet ({issue}); nothing was "
-                             "charged. Try again in a moment.",
+    "js.paypal_unconfirmed": "PayPal did not confirm the payment ({issue}). Check the PayPal "
+                             "account before trying again.",
+    "js.paypal_capture_unconfirmed": "PayPal did not confirm taking the money ({issue}; PayPal "
+                                     "debug id {debug}). The campaign stays paused. Check the "
+                                     "PayPal account before signing the activation again.",
     "js.reason.INSTRUMENT_DECLINED": "PayPal declined the buyer's funding source",
     "js.reason.TRANSACTION_REFUSED": "PayPal refused the transaction",
     "js.reason.PAYER_CANNOT_PAY": "the buyer cannot pay with this funding source",
@@ -114,14 +117,18 @@ PL_PAYPAL: dict[str, str] = {
     "js.paypal_cancelled": "PayPal zamknięto przed zatwierdzeniem. Spróbuj, gdy będziesz "
                            "gotów.",
     "js.paypal_sdk_failed": "Nie udało się wczytać PayPal. Spróbuj za chwilę.",
-    "js.paypal_declined": "PayPal odrzucił źródło płatności ({issue}). Opłać kampanię "
-                          "ponownie inną metodą PayPal.",
+    "js.paypal_declined": "PayPal odrzucił źródło płatności ({issue}: {reason}). Opłać "
+                          "kampanię ponownie inną metodą PayPal.",
     "js.paypal_capture_declined": "PayPal odrzucił pobranie pieniędzy ({issue}: {reason}). "
                                   "Pieniądze nadal są zablokowane, a kampania wstrzymana; "
                                   "podpisz aktywację jeszcze raz. Identyfikator PayPal: "
                                   "{debug}.",
-    "js.paypal_unconfirmed": "PayPal jeszcze nie potwierdził płatności ({issue}); nic nie "
-                             "pobrano. Spróbuj za chwilę.",
+    "js.paypal_unconfirmed": "PayPal nie potwierdził płatności ({issue}). Sprawdź konto PayPal "
+                             "przed ponowną próbą.",
+    "js.paypal_capture_unconfirmed": "PayPal nie potwierdził pobrania pieniędzy ({issue}; "
+                                     "identyfikator PayPal {debug}). Kampania pozostaje "
+                                     "wstrzymana. Sprawdź konto PayPal, zanim ponownie "
+                                     "podpiszesz aktywację.",
     "js.reason.INSTRUMENT_DECLINED": "PayPal odrzucił źródło płatności kupującego",
     "js.reason.TRANSACTION_REFUSED": "PayPal odmówił wykonania transakcji",
     "js.reason.PAYER_CANNOT_PAY": "kupujący nie może zapłacić tym źródłem",
