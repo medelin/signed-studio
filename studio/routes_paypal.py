@@ -85,21 +85,27 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             return False
         return app.state.approval_refusal(pending, account) is None
 
+    def owned_funding(funding_id: str, account: Any) -> funding.Funding:
+        """The funding, if ``account`` may refund it: a full account (``sees_personal_data``)
+        that owns the funding's item. Any other caller, and an unknown funding, get the
+        same ``FundingError("not_found")`` (no existence oracle)."""
+        if account is None or not account.sees_personal_data:
+            raise FundingError("no such funding", "not_found")
+        with conn.lock:
+            f = funding.get(conn, funding_id)  # FundingError: not_found
+            if not owns_item(f.item_id, account):
+                raise FundingError("no such funding", "not_found")
+        return f
+
     def propose_refund(funding_id: str, amount_minor: int, account: Any
                        ) -> tuple[Pending, dict[str, Any]]:
         """A pending ``funding.refund`` approval for ``amount_minor`` of the funding's
         capture; the one path behind ``POST /api/funding/{id}/refund`` and the
-        assistants' ``propose_refund``. Nothing is refunded until a human signs it. Only a
-        full account (``sees_personal_data``) that owns the funding's item may ask; any
-        other caller, and an unknown funding, get ``FundingError("not_found")``."""
-        if account is None or not account.sees_personal_data:
-            raise FundingError("no such funding", "not_found")
-        with conn.lock:
-            item = funding.get(conn, funding_id).item_id  # FundingError: not_found
-            if not owns_item(item, account):
-                raise FundingError("no such funding", "not_found")
+        assistants' ``propose_refund``. Nothing is refunded until a human signs it."""
+        owned_funding(funding_id, account)
         return funder.request_refund(funding_id, amount_minor)
 
+    app.state.owned_funding = owned_funding
     app.state.propose_refund = propose_refund
 
     def pending_for(approval_id: str, guard: str) -> tuple[Pending, dict[str, Any]]:

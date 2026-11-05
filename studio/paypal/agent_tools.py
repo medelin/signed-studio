@@ -181,8 +181,11 @@ def only_own(name: str, answer: dict[str, Any], refs: AccountRefs) -> dict[str, 
         out = {**answer, "transaction_details": kept}
         if "total_items" in out:
             out["total_items"] = len(kept)
+        pages, page = answer.get("total_pages"), answer.get("page")
         for k in ("total_pages", "links"):  # describe PayPal's whole list, not the account's
             out.pop(k, None)
+        if isinstance(pages, int) and isinstance(page, int):
+            out["has_more"] = page < pages  # whether another page exists, not how many
         return out
     if name == "get_order_details":
         raw = answer.get("raw")

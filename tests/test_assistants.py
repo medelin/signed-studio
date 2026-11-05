@@ -509,8 +509,10 @@ def test_rest_routes_for_the_paypal_ops(tmp_path):
         r = c.post("/api/v1/paypal/tools/create_order", json={"params": {}}, headers=h)
         assert r.status_code == 422
         r = c.post("/api/v1/paypal/tools/list_disputes", json={}, headers=h)
-        assert r.status_code in (200, 502)  # the mock PayPal has no dispute API
-        assert c.get("/api/v1/paypal/transactions", headers=h).status_code in (200, 502)
+        assert r.status_code == 502  # the mock PayPal has no dispute API
+        r = c.get("/api/v1/paypal/transactions", headers=h)
+        # the fixture's move is from 1970: outside the window, so no PayPal call, unknown
+        assert r.status_code == 200 and r.json()["unknown"] == 1
 
 
 def test_ops_listed_on_mcp(flow):
@@ -526,3 +528,25 @@ def test_ops_listed_on_mcp(flow):
 
     names = {t.name for t in anyio.run(go).tools}
     assert {"paypal_transactions", "paypal_tool", "propose_refund"} <= names
+
+
+def test_stranger_gets_not_found_before_anything_else(tmp_path):
+    app, f = paypal_world(tmp_path)
+    other_tok, _ = token(app, "stranger", scope="draft")
+    svc = app.state.assistants
+    for amount in ("1.00", "99999.00"):  # an over-refund must not reveal the funding
+        status, body = svc.call(principal_of(app, other_tok), "propose_refund",
+                                {"funding_id": f.id, "amount": amount})
+        assert status == 404 and body["error"] == "not_found", amount
+    status, body = svc.call(principal_of(app, other_tok), "propose_refund",
+                            {"funding_id": "fund_" + "0" * 16, "amount": "1.00"})
+    assert status == 404
+
+
+def test_a_trial_accounts_token_gets_not_found_from_propose_refund(tmp_path):
+    app, f = paypal_world(tmp_path)
+    app.state.accounts.set_tier("owner", "trial")
+    tok, _ = token(app, scope="draft")
+    status, body = app.state.assistants.call(
+        principal_of(app, tok), "propose_refund", {"funding_id": f.id, "amount": "1.00"})
+    assert status == 404 and body["error"] == "not_found"

@@ -747,12 +747,12 @@ def paypal_transactions(s: Assistants, p: Principal) -> dict[str, Any]:
     """The account's authorizations and captures against PayPal's transaction list."""
     funder = _paypal(s)
     try:
-        lines = reconcile.reconcile(conn=s.conn, client=funder.money.client,
-                                    ledger=s.ledger, account_id=p.account_id,
-                                    now=s.clock())
+        report = reconcile.reconcile_report(conn=s.conn, client=funder.money.client,
+                                            ledger=s.ledger, account_id=p.account_id,
+                                            now=s.clock())
     except agent_tools.ToolRefused as exc:
         raise ApiRefused(exc.code) from None
-    return reconcile.summary(lines)
+    return reconcile.summary(report)
 
 
 def paypal_tool(s: Assistants, p: Principal, name: str, params: dict[str, Any] | None = None
@@ -778,11 +778,10 @@ def propose_refund(s: Assistants, p: Principal, funding_id: str, amount: str
     _paypal(s)
     propose = s.app.state.propose_refund
     account = s.app.state.accounts.get(p.account_id)
-    with s.conn.lock:
-        try:
-            currency = funding.get(s.conn, funding_id).currency
-        except funding.FundingError:
-            raise ApiRefused("not_found") from None
+    try:  # ownership first: a stranger learns nothing about the funding or its currency
+        currency = s.app.state.owned_funding(funding_id, account).currency
+    except funding.FundingError:
+        raise ApiRefused("not_found") from None
     try:
         minor = funding.parse_amount(amount, currency)
     except funding.FundingError:
