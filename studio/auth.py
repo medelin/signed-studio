@@ -50,6 +50,9 @@ PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favic
                           "/try", "/pl/try", "/try/data.json",  # the recorded tour
                           "/start", "/pl/start",  # onboarding
                           "/webhooks/whatsapp",  # Meta's servers; authenticated by HMAC
+                          # PayPal's cross-site return: the route checks the session itself
+                          # and bounces once to pick up the SameSite=Strict cookie
+                          "/account/paypal/vault/return",
                           "/webhooks/paypal"})  # PayPal's servers; RSA-signed, verified
 PUBLIC_PREFIXES = ("/static/", "/try/img/", "/auth/")  # /auth/: studio.routes_social
 # Posted by Meta's servers, never by a browser: the X-Hub-Signature-256 HMAC of the raw body

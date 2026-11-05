@@ -26,7 +26,7 @@ from __future__ import annotations
 import html
 import time
 from typing import Any
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, quote, urlencode
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -210,8 +210,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> Non
                 "<!doctype html><html><head><meta name=\"robots\" content=\"noindex\">"
                 f"<meta http-equiv=\"refresh\" content=\"0;url={target}\"></head></html>",
                 headers=NO_STORE)
-        if not sid or account is None:
-            return JSONResponse({"error": "login_required"}, 401)
+        if not sid or account is None:  # signing in brings the owner back here
+            again = urlencode({"vault_ref": vault_ref[:40],
+                               "approval_token_id": approval_token_id[:64]})
+            target = quote(f"/account/paypal/vault/return?{again}", safe="/")
+            return RedirectResponse(f"/login?next={target}", 303, headers=NO_STORE)
         if settings.read_only:
             return JSONResponse({"error": "read_only"}, 503)
         from studio.paypal.client import PayPalError

@@ -47,8 +47,8 @@ def sign(c, key, approver, approval_id):
 class Studio:
     """One app with PayPal mocked, the owner signed in and a draft token."""
 
-    def __init__(self, tmp, save=True):
-        self.app = make_app(tmp, PAYPAL_ADAPTER="mock")
+    def __init__(self, tmp, save=True, **env):
+        self.app = make_app(tmp, PAYPAL_ADAPTER="mock", **env)
         self.tmp = tmp
         self.tok, self.value = token(self.app)
         self.c = TestClient(self.app, base_url=BASE)
@@ -138,8 +138,10 @@ def test_the_vault_routes_need_a_session_and_csrf(paid):
     anon = TestClient(s.app, base_url=BASE)
     assert anon.post("/account/paypal/vault/start", data={"csrf": "x"},
                      follow_redirects=False).status_code in (401, 403)
-    assert anon.get("/account/paypal/vault/return?vault_ref=" + s.ref,
-                    follow_redirects=False).status_code == 401
+    r = anon.get("/account/paypal/vault/return?vault_ref=" + s.ref, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == (
+        "/login?next=/account/paypal/vault/return%3Fvault_ref%3D" + s.ref
+        + "%26approval_token_id%3D")
     r = s.c.post("/account/paypal/vault/start", data={"csrf": "wrong"},
                  follow_redirects=False)
     assert r.status_code == 403
@@ -159,10 +161,21 @@ def test_the_return_from_paypal_bounces_once_to_pick_up_the_strict_session(paid)
             f'vault_ref={s.ref}&amp;approval_token_id=TOK-1&amp;bounced=1">') in r.text
     again = anon.get(url + "&bounced=1", headers={"sec-fetch-site": "same-origin"},
                      follow_redirects=False)
-    assert again.status_code == 401
+    assert again.status_code == 303 and again.headers["location"].startswith("/login?next=")
+    assert "bounced" not in again.headers["location"]  # signing in comes back here once more
     hostile = anon.get('/account/paypal/vault/return?vault_ref="><script>',
                        headers={"sec-fetch-site": "cross-site"}, follow_redirects=False)
     assert "<script>" not in hostile.text
+
+
+def test_the_login_gate_lets_the_return_reach_its_bounce(tmp_path):
+    # With STUDIO_REQUIRE_LOGIN on (pay.udun.eu), the gate used to send the cookie-less
+    # cross-site arrival to /login before the route could bounce it.
+    s = Studio(tmp_path, STUDIO_REQUIRE_LOGIN="1")
+    anon = TestClient(s.app, base_url=BASE)
+    r = anon.get(f"/account/paypal/vault/return?vault_ref={s.ref}&approval_token_id=T",
+                 headers={"sec-fetch-site": "cross-site"}, follow_redirects=False)
+    assert r.status_code == 200 and 'http-equiv="refresh"' in r.text
 
 
 def test_another_account_cannot_finish_or_delete_this_saved_paypal(tmp_path):
