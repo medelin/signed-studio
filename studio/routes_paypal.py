@@ -136,7 +136,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
                   "not_approved_yet": 409}.get(code, 409)
         if isinstance(exc, PayPalError):
             return JSONResponse({"error": "paypal", "paypal_error": exc.name,
-                                 "paypal_issue": exc.issue, "reason": exc.reason}, 502)
+                                 "paypal_issue": exc.issue, "reason": exc.reason,
+                                 "debug_id": exc.debug_id}, 502)
         return JSONResponse({"error": code}, status)
 
     @app.get("/api/paypal/config")

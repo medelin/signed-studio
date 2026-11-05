@@ -54,6 +54,7 @@ from studio.meta.adapter import (
     spec_sha256,
 )
 from studio.meta.currency import to_minor
+from studio.paypal.client import PayPalError
 from studio.receipts import Ledger, canonical
 
 AGENT = "media_buyer"
@@ -194,6 +195,10 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         # the campaign exists, PAUSED: now hold the money (authorize) under this approval
         try:
             result["funding"] = funder.authorize(funded, v)
+        except PayPalError as exc:  # a refusal or an unknown outcome: receipted by Money
+            result["funding_error"] = exc.issue or exc.name or "PAYPAL_ERROR"
+            if exc.reason:
+                result["funding_reason"] = exc.reason  # e.g. the buyer's source was declined
         except Exception as exc:  # noqa: BLE001 - receipted; the campaign stays unfunded
             result["funding_error"] = getattr(exc, "code", type(exc).__name__)
     try:

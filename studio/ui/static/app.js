@@ -575,7 +575,10 @@ $("approve-button").addEventListener("click", async () => {
       return;
     }
     if (r.data.executed && r.data.result) {
-      status("approve-status", T("signed_executed", { adapter: r.data.result.adapter }));
+      const refused = r.data.result.funding_error;
+      status("approve-status", refused
+        ? T("paypal_declined", { issue: refused, reason: r.data.result.funding_reason || "" })
+        : T("signed_executed", { adapter: r.data.result.adapter }), !!refused);
       showCampaign(currentPayload.content.run_id, r.data.result.campaign_item_id);
     } else if (r.data.execution_error) {
       status("approve-status", T("signed_failed", { error: r.data.execution_error }), true);

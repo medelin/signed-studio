@@ -111,6 +111,7 @@ class FakePayPal:
         # webhook events PayPal would send, in order; ``drain`` hands them out
         self.outbox: list[dict[str, Any]] = []
         self._fail: list[int] = []
+        self.decline_authorize = ""  # an issue code: the next authorize is refused with it
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -305,6 +306,9 @@ class FakePayPal:
             return _err(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID")
         if order.status == "CREATED":
             return _err(422, "UNPROCESSABLE_ENTITY", "ORDER_NOT_APPROVED")
+        if self.decline_authorize:
+            issue, self.decline_authorize = self.decline_authorize, ""
+            return _err(422, "UNPROCESSABLE_ENTITY", issue)
         if order.status == "COMPLETED":
             return _err(422, "UNPROCESSABLE_ENTITY", "ORDER_ALREADY_AUTHORIZED")
         unit = order.body["purchase_units"][0]

@@ -47,6 +47,8 @@ PROVIDER = "paypal"
 ORDER_OPEN = frozenset({"CREATED", "PAYER_ACTION_REQUIRED", "APPROVED", "SAVED"})
 CAPTURE_OK = frozenset({"COMPLETED", "PENDING"})
 REFUND_OK = frozenset({"COMPLETED", "PENDING"})
+# PayPal's definite refusals of the buyer's funding source at authorize
+PAYMENT_REFUSED = frozenset({"INSTRUMENT_DECLINED", "TRANSACTION_REFUSED", "PAYER_CANNOT_PAY"})
 
 
 def _idem(*parts: str) -> tuple[str, str]:
@@ -160,9 +162,17 @@ class Money:
         self._approval(approval_id)
         self._claim(approval_id, f, "authorize", f.total_minor)
         rid, idem = _idem(f.id, "authorize", approval_id)
-        res = self._call(f, "paypal.authorize", idem, None,
-                         lambda: orders.authorize(self.client, order_id, request_id=rid),
-                         approval_id, claim=approval_id)
+        try:
+            res = self._call(f, "paypal.authorize", idem, None,
+                             lambda: orders.authorize(self.client, order_id, request_id=rid),
+                             approval_id, claim=approval_id)
+        except PayPalError as exc:
+            if exc.issue in PAYMENT_REFUSED and not exc.unknown and 400 <= exc.status < 500:
+                # a definite refusal of the buyer's funding source: this order is spent,
+                # the next ``open`` may create a fresh one
+                funding.advance(self.conn, f.id, "failed", expect="payer_approved",
+                                now=self._now())
+            raise
         self._expect(f, "paypal.authorize", idem, None, res, status=frozenset({"CREATED"}),
                      amount=f.total_minor, approval_id=approval_id)
         return self._commit(f, "paypal.authorize", idem, None, res, to="authorized",
@@ -356,7 +366,8 @@ class Money:
             self._receipt(f, self._details(
                 f, step, idem, body, None, approval_id=approval_id, ok=False,
                 error=exc.name or "HTTP_ERROR", issue=exc.issue, http_status=exc.status,
-                outcome_unknown=exc.unknown or None, **extra))
+                outcome_unknown=exc.unknown or None,
+                debug_id=exc.debug_id or None, **extra))
             raise
 
     def _expect(self, f: Funding, step: str, idem: str, body: Any, res: orders.Result, *,

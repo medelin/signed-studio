@@ -51,19 +51,22 @@ MAX_DAYS = 90
 MAX_TOTAL_MINOR = 10_000_000  # 100,000.00: a sandbox demo never needs more
 
 STATES = ("created", "payer_approved", "authorized", "captured", "partially_refunded",
-          "refunded", "voided", "expired")
+          "refunded", "voided", "expired", "failed")
 TRANSITIONS: dict[str, frozenset[str]] = {
     # created → authorized: a charge of the owner's saved PayPal under a signed mandate
     # (Vault v3), where PayPal holds the money when the order is made; only
     # ``Money.charge_vault`` takes this edge, a buyer's order needs ``payer_approved``
     "created": frozenset({"payer_approved", "authorized", "expired"}),
-    "payer_approved": frozenset({"authorized", "expired"}),
+    # payer_approved → failed: PayPal definitively refused the payment at authorize
+    # (the buyer's funding source was declined); a fresh order may then be made
+    "payer_approved": frozenset({"authorized", "expired", "failed"}),
     "authorized": frozenset({"captured", "voided"}),
     "captured": frozenset({"partially_refunded", "refunded"}),
     "partially_refunded": frozenset({"partially_refunded", "refunded"}),
     "refunded": frozenset(),
     "voided": frozenset(),
     "expired": frozenset(),
+    "failed": frozenset(),
 }
 FINAL = frozenset(s for s, nxt in TRANSITIONS.items() if not nxt)
 MOVES = ("order", "payer_approved", "authorization", "reauthorization", "capture", "void",

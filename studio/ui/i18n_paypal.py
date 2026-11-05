@@ -45,6 +45,8 @@ EN_PAYPAL: dict[str, str] = {
     "js.paypal_ready": "Funded: signing holds the money and creates the campaign PAUSED.",
     "js.paypal_cancelled": "PayPal was closed before approving. Try again when ready.",
     "js.paypal_sdk_failed": "PayPal could not be loaded. Try again in a moment.",
+    "js.paypal_declined": "PayPal declined the funding source ({issue}). Fund the campaign "
+                         "again with another PayPal method.",
     "err.paypal": "PayPal refused this step. Try again in a moment.",
     "err.refund_amount": "The refund must be more than zero and at most what is left.",
     "err.amount": "An amount must be a whole number of minor units (pence, grosze), from 0 "
@@ -102,6 +104,8 @@ PL_PAYPAL: dict[str, str] = {
     "js.paypal_cancelled": "PayPal zamknięto przed zatwierdzeniem. Spróbuj, gdy będziesz "
                            "gotów.",
     "js.paypal_sdk_failed": "Nie udało się wczytać PayPal. Spróbuj za chwilę.",
+    "js.paypal_declined": "PayPal odrzucił źródło płatności ({issue}). Opłać kampanię "
+                          "ponownie inną metodą PayPal.",
     "err.paypal": "PayPal odmówił tego kroku. Spróbuj za chwilę.",
     "err.refund_amount": "Zwrot musi być większy od zera i nie większy niż to, co zostało.",
     "err.amount": "Kwota musi być liczbą całkowitą w groszach (centach), od 0 do limitu "
