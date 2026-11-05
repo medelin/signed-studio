@@ -23,12 +23,13 @@ mandate (``studio.mandates``).
 
 from __future__ import annotations
 
+import html
 import time
 from typing import Any
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from studio import auth, mandates
 from studio.meta import objectives
@@ -190,13 +191,25 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> Non
 
     @app.get("/account/paypal/vault/return")
     def vault_return(request: Request, vault_ref: str = "",
-                     approval_token_id: str = "") -> Response:
+                     approval_token_id: str = "", bounced: str = "") -> Response:
         funder = vault_service()
         if funder is None:
             return JSONResponse({"error": "not_found"}, 404)
         cookie = request.cookies.get(COOKIE)
         sid = app.state.sessions.check(cookie)
         account = app.state.sessions.account_of(cookie) if sid else None
+        cross_site = request.headers.get("sec-fetch-site") == "cross-site"
+        if (not sid or account is None) and cross_site and not bounced:
+            # PayPal's redirect back is cross-site, so the browser withholds the
+            # SameSite=Strict session cookie. Refresh to the same URL once: that
+            # navigation starts on this site and carries the cookie.
+            query = urlencode({"vault_ref": vault_ref[:40],
+                               "approval_token_id": approval_token_id[:64], "bounced": "1"})
+            target = html.escape(f"/account/paypal/vault/return?{query}")
+            return HTMLResponse(
+                "<!doctype html><html><head><meta name=\"robots\" content=\"noindex\">"
+                f"<meta http-equiv=\"refresh\" content=\"0;url={target}\"></head></html>",
+                headers=NO_STORE)
         if not sid or account is None:
             return JSONResponse({"error": "login_required"}, 401)
         if settings.read_only:

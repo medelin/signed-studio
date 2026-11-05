@@ -145,6 +145,26 @@ def test_the_vault_routes_need_a_session_and_csrf(paid):
     assert r.status_code == 403
 
 
+def test_the_return_from_paypal_bounces_once_to_pick_up_the_strict_session(paid):
+    # PayPal sends the buyer back with a cross-site navigation, so the SameSite=Strict
+    # session cookie is withheld. The first arrival answers a same-URL refresh (initiated
+    # by this site, so the cookie rides along); a second miss is a real 401, never a loop.
+    s, *_ = paid
+    anon = TestClient(s.app, base_url=BASE)
+    url = f"/account/paypal/vault/return?vault_ref={s.ref}&approval_token_id=TOK-1"
+    r = anon.get(url, headers={"sec-fetch-site": "cross-site"}, follow_redirects=False)
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    assert "noindex" in r.text
+    assert (f'<meta http-equiv="refresh" content="0;url=/account/paypal/vault/return?'
+            f'vault_ref={s.ref}&amp;approval_token_id=TOK-1&amp;bounced=1">') in r.text
+    again = anon.get(url + "&bounced=1", headers={"sec-fetch-site": "same-origin"},
+                     follow_redirects=False)
+    assert again.status_code == 401
+    hostile = anon.get('/account/paypal/vault/return?vault_ref="><script>',
+                       headers={"sec-fetch-site": "cross-site"}, follow_redirects=False)
+    assert "<script>" not in hostile.text
+
+
 def test_another_account_cannot_finish_or_delete_this_saved_paypal(tmp_path):
     s = Studio(tmp_path)
     other = TestClient(s.app, base_url=BASE)
