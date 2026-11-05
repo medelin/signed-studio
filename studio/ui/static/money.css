@@ -1,0 +1,19 @@
+/* AG Grid (legacy quartz CSS, vendored) on the studio's light/dark tokens. */
+.studio-grid {
+  --ag-font-family: inherit;
+  --ag-font-size: 0.9rem;
+  --ag-background-color: var(--bg-raised);
+  --ag-foreground-color: var(--ink);
+  --ag-header-background-color: var(--soft);
+  --ag-header-foreground-color: var(--ink-2);
+  --ag-border-color: var(--rule-soft);
+  --ag-row-border-color: var(--rule-soft);
+  --ag-odd-row-background-color: var(--bg);
+  --ag-row-hover-color: var(--signal-soft);
+  --ag-selected-row-background-color: var(--signal-soft);
+  --ag-input-focus-border-color: var(--signal);
+  --ag-secondary-foreground-color: var(--muted);
+  width: 100%;
+  height: 28rem;
+}
+#money-advice { white-space: pre-wrap; }

@@ -63,6 +63,7 @@ from studio import (
     routes_inbox,
     routes_mandates,
     routes_meta,
+    routes_money,
     routes_onboarding,
     routes_paypal,
     routes_receipts,
@@ -629,6 +630,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_export.register(app, settings, ledger, conn, write_guard, session_of)
     routes_receipts.register(app, settings, ledger, templates, session_of)
+    routes_money.register(app, settings, ledger, conn, templates, session_of)
     routes_help.register(app, settings, ledger, templates, session_of)
     routes_try.register(app, settings, templates, session_of)
     routes_onboarding.register(app, settings, ledger, templates, session_of, COOKIE)
