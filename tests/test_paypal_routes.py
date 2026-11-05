@@ -136,6 +136,19 @@ def test_csp_opens_paypal_only_in_rest_mode(tmp_path):
         assert "paypal" not in c.get("/healthz").headers["content-security-policy"]
 
 
+def test_csp_lets_the_save_my_paypal_form_redirect_to_paypal_only(tmp_path):
+    # "Save my PayPal" is a form POST answered by a 303 to PayPal's approve link; Chromium
+    # checks form-action on that redirect too, so 'self' alone left the owner on /account.
+    rest = create_app(settings(tmp_path / "r", PAYPAL_ADAPTER="rest",
+                               PAYPAL_CLIENT_ID="sandbox-client-id",
+                               PAYPAL_CLIENT_SECRET="sandbox-secret-value"))
+    with TestClient(rest, base_url="https://testserver") as c:
+        csp = c.get("/healthz").headers["content-security-policy"]
+    action = next(d for d in csp.split("; ") if d.startswith("form-action "))
+    assert action.split()[1:] == ["'self'", "https://www.paypal.com",
+                                  "https://www.sandbox.paypal.com"]
+
+
 def test_a_live_paypal_env_stops_the_start(tmp_path):
     from studio.settings import ConfigError
 

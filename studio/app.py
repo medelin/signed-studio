@@ -114,7 +114,9 @@ CSP_PAYPAL = (
     "frame-src https://www.facebook.com https://business.facebook.com "
     f"{PAYPAL_ORIGINS}; "
     "frame-ancestors 'none'; "
-    "base-uri 'none'; form-action 'self'"
+    # "Save my PayPal" posts a form answered by a 303 to PayPal's approve link; browsers
+    # check form-action on that redirect, so the two approval hosts (no wildcards).
+    "base-uri 'none'; form-action 'self' https://www.paypal.com https://www.sandbox.paypal.com"
 )
 
 Scope = MutableMapping[str, Any]
@@ -547,7 +549,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if conn.execute("SELECT count(*) FROM comments").fetchone()[0] == 0:
         db.seed(conn)  # synthetic demo inbox and leads on a fresh database
 
-    app = FastAPI(title="Muse Studio Lite", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Signed Studio", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.state.conn = conn
     app.state.ledger = ledger
