@@ -1,0 +1,232 @@
+"""The PayPal Agent Toolkit's read tools, run on the studio's own receipted sandbox client.
+
+``studio/vendor/paypal_agent_toolkit`` is PayPal's tool registry (parameter models,
+prompts, handlers; Apache-2.0) without its HTTP client. Each handler calls
+``client.get(uri, payload)``; here that client is an adapter over ``PayPalClient`` (the
+constant sandbox base URL, OAuth, retries), so:
+
+- only four read tools are reachable (``READ_TOOLS``); every write tool and
+  ``get_merchant_insights`` (not available in the sandbox) is refused before any call;
+- every HTTP call leaves one ``paypal.call`` receipt (``step: paypal.agent_tool``) with the
+  tool name, the path **without its query**, the status, ``ok`` and the SHA-256 of PayPal's
+  answer: no payer data, no query string;
+- the answer is stripped of payer fields (``redact``) and reduced to the calling account's
+  own money (``only_own``): the sandbox merchant is shared by every account, PayPal's
+  transaction list is not.
+
+The receipts go in the chain ``chain_id`` the caller names (see ``tools_chain``).
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass
+from typing import Any
+from urllib.parse import urlencode
+
+from pydantic import ValidationError
+
+from studio.paypal.client import PayPalClient, PayPalError
+from studio.receipts import PAYPAL_KIND, Ledger, sha256_hex
+from studio.vendor.paypal_agent_toolkit.shared.tools import tools as _REGISTRY
+
+READ_TOOLS: frozenset[str] = frozenset(
+    {"list_transactions", "get_order_details", "list_disputes", "get_dispute"})
+AGENT = "treasury"
+PROVIDER = "paypal"
+STEP = "paypal.agent_tool"
+# Receipt chains of an account's toolkit calls: ``acct:<account id>:paypal-tools`` (an
+# opaque ledger id: ``Ledger.validate_ids``).
+TOOLS_CHAIN_PREFIX = "acct:"
+TOOLS_CHAIN_SUFFIX = ":paypal-tools"
+
+DROP_KEYS = frozenset({"payer_info", "shipping_info", "payer", "payment_source", "buyer",
+                       "seller", "email_address", "phone", "name", "address"})
+_EMAIL = re.compile(r"[^\s@<>\"']+@[^\s@<>\"']+\.[^\s@<>\"']+")
+
+
+def tools_chain(account_id: str) -> str:
+    """The receipt chain of an account's toolkit calls."""
+    return f"{TOOLS_CHAIN_PREFIX}{account_id}{TOOLS_CHAIN_SUFFIX}"
+
+
+class ToolRefused(Exception):
+    """A tool call was not made or not answered. ``code``: ``not_allowed`` (not a read
+    tool, or not this account's money), ``invalid_arguments``, ``paypal_error``."""
+
+    def __init__(self, code: str, message: str = "") -> None:
+        self.code = code
+        super().__init__(message or code)
+
+
+@dataclass(frozen=True)
+class AccountRefs:
+    """What identifies one account's money at PayPal: the ``content_sha256`` its fundings
+    put in ``custom_id``/``custom_field`` and the PayPal ids of their order, authorization
+    and capture."""
+
+    content_sha256: frozenset[str]
+    paypal_ids: frozenset[str]
+
+
+def account_refs(conn: Any, account_id: str) -> AccountRefs:
+    """The references of the fundings of the runs this account's token confirmed."""
+    rows = conn.execute(
+        "SELECT f.content_sha256, f.order_id, f.authorization_id, f.capture_id FROM fundings f "
+        "JOIN briefs b ON b.run_id = f.run_id JOIN api_briefs a ON a.brief_id = b.id "
+        "WHERE a.account_id = ?", (account_id,)).fetchall()
+    shas = frozenset(r[0] for r in rows if r[0])
+    ids = frozenset(i for r in rows for i in r[1:] if i)
+    return AccountRefs(shas, ids)
+
+
+# -- registry ----------------------------------------------------------------------------
+
+
+def _entry(name: str) -> dict[str, Any]:
+    for t in _REGISTRY:
+        if t["method"] == name:
+            return t
+    raise ToolRefused("not_allowed", f"{name!r} is not a PayPal tool")  # pragma: no cover
+
+
+def tool_specs() -> list[dict[str, Any]]:
+    """Name, description and JSON schema of each read tool, from the vendored registry."""
+    out = []
+    for name in sorted(READ_TOOLS):
+        t = _entry(name)
+        out.append({"name": name, "description": t["description"],
+                    "input_schema": t["args_schema"].model_json_schema()})
+    return out
+
+
+# -- answers -----------------------------------------------------------------------------
+
+
+def redact(obj: Any) -> Any:
+    """``obj`` without payer fields (``DROP_KEYS``, at any depth); e-mail addresses inside
+    strings become ``[redacted]``."""
+    if isinstance(obj, dict):
+        return {k: redact(v) for k, v in obj.items() if k not in DROP_KEYS}
+    if isinstance(obj, list):
+        return [redact(v) for v in obj]
+    if isinstance(obj, str) and _EMAIL.search(obj):
+        return "[redacted]"
+    return obj
+
+
+def _own_transaction(info: dict[str, Any], refs: AccountRefs) -> bool:
+    return (info.get("custom_field") in refs.content_sha256
+            or info.get("transaction_id") in refs.paypal_ids
+            or info.get("paypal_reference_id") in refs.paypal_ids)
+
+
+def _disputed_ids(dispute: Any) -> list[str]:
+    items = dispute.get("disputed_transactions") if isinstance(dispute, dict) else None
+    return [t["seller_transaction_id"] for t in items or []
+            if isinstance(t, dict) and isinstance(t.get("seller_transaction_id"), str)]
+
+
+def only_own(name: str, answer: dict[str, Any], refs: AccountRefs) -> dict[str, Any]:
+    """Reduce a tool's answer to the account's own money; ``ToolRefused("not_allowed")``
+    for a single order or dispute that is not the account's."""
+    if name == "list_transactions":
+        kept = [t for t in answer.get("transaction_details") or []
+                if isinstance(t, dict) and isinstance(t.get("transaction_info"), dict)
+                and _own_transaction(t["transaction_info"], refs)]
+        out = {**answer, "transaction_details": kept}
+        if "total_items" in out:
+            out["total_items"] = len(kept)
+        for k in ("total_pages", "links"):  # describe PayPal's whole list, not the account's
+            out.pop(k, None)
+        return out
+    if name == "get_order_details":
+        raw = answer.get("raw")
+        if not isinstance(raw, dict) or raw.get("id") not in refs.paypal_ids:
+            raise ToolRefused("not_allowed", "not an order of this account")
+        return answer
+    if name == "get_dispute":
+        if not any(i in refs.paypal_ids for i in _disputed_ids(answer)):
+            raise ToolRefused("not_allowed", "not a dispute about this account's money")
+        return answer
+    if name == "list_disputes":
+        kept = [d for d in answer.get("items") or []
+                if any(i in refs.paypal_ids for i in _disputed_ids(d))]
+        return {**answer, "items": kept}
+    raise ToolRefused("not_allowed", f"{name!r} is not a read tool")
+
+
+# -- the adapter -------------------------------------------------------------------------
+
+
+class _Adapter:
+    """The ``client`` the vendored handlers expect, over the receipted ``PayPalClient``."""
+
+    def __init__(self, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
+                 tool: str) -> None:
+        self.client, self.ledger, self.conn = client, ledger, conn
+        self.chain_id, self.tool = chain_id, tool
+        self.error: ToolRefused | None = None
+
+    def get(self, uri: str, payload: dict[str, Any] | None = None) -> Any:
+        """PayPal's answer as a dict, which is what the handlers re-serialise or read with
+        ``.get``. The one exception is upstream's transaction-by-id search, the only caller
+        that passes ``payload``: it ``json.loads`` the answer, so it gets the JSON text."""
+        path = uri.split("?", 1)[0]
+        target = uri
+        query = {k: v for k, v in (payload or {}).items() if v is not None}
+        if query:
+            target = path + "?" + urlencode(query)
+        try:
+            reply = self.client.get(target)
+        except PayPalError as exc:
+            self._receipt(path, target, status=exc.status, ok=False, body="")
+            self.error = self.error or ToolRefused("paypal_error", str(exc))
+            raise self.error from None
+        self._receipt(path, target, status=reply.status, ok=True, body=reply.body_sha256)
+        return json.dumps(reply.json) if payload is not None else reply.json
+
+    def post(self, uri: str, payload: Any = None) -> str:  # pragma: no cover - never reached
+        raise ToolRefused("not_allowed", "the studio's toolkit client only reads")
+
+    def _receipt(self, path: str, target: str, *, status: int, ok: bool, body: str) -> None:
+        self.ledger.append(
+            self.chain_id, agent=AGENT, kind=PAYPAL_KIND, provider=PROVIDER,
+            conn=self.conn if self.ledger.joins(self.conn) else None,
+            output_sha256=body, input_sha256=[sha256_hex(target)],
+            details={"step": STEP, "tool": self.tool, "path": path, "status": status,
+                     "ok": ok, "body_sha256": body})
+
+
+def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
+                  account_refs: AccountRefs, name: str, params: dict[str, Any]
+                  ) -> dict[str, Any]:
+    """Run one read tool for an account. ``ToolRefused``: ``not_allowed`` (not a read
+    tool, or another account's order/dispute), ``invalid_arguments``, ``paypal_error``."""
+    if name not in READ_TOOLS:
+        raise ToolRefused("not_allowed", f"{name!r} is not a read tool")
+    Ledger.validate_ids(chain_id, AGENT, provider=PROVIDER)
+    entry = _entry(name)
+    if not isinstance(params, dict):
+        raise ToolRefused("invalid_arguments", "arguments must be an object")
+    try:
+        checked = entry["args_schema"](**params)
+    except (ValidationError, TypeError, ValueError):
+        raise ToolRefused("invalid_arguments", f"invalid arguments for {name}") from None
+    if name == "get_order_details" and checked.order_id not in account_refs.paypal_ids:
+        raise ToolRefused("not_allowed", "not an order of this account")
+    adapter = _Adapter(client, ledger, conn, chain_id, name)
+    try:
+        raw = entry["execute"](adapter, params)
+    except ToolRefused:
+        raise
+    except (ValidationError, TypeError, ValueError):
+        raise ToolRefused("invalid_arguments", f"invalid arguments for {name}") from None
+    if adapter.error is not None:  # the handler swallowed it (month-by-month search)
+        raise adapter.error
+    answer = json.loads(raw) if isinstance(raw, str) else raw
+    if not isinstance(answer, dict):
+        raise ToolRefused("paypal_error", "unexpected answer")
+    out: dict[str, Any] = redact(only_own(name, answer, account_refs))
+    return out
