@@ -43,7 +43,8 @@ def test_every_api_op_has_a_request():
     for part in ("/v1/oauth2/token", "/v2/checkout/orders", "/authorize", "/capture",
                  "/void", "/refund", "/v3/vault/setup-tokens", "/v1/reporting/transactions"):
         assert part in urls
-    assert all(u["request"]["url"]["raw"].startswith("{{paypal_base}}") for u in walk(paypal["item"]))
+    assert all(u["request"]["url"]["raw"].startswith("{{paypal_base}}")
+               for u in walk(paypal["item"]))
 
 
 def test_no_secret_values():
