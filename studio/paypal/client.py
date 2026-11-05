@@ -181,8 +181,8 @@ class PayPalClient:
 
     # -- calls ---------------------------------------------------------------------------
 
-    def get(self, path: str) -> Reply:
-        return self._call("GET", path, None, None)
+    def get(self, path: str, *, retries: int = RETRIES) -> Reply:
+        return self._call("GET", path, None, None, retries=retries)
 
     def delete(self, path: str) -> Reply:
         """A DELETE (idempotent by nature: deleting a deleted vault token is a 404)."""
@@ -204,7 +204,8 @@ class PayPalClient:
                           mock_response=mock_response)
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None,
-              rid: str | None, *, mock_response: str | None = None) -> Reply:
+              rid: str | None, *, mock_response: str | None = None,
+              retries: int = RETRIES) -> Reply:
         content = None if body is None else json.dumps(body, separators=(",", ":")).encode()
         refreshed = False
         attempt = 0
@@ -236,7 +237,7 @@ class PayPalClient:
             except PayPalError as exc:
                 sent = sent or exc.sent
                 ambiguous = ambiguous or exc.unknown
-                if attempt < RETRIES:
+                if attempt < retries:
                     attempt += 1
                     self._sleep(0.5 * 2 ** attempt)
                     continue
@@ -249,7 +250,7 @@ class PayPalClient:
                 refreshed = True
                 self._drop_token(token)
                 continue
-            if resp.status_code in TRANSIENT and attempt < RETRIES:
+            if resp.status_code in TRANSIENT and attempt < retries:
                 attempt += 1
                 self._sleep(_retry_after(resp, 0.5 * 2 ** attempt))
                 continue

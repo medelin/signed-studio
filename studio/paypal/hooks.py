@@ -114,8 +114,10 @@ class Funder:
 
     def lookup(self, path: str) -> dict[str, Any] | None:
         """GET a PayPal resource with the studio's own credentials: what a webhook names
-        is attested by PayPal's API, not by the webhook body."""
-        return self.money.client.get(path).json
+        is attested by PayPal's API, not by the webhook body. One fast read: a transient
+        failure answers 503 and PayPal redelivers, which is cheaper than holding its 30 s
+        delivery window on our own retries."""
+        return self.money.client.get(path, retries=0).json
 
     def flush(self) -> int:
         """Mock mode: deliver the fake's webhook events, signed, through ``apply``."""
