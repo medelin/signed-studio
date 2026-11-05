@@ -330,3 +330,32 @@ def test_account_refs_follow_the_apps_ownership_rule(w):
     assert account_refs(c, "acc_none").content_sha256 == {sha("5")}
 
 
+
+
+def _paging_world(w, seen):
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        seen.append(request)
+        return httpx.Response(200, json={
+            "transaction_details": [tx(OWN, OWN_TID)], "page": 1, "total_pages": 5,
+            "total_items": 2500, "links": [{"href": "https://api-m.sandbox.paypal.com/x"}]})
+
+    w.client = PayPalClient("id", "secret", transport=httpx.MockTransport(handler),
+                            sleep=lambda s: None)
+
+
+def test_paypal_tool_answer_has_no_paging_fields(w):
+    _paging_world(w, [])
+    out = w.run("list_transactions", {})
+    for key in ("page", "total_pages", "total_items", "has_more", "links"):
+        assert key not in out, key
+    assert len(out["transaction_details"]) == 1
+
+
+def test_agent_page_and_page_size_are_pinned(w):
+    seen: list = []
+    _paging_world(w, seen)
+    w.run("list_transactions", {"page": 3, "page_size": 1})
+    q = seen[0].url.params
+    assert q["page"] == "1" and q["page_size"] == str(agent_tools.PAGE_SIZE)

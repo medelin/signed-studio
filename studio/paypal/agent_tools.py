@@ -36,6 +36,8 @@ READ_TOOLS: frozenset[str] = frozenset(
     {"list_transactions", "get_order_details", "list_disputes", "get_dispute"})
 MAX_CALLS_PER_TOOL = 12  # HTTP calls one tool run may make (the by-id search pages months)
 MAX_SEARCH_MONTHS = 12
+PAGE_SIZE = 500  # list_transactions: the one page size an agent gets (always page 1)
+PAGING_KEYS = ("page", "total_pages", "total_items", "has_more", "links")
 AGENT = "treasury"
 PROVIDER = "paypal"
 STEP = "paypal.agent_tool"
@@ -185,7 +187,9 @@ def only_own(name: str, answer: dict[str, Any], refs: AccountRefs) -> dict[str, 
         for k in ("total_pages", "links"):  # describe PayPal's whole list, not the account's
             out.pop(k, None)
         if isinstance(pages, int) and isinstance(page, int):
-            out["has_more"] = page < pages  # whether another page exists, not how many
+            # internal (reconcile): the public wrapper strips it, it would let a caller
+            # binary-search the shared merchant's transaction count
+            out["has_more"] = page < pages
         return out
     if name == "get_order_details":
         raw = answer.get("raw")
@@ -255,8 +259,32 @@ class _Adapter:
 def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
                   account_refs: AccountRefs, name: str, params: dict[str, Any]
                   ) -> dict[str, Any]:
-    """Run one read tool for an account. ``ToolRefused``: ``not_allowed`` (not a read
-    tool, or another account's order/dispute), ``invalid_arguments``, ``paypal_error``."""
+    """Run one read tool for an agent. ``ToolRefused``: ``not_allowed`` (not a read
+    tool, or another account's order/dispute), ``invalid_arguments``, ``paypal_error``.
+    ``list_transactions`` is pinned to page 1 at ``PAGE_SIZE`` and the answer has no
+    paging fields (``PAGING_KEYS``): pagination cannot be probed for the shared
+    merchant's totals."""
+    if name == "list_transactions" and isinstance(params, dict):
+        params = {**params, "page": 1, "page_size": PAGE_SIZE}
+    out = _run(client=client, ledger=ledger, conn=conn, chain_id=chain_id,
+               account_refs=account_refs, name=name, params=params)
+    return {k: v for k, v in out.items() if k not in PAGING_KEYS}
+
+
+def run_list_page(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
+                  account_refs: AccountRefs, params: dict[str, Any]
+                  ) -> tuple[dict[str, Any], bool]:
+    """Internal (reconcile, never an agent): one page of ``list_transactions`` as asked,
+    and whether PayPal has more pages. The caller's own code, not an agent's, picks
+    ``page``."""
+    out = _run(client=client, ledger=ledger, conn=conn, chain_id=chain_id,
+               account_refs=account_refs, name="list_transactions", params=params)
+    more = bool(out.get("has_more"))
+    return {k: v for k, v in out.items() if k not in PAGING_KEYS}, more
+
+
+def _run(*, client: PayPalClient, ledger: Ledger, conn: Any, chain_id: str,
+         account_refs: AccountRefs, name: str, params: dict[str, Any]) -> dict[str, Any]:
     if name not in READ_TOOLS:
         raise ToolRefused("not_allowed", f"{name!r} is not a read tool")
     Ledger.validate_ids(chain_id, AGENT, provider=PROVIDER)

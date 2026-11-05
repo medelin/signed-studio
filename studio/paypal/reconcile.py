@@ -36,9 +36,10 @@ from typing import Any
 from studio import funding
 from studio.paypal.agent_tools import (
     MAX_CALLS_PER_TOOL,
+    PAGE_SIZE,
     account_refs,
     owned_funding_ids,
-    run_read_tool,
+    run_list_page,
     tools_chain,
 )
 from studio.paypal.client import PayPalClient
@@ -46,7 +47,6 @@ from studio.receipts import Ledger
 
 RECON_LAG_S = 3 * 3600
 MAX_WINDOW_S = 31 * 86400
-PAGE_SIZE = 500
 MOVES = ("authorization", "capture", "refund")
 STATUSES = ("matched", "pending", "held", "missing", "amount_mismatch", "unknown")
 
@@ -112,9 +112,9 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
     if inside:
         report.window_start = max(start, min(inside) - 3600)
         for page in range(1, MAX_CALLS_PER_TOOL + 1):
-            answer = run_read_tool(
+            answer, report.truncated = run_list_page(
                 client=client, ledger=ledger, conn=conn, chain_id=tools_chain(account_id),
-                account_refs=refs, name="list_transactions",
+                account_refs=refs,
                 params={"start_date": _iso(report.window_start), "end_date": _iso(now),
                         "page_size": PAGE_SIZE, "page": page})
             report.pages_read += 1
@@ -127,7 +127,6 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, account
                     infos.setdefault(info["transaction_id"], []).append(info)
                 if isinstance(info.get("paypal_reference_id"), str):
                     ref_ids.add(info["paypal_reference_id"])
-            report.truncated = bool(answer.get("has_more"))
             if not report.truncated:
                 break
     captured_ok: set[str] = set()  # fundings whose capture is listed
