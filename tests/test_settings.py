@@ -314,3 +314,14 @@ def test_replay_fallback_is_opt_in_and_needs_a_recorded_set():
     assert s.replay_fallback and not s.replay
     with pytest.raises(ConfigError, match="STUDIO_REPLAY_FALLBACK"):
         Settings.load({"STUDIO_REPLAY_FALLBACK": "1", "STUDIO_REPLAY_SET": "no-such-set"})
+
+
+def test_env_example_names_the_paypal_variables():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[1] / ".env.example").read_text()
+    for name in ("PAYPAL_ADAPTER", "PAYPAL_ENV=sandbox", "PAYPAL_CLIENT_ID",
+                 "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID", "STUDIO_FEE_PCT=5"):
+        assert name in text
+    # commented out: `make test` / `make demo` must keep working without PayPal
+    assert not [ln for ln in text.splitlines() if ln.startswith("PAYPAL_")]
