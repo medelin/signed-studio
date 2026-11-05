@@ -234,6 +234,14 @@ def run_account(conn: Any, run_id: str) -> str | None:
 # -- the body ----------------------------------------------------------------------------
 
 
+def _host(value: str) -> str:
+    """A pasted address becomes its host (what is signed and shown); anything else is kept
+    for ``check`` to judge."""
+    if "://" in value:
+        value = urlsplit(value).hostname or value
+    return value.lower().rstrip(".")
+
+
 def _clean(values: Any) -> list[str]:
     if isinstance(values, str):
         values = re.split(r"[\s,;]+", values)
@@ -292,7 +300,7 @@ def build(account_id: str, *, token_ids: Any, objectives_: Any, countries: Any,
         "token_ids": _clean(token_ids),
         "objectives": _clean(objectives_),
         "countries": sorted({c.upper() for c in _clean(countries)}),
-        "landing_hosts": sorted({h.lower().rstrip(".") for h in _clean(landing_hosts)}),
+        "landing_hosts": sorted({_host(h) for h in _clean(landing_hosts)}),
         "max_daily_budget": num(max_daily_budget),
         "currency": currency,
         "max_campaigns": num(max_campaigns),

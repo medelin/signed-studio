@@ -365,7 +365,10 @@ def test_request_validation_caps_days_budget_and_tokens(tmp_path):
     app.state.assistants.tokens.revoke(acct.id, tok.id)
     assert problems(body_for(app, acct, [tok.id])) == ["token_ids"]
     assert problems(body_for(app, acct, [])) == ["token_ids"]
-    assert problems(body_for(app, acct, [tok.id], landing_hosts=["https://x.pl/"])) == [
+    # An owner may paste the shop's address: the host is what is signed and shown.
+    pasted = body_for(app, acct, [tok.id], landing_hosts="https://Shop.X.pl/kubki?a=1 x.pl.")
+    assert pasted["landing_hosts"] == ["shop.x.pl", "x.pl"]
+    assert problems(body_for(app, acct, [tok.id], landing_hosts=["https://"])) == [
         "landing_hosts"]
     assert conn.execute("SELECT count(*) FROM approvals").fetchone()[0] == 0
 
