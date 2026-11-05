@@ -54,7 +54,8 @@
   }
 
   const num = { type: "rightAligned", width: 120 };
-  const api = agGrid.createGrid(el, {
+  let api = null;  // created when there are rows, so it measures a visible element
+  const options = {
     theme: "legacy",
     columnDefs: [
       { field: "created", headerName: T("money_col_created"), width: 150, sort: "desc" },
@@ -81,7 +82,7 @@
     rowData: [],
     getRowId: (p) => p.data.funding_id,
     domLayout: "normal",
-  });
+  };
 
   async function load(reconcile) {
     status.textContent = T(reconcile ? "money_checking" : "money_loading");
@@ -94,9 +95,14 @@
     }
     const data = await r.json().catch(() => ({}));
     if (!r.ok) { status.textContent = T("money_failed", { error: E(data, r.status) }); return; }
-    api.setGridOption("rowData", data.rows);
     empty.hidden = data.rows.length > 0;
     el.hidden = data.rows.length === 0;
+    if (data.rows.length) {
+      if (api === null) api = agGrid.createGrid(el, options);
+      api.setGridOption("rowData", data.rows);
+    } else if (api !== null) {
+      api.setGridOption("rowData", []);
+    }
     status.textContent = reconcile ? T("money_checked") : "";
   }
 

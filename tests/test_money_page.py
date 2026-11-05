@@ -119,12 +119,12 @@ def test_money_page_loads_vendored_grid_under_csp(world):
     app, *_ = world
     c = client(app)
     page = c.get("/money")
-    assert '<script src="/static/vendor/ag-grid-community.min.js"' in page.text
+    assert '<script src="/static/vendor/ag-grid-community.min.noStyle.js"' in page.text
     assert '<script src="/static/money.js"' in page.text
     assert "<script>" not in page.text.replace('<script type="application/json"', "")
     csp = page.headers["content-security-policy"]
     assert "script-src 'self';" in csp and "unsafe-inline'; img" not in csp
-    assert c.get("/static/vendor/ag-grid-community.min.js").status_code == 200
+    assert c.get("/static/vendor/ag-grid-community.min.noStyle.js").status_code == 200
     assert c.get("/static/vendor/AG-GRID-LICENSE.txt").status_code == 200
     nav = page.text.split("</nav>")[0]
     assert 'href="/money"' in nav  # PayPal is on
@@ -161,3 +161,45 @@ def test_money_strings_exist_in_en_and_pl():
     assert len(keys) >= 10
     for k in keys:
         assert i18n.PL[k].strip() and i18n.placeholders(i18n.EN[k]) == i18n.placeholders(i18n.PL[k])
+
+
+def test_money_page_loads_the_nostyle_build(world):
+    from pathlib import Path
+
+    app, *_ = world
+    page = client(app).get("/money").text
+    assert "/static/vendor/ag-grid-community.min.noStyle.js" in page
+    assert "ag-grid-community.min.js" not in page
+    vendor = Path(__file__).resolve().parents[1] / "studio/ui/static/vendor"
+    assert not (vendor / "ag-grid-community.min.js").exists()
+    bundle = (vendor / "ag-grid-community.min.noStyle.js").read_text()
+    # the one remaining createElement("style") is the global-CSS injector, which the
+    # noStyle build never feeds (no data-ag-scope theme styles)
+    assert bundle.count('createElement("style")') <= 1
+    assert "legacy" in bundle  # the legacy theme path exists; its CSS is the vendored file
+
+
+def test_explain_reads_the_treasurers_real_key():
+    from pathlib import Path
+
+    from studio.agents.treasurer import Advice
+
+    ui = Path(__file__).resolve().parents[1] / "studio/ui/static/money.js"
+    key = "explanation"
+    assert key in Advice(currency="EUR", split=[], explanation="x", source="code").as_dict()
+    assert f"r.data.{key}" in ui.read_text()
+
+
+def test_a_failed_check_is_not_retried_within_the_cooldown(world, monkeypatch):
+    app, *_ = world
+    calls = []
+
+    def boom(**kw):
+        calls.append(1)
+        raise RuntimeError("PayPal down")
+
+    monkeypatch.setattr(recon, "reconcile_report", boom)
+    c = client(app)
+    assert c.get("/api/money?reconcile=1").status_code == 502
+    assert c.get("/api/money?reconcile=1").status_code == 502
+    assert len(calls) == 1
