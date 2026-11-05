@@ -237,8 +237,11 @@ def run_account(conn: Any, run_id: str) -> str | None:
 def _host(value: str) -> str:
     """A pasted address becomes its host (what is signed and shown); anything else is kept
     for ``check`` to judge."""
-    if "://" in value:
-        value = urlsplit(value).hostname or value
+    if "://" in value or "/" in value:
+        try:  # "https://shop.pl/x" and "shop.pl/x" alike; a malformed one stays as typed
+            value = urlsplit(value if "://" in value else "//" + value).hostname or value
+        except ValueError:
+            pass
     return value.lower().rstrip(".")
 
 

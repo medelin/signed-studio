@@ -37,7 +37,7 @@ PREFIX = "/api/v1"
 NO_STORE = {"Cache-Control": "no-store"}
 UPLOAD_LIMITS = {PREFIX + "/briefs/voice": 32 * 1024 * 1024}
 DESCRIPTION = (
-    "The owner's own AI assistant (or a script) drives Muse Studio Lite with a personal "
+    "The owner's own AI assistant (or a script) drives Signed Studio with a personal "
     "access token made on /account (Assistants & API): `Authorization: Bearer <token>`. "
     "Scopes: `read`, and `draft` (draft and confirm briefs, start runs, draft replies). "
     "**No endpoint signs, approves, launches, spends or changes a budget or status**: "

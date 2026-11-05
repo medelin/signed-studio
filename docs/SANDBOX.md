@@ -210,7 +210,7 @@ the same file, so they mail too):
 | `STUDIO_JMAP_SESSION_URL` | e.g. `https://mail.nume.pl/jmap/session` (https only) |
 | `STUDIO_MAIL_USER`, `STUDIO_MAIL_PASSWORD` | HTTP Basic (JMAP) or AUTH login (SMTP) with an app password; both required; never logged, never in `repr`, never in a receipt (`STUDIO_SMTP_USER`/`_PASSWORD` still read as a fallback) |
 | `STUDIO_SMTP_HOST`, `STUDIO_SMTP_PORT` | for `smtp` only; port default `465` |
-| `STUDIO_MAIL_FROM` | default `Muse Studio Lite <muse@udun.eu>`; for JMAP it must equal the address of one of the mailbox's identities |
+| `STUDIO_MAIL_FROM` | default `Signed Studio <muse@udun.eu>`; for JMAP it must equal the address of one of the mailbox's identities |
 | `STUDIO_PUBLIC_URL` | the site's origin, e.g. `https://muse.udun.eu` (https; no path); without it mails carry no link |
 
 ### Registration with Google or Facebook

@@ -139,6 +139,9 @@ def test_the_vault_routes_need_a_session_and_csrf(paid):
     assert anon.post("/account/paypal/vault/start", data={"csrf": "x"},
                      follow_redirects=False).status_code in (401, 403)
     r = anon.get("/account/paypal/vault/return?vault_ref=" + s.ref, follow_redirects=False)
+    assert r.status_code == 200 and 'http-equiv="refresh"' in r.text  # no Fetch Metadata
+    r = anon.get("/account/paypal/vault/return?bounced=1&vault_ref=" + s.ref,
+                 follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == (
         "/login?next=/account/paypal/vault/return%3Fvault_ref%3D" + s.ref
         + "%26approval_token_id%3D")

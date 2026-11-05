@@ -108,7 +108,7 @@ def test_disabled_without_a_host(tmp_path):
 
 def test_settings_defaults_and_errors():
     s = Settings.load({**SMTP_ENV})
-    assert s.mail.port == 465 and s.mail.sender == "Muse Studio Lite <muse@udun.eu>"
+    assert s.mail.port == 465 and s.mail.sender == "Signed Studio <muse@udun.eu>"
     assert s.public_url == "https://muse.example.test"
     assert SMTP_PASSWORD not in repr(s) and SMTP_PASSWORD not in repr(s.mail)
     for bad in ({"STUDIO_SMTP_PORT": "x"}, {"STUDIO_SMTP_PORT": "0"},
@@ -141,7 +141,7 @@ def test_password_change_sends_a_security_mail_with_a_receipt(app, client, tmp_p
     assert post(client, "/account/password", current=PASSWORD, new=new,
                 confirm=new).status_code == 303
     (msg,) = mails(app)
-    assert msg["To"] == "ola@example.org" and msg["From"] == "Muse Studio Lite <muse@udun.eu>"
+    assert msg["To"] == "ola@example.org" and msg["From"] == "Signed Studio <muse@udun.eu>"
     assert msg["Subject"] == i18n.text("en", "notify.password_changed.subject")
     text = msg.get_body(("plain",)).get_content()
     assert "https://muse.example.test/account#password" in text

@@ -146,8 +146,7 @@ def test_csp_lets_the_save_my_paypal_form_redirect_to_paypal_only(tmp_path):
         csp = c.get("/healthz").headers["content-security-policy"]
         assert c.get("/healthz").headers["x-studio-csp"] == csp  # for the Apache vhost
     action = next(d for d in csp.split("; ") if d.startswith("form-action "))
-    assert action.split()[1:] == ["'self'", "https://www.paypal.com",
-                                  "https://www.sandbox.paypal.com"]
+    assert action.split()[1:] == ["'self'", "https://www.sandbox.paypal.com"]
 
 
 def test_a_live_paypal_env_stops_the_start(tmp_path):

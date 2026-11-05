@@ -198,10 +198,10 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> Non
         cookie = request.cookies.get(COOKIE)
         sid = app.state.sessions.check(cookie)
         account = app.state.sessions.account_of(cookie) if sid else None
-        cross_site = request.headers.get("sec-fetch-site") == "cross-site"
-        if (not sid or account is None) and cross_site and not bounced:
+        if (not sid or account is None) and not bounced:
             # PayPal's redirect back is cross-site, so the browser withholds the
-            # SameSite=Strict session cookie. Refresh to the same URL once: that
+            # SameSite=Strict session cookie (with or without Fetch Metadata, so it is not
+            # asked for). Refresh to the same URL once: that
             # navigation starts on this site and carries the cookie.
             query = urlencode({"vault_ref": vault_ref[:40],
                                "approval_token_id": approval_token_id[:64], "bounced": "1"})

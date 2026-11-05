@@ -115,8 +115,8 @@ CSP_PAYPAL = (
     f"{PAYPAL_ORIGINS}; "
     "frame-ancestors 'none'; "
     # "Save my PayPal" posts a form answered by a 303 to PayPal's approve link; browsers
-    # check form-action on that redirect, so the two approval hosts (no wildcards).
-    "base-uri 'none'; form-action 'self' https://www.paypal.com https://www.sandbox.paypal.com"
+    # check form-action on that redirect. Sandbox only (vault.start accepts no other host).
+    "base-uri 'none'; form-action 'self' https://www.sandbox.paypal.com"
 )
 
 Scope = MutableMapping[str, Any]

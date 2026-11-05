@@ -368,6 +368,10 @@ def test_request_validation_caps_days_budget_and_tokens(tmp_path):
     # An owner may paste the shop's address: the host is what is signed and shown.
     pasted = body_for(app, acct, [tok.id], landing_hosts="https://Shop.X.pl/kubki?a=1 x.pl.")
     assert pasted["landing_hosts"] == ["shop.x.pl", "x.pl"]
+    bar = body_for(app, acct, [tok.id], landing_hosts="www.Shop.pl/kubki")  # no scheme
+    assert bar["landing_hosts"] == ["www.shop.pl"]
+    assert problems(body_for(app, acct, [tok.id], landing_hosts="https://[shop")) == [
+        "landing_hosts"]  # urlsplit refuses it; check() reports it, no 500
     assert problems(body_for(app, acct, [tok.id], landing_hosts=["https://"])) == [
         "landing_hosts"]
     assert conn.execute("SELECT count(*) FROM approvals").fetchone()[0] == 0
