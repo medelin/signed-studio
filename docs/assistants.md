@@ -76,7 +76,7 @@ bridge, which sends the header (`claude_desktop_config.json`):
 **With PayPal's own MCP server next to ours.** PayPal's sandbox server
 `https://mcp.sandbox.paypal.com` reads; ours does anything that moves money. Add both and
 tell the assistant: PayPal's tools for reading, our server for anything that moves money.
-PayPal's server needs its own PayPal access token (see PayPal's MCP documentation).
+Example, not tested by us: PayPal's server may require its own browser sign-in instead of a bearer token, so check PayPal's MCP documentation before relying on the `Authorization` header below.
 
 ```json
 {"mcpServers": {
@@ -108,7 +108,7 @@ importers such as GPT Actions); otherwise its server is the relative `/api/v1`.
 
 ### Postman
 
-`docs/postman/signed-studio.postman_collection.json` is a Postman v2.1 collection with one request per `/api/v1` operation (the OpenAPI document above) and a second folder, "PayPal sandbox (what the studio calls)": OAuth token, create order (AUTHORIZE), authorize, capture, void, refund, Vault setup token and Transaction Search, all against `{{paypal_base}}` (the sandbox URL). In Postman choose Import, pick the file, and set the collection variables `base_url` (per deployment; the default is `https://pay.udun.eu`), `token` (your personal access token), and for the PayPal folder `paypal_client_id` and `paypal_client_secret` (sandbox app credentials); the "OAuth token" request fills `paypal_access_token` itself. The file holds variables only, never values; regenerate it with `make postman`.
+`docs/postman/signed-studio.postman_collection.json` is a Postman v2.1 collection with one request per `/api/v1` operation (the OpenAPI document above) and a second folder, "PayPal sandbox (what the studio calls)": OAuth token, create order (AUTHORIZE), authorize, capture, void, refund, Vault setup token and Transaction Search, all against `{{paypal_base}}` (the sandbox URL). In Postman choose Import, pick the file, and set the collection variables `base_url` (per deployment; the default is `https://pay.udun.eu`), `token` (your personal access token), and for the PayPal folder `paypal_client_id` and `paypal_client_secret` (sandbox app credentials); the "OAuth token" request fills `paypal_access_token` itself. Also fill `content_sha256`, `invoice_id`, `order_id`, `authorization_id` and `capture_id` before sending the requests that use them: they are empty by default, and a request sent unfilled goes to PayPal empty. The file holds variables only, never values; regenerate it with `make postman`.
 
 ### curl
 

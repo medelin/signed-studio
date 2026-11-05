@@ -50,10 +50,10 @@ Each beat lists the screenshot in `docs/screenshots/paypal/` it matches, as a ba
   not present. Over the limit, it gets a link for me instead of money."
 
 **7. The assistant reads PayPal and proposes a refund (1:55-2:20)**
-- On screen: in the same chat, "what did PayPal record this week?" → `paypal_transactions`
+- On screen: in the same chat, "what did PayPal record this week?" → our assistant op `paypal_transactions`, built on PayPal's Agent Toolkit tools
   (matched, held); "refund that" → `propose_refund` → a pending approval with a link; open
   it, sign.
-- Say: "PayPal's own tools read, ours move money. The assistant can only propose a refund:
+- Say: "The assistant reads PayPal through our server, and it can only propose a refund:
   nothing moves until I sign."
 
 **8. The money page and proof (2:20-2:48)**

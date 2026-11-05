@@ -201,7 +201,7 @@ Around that, on PayPal's own tooling:
 - **Negative testing:** on a capture, the sandbox `PayPal-Mock-Response`
   (`INSTRUMENT_DECLINED`, `TRANSACTION_REFUSED`) is sent when the owner ticks "simulate a
   declined card" at activation. The studio shows PayPal's reason and keeps the money
-  held; after a declined authorize the owner re-runs the brief to fund again.
+  held; after a declined authorize the owner funds the campaign again with another PayPal method by running the brief again (a new campaign approval, since the declined one is consumed).
 - **Money page** (`/money`, AG Grid Community): holds, captures, voids and mandate charges
   with receipts, "Check with PayPal" (Transaction Search reconciliation) and "Explain"
   by the AI treasurer.

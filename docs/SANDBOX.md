@@ -229,7 +229,7 @@ read creates `receipt-hmac.key` with `os.link` so two workers cannot create diff
 Transaction Search must be enabled for the sandbox app (Apps & Credentials, Features) for
 reconciliation and `paypal_transactions`; scope changes can take a while to apply. To see a
 decline, tick "simulate a declined card" at activation: the capture then carries
-`PayPal-Mock-Response` (sandbox only, capture only).
+`PayPal-Mock-Response` (sandbox only, capture only). After a declined authorize the owner funds the campaign again with another PayPal method by running the brief again (a new campaign approval, since the declined one is consumed).
 
 | Variable | Meaning |
 |---|---|

@@ -108,8 +108,8 @@ PayPal refunds as their own signed approvals in the UI.
 
 ## Built with
 
-python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks · paypal-agent-toolkit · paypal-mcp-server · paypal-ai-toolkit · apimatic-context-plugin · ag-grid · postman ·
-webcrypto-ed25519 · mcp · muse-spark · sam-3.1 · meta-marketing-api
+python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks · paypal-agent-toolkit · paypal-mcp-server · paypal-ai-toolkit ·
+apimatic-context-plugin · ag-grid · postman · webcrypto-ed25519 · mcp · muse-spark · sam-3.1 · meta-marketing-api
 
 ## Submission-period note
 
