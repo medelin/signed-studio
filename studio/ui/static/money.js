@@ -79,6 +79,7 @@
       { headerName: "", width: 110, sortable: false, filter: false, cellRenderer: explain },
     ],
     defaultColDef: { sortable: true, filter: true, resizable: true },
+    autoSizeStrategy: { type: "fitGridWidth", defaultMinWidth: 80 },
     rowData: [],
     getRowId: (p) => p.data.funding_id,
     domLayout: "normal",

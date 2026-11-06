@@ -99,7 +99,7 @@ MAX_SESSIONS = 1000  # live sessions in all; beyond it a sign-in is refused, nob
 LOGIN_BODY_TIMEOUT_S = 5.0  # a login body slower than this is dropped (408)
 CSP = (
     "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
-    "connect-src 'self'; frame-src https://www.facebook.com https://business.facebook.com; "
+    "font-src 'self' data:; connect-src 'self'; frame-src https://www.facebook.com https://business.facebook.com; "
     "frame-ancestors 'none'; "
     "base-uri 'none'; form-action 'self'"
 )
@@ -110,7 +110,7 @@ PAYPAL_ORIGINS = ("https://www.paypal.com https://www.sandbox.paypal.com "
 CSP_PAYPAL = (
     "default-src 'self'; "
     f"script-src 'self' {PAYPAL_ORIGINS}; style-src 'self' 'unsafe-inline'; "
-    f"img-src 'self' data: {PAYPAL_ORIGINS}; "
+    f"img-src 'self' data: {PAYPAL_ORIGINS}; font-src 'self' data:; "
     f"connect-src 'self' {PAYPAL_ORIGINS}; "
     "frame-src https://www.facebook.com https://business.facebook.com "
     f"{PAYPAL_ORIGINS}; "
