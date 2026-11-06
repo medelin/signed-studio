@@ -979,7 +979,10 @@ def _check_paypal_webhook(receipt: Receipt, valid: Mapping[str, _Grant], money: 
         auth = d.get("authorization_id")
         order = money.auth_order.get((receipt.run_id, str(auth)), "")
     block = _order_blocks(valid, money, receipt.run_id).get(str(order))
-    if block is None and deferred is not None:
+    if block is None and deferred is not None and d.get("event_class") == "order.approved" \
+            and d.get("resource_kind") == "order":
+        # only the buyer's approval honestly comes before the owner's signature; every
+        # other state needs an order funded by then
         deferred.append((receipt, str(order)))
         return errors
     return errors + _webhook_block(receipt, block)
@@ -1424,9 +1427,9 @@ def verify(
         seen.setdefault(run, set()).add(receipt.hash)
         last_ts[run] = receipt.ts
         counts[run] = counts.get(run, 0) + 1
-    for receipt, order in deferred:  # funded by a signature later in the log, or never
-        errors += _webhook_block(receipt, _order_blocks(valid.get(receipt.run_id, {}), money,
-                                                        receipt.run_id).get(order))
+    for receipt, order in deferred:  # funded by a campaign.create signed later, or never
+        blocks = {b["order_id"]: b for b in _funded(valid.get(receipt.run_id, {})).values()}
+        errors += _webhook_block(receipt, blocks.get(order))
     for (_run, auth), rid in sorted(money.after_revoke.items()):
         errors.append(f"{rid}: vault charge {auth} recorded after its mandate was revoked "
                       "and never voided (P-V5)")

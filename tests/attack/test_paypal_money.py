@@ -410,3 +410,16 @@ def test_a_webhook_for_an_order_never_signed_is_still_caught_at_the_end(log):
                                      "event_class": "order.approved", "resource_source": "api",
                                      "amount_minor": 100, "currency": "PLN"})
     assert has(errors(log), "did not fund (P-V3)")[0]
+
+
+def test_only_order_approved_may_come_before_the_signature(log):
+    """A capture or authorization webhook for an order not funded by then is caught at once,
+    even if a later signature names the order."""
+    forge(log, PAYPAL_WEBHOOK_KIND, {"event_type": "PAYMENT.CAPTURE.COMPLETED",
+                                     "event_id": "WH-1FORGED0000010-0010",
+                                     "order_id": "8ZZ00000UNKNOWN1X", "verified": "rsa",
+                                     "resource_kind": "capture", "status": "COMPLETED",
+                                     "event_class": "capture.completed", "resource_source": "api",
+                                     "capture_id": "9CAP0000000000001",
+                                     "amount_minor": 100, "currency": "PLN"})
+    assert has(errors(log), "did not fund (P-V3)")[0]
