@@ -76,7 +76,7 @@
         } },
       { field: "recon", headerName: T("money_col_recon"), width: 150,
         valueFormatter: (p) => (p.value ? label(recons)(p) : "—") },
-      { headerName: "", width: 110, sortable: false, filter: false, cellRenderer: explain },
+      { headerName: "", width: 130, minWidth: 130, sortable: false, filter: false, cellRenderer: explain },
     ],
     // AG Grid's icon font is not vendored (CSP: 'self' only): plain arrows, no header menus
     defaultColDef: { sortable: true, filter: false, resizable: true, suppressHeaderMenuButton: true },
