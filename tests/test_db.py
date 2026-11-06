@@ -298,3 +298,29 @@ def test_daily_spend_survives_a_restart(tmp_path):
     client = MuseClient.from_settings(Settings.load({"STUDIO_DAILY_BUDGET_USD": "1"}), led2)
     assert client.budget is not None
     assert client.budget.spent() == pytest.approx(0.4)
+
+
+def test_reset_clears_paypal_fundings_with_the_briefs_that_own_them(conn, tmp_path):
+    """A funding's owner is found through its brief: the hourly reset clears both, never
+    leaving fundings nobody can see (the money page would go empty)."""
+    from decimal import Decimal
+
+    from studio import api_tokens, funding
+
+    db.seed(conn)
+    funding.ensure_schema(conn)
+    api_tokens.ensure_schema(conn)
+    q = funding.quote("PLN", 2000, 7, Decimal(5))
+    f = funding.create(conn, run_id="run_x", item_id="cmp_x", content_sha256="a" * 64, q=q, now=1.0)
+    funding.advance(conn, f.id, "created", expect="created", now=1.0, order_id="O1")
+    conn.execute("INSERT INTO api_briefs (brief_id, account_id, token_id, created_ts) "
+                 "VALUES ('b_x', 'acct_x', 'tok_x', 1)")
+    assert conn.execute("SELECT count(*) FROM api_briefs").fetchone() == (1,)
+    db.reset_demo(conn)
+    for table in ("fundings", "funding_moves", "funding_claims", "api_briefs"):
+        assert conn.execute(f"SELECT count(*) FROM {table}").fetchone() == (0,), table
+
+
+def test_reset_works_without_the_optional_tables(conn):
+    db.seed(conn)
+    db.reset_demo(conn)  # PayPal off: no funding tables, nothing to clear

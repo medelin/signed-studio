@@ -148,6 +148,10 @@ SEED_TABLES = ("briefs", "campaigns", "comments", "leads", "tasks")
 DEMO_TABLES = ("tasks", "leads", "comments", "campaigns", "creatives", "briefs", "reports",
                "pending_payloads", "run_state", "lead_forms", "recommendations",
                "insights_snapshots", "google_insights", "google_campaigns")
+# Created only when their feature is on (PayPal, the assistants' API): cleared with the demo
+# data when present, children first, so no funding outlives the brief that owns it (its
+# owner is found through the brief; an orphan would vanish from the money page).
+OPTIONAL_DEMO_TABLES = ("funding_claims", "funding_moves", "fundings", "api_briefs")
 _COLUMNS: dict[str, tuple[str, ...]] = {
     "briefs": ("id", "text", "source", "created_ts"),
     "campaigns": ("id", "run_id", "name", "objective", "status", "daily_budget_minor",
@@ -346,6 +350,11 @@ def reset_demo(
     """
     data = _load_seed(seed_dir)
     with transaction(conn):
+        present = {r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'")}
+        for table in OPTIONAL_DEMO_TABLES:
+            if table in present:
+                conn.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed table names
         for table in DEMO_TABLES:
             conn.execute(f"DELETE FROM {table}")  # noqa: S608 - fixed table names
         conn.execute("DELETE FROM approvals WHERE status = 'pending'")
