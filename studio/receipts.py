@@ -817,6 +817,9 @@ class _Money:
     # each must be voided and never captured
     after_revoke: dict[tuple[str, str], str] = field(default_factory=dict)
     vault_orders: set[str] = field(default_factory=set)  # PayPal orders charged from a vault
+    # (run, order) -> what the run's own create_order asked PayPal for (P-V3: a buyer may
+    # approve an order the owner then never signs; nothing moves without the signature)
+    created: dict[tuple[str, str], dict[str, Any]] = field(default_factory=dict)
 
 
 def _order_blocks(valid: Mapping[str, _Grant], money: _Money, run: str
@@ -1417,6 +1420,12 @@ def verify(
                                   briefs.get(run))
         if receipt.kind == PAYPAL_KIND:
             errors += _check_paypal_call(receipt, valid.get(run, {}), money, mandates)
+            d = receipt.details
+            if d.get("step") == "paypal.create_order" and d.get("ok") is True \
+                    and isinstance(d.get("order_id"), str):
+                money.created.setdefault((run, d["order_id"]), {
+                    "content_sha256": d.get("custom_id_sha256") or d.get("content_sha256"),
+                    "amount_minor": d.get("amount_minor"), "currency": d.get("currency")})
         if receipt.kind == PAYPAL_WEBHOOK_KIND:
             errors += _check_paypal_webhook(receipt, valid.get(run, {}), money, deferred)
         if receipt.kind == "external_write":
@@ -1429,7 +1438,12 @@ def verify(
         counts[run] = counts.get(run, 0) + 1
     for receipt, order in deferred:  # funded by a campaign.create signed later, or never
         blocks = {b["order_id"]: b for b in _funded(valid.get(receipt.run_id, {})).values()}
-        errors += _webhook_block(receipt, blocks.get(order))
+        block = blocks.get(order)
+        if block is None and (receipt.run_id, order) not in money.authorized:
+            # approved by the buyer, never signed by the owner: the run's own order, nothing
+            # held (an authorization without a signature is P-V1's to catch)
+            block = money.created.get((receipt.run_id, order))
+        errors += _webhook_block(receipt, block)
     for (_run, auth), rid in sorted(money.after_revoke.items()):
         errors.append(f"{rid}: vault charge {auth} recorded after its mandate was revoked "
                       "and never voided (P-V5)")

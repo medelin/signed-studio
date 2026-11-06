@@ -423,3 +423,29 @@ def test_only_order_approved_may_come_before_the_signature(log):
                                      "capture_id": "9CAP0000000000001",
                                      "amount_minor": 100, "currency": "PLN"})
     assert has(errors(log), "did not fund (P-V3)")[0]
+
+
+def test_an_approved_order_the_owner_never_signs_still_verifies(tmp_path):
+    """The buyer approves in PayPal and the owner walks away: no signature, no money moved,
+    an honest log."""
+    from decimal import Decimal
+
+    from tests.test_paypal_funded import payload
+
+    env = Env(tmp_path)
+    p = payload()
+    pending = env.pending(p, ITEM)
+    step = env.funder.money.open(
+        run_id=RUN, item_id=ITEM, content_sha256=pending.content_sha256, currency="PLN",
+        daily_budget_minor=p["campaign"]["daily_budget_minor"], days=3, fee_pct=Decimal(5))
+    order = step.funding.order_id
+    env.funder.fake.approve(order)
+    event = {"id": "WH-1ORDERAPPROVED0-0002", "event_type": "CHECKOUT.ORDER.APPROVED",
+             "resource": {"id": order, "status": "APPROVED", "purchase_units": [
+                 {"custom_id": pending.content_sha256,
+                  "amount": {"currency_code": "PLN", "value": "94.50"}}]}}
+    headers, body = env.funder.signer.sign(event)
+    webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
+                   lookup=env.funder.lookup)
+    report = env.verify()
+    assert report.ok, report.errors
