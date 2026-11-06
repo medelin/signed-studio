@@ -313,8 +313,11 @@ class Assistants:
     def url(self, p: Principal, path: str) -> str:
         return p.base_url.rstrip("/") + path
 
-    def sign_url(self, p: Principal, action: str, run_id: str) -> str:
-        """The page in the web UI where the owner signs an approval of ``action``."""
+    def sign_url(self, p: Principal, action: str, run_id: str, approval_id: str = "") -> str:
+        """The page in the web UI where the owner signs an approval of ``action``. A refund
+        opens on its own approval: the run's page shows only the campaign's."""
+        if action == "funding.refund" and approval_id:
+            return self.url(p, f"/studio?approval={approval_id}")
         if action in ("reply.post", "comment.hide"):
             return self.url(p, "/inbox")
         if action == "campaign.update":
@@ -337,7 +340,7 @@ class Assistants:
         for aid, run, action, item, ts, brief in rows:
             if run in foreign or action == mandates.GRANT:  # a mandate is the owner's own
                 continue
-            url = self.sign_url(p, action, run)
+            url = self.sign_url(p, action, run, aid)
             out.append({"approval_id": aid, "run_id": run, "action": action,
                         "item_id": item, "created_ts": ts, "expires_ts": ts + TTL_S,
                         "brief_sha256": brief, "status": AWAITING, "sign_url": url,
@@ -796,7 +799,7 @@ def propose_refund(s: Assistants, p: Principal, funding_id: str, amount: str
         code = getattr(exc, "code", "") or "refund_refused"
         raise ApiRefused("not_found" if code == "not_found" else "refund_refused",
                          detail_code=code) from None
-    url = s.sign_url(p, "funding.refund", pending.run_id)
+    url = s.sign_url(p, "funding.refund", pending.run_id, pending.id)
     return {"funding_id": funding_id, "approval_id": pending.id, "action": "funding.refund",
             "content": payload, "content_sha256": pending.content_sha256,
             "status": AWAITING, "sign_url": url,

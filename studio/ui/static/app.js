@@ -574,6 +574,13 @@ $("approve-button").addEventListener("click", async () => {
         : T("signed_failed", { error: r.data.execution_error || "" }), !r.data.executed);
       return;
     }
+    if (currentPayload.fields.action === "funding.refund") {
+      const res = r.data.result || {};
+      status("approve-status", r.data.executed
+        ? T("refund_signed", { amount: ((res.refunded_minor || 0) / 100).toFixed(2), currency: res.currency || "" })
+        : T("signed_failed", { error: r.data.execution_error || "" }), !r.data.executed);
+      return;
+    }
     if (r.data.executed && r.data.result) {
       const refused = r.data.result.funding_error;
       const declined = !!r.data.result.funding_declined;

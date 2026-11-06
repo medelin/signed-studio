@@ -59,6 +59,8 @@ EN_PAYPAL: dict[str, str] = {
     "js.reason.TRANSACTION_REFUSED": "PayPal refused the transaction",
     "js.reason.PAYER_CANNOT_PAY": "the buyer cannot pay with this funding source",
     "paypal.simulate_decline": "Sandbox: simulate PayPal refusing the capture",
+    "js.refund_signed": "Signed and verified. PayPal refunded the buyer; {amount} {currency} "
+                        "refunded from this funding so far.",
     "err.invalid_simulate": "That sandbox simulation is not one the studio offers.",
     "err.paypal": "PayPal refused this step. Try again in a moment.",
     "err.refund_amount": "The refund must be more than zero and at most what is left.",
@@ -178,6 +180,8 @@ PL_PAYPAL: dict[str, str] = {
     "js.reason.TRANSACTION_REFUSED": "PayPal odmówił wykonania transakcji",
     "js.reason.PAYER_CANNOT_PAY": "kupujący nie może zapłacić tym źródłem",
     "paypal.simulate_decline": "Piaskownica: zasymuluj odmowę pobrania przez PayPal",
+    "js.refund_signed": "Podpisano i zweryfikowano. PayPal zwrócił pieniądze kupującemu; "
+                        "z tego finansowania zwrócono dotąd {amount} {currency}.",
     "err.invalid_simulate": "Studio nie oferuje takiej symulacji w piaskownicy.",
     "err.paypal": "PayPal odmówił tego kroku. Spróbuj za chwilę.",
     "err.refund_amount": "Zwrot musi być większy od zera i nie większy niż to, co zostało.",
