@@ -74,7 +74,7 @@ class Person:
     business: str
     business_pl: str
     skin: int  # 1..5 -> --skin-N
-    hair: str  # afro, locs, braid, straight, curly, bun, bald, hijab, turban, wrap, short
+    hair: str  # afro, locs, braid, straight, bob, crop, curly, bun, bald, hijab, turban, wrap
     hair_tone: str = "dark"  # dark, mid, grey, light
     prop: str = ""
     face_w: float = 21  # half-width at the cheek
@@ -140,6 +140,17 @@ CAST: tuple[Person, ...] = (
     Person("ola", "Ola", 29, "she", "yarn shop", "pasmanteria", 1, "straight", "light",
            prop="yarn", face_w=19, jaw_w=13, chin=77, shoulders=46, nose="button",
            freckles=True),
+    Person("wei", "Wei", 38, "he", "locksmith", "ślusarz", 2, "crop",
+           prop="key", face_w=20, jaw_w=15, shoulders=51, nose="small", brows="thick",
+           glasses=True),
+    Person("yuki", "Yuki", 28, "she", "bookshop", "księgarnia", 1, "bob",
+           prop="book", face_w=19, jaw_w=13, chin=77, shoulders=46, nose="button"),
+    Person("martha", "Martha", 63, "she", "preserves", "przetwory", 3, "straight", "grey",
+           prop="jar", face_w=22, jaw_w=16, shoulders=50, nose="small", brows="grey",
+           wrinkles=2),
+    Person("daniel", "Daniel", 57, "he", "garden care", "pielęgnacja ogrodów", 5, "curly",
+           "grey", prop="spade", face_w=21, jaw_w=16, chin=79, shoulders=53, nose="broad",
+           lips="full", brows="grey", beard="full", wrinkles=2),
 )
 BY_KEY = {p.key: p for p in CAST}
 
@@ -162,6 +173,11 @@ def _hair_back(p: Person) -> list[str]:
     if p.hair == "straight":
         left = [(60 - fw + 1, 30), (60 - fw - 5, 52), (60 - fw - 6, 86), (60 - fw - 3, 104),
                 (60 - fw + 6, 104), (60 - fw + 4, 60)]
+        return [f'<path class="{h} hair-line" d="{curve(left, closed=True)}"/>',
+                f'<path class="{h} hair-line" d="{curve(mirror(left), closed=True)}"/>']
+    if p.hair == "bob":  # chin-length, turned in at the ends
+        left = [(60 - fw + 1, 30), (60 - fw - 5, 50), (60 - fw - 5, 70), (60 - fw - 2, 82),
+                (60 - fw + 6, 80), (60 - fw + 4, 58)]
         return [f'<path class="{h} hair-line" d="{curve(left, closed=True)}"/>',
                 f'<path class="{h} hair-line" d="{curve(mirror(left), closed=True)}"/>']
     if p.hair == "locs":
@@ -205,6 +221,16 @@ def _hair_front(p: Person) -> list[str]:
                (R - 3, 38), (70, 28), (54, 27), (44, 32), (L + 3, 40)]
         return [f'<path class="{h} hair-line" d="{curve(cap, closed=True)}"/>',
                 '<path class="c-texture" d="M56 17q-6 6 -10 14M68 19q4 6 6 13"/>']
+    if p.hair == "bob":  # blunt fringe above the brows
+        cap = [(L - 1, 52), (L, 30), (48, 18), (62, 15), (74, 18), (R, 30), (R + 1, 52),
+               (R - 3, 40), (66, 35), (54, 34), (44, 37), (L + 3, 42)]
+        return [f'<path class="{h} hair-line" d="{curve(cap, closed=True)}"/>',
+                '<path class="c-texture" d="M56 17q-6 6 -10 14M68 19q4 6 6 13"/>']
+    if p.hair == "crop":  # short and close to the head
+        cap = [(L - 0.5, 44), (L + 0.5, 29), (50, 19), (60, 17), (70, 19), (R - 0.5, 29),
+               (R + 0.5, 44), (R - 3, 36), (60, 30), (L + 3, 36)]
+        return [f'<path class="{h} hair-line" d="{curve(cap, closed=True)}"/>',
+                '<path class="c-texture" d="M48 22q4 3 4 7M58 19q3 3 3 8M68 21q-3 3 -3 7"/>']
     if p.hair == "locs":
         cap = [(L - 1, 44), (L, 28), (50, 17), (60, 15), (70, 17), (R, 28), (R + 1, 44),
                (R - 3, 34), (60, 28), (L + 3, 34)]
@@ -354,6 +380,10 @@ PROPS = {
             'M98 114q-3 -4 0 -8q3 -4 0 -8',
     "camera": 'M78 116h30v18h-30zM86 116l3 -5h8l3 5M93 125m-5 0a5 5 0 1 0 10 0a5 5 0 1 0 -10 0'
               'M103 120h2',
+    "key": 'M90 114m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0M90 121V138M90 130h6M90 135h5',
+    "book": 'M78 118q8 -4 15 0q7 -4 15 0v18q-7 -4 -15 0q-8 -4 -15 0zM93 118v18',
+    "jar": 'M84 118h20v18q0 3 -3 3h-14q-3 0 -3 -3zM86 118v-4h16v4M88 126h12M88 131h12',
+    "spade": 'M92 100V124M86 100h12M84 124h16q0 14 -8 14q-8 0 -8 -14z',
     "yarn": 'M94 124m-12 0a12 12 0 1 0 24 0a12 12 0 1 0 -24 0M84 118q10 4 20 -2M83 126q12 4 22 -4'
             'M88 135q8 -10 16 -20M106 128q4 6 8 8',
 }
