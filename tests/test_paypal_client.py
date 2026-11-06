@@ -408,3 +408,10 @@ def test_the_recorded_money_loop_parses():
     assert ref.kind == "refund" and ref.amount_minor == 1449
     void = orders.void(replay_one(by_path["void"]), "0VF52814937998046", request_id="ss-4")
     assert void.status == "VOIDED"
+
+
+def test_get_with_zero_retries_makes_one_attempt():
+    rec = Recorder((503, {}), (200, {"ok": True}))
+    with pytest.raises(PayPalError) as e:
+        client(rec).get("/x", retries=0)
+    assert e.value.status == 503 and len(rec.calls()) == 1

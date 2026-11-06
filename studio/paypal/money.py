@@ -39,7 +39,7 @@ from typing import Any
 from studio import funding
 from studio.funding import Funding, FundingError, Statement
 from studio.paypal import orders
-from studio.paypal.client import PayPalClient, PayPalError, request_id
+from studio.paypal.client import MOCK_CODES, PayPalClient, PayPalError, request_id
 from studio.receipts import PAYPAL_KIND, Ledger, Receipt, is_opaque, sha256_hex
 
 AGENT = "treasury"
@@ -47,6 +47,13 @@ PROVIDER = "paypal"
 ORDER_OPEN = frozenset({"CREATED", "PAYER_ACTION_REQUIRED", "APPROVED", "SAVED"})
 CAPTURE_OK = frozenset({"COMPLETED", "PENDING"})
 REFUND_OK = frozenset({"COMPLETED", "PENDING"})
+# PayPal's definite refusals of the buyer's funding source at authorize
+PAYMENT_REFUSED = frozenset({"INSTRUMENT_DECLINED", "TRANSACTION_REFUSED", "PAYER_CANNOT_PAY"})
+
+
+def is_declined(exc: PayPalError) -> bool:
+    """A definite refusal of the buyer's funding source (not an unknown outcome or a 5xx)."""
+    return exc.issue in PAYMENT_REFUSED and not exc.unknown and 400 <= exc.status < 500
 
 
 def _idem(*parts: str) -> tuple[str, str]:
@@ -160,9 +167,17 @@ class Money:
         self._approval(approval_id)
         self._claim(approval_id, f, "authorize", f.total_minor)
         rid, idem = _idem(f.id, "authorize", approval_id)
-        res = self._call(f, "paypal.authorize", idem, None,
-                         lambda: orders.authorize(self.client, order_id, request_id=rid),
-                         approval_id, claim=approval_id)
+        try:
+            res = self._call(f, "paypal.authorize", idem, None,
+                             lambda: orders.authorize(self.client, order_id, request_id=rid),
+                             approval_id, claim=approval_id)
+        except PayPalError as exc:
+            if is_declined(exc):
+                # a definite refusal of the buyer's funding source: this order is spent,
+                # the next ``open`` may create a fresh one
+                funding.advance(self.conn, f.id, "failed", expect="payer_approved",
+                                now=self._now())
+            raise
         self._expect(f, "paypal.authorize", idem, None, res, status=frozenset({"CREATED"}),
                      amount=f.total_minor, approval_id=approval_id)
         return self._commit(f, "paypal.authorize", idem, None, res, to="authorized",
@@ -171,8 +186,14 @@ class Money:
                                     "authorized_minor": res.amount_minor},
                             amount=res.amount_minor)
 
-    def capture(self, funding_id: str, *, approval_id: str) -> Step:
-        """Take the whole authorization (final capture): ``authorized`` → ``captured``."""
+    def capture(self, funding_id: str, *, approval_id: str,
+                mock_response: str | None = None) -> Step:
+        """Take the whole authorization (final capture): ``authorized`` → ``captured``.
+        ``mock_response``: ask the sandbox to simulate a refusal; checked before any call,
+        and recorded in the receipt."""
+        if mock_response is not None and mock_response not in MOCK_CODES:
+            raise ValueError(f"not a PayPal mock response code: {mock_response!r}")
+        sim = {"mock_response": mock_response} if mock_response else {}
         f = funding.get(self.conn, funding_id)
         funding.check_move(f, "captured")
         auth_id = self._need(f.authorization_id, "no_authorization")
@@ -183,7 +204,8 @@ class Money:
         body = {"amount_minor": amount, "currency": f.currency, "invoice_id": f.id}
         res = self._call(f, "paypal.capture", idem, body, lambda: orders.capture(
             self.client, auth_id, amount_minor=amount, currency=f.currency, invoice_id=f.id,
-            request_id=rid), approval_id, claim=approval_id)
+            request_id=rid, mock_response=mock_response), approval_id, claim=approval_id,
+            **sim)
         self._expect(f, "paypal.capture", idem, body, res, status=CAPTURE_OK, amount=amount,
                      approval_id=approval_id, custom="if_present")
         return self._commit(f, "paypal.capture", idem, body, res, to="captured",
@@ -356,7 +378,8 @@ class Money:
             self._receipt(f, self._details(
                 f, step, idem, body, None, approval_id=approval_id, ok=False,
                 error=exc.name or "HTTP_ERROR", issue=exc.issue, http_status=exc.status,
-                outcome_unknown=exc.unknown or None, **extra))
+                outcome_unknown=exc.unknown or None,
+                debug_id=exc.debug_id or None, **extra))
             raise
 
     def _expect(self, f: Funding, step: str, idem: str, body: Any, res: orders.Result, *,

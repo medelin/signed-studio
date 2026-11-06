@@ -45,6 +45,21 @@ EN_PAYPAL: dict[str, str] = {
     "js.paypal_ready": "Funded: signing holds the money and creates the campaign PAUSED.",
     "js.paypal_cancelled": "PayPal was closed before approving. Try again when ready.",
     "js.paypal_sdk_failed": "PayPal could not be loaded. Try again in a moment.",
+    "js.paypal_declined": "PayPal declined the funding source ({issue}: {reason}). Fund the "
+                         "campaign again with another PayPal method.",
+    "js.paypal_capture_declined": "PayPal declined taking the money ({issue}: {reason}). The "
+                                  "money is still held and the campaign is still paused; sign "
+                                  "the activation again. PayPal debug id: {debug}.",
+    "js.paypal_unconfirmed": "PayPal did not confirm the payment ({issue}). Check the PayPal "
+                             "account before trying again.",
+    "js.paypal_capture_unconfirmed": "PayPal did not confirm taking the money ({issue}; PayPal "
+                                     "debug id {debug}). The campaign stays paused. Check the "
+                                     "PayPal account before signing the activation again.",
+    "js.reason.INSTRUMENT_DECLINED": "PayPal declined the buyer's funding source",
+    "js.reason.TRANSACTION_REFUSED": "PayPal refused the transaction",
+    "js.reason.PAYER_CANNOT_PAY": "the buyer cannot pay with this funding source",
+    "paypal.simulate_decline": "Sandbox: simulate a declined card on capture",
+    "err.invalid_simulate": "That sandbox simulation is not one the studio offers.",
     "err.paypal": "PayPal refused this step. Try again in a moment.",
     "err.refund_amount": "The refund must be more than zero and at most what is left.",
     "err.amount": "An amount must be a whole number of minor units (pence, grosze), from 0 "
@@ -54,7 +69,52 @@ EN_PAYPAL: dict[str, str] = {
     "err.no_order": "There is no PayPal order for this approval yet.",
     "err.funded": "This approval is already funded.",
     "err.refund_changed": "The capture changed since the refund was signed.",
+    "nav.money": "Money",
+    "meta.money": "Your PayPal sandbox fundings: holds, captures, voids and mandate charges, with "
+        "their receipts.",
+    "money.title": "Money",
+    "money.lead": "Every campaign funding of your account (PayPal sandbox): what was held, taken, "
+        "voided or refunded, and whether it came through checkout or a signed mandate. "
+        "Nothing here moves money.",
+    "money.check": "Check with PayPal",
+    "money.table": "Fundings table",
+    "money.empty": "No fundings yet. A campaign you fund through PayPal appears here.",
+    "js.money_loading": "Loading…",
+    "js.money_checking": "Asking PayPal's transaction list…",
+    "js.money_checked": "Checked against PayPal's transaction list.",
+    "js.money_failed": "Could not load the money table: {error}",
+    "js.money_explain": "Explain",
+    "js.money_explaining": "The treasurer is reading this funding…",
+    "js.money_col_created": "Created",
+    "js.money_col_funding": "Funding",
+    "js.money_col_state": "State",
+    "js.money_col_amount": "Amount",
+    "js.money_col_authorized": "Held",
+    "js.money_col_captured": "Taken",
+    "js.money_col_refunded": "Refunded",
+    "js.money_col_via": "Paid via",
+    "js.money_col_receipts": "Receipts",
+    "js.money_col_recon": "PayPal check",
+    "js.money_via_checkout": "Checkout",
+    "js.money_via_mandate": "Mandate",
+    "js.money_state_created": "Created",
+    "js.money_state_payer_approved": "Buyer approved",
+    "js.money_state_authorized": "Held",
+    "js.money_state_captured": "Taken",
+    "js.money_state_partially_refunded": "Partly refunded",
+    "js.money_state_refunded": "Refunded",
+    "js.money_state_voided": "Voided",
+    "js.money_state_expired": "Expired",
+    "js.money_state_failed": "Failed",
+    "js.money_recon_matched": "Matched",
+    "js.money_recon_pending": "Pending (PayPal lags up to 3 h)",
+    "js.money_recon_held": "Held, not captured",
+    "js.money_recon_missing": "Missing",
+    "js.money_recon_amount_mismatch": "Amount differs",
+    "js.money_recon_unknown": "Cannot tell",
+    "err.paypal_unavailable": "PayPal is not switched on in this studio.",
 }
+
 
 PL_PAYPAL: dict[str, str] = {
     "foot.pricing": "Cennik", "foot.terms": "Regulamin",
@@ -102,6 +162,23 @@ PL_PAYPAL: dict[str, str] = {
     "js.paypal_cancelled": "PayPal zamknięto przed zatwierdzeniem. Spróbuj, gdy będziesz "
                            "gotów.",
     "js.paypal_sdk_failed": "Nie udało się wczytać PayPal. Spróbuj za chwilę.",
+    "js.paypal_declined": "PayPal odrzucił źródło płatności ({issue}: {reason}). Opłać "
+                          "kampanię ponownie inną metodą PayPal.",
+    "js.paypal_capture_declined": "PayPal odrzucił pobranie pieniędzy ({issue}: {reason}). "
+                                  "Pieniądze nadal są zablokowane, a kampania wstrzymana; "
+                                  "podpisz aktywację jeszcze raz. Identyfikator PayPal: "
+                                  "{debug}.",
+    "js.paypal_unconfirmed": "PayPal nie potwierdził płatności ({issue}). Sprawdź konto PayPal "
+                             "przed ponowną próbą.",
+    "js.paypal_capture_unconfirmed": "PayPal nie potwierdził pobrania pieniędzy ({issue}; "
+                                     "identyfikator PayPal {debug}). Kampania pozostaje "
+                                     "wstrzymana. Sprawdź konto PayPal, zanim ponownie "
+                                     "podpiszesz aktywację.",
+    "js.reason.INSTRUMENT_DECLINED": "PayPal odrzucił źródło płatności kupującego",
+    "js.reason.TRANSACTION_REFUSED": "PayPal odmówił wykonania transakcji",
+    "js.reason.PAYER_CANNOT_PAY": "kupujący nie może zapłacić tym źródłem",
+    "paypal.simulate_decline": "Piaskownica: zasymuluj odrzuconą kartę przy pobraniu",
+    "err.invalid_simulate": "Studio nie oferuje takiej symulacji w piaskownicy.",
     "err.paypal": "PayPal odmówił tego kroku. Spróbuj za chwilę.",
     "err.refund_amount": "Zwrot musi być większy od zera i nie większy niż to, co zostało.",
     "err.amount": "Kwota musi być liczbą całkowitą w groszach (centach), od 0 do limitu "
@@ -111,4 +188,48 @@ PL_PAYPAL: dict[str, str] = {
     "err.no_order": "Dla tego zatwierdzenia nie ma jeszcze zamówienia PayPal.",
     "err.funded": "To zatwierdzenie jest już opłacone.",
     "err.refund_changed": "Płatność zmieniła się od podpisania zwrotu.",
+    "nav.money": "Pieniądze",
+    "meta.money": "Twoje finansowania w piaskownicy PayPal: blokady, pobrania, anulowania i "
+        "obciążenia z mandatu, wraz z pokwitowaniami.",
+    "money.title": "Pieniądze",
+    "money.lead": "Każde finansowanie kampanii na Twoim koncie (piaskownica PayPal): co "
+        "zablokowano, pobrano, anulowano lub zwrócono i czy poszło przez kasę, czy przez "
+        "podpisany mandat. Nic tu nie rusza pieniędzy.",
+    "money.check": "Sprawdź w PayPal",
+    "money.table": "Tabela finansowań",
+    "money.empty": "Brak finansowań. Kampania opłacona przez PayPal pojawi się tutaj.",
+    "js.money_loading": "Wczytuję…",
+    "js.money_checking": "Pytam listę transakcji PayPal…",
+    "js.money_checked": "Sprawdzono z listą transakcji PayPal.",
+    "js.money_failed": "Nie udało się wczytać tabeli pieniędzy: {error}",
+    "js.money_explain": "Wyjaśnij",
+    "js.money_explaining": "Skarbnik czyta to finansowanie…",
+    "js.money_col_created": "Utworzono",
+    "js.money_col_funding": "Finansowanie",
+    "js.money_col_state": "Stan",
+    "js.money_col_amount": "Kwota",
+    "js.money_col_authorized": "Zablokowano",
+    "js.money_col_captured": "Pobrano",
+    "js.money_col_refunded": "Zwrócono",
+    "js.money_col_via": "Zapłacono przez",
+    "js.money_col_receipts": "Pokwitowania",
+    "js.money_col_recon": "Sprawdzenie w PayPal",
+    "js.money_via_checkout": "Kasa",
+    "js.money_via_mandate": "Mandat",
+    "js.money_state_created": "Utworzone",
+    "js.money_state_payer_approved": "Kupujący zatwierdził",
+    "js.money_state_authorized": "Zablokowane",
+    "js.money_state_captured": "Pobrane",
+    "js.money_state_partially_refunded": "Zwrot częściowy",
+    "js.money_state_refunded": "Zwrócone",
+    "js.money_state_voided": "Anulowane",
+    "js.money_state_expired": "Wygasłe",
+    "js.money_state_failed": "Nieudane",
+    "js.money_recon_matched": "Zgadza się",
+    "js.money_recon_pending": "Oczekuje (PayPal spóźnia się do 3 h)",
+    "js.money_recon_held": "Zablokowane, niepobrane",
+    "js.money_recon_missing": "Brak",
+    "js.money_recon_amount_mismatch": "Kwota się różni",
+    "js.money_recon_unknown": "Nie da się ocenić",
+    "err.paypal_unavailable": "PayPal nie jest włączony w tym studiu.",
 }

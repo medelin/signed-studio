@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ t("money.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.money") }}{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/vendor/ag-grid.min.css">
+<link rel="stylesheet" href="/static/vendor/ag-theme-quartz.min.css">
+<link rel="stylesheet" href="/static/money.css">
+<section class="panel" aria-labelledby="money-h">
+  <h1 id="money-h">{{ t("money.title") }}</h1>
+  <p class="hint">{{ t("money.lead") }}</p>
+  <p>
+    <button type="button" id="money-check">{{ t("money.check") }}</button>
+    <span id="money-status" class="hint" role="status"></span>
+  </p>
+  <p class="hint" id="money-empty" hidden>{{ t("money.empty") }}</p>
+  <div id="money-grid" class="ag-theme-quartz studio-grid" role="region" aria-label="{{ t('money.table') }}"></div>
+  <pre id="money-advice" class="hint" hidden></pre>
+</section>
+<script src="/static/vendor/ag-grid-community.min.noStyle.js" defer></script>
+<script src="/static/money.js" defer></script>
+{% endblock %}

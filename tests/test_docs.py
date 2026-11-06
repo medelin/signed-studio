@@ -58,3 +58,21 @@ def test_policy_doc_cites_official_sources_and_explains_p9():
         assert url in text
     assert "retrieved **2026-10-28**" in text and "model-invented legal/tax claim" in text
     assert "docs/policy.md" in README
+
+
+def test_paypal_tooling_is_documented():
+    needles = ("Agent Toolkit", "mcp.sandbox.paypal.com", "PayPal-Mock-Response",
+               "AG Grid", "docs/postman/")
+    docs = {
+        "README.md": README,
+        "docs/assistants.md": (ROOT / "docs" / "assistants.md").read_text(),
+        "docs/devpost.md": (ROOT / "docs" / "devpost.md").read_text(),
+    }
+    blob = "\n".join(docs.values())
+    for needle in needles:
+        assert needle in blob, needle
+    assert "Agent Toolkit" in docs["README.md"] and "mcp.sandbox.paypal.com" in docs["README.md"]
+    assert "mcp.sandbox.paypal.com" in docs["docs/assistants.md"]
+    assert "AG Grid" in docs["docs/devpost.md"] and "APIMatic" in docs["docs/devpost.md"]
+    assert "https://muse.udun.eu" not in docs["docs/assistants.md"]
+    assert "hard link" in (ROOT / "docs" / "SANDBOX.md").read_text()

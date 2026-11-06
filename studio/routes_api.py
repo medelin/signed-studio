@@ -126,6 +126,15 @@ class ReplyIn(_Body):
                          description="The exact reply; empty: the community agent drafts it.")
 
 
+class ToolIn(_Body):
+    params: dict[str, Any] = Field(default_factory=dict,
+                                   description="The tool's arguments (JSON object).")
+
+
+class RefundIn(_Body):
+    amount: str = Field(description="Amount to refund in the funding's currency, e.g. 12.50.")
+
+
 def build_api(svc: assistants.Assistants) -> FastAPI:
     public = svc.settings.public_url  # an absolute server URL for importers (GPT Actions)
     api = FastAPI(title="Signed Studio API for assistants", version="1",
@@ -266,6 +275,20 @@ def build_api(svc: assistants.Assistants) -> FastAPI:
         return await download(request, "statement", {"month": month},
                               lambda r: exports.statement_file(month, r["rows"], format,
                                                                profile))
+
+    @api.get("/paypal/transactions", summary="Your PayPal captures against PayPal's list")
+    async def paypal_transactions(request: Request) -> Response:
+        return await do(request, "paypal_transactions", {})
+
+    @api.post("/paypal/tools/{name}", summary="A read-only PayPal Agent Toolkit tool")
+    async def paypal_tool(request: Request, name: str, body: ToolIn) -> Response:
+        return await do(request, "paypal_tool", {"name": name, "params": body.params})
+
+    @api.post("/fundings/{funding_id}/refund-proposal", status_code=201,
+              summary="Propose a refund: a pending approval the owner signs (draft scope)")
+    async def refund_proposal(request: Request, funding_id: str, body: RefundIn) -> Response:
+        return await do(request, "propose_refund",
+                        {"funding_id": funding_id, "amount": body.amount}, 201)
 
     @api.get("/comments", summary="Comments with triage and reply drafts")
     async def comments(request: Request, limit: int = Query(20, ge=1, le=100)) -> Response:

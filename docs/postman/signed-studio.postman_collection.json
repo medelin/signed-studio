@@ -1,0 +1,1202 @@
+{
+  "auth": {
+    "bearer": [
+      {
+        "key": "token",
+        "type": "string",
+        "value": "{{token}}"
+      }
+    ],
+    "type": "bearer"
+  },
+  "info": {
+    "_postman_id": "6b182c74-dab5-535c-a1d7-2d0323cdc129",
+    "description": "The assistant API (/api/v1) and the PayPal sandbox calls Signed Studio makes. Variables only; set them in an environment.",
+    "name": "Signed Studio",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "id": "4816f6f5-b360-5b23-9e7b-a506e4ca4920",
+      "item": [
+        {
+          "_op": "GET /approvals",
+          "id": "10651cf5-e713-579b-9941-2ad13aa9c1df",
+          "name": "Everything waiting for the owner's signature",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "approvals"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/approvals",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /briefs",
+          "id": "60d8a497-b6e3-5f4d-85a8-1f4d27c5f00b",
+          "name": "List briefs",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "briefs"
+              ],
+              "query": [
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "limit",
+                  "value": ""
+                }
+              ],
+              "raw": "{{base_url}}/api/v1/briefs?limit=",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /briefs",
+          "id": "3dfe63a9-aa02-5ff9-90b2-a072f33cb4cb",
+          "name": "Draft a Brief v1 from text (draft scope)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"text\": \"\"\n}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "briefs"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/briefs",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /briefs/voice",
+          "id": "f4199763-3c55-54b0-a445-c81baad171d7",
+          "name": "Draft a Brief v1 from an audio recording (draft scope)",
+          "request": {
+            "description": "Raw audio body (audio/webm, ogg, wav, mp4, mpeg); Muse Voice Transcribe, then the same draft as POST /briefs.",
+            "header": [],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "briefs",
+                "voice"
+              ],
+              "query": [
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "lang",
+                  "value": ""
+                }
+              ],
+              "raw": "{{base_url}}/api/v1/briefs/voice?lang=",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /briefs/{brief_id}",
+          "id": "e8147cbe-6109-5353-85bf-3ec760551539",
+          "name": "Read one brief with its open [FACT] questions",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "briefs",
+                ":brief_id"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/briefs/:brief_id",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "brief_id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /briefs/{brief_id}/confirm",
+          "id": "454d6c41-4deb-5936-a700-1ca74fe14f85",
+          "name": "Confirm a drafted brief: resolve every [FACT] question (draft scope)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"resolutions\": []\n}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "briefs",
+                ":brief_id",
+                "confirm"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/briefs/:brief_id/confirm",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "brief_id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /briefs/{brief_id}/run",
+          "id": "15b0ae51-2e5d-5409-a406-ee7cdc61fb04",
+          "name": "Run a confirmed brief and wait for how it is paid: a pay-and-sign link, or the receipt of a charge within the owner's signed mandate (draft scope)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "briefs",
+                ":brief_id",
+                "run"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/briefs/:brief_id/run",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "brief_id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /campaigns",
+          "id": "ebcdcfcb-e44e-5dcf-8156-4672920c5e98",
+          "name": "Runs and campaigns",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "campaigns"
+              ],
+              "query": [
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "limit",
+                  "value": ""
+                }
+              ],
+              "raw": "{{base_url}}/api/v1/campaigns?limit=",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /comments",
+          "id": "1690e7a2-98bd-5068-a76a-d0d026500288",
+          "name": "Comments with triage and reply drafts",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments"
+              ],
+              "query": [
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "limit",
+                  "value": ""
+                }
+              ],
+              "raw": "{{base_url}}/api/v1/comments?limit=",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /comments/{comment_id}/reply",
+          "id": "5df5e0ba-601e-56dd-beb1-3a704fc1cb5d",
+          "name": "Draft a reply: a pending approval the owner signs (draft scope)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "comments",
+                ":comment_id",
+                "reply"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/comments/:comment_id/reply",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "comment_id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /fundings/{funding_id}/refund-proposal",
+          "id": "e40f0233-e7e3-52cd-b308-8de56896455d",
+          "name": "Propose a refund: a pending approval the owner signs (draft scope)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"amount\": \"\"\n}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "fundings",
+                ":funding_id",
+                "refund-proposal"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/fundings/:funding_id/refund-proposal",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "funding_id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /insights",
+          "id": "e5bd6989-a340-5273-a76a-d05370c196b9",
+          "name": "Latest insights, recommendations and report",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "insights"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/insights",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /leads",
+          "id": "97f28611-0ec6-5cab-85a7-4c6ca0900100",
+          "name": "Leads; with `format`, every lead as a file",
+          "request": {
+            "description": "Without `format`: the newest leads as JSON (`limit`). With `format=json|csv|vcf`: every lead as a download (JSON list, CSV with a BOM, vCard 4.0). A token of a trial account gets initials and `[email]` / `[phone]` in every format.",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "leads"
+              ],
+              "query": [
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "limit",
+                  "value": ""
+                },
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "format",
+                  "value": ""
+                }
+              ],
+              "raw": "{{base_url}}/api/v1/leads?limit=&format=",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /mandates",
+          "id": "051d0217-6de2-5390-82a8-6deeeec1349a",
+          "name": "The owner's signed mandates and whether this token is listed (read only)",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "mandates"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/mandates",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /me",
+          "id": "94eef2b4-e683-5830-8a6f-81ac55b506e4",
+          "name": "This token: account, scopes, expiry, what it may do",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/me",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /paypal/tools/{name}",
+          "id": "054d227d-d961-5090-991a-32a4498a60c2",
+          "name": "A read-only PayPal Agent Toolkit tool",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "paypal",
+                "tools",
+                ":name"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/paypal/tools/:name",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /paypal/transactions",
+          "id": "bb11e18b-b8eb-5260-b279-774ba8948476",
+          "name": "Your PayPal captures against PayPal's list",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "paypal",
+                "transactions"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/paypal/transactions",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "POST /runs",
+          "id": "2bdeb7e8-3ab2-5c91-b9c2-49f79ee9407e",
+          "name": "Start the run of a confirmed brief (draft scope); ends awaiting a human signature",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"brief_id\": \"\"\n}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "runs"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/runs",
+              "variable": []
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /runs/{run_id}",
+          "id": "67d37288-1155-5f9f-a33d-dbff0565919a",
+          "name": "Run status: plan, copy, images, reviews, sign_url",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "runs",
+                ":run_id"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/runs/:run_id",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "run_id",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /runs/{run_id}/assets/{name}.png",
+          "id": "b9a4241a-559e-5a8b-98c9-0c506058c5a9",
+          "name": "One rendered image of a run",
+          "request": {
+            "description": "",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "runs",
+                ":run_id",
+                "assets",
+                ":name}.pn"
+              ],
+              "query": [],
+              "raw": "{{base_url}}/api/v1/runs/:run_id/assets/:name}.pn",
+              "variable": [
+                {
+                  "description": "",
+                  "key": "run_id",
+                  "value": ""
+                },
+                {
+                  "description": "",
+                  "key": "name",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "_op": "GET /statement",
+          "id": "98ef510a-cc6d-56e2-b7f7-2a0329cdccb5",
+          "name": "The monthly ad statement as a file",
+          "request": {
+            "description": "One row per campaign per day: spend, the approved daily budget, the approval id, approver key and approval receipt hash (check them with `studio verify`), and the run's model cost. `format=json|csv|hledger`; `profile` (CSV only): `generic|xero|quickbooks|wfirma`. See docs/export.md.",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "statement"
+              ],
+              "query": [
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "month",
+                  "value": ""
+                },
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "format",
+                  "value": ""
+                },
+                {
+                  "description": "",
+                  "disabled": true,
+                  "key": "profile",
+                  "value": ""
+                }
+              ],
+              "raw": "{{base_url}}/api/v1/statement?month=&format=&profile=",
+              "variable": []
+            }
+          },
+          "response": []
+        }
+      ],
+      "name": "Signed Studio API for assistants"
+    },
+    {
+      "auth": {
+        "type": "noauth"
+      },
+      "id": "dfa736bd-b754-5551-af77-f34e25e53a79",
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('paypal_access_token', pm.response.json().access_token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "id": "ac642765-4be7-5515-8b04-97eded72e4be",
+          "name": "OAuth token",
+          "request": {
+            "auth": {
+              "basic": [
+                {
+                  "key": "username",
+                  "type": "string",
+                  "value": "{{paypal_client_id}}"
+                },
+                {
+                  "key": "password",
+                  "type": "string",
+                  "value": "{{paypal_client_secret}}"
+                }
+              ],
+              "type": "basic"
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "client_credentials"
+                }
+              ]
+            },
+            "description": "Sandbox client credentials -> access token (saved to paypal_access_token).",
+            "header": [],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v1",
+                "oauth2",
+                "token"
+              ],
+              "query": [],
+              "raw": "{{paypal_base}}/v1/oauth2/token"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "ab24589d-6499-5abe-aca2-66f7f500b054",
+          "name": "Create order (AUTHORIZE)",
+          "request": {
+            "auth": {
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{paypal_access_token}}"
+                }
+              ],
+              "type": "bearer"
+            },
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"intent\": \"AUTHORIZE\",\n  \"payment_source\": {\n    \"paypal\": {\n      \"experience_context\": {\n        \"shipping_preference\": \"NO_SHIPPING\",\n        \"user_action\": \"CONTINUE\"\n      }\n    }\n  },\n  \"purchase_units\": [\n    {\n      \"amount\": {\n        \"breakdown\": {\n          \"item_total\": {\n            \"currency_code\": \"EUR\",\n            \"value\": \"10.00\"\n          }\n        },\n        \"currency_code\": \"EUR\",\n        \"value\": \"10.00\"\n      },\n      \"custom_id\": \"{{content_sha256}}\",\n      \"invoice_id\": \"{{invoice_id}}\",\n      \"reference_id\": \"default\"\n    }\n  ]\n}"
+            },
+            "description": "A person approves it as the sandbox buyer; nothing moves before that.",
+            "header": [
+              {
+                "key": "PayPal-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v2",
+                "checkout",
+                "orders"
+              ],
+              "query": [],
+              "raw": "{{paypal_base}}/v2/checkout/orders"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "3d61d29e-4c54-5b4a-a3aa-d9daf72a0d36",
+          "name": "Authorize order",
+          "request": {
+            "auth": {
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{paypal_access_token}}"
+                }
+              ],
+              "type": "bearer"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "PayPal-Request-Id",
+                "value": "{{$guid}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v2",
+                "checkout",
+                "orders",
+                "{{order_id}}",
+                "authorize"
+              ],
+              "query": [],
+              "raw": "{{paypal_base}}/v2/checkout/orders/{{order_id}}/authorize"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "cc536e35-3d78-582b-9100-6c0696c83ef0",
+          "name": "Capture authorization",
+          "request": {
+            "auth": {
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{paypal_access_token}}"
+                }
+              ],
+              "type": "bearer"
+            },
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"amount\": {\n    \"currency_code\": \"EUR\",\n    \"value\": \"10.00\"\n  },\n  \"final_capture\": true,\n  \"invoice_id\": \"{{invoice_id}}\"\n}"
+            },
+            "description": "Enable the PayPal-Mock-Response header to simulate a decline.",
+            "header": [
+              {
+                "key": "PayPal-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "disabled": true,
+                "key": "PayPal-Mock-Response",
+                "value": "{\"mock_application_codes\":\"INSTRUMENT_DECLINED\"}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v2",
+                "payments",
+                "authorizations",
+                "{{authorization_id}}",
+                "capture"
+              ],
+              "query": [],
+              "raw": "{{paypal_base}}/v2/payments/authorizations/{{authorization_id}}/capture"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "a43dffcf-2e34-5ca5-abc0-baa106d2f7c0",
+          "name": "Void authorization",
+          "request": {
+            "auth": {
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{paypal_access_token}}"
+                }
+              ],
+              "type": "bearer"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "PayPal-Request-Id",
+                "value": "{{$guid}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v2",
+                "payments",
+                "authorizations",
+                "{{authorization_id}}",
+                "void"
+              ],
+              "query": [],
+              "raw": "{{paypal_base}}/v2/payments/authorizations/{{authorization_id}}/void"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "fabf8ce1-9343-5054-a002-301ad4ba6a81",
+          "name": "Refund capture",
+          "request": {
+            "auth": {
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{paypal_access_token}}"
+                }
+              ],
+              "type": "bearer"
+            },
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"amount\": {\n    \"currency_code\": \"EUR\",\n    \"value\": \"10.00\"\n  },\n  \"invoice_id\": \"{{invoice_id}}\"\n}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "PayPal-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v2",
+                "payments",
+                "captures",
+                "{{capture_id}}",
+                "refund"
+              ],
+              "query": [],
+              "raw": "{{paypal_base}}/v2/payments/captures/{{capture_id}}/refund"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "80654c76-1980-5229-96f4-333896228d1e",
+          "name": "Vault setup token",
+          "request": {
+            "auth": {
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{paypal_access_token}}"
+                }
+              ],
+              "type": "bearer"
+            },
+            "body": {
+              "mode": "raw",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              },
+              "raw": "{\n  \"payment_source\": {\n    \"paypal\": {\n      \"experience_context\": {\n        \"cancel_url\": \"{{base_url}}/vault/cancel\",\n        \"return_url\": \"{{base_url}}/vault/return\"\n      },\n      \"usage_pattern\": \"IMMEDIATE\",\n      \"usage_type\": \"MERCHANT\"\n    }\n  }\n}"
+            },
+            "description": "",
+            "header": [
+              {
+                "key": "PayPal-Request-Id",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v3",
+                "vault",
+                "setup-tokens"
+              ],
+              "query": [],
+              "raw": "{{paypal_base}}/v3/vault/setup-tokens"
+            }
+          },
+          "response": []
+        },
+        {
+          "id": "be27e799-063f-5e32-b7ca-4202c6374937",
+          "name": "Transaction Search",
+          "request": {
+            "auth": {
+              "bearer": [
+                {
+                  "key": "token",
+                  "type": "string",
+                  "value": "{{paypal_access_token}}"
+                }
+              ],
+              "type": "bearer"
+            },
+            "description": "Lags up to ~3 h behind the money movement.",
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{paypal_base}}"
+              ],
+              "path": [
+                "v1",
+                "reporting",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "end_date",
+                  "value": "2026-01-02T00:00:00-0000"
+                },
+                {
+                  "key": "fields",
+                  "value": "transaction_info"
+                },
+                {
+                  "key": "start_date",
+                  "value": "2026-01-01T00:00:00-0000"
+                }
+              ],
+              "raw": "{{paypal_base}}/v1/reporting/transactions?end_date=2026-01-02T00:00:00-0000&fields=transaction_info&start_date=2026-01-01T00:00:00-0000"
+            }
+          },
+          "response": []
+        }
+      ],
+      "name": "PayPal sandbox (what the studio calls)"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://pay.udun.eu"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "paypal_base",
+      "value": "https://api-m.sandbox.paypal.com"
+    },
+    {
+      "key": "paypal_client_id",
+      "value": ""
+    },
+    {
+      "key": "paypal_client_secret",
+      "value": ""
+    },
+    {
+      "key": "paypal_access_token",
+      "value": ""
+    },
+    {
+      "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "content_sha256",
+      "value": ""
+    },
+    {
+      "key": "invoice_id",
+      "value": ""
+    },
+    {
+      "key": "authorization_id",
+      "value": ""
+    },
+    {
+      "key": "capture_id",
+      "value": ""
+    }
+  ]
+}

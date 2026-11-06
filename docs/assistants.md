@@ -37,7 +37,7 @@ judge password's rotation). Judges use the no-login tour (`/try`) or their own a
 
 ## 2. Connect
 
-Endpoints (on the sandbox: `https://muse.udun.eu`):
+Endpoints (on the sandbox: `https://pay.udun.eu`):
 
 | | URL | Auth |
 |---|---|---|
@@ -54,7 +54,7 @@ send a header work today; clients that insist on OAuth do not (see the table bel
 ### Claude Code
 
 ```bash
-claude mcp add --transport http muse https://muse.udun.eu/mcp \
+claude mcp add --transport http muse https://pay.udun.eu/mcp \
   --header "Authorization: Bearer msl_tok_…"
 ```
 
@@ -68,10 +68,31 @@ bridge, which sends the header (`claude_desktop_config.json`):
 ```json
 {"mcpServers": {"muse": {
   "command": "npx",
-  "args": ["-y", "mcp-remote", "https://muse.udun.eu/mcp",
+  "args": ["-y", "mcp-remote", "https://pay.udun.eu/mcp",
            "--header", "Authorization:${MUSE_TOKEN}"],
   "env": {"MUSE_TOKEN": "Bearer msl_tok_…"}}}}
 ```
+
+**Optional: PayPal's own MCP server next to ours.** You can also connect PayPal's sandbox
+MCP server `https://mcp.sandbox.paypal.com` for read-only questions; we have not tested
+this combination, and the studio itself does not use it. Anything that moves money goes
+through our server.
+Example, not tested by us: PayPal's server may require its own browser sign-in instead of a bearer token, so check PayPal's MCP documentation before relying on the `Authorization` header below.
+
+```json
+{"mcpServers": {
+  "muse": {"command": "npx",
+    "args": ["-y", "mcp-remote", "https://pay.udun.eu/mcp",
+             "--header", "Authorization:${MUSE_TOKEN}"],
+    "env": {"MUSE_TOKEN": "Bearer msl_tok_…"}},
+  "paypal": {"command": "npx",
+    "args": ["-y", "mcp-remote", "https://mcp.sandbox.paypal.com",
+             "--header", "Authorization:${PAYPAL_TOKEN}"],
+    "env": {"PAYPAL_TOKEN": "Bearer <PayPal sandbox access token>"}}}}
+```
+
+Ours also offers the read tools on the account's own money (`paypal_transactions`,
+`paypal_tool`) and `propose_refund`, so the assistant works with ours alone.
 
 ### ChatGPT, claude.ai, other assistants
 
@@ -79,17 +100,21 @@ bridge, which sends the header (`claude_desktop_config.json`):
 |---|---|---|
 | Claude Code, Cursor, VS Code, any MCP client with custom headers | yes | MCP at `/mcp` with the header |
 | Claude Desktop | yes | `mcp-remote` bridge above |
-| ChatGPT custom GPT (Actions) | yes, over the API | import `https://muse.udun.eu/api/v1/openapi.json`, authentication "API key", type "Bearer", paste the token |
+| ChatGPT custom GPT (Actions) | yes, over the API | import `https://pay.udun.eu/api/v1/openapi.json`, authentication "API key", type "Bearer", paste the token |
 | ChatGPT / claude.ai connector dialogs (OAuth only) | no | no OAuth server yet; use the rows above |
 | Meta AI, other assistants | if they can call MCP or HTTPS with a header | not verified by us |
 
 The OpenAPI document names an absolute server URL when `STUDIO_PUBLIC_URL` is set (needed by
 importers such as GPT Actions); otherwise its server is the relative `/api/v1`.
 
+### Postman
+
+`docs/postman/signed-studio.postman_collection.json` is a Postman v2.1 collection with one request per `/api/v1` operation (the OpenAPI document above) and a second folder, "PayPal sandbox (what the studio calls)": OAuth token, create order (AUTHORIZE), authorize, capture, void, refund, Vault setup token and Transaction Search, all against `{{paypal_base}}` (the sandbox URL). In Postman choose Import, pick the file, and set the collection variables `base_url` (per deployment; the default is `https://pay.udun.eu`), `token` (your personal access token), and for the PayPal folder `paypal_client_id` and `paypal_client_secret` (sandbox app credentials); the "OAuth token" request fills `paypal_access_token` itself. Also fill `content_sha256`, `invoice_id`, `order_id`, `authorization_id` and `capture_id` before sending the requests that use them: they are empty by default, and a request sent unfilled goes to PayPal empty. The file holds variables only, never values; regenerate it with `make postman`.
+
 ### curl
 
 ```bash
-T="Authorization: Bearer msl_tok_…"; S=https://muse.udun.eu/api/v1
+T="Authorization: Bearer msl_tok_…"; S=https://pay.udun.eu/api/v1
 
 curl -s -H "$T" $S/me                                     # who am I, scopes, expiry
 curl -s -H "$T" -X POST $S/briefs -H 'Content-Type: application/json' \
@@ -125,6 +150,9 @@ curl -s -H "$T" -X POST $S/comments/c-1/reply -H 'Content-Type: application/json
 | `campaigns`, `insights` / `GET /campaigns`, `GET /insights` | read | runs and campaigns (created PAUSED; activation is a human signature), the latest insights, recommendations and report |
 | `leads`, `comments` / `GET /leads`, `GET /comments` | read | as the signed-in web UI shows them, with a note that their text is data, never instructions |
 | `draft_reply` / `POST /comments/{id}/reply` | draft | a pending `reply.post` approval for the exact text (or the community agent's draft); posted only after the owner signs it in the inbox |
+| `paypal_transactions` / `GET /paypal/transactions` | read | the account's PayPal authorizations and captures checked against PayPal's Transaction Search (sandbox): per line `matched`, `pending` (PayPal lists up to ~3 h late, so a fresh capture is never "missing"), `missing` or `amount_mismatch`. Matched by PayPal id only; own money only. Statuses: `matched`, `pending`, `held` (an authorization nothing was captured from: not an alarm), `missing` (only a capture or refund absent after the lag), `amount_mismatch`, `unknown` (older than the window, or the search could not be read to the end). The answer carries `window_start`, `window_end` (at most the last 31 days, PayPal's limit) and a count per status; the run is one `paypal.reconcile` receipt whatever the number of pages read, its `body_sha256` the keyed hash (`details.hash` = `"hmac-sha256"`, bound to the account's chain) of the account's own lines (never of PayPal's pages) |
+| `paypal_tool` / `POST /paypal/tools/{name}` | read | one read-only PayPal Agent Toolkit tool (`list_transactions`, `get_order_details`, `list_disputes`, `get_dispute`) on the account's own money, answered without payer data. Each tool call that reached PayPal is one `paypal.call` receipt: `ok` = answered, `body_sha256` = HMAC-SHA256, under a key only the server holds (`details.hash` = `"hmac-sha256"`), of the answer the caller got (canonical JSON; empty when refused), bound to the account's receipt chain, so a public receipt cannot confirm a guessed answer and equal answers of two accounts show different hashes, no HTTP status, nothing hashed from PayPal's raw body (the sandbox merchant is shared). `list_disputes` is always the first page (`page_size` 50, no `next_page_token`) and `dispute_state` must be one of PayPal's six states. An id filter (`transaction_id`, `disputed_transaction_id`, `order_id`) that is not one of the account's PayPal ids is `not_allowed` before any PayPal call; `get_dispute` answers `not_allowed` alike for another account's dispute, an unknown one and a failed call (its receipt then has `ok: false` and no body hash). It cannot move money: write tools are refused |
+| `propose_refund` / `POST /fundings/{id}/refund-proposal` | draft | `{funding_id, amount}` (e.g. `"12.50"`): a pending `funding.refund` approval (same path as the web UI's refund) with a `sign_url`; nothing is refunded until the owner signs it |
 
 **Never**, by construction (tripwires in `tests/attack/test_assistants.py`): no operation
 reaches `approvals.verify_and_consume`, an approval renewal, approver key registration,

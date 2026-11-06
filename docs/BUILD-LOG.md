@@ -354,3 +354,24 @@ onwards. The base began on 27 Oct 2026, also inside the submission period.
 - The Vault sandbox cassette needs the sandbox buyer to approve saving PayPal in a
   browser (`scripts/paypal_record_vault.py --start` prints the URL, `--finish` records).
 - Webhook registration, deploy, the video and the Devpost text are Day 4.
+
+## 2026-11-05 (Wed): PayPal tools everywhere
+
+- **Agent Toolkit read tools** (vendored `paypal_agent_toolkit/shared` 1.11.0): four read
+  tools on the receipted sandbox client, payer data stripped, own PayPal ids only, keyed-hash
+  receipts bound to the account's chain.
+- **Reconciliation and assistant ops:** `paypal_transactions`, `paypal_tool`,
+  `propose_refund` (a pending `funding.refund` approval; never moves money).
+- **Sandbox negative testing:** `PayPal-Mock-Response` on capture only, a decline control at
+  activation, PayPal's reason shown, `debug_id` receipted.
+- **Money page** in AG Grid Community 34.3.1 (noStyle build, vendored CSS, strict CSP).
+- **Postman collection** (`make postman`), base_url per deployment.
+- **Tools used while building (controller, 5 Nov 2026):** PayPal's `/paypal:doctor` (PayPal
+  AI Toolkit plugin 1.2.0 for Claude Code) on the repo: 0 critical, 4 warnings, all fixed on
+  this branch (`.env.example` PayPal block; declined authorize kept with a retry path;
+  webhook lookup without the full retry budget; `debug_id` receipted). The APIMatic Context
+  Plugin for PayPal was installed in the coding agent. Both helped while writing code; neither
+  runs in the app.
+- **Transaction Search** was enabled for the sandbox app on 5 Nov 2026 (scope propagation
+  was still pending then).
+- **Docs:** README, PAYPAL.md, assistants (optional PayPal MCP setup), demo script, Devpost text.

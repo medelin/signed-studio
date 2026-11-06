@@ -487,3 +487,31 @@ def test_pinned_intermediate_is_not_a_trust_anchor():
     now = _dt.datetime(2026, 11, 4, tzinfo=_dt.UTC).timestamp()
     with pytest.raises(webhooks.WebhookRefused):
         webhooks.check_chain([inter[0]], [], now, intermediates=inter)
+
+
+def test_webhook_lookup_does_not_retry(env):
+    """One read, then the handler's 503 path: PayPal redelivers instead of the studio
+    spending the delivery window on its own retries."""
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        seen.append(request.url.path)
+        return httpx.Response(503, json={})
+
+    f = refund_some(env)
+    env.funder.money.client = PayPalClient(
+        "client-id-test", "client-secret-test-value",
+        transport=httpx.MockTransport(handler), sleep=lambda s: None)
+    event = {"id": "WH-1FAST00000001-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
+             "resource": {"id": f.capture_id}}
+    headers, body = env.funder.signer.sign(event)
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
+                       lookup=env.funder.lookup)
+    assert e.value.code == "lookup_failed" and len(seen) == 1

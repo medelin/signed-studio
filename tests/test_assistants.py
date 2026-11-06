@@ -21,7 +21,8 @@ from tests.forms import csrf
 BASE = "https://testserver"
 MCP_TOOLS = {"whoami", "list_briefs", "read_brief", "draft_brief", "confirm_brief",
              "start_run", "run_status", "pending_approvals", "campaigns", "insights",
-             "leads", "comments", "draft_reply", "mandates", "run_brief"}
+             "leads", "comments", "draft_reply", "mandates", "run_brief",
+             "paypal_transactions", "paypal_tool", "propose_refund"}
 TOKEN = re.compile(r"msl_tok_[0-9a-f]{12}_[A-Za-z0-9_-]{43}")
 OTHER_PASSWORD = "Owl-" + secrets.token_urlsafe(18)
 
@@ -361,3 +362,278 @@ def test_mcp_over_http_refuses_without_a_token(flow):
     assert r.status_code == 401 and r.headers["www-authenticate"].startswith("Bearer")
     r = c.post("/mcp", json=hello, headers={**headers, **bearer(value)})
     assert r.status_code == 200 and json.loads(r.text)["result"]["serverInfo"]["name"]
+
+
+# -- PayPal tools for the owner's assistant ------------------------------------------------
+
+
+def paypal_world(tmp_path, monkeypatch=None):
+    """A mock-PayPal app with a captured funding of the account ``owner``'s WhatsApp run."""
+    import time as _time
+    from decimal import Decimal
+
+    from studio import funding
+    from studio.approvals import Pending, transaction
+    from studio.receipts import canonical
+    from tests.attack.test_paused_only import RUN, payload
+
+    app = make_app(tmp_path, PAYPAL_ADAPTER="mock")
+    owner = account(app, "owner")
+    conn, ledger = app.state.conn, app.state.ledger
+    with transaction(conn):
+        conn.execute("INSERT INTO briefs (id, run_id, text, created_ts, channel, account_id) "
+                     "VALUES ('brf_owned1', ?, 'mug', ?, 'whatsapp', ?)",
+                     (RUN, _time.time(), owner.id))
+    ledger.append(RUN, agent="producer", kind="model_call")
+    p = payload()
+    pending = Pending.create("campaign.create", "cmp_owned1", p, ledger=ledger, run_id=RUN)
+    with transaction(conn):
+        pending.save(conn)
+        conn.execute("INSERT INTO pending_payloads (approval_id, run_id, payload, created_ts) "
+                     "VALUES (?, ?, ?, ?)", (pending.id, RUN, canonical(p).decode(), 0.0))
+    q = funding.quote("PLN", 3000, 1, Decimal(5))
+    f = funding.create(conn, run_id=RUN, item_id="cmp_owned1",
+                       content_sha256=pending.content_sha256, q=q, now=1.0)
+    funding.advance(conn, f.id, "created", expect="created", now=2.0, order_id="5O190127TN364715T")
+    funding.advance(conn, f.id, "payer_approved", expect="created", now=3.0)
+    funding.advance(conn, f.id, "authorized", expect="payer_approved", now=4.0,
+                    authorization_id="7AU11111AB222222C", authorized_minor=q.total_minor)
+    f = funding.advance(conn, f.id, "captured", expect="authorized", now=5.0,
+                        capture_id="3C679366HH908993F", captured_minor=q.total_minor)
+    funding.record_move(conn, f, "capture", paypal_id="3C679366HH908993F",
+                        amount_minor=q.total_minor, now=5.0)
+    return app, f
+
+
+def principal_of(app, tok):
+    return assistants.Principal(tok, "http", BASE)
+
+
+def test_paypal_tool_op_is_read_scope_and_refuses_write_tools(tmp_path):
+    app, f = paypal_world(tmp_path)
+    assert assistants.OPS["paypal_tool"].scope == "read"
+    assert assistants.OPS["paypal_transactions"].scope == "read"
+    assert assistants.OPS["propose_refund"].scope == "draft"
+    tok, _ = token(app, scope="read")
+    svc = app.state.assistants
+    for name in ("create_order", "pay_order", "get_merchant_insights"):
+        status, body = svc.call(principal_of(app, tok), "paypal_tool", {"name": name})
+        assert status == 422 and body["error"] == "invalid_arguments", name
+    status, body = svc.call(principal_of(app, tok), "paypal_tool",
+                            {"name": "get_order_details",
+                             "params": {"order_id": "9Z99999999999999Z"}})
+    assert status == 403 and body["error"] == "not_allowed"  # not this account's order
+    status, body = svc.call(principal_of(app, tok), "propose_refund",
+                            {"funding_id": f.id, "amount": "1.00"})
+    assert status == 403 and body["error"] == "insufficient_scope"
+
+
+def test_paypal_transactions_reports_the_accounts_lines(tmp_path):
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+    from tests.test_paypal_agent_tools import Sandbox
+
+    app, f = paypal_world(tmp_path)
+    sandbox = Sandbox([{"transaction_info": {
+        "transaction_id": "3C679366HH908993F",
+        "transaction_amount": {"currency_code": "PLN", "value": "31.50"}}}])
+    app.state.funder.money.client = PayPalClient(
+        "id", "secret", transport=httpx.MockTransport(sandbox), sleep=lambda s: None)
+    tok, _ = token(app, scope="read")
+    svc = app.state.assistants
+    svc.clock = lambda: 5.0 + 4 * 3600  # past the lag
+    status, body = svc.call(principal_of(app, tok), "paypal_transactions", {})
+    assert status == 200, body
+    assert body["matched"] == 1 and body["missing"] == 0
+    sandbox.transactions = []
+    status, body = svc.call(principal_of(app, tok), "paypal_transactions", {})
+    assert body["missing"] == 1 and body["lines"][0]["paypal_id"] == "3C679366HH908993F"
+    svc.clock = lambda: 5.0 + 600  # fresh: PayPal lists it later
+    status, body = svc.call(principal_of(app, tok), "paypal_transactions", {})
+    assert status == 200 and body["pending"] == 1
+
+
+def test_propose_refund_returns_sign_url_and_moves_nothing(tmp_path):
+    app, f = paypal_world(tmp_path)
+    tok, _ = token(app, scope="draft")
+    status, body = app.state.assistants.call(
+        principal_of(app, tok), "propose_refund", {"funding_id": f.id, "amount": "5.25"})
+    assert status == 200, body
+    assert body["status"] == assistants.AWAITING and body["sign_url"].startswith(BASE)
+    assert body["content"]["refund"]["amount_minor"] == 525
+    conn = app.state.conn
+    row = conn.execute("SELECT action, status FROM approvals WHERE id = ?",
+                       (body["approval_id"],)).fetchone()
+    assert tuple(row) == ("funding.refund", "pending")
+    from studio import funding
+
+    assert [m["move"] for m in funding.moves(conn, f.id)] == ["capture"]
+    assert funding.get(conn, f.id).refunded_minor == 0
+
+
+def test_propose_refund_refuses_strangers_bad_amounts_and_overrefunds(tmp_path):
+    app, f = paypal_world(tmp_path)
+    svc = app.state.assistants
+    owner_tok, _ = token(app, scope="draft")
+    other_tok, _ = token(app, "stranger", scope="draft")
+    args = {"funding_id": f.id, "amount": "1.00"}
+    status, body = svc.call(principal_of(app, other_tok), "propose_refund", args)
+    assert status == 404 and body["error"] == "not_found"
+    status, body = svc.call(principal_of(app, owner_tok), "propose_refund",
+                            {**args, "amount": "1.005"})
+    assert status == 422
+    status, body = svc.call(principal_of(app, owner_tok), "propose_refund",
+                            {**args, "amount": "9999.00"})
+    assert status == 409 and body["error"] == "refund_refused"
+    assert body["detail_code"] == "refund_amount"
+    assert app.state.conn.execute(
+        "SELECT COUNT(*) FROM approvals WHERE action = 'funding.refund'").fetchone()[0] == 0
+
+
+def test_paypal_ops_without_paypal_are_unavailable(tmp_path):
+    app = make_app(tmp_path)
+    tok, _ = token(app, scope="draft")
+    status, body = app.state.assistants.call(principal_of(app, tok), "paypal_transactions", {})
+    assert status == 503 and body["error"] == "paypal_unavailable"
+
+
+def test_rest_routes_for_the_paypal_ops(tmp_path):
+    app, f = paypal_world(tmp_path)
+    _tok, value = token(app, scope="draft")
+    h = bearer(value)
+    with TestClient(app, base_url=BASE) as c:
+        r = c.post(f"/api/v1/fundings/{f.id}/refund-proposal", json={"amount": "2.00"},
+                   headers=h)
+        assert r.status_code == 201 and r.json()["sign_url"], r.text
+        r = c.post("/api/v1/paypal/tools/create_order", json={"params": {}}, headers=h)
+        assert r.status_code == 422
+        r = c.post("/api/v1/paypal/tools/list_disputes", json={}, headers=h)
+        assert r.status_code == 502  # the mock PayPal has no dispute API
+        r = c.get("/api/v1/paypal/transactions", headers=h)
+        # the fixture's move is from 1970: outside the window, so no PayPal call, unknown
+        assert r.status_code == 200 and r.json()["unknown"] == 1
+
+
+def test_ops_listed_on_mcp(flow):
+    from mcp.shared.memory import create_connected_server_and_client_session
+
+    app, c, tok, value, d, started = flow
+    principal = assistants.Principal(tok, "mcp", BASE)
+    server = remote_mcp.RemoteMcp(app.state.assistants, principal).server
+
+    async def go():
+        async with create_connected_server_and_client_session(server) as session:
+            return await session.list_tools()
+
+    names = {t.name for t in anyio.run(go).tools}
+    assert {"paypal_transactions", "paypal_tool", "propose_refund"} <= names
+
+
+def test_stranger_gets_not_found_before_anything_else(tmp_path):
+    app, f = paypal_world(tmp_path)
+    other_tok, _ = token(app, "stranger", scope="draft")
+    svc = app.state.assistants
+    for amount in ("1.00", "99999.00"):  # an over-refund must not reveal the funding
+        status, body = svc.call(principal_of(app, other_tok), "propose_refund",
+                                {"funding_id": f.id, "amount": amount})
+        assert status == 404 and body["error"] == "not_found", amount
+    status, body = svc.call(principal_of(app, other_tok), "propose_refund",
+                            {"funding_id": "fund_" + "0" * 16, "amount": "1.00"})
+    assert status == 404
+
+
+def test_a_trial_accounts_token_gets_not_found_from_propose_refund(tmp_path):
+    app, f = paypal_world(tmp_path)
+    app.state.accounts.set_tier("owner", "trial")
+    tok, _ = token(app, scope="draft")
+    status, body = app.state.assistants.call(
+        principal_of(app, tok), "propose_refund", {"funding_id": f.id, "amount": "1.00"})
+    assert status == 404 and body["error"] == "not_found"
+
+
+def test_paypal_transactions_answer_has_no_paging_fields(tmp_path):
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+    from tests.test_paypal_agent_tools import Sandbox
+
+    app, f = paypal_world(tmp_path)
+    app.state.funder.money.client = PayPalClient(
+        "id", "secret", transport=httpx.MockTransport(Sandbox([])), sleep=lambda s: None)
+    tok, value = token(app, scope="read")
+    svc = app.state.assistants
+    svc.clock = lambda: 5.0 + 4 * 3600
+    banned = {"pages_read", "truncated", "total_pages", "total_items", "has_more"}
+    status, body = svc.call(principal_of(app, tok), "paypal_transactions", {})
+    assert status == 200 and not banned & set(body)
+    assert {"window_start", "window_end", "matched", "unknown"} <= set(body)
+    with TestClient(app, base_url=BASE) as c:
+        r = c.get("/api/v1/paypal/transactions", headers=bearer(value))
+        assert r.status_code == 200 and not banned & set(r.json())
+
+
+def test_get_dispute_unknown_and_foreign_look_the_same(tmp_path):
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        if request.url.path.endswith("/PP-D-FOREIGN"):
+            return httpx.Response(200, json={"dispute_id": "PP-D-FOREIGN",
+                                             "disputed_transactions": [
+                                                 {"seller_transaction_id": "ZZZ"}]})
+        return httpx.Response(404, json={"name": "RESOURCE_NOT_FOUND"})
+
+    app, f = paypal_world(tmp_path)
+    app.state.funder.money.client = PayPalClient(
+        "id", "secret", transport=httpx.MockTransport(handler), sleep=lambda s: None)
+    tok, value = token(app, scope="read")
+    svc = app.state.assistants
+    out = [svc.call(principal_of(app, tok), "paypal_tool",
+                    {"name": "get_dispute", "params": {"dispute_id": d}})
+           for d in ("PP-D-UNKNOWN", "PP-D-FOREIGN")]
+
+    def same(body):  # receipt_id names the call's own receipt
+        return {k: v for k, v in body.items() if k != "receipt_id"}
+
+    assert out[0][0] == out[1][0] == 403 and out[0][1]["error"] == "not_allowed"
+    assert same(out[0][1]) == same(out[1][1])
+    with TestClient(app, base_url=BASE) as c:
+        rs = [c.post("/api/v1/paypal/tools/get_dispute",
+                     json={"params": {"dispute_id": d}}, headers=bearer(value))
+              for d in ("PP-D-UNKNOWN", "PP-D-FOREIGN")]
+    assert rs[0].status_code == rs[1].status_code == 403
+    assert same(rs[0].json()) == same(rs[1].json())
+
+
+def test_by_id_search_of_a_foreign_id_is_refused_for_assistants(tmp_path):
+    import httpx
+
+    from studio.paypal.client import PayPalClient
+    from tests.test_paypal_agent_tools import Sandbox
+
+    app, f = paypal_world(tmp_path)
+    sandbox = Sandbox([])
+    app.state.funder.money.client = PayPalClient(
+        "id", "secret", transport=httpx.MockTransport(sandbox), sleep=lambda s: None)
+    tok, _ = token(app, scope="read")
+    status, body = app.state.assistants.call(
+        principal_of(app, tok), "paypal_tool",
+        {"name": "list_transactions", "params": {"transaction_id": "7YY99999ZZ888888Q",
+                                                 "search_months": 1}})
+    assert status == 403 and body["error"] == "not_allowed"
+    assert sandbox.requests == []
+    status, body = app.state.assistants.call(
+        principal_of(app, tok), "paypal_tool",
+        {"name": "list_transactions", "params": {"transaction_id": "3C679366HH908993F",
+                                                 "search_months": 1}})
+    assert status == 200 and body["result"]["found"] is False
+
+
+def test_paypal_transactions_description_lists_all_six_statuses():
+    from studio.paypal.reconcile import STATUSES
+    desc = assistants.OPS["paypal_transactions"].description
+    assert all(st in desc for st in STATUSES)

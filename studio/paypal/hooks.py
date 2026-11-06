@@ -114,8 +114,10 @@ class Funder:
 
     def lookup(self, path: str) -> dict[str, Any] | None:
         """GET a PayPal resource with the studio's own credentials: what a webhook names
-        is attested by PayPal's API, not by the webhook body."""
-        return self.money.client.get(path).json
+        is attested by PayPal's API, not by the webhook body. One fast read: a transient
+        failure answers 503 and PayPal redelivers, which is cheaper than holding its 30 s
+        delivery window on our own retries."""
+        return self.money.client.get(path, retries=0).json
 
     def flush(self) -> int:
         """Mock mode: deliver the fake's webhook events, signed, through ``apply``."""
@@ -298,7 +300,10 @@ class Funder:
         return {"funding_id": f.id, "authorization_id": f.authorization_id,
                 "amount_minor": f.authorized_minor, "currency": f.currency}
 
-    def capture(self, v: Verified, payload: dict[str, Any]) -> dict[str, Any]:
+    def capture(self, v: Verified, payload: dict[str, Any],
+                simulate: str | None = None) -> dict[str, Any]:
+        """Take the held money under the activation approval. ``simulate``: a sandbox
+        refusal to ask PayPal for (``PayPal-Mock-Response``); not part of the signed payload."""
         named = payload.get(ACTIVATION_KEY)
         if not isinstance(named, dict):
             raise FundingRefused("the activation names no PayPal funding", "not_funded")
@@ -312,7 +317,7 @@ class Funder:
                     named.get("currency")]):
             raise FundingRefused("the funding changed since the activation was signed",
                                  "funding_changed")
-        step = self.money.capture(f.id, approval_id=v.pending_id)
+        step = self.money.capture(f.id, approval_id=v.pending_id, mock_response=simulate)
         return {"funding_id": f.id, "state": step.funding.state,
                 "capture_id": step.funding.capture_id,
                 "amount_minor": step.funding.captured_minor, "currency": f.currency}

@@ -88,12 +88,12 @@ const Signer = (() => {
     return data;
   }
 
-  async function sign(payload) {
+  async function sign(payload, extra = {}) {
     if (!keyPair) throw new Error(T("no_key"));
     const bytes = Uint8Array.from(atob(payload.message_b64), (c) => c.charCodeAt(0));
     const sig = await crypto.subtle.sign({ name: "Ed25519" }, keyPair.privateKey, bytes);
     const r = await postJSON("/api/approvals/" + encodeURIComponent(payload.approval_id),
-                             { approver: approverId, signature: hex(sig) });
+                             { ...extra, approver: approverId, signature: hex(sig) });
     if (!r.ok) throw new Error(T("approval_refused", { error: E(r.data, r.status) }));
     return r.data;
   }

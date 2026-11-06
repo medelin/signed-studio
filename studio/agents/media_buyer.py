@@ -54,6 +54,8 @@ from studio.meta.adapter import (
     spec_sha256,
 )
 from studio.meta.currency import to_minor
+from studio.paypal.client import MOCK_CODES, PayPalError
+from studio.paypal.money import is_declined
 from studio.receipts import Ledger, canonical
 
 AGENT = "media_buyer"
@@ -194,6 +196,11 @@ def create(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified:
         # the campaign exists, PAUSED: now hold the money (authorize) under this approval
         try:
             result["funding"] = funder.authorize(funded, v)
+        except PayPalError as exc:  # a refusal or an unknown outcome: receipted by Money
+            result["funding_error"] = exc.issue or exc.name or "PAYPAL_ERROR"
+            result["funding_declined"] = is_declined(exc)
+            if exc.reason:
+                result["funding_reason"] = exc.reason  # e.g. the buyer's source was declined
         except Exception as exc:  # noqa: BLE001 - receipted; the campaign stays unfunded
             result["funding_error"] = getattr(exc, "code", type(exc).__name__)
     try:
@@ -339,9 +346,14 @@ def _activate_replacement(conn: sqlite3.Connection, ledger: Ledger, adapter: Ada
 
 
 def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verified: Any,
-             payload: dict[str, Any], ceiling: int, funder: Any = None) -> dict[str, Any]:
+             payload: dict[str, Any], ceiling: int, funder: Any = None,
+             simulate: str | None = None) -> dict[str, Any]:
     """With PayPal on (``funder``) the held money is captured first, under this
-    approval: no capture, no activation."""
+    approval: no capture, no activation. ``simulate`` (outside the signed payload) asks the
+    PayPal sandbox to refuse the capture (``client.MOCK_CODES``); a refused capture leaves
+    the money held and the campaign PAUSED, and the owner signs a new activation."""
+    if simulate is not None and simulate not in MOCK_CODES:
+        raise ValueError(f"not a PayPal mock response code: {simulate!r}")
     v: Verified = executor.authorize(conn, verified, "campaign.activate", payload)
     if payload.get("kind") == REPLACEMENT_AD:
         return _activate_replacement(conn, ledger, adapter, v, payload)
@@ -368,9 +380,12 @@ def activate(conn: sqlite3.Connection, ledger: Ledger, adapter: Adapter, verifie
     captured: dict[str, Any] | None = None
     if funder is not None:
         try:
-            captured = funder.capture(v, payload)
+            captured = (funder.capture(v, payload, simulate=simulate) if simulate
+                        else funder.capture(v, payload))
         except Exception as exc:
-            code = getattr(exc, "code", "") or "capture_failed"
+            code = getattr(exc, "code", "") or (
+                getattr(exc, "issue", "") if isinstance(exc, PayPalError) else "") \
+                or "capture_failed"
             executor.finish(conn, v, "failed", {"error": code})
             executor.record_step(ledger, v, agent=AGENT, adapter=adapter.name, step="activate",
                                  status="rejected", details={"reason": "not_captured"})

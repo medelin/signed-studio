@@ -58,6 +58,9 @@ def test_source_has_no_invisible_characters():
     for path in [*root.glob("studio/**/*"), *root.glob("tests/**/*"), *root.glob("scripts/*")]:
         if path.suffix not in (".py", ".js", ".html", ".css", ".md", ".yaml"):
             continue
+        rel = path.relative_to(root).as_posix()
+        if rel.startswith(("studio/vendor/", "studio/ui/static/vendor/")):
+            continue  # third-party code, vendored unchanged (see NOTICE.md)
         text = path.read_text(encoding="utf-8")
         bad += [f"{path.relative_to(root)}: U+{ord(c):04X}" for c in text
                 if unicodedata.category(c) == "Cf"]

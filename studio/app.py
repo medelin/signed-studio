@@ -63,6 +63,7 @@ from studio import (
     routes_inbox,
     routes_mandates,
     routes_meta,
+    routes_money,
     routes_onboarding,
     routes_paypal,
     routes_receipts,
@@ -629,6 +630,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_export.register(app, settings, ledger, conn, write_guard, session_of)
     routes_receipts.register(app, settings, ledger, templates, session_of)
+    routes_money.register(app, settings, ledger, conn, templates, session_of)
     routes_help.register(app, settings, ledger, templates, session_of)
     routes_try.register(app, settings, templates, session_of)
     routes_onboarding.register(app, settings, ledger, templates, session_of, COOKIE)
@@ -671,6 +673,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lambda verified, payload: announce("campaign_launched", media_buyer.activate(
             conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget,
             funder=app.state.funder)))
+    app.state.simulating["campaign.activate"] = (
+        lambda verified, payload, simulate: announce("campaign_launched", media_buyer.activate(
+            conn, ledger, app.state.adapter, verified, payload, settings.max_daily_budget,
+            funder=app.state.funder, simulate=simulate)))
     routes_paypal.register(app, settings, ledger, conn, write_guard, session_of)
 
     routes_google.register(app, settings, ledger, conn, write_guard, session_of)

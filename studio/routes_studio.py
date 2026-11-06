@@ -60,6 +60,8 @@ from studio.muse import voice
 from studio.muse.client import MuseClient, MuseError
 from studio.muse.openweights import OpenWeightsClient
 from studio.muse.structured import StructuredOutputError
+from studio.paypal.client import MOCK_CODES, PayPalError
+from studio.paypal.money import is_declined
 from studio.receipts import BRIEF_KIND, Ledger, Receipt, canonical, sha256_hex
 from studio.settings import BudgetExceeded, ReadOnlyMode, Settings
 
@@ -474,6 +476,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     app.state.glimmer_client = glimmer_client
     # action -> executor(verified, payload) -> result dict; runs after the approval commits
     app.state.executors = {}
+    # executors that also take a sandbox ``simulate`` code (outside the signed payload)
+    app.state.simulating = {}
 
     def account_currency() -> str:
         """The ad account's currency (the adapter reads it once); PLN before the adapter
@@ -1188,6 +1192,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             if not (isinstance(approver, str) and APPROVER.fullmatch(approver)
                     and isinstance(signature, str) and SIGNATURE.fullmatch(signature)):
                 raise ValueError
+            simulate = body.get("simulate") or None
+            if simulate is not None and simulate not in MOCK_CODES:
+                return JSONResponse({"error": "invalid_simulate"}, 400)
         except (ValueError, KeyError, TypeError):
             return JSONResponse({"error": "invalid_signature_format"}, 400)
         # the caller, from the same session write_guard just checked; on a live adapter an
@@ -1269,13 +1276,22 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         executor = app.state.executors.get(verified.action)
         if executor is not None:
             # Only after the approval (nonce + receipt) committed; outside the write lock.
+            simulating = app.state.simulating.get(verified.action) if simulate else None
             try:
-                result = await run_in_threadpool(executor, verified, json.loads(row[0]))
+                if simulating is not None:
+                    result = await run_in_threadpool(simulating, verified, json.loads(row[0]),
+                                                     simulate)
+                else:
+                    result = await run_in_threadpool(executor, verified, json.loads(row[0]))
                 out.update(executed=True, result=result)
             except Exception as exc:  # noqa: BLE001 - reported, the approval stays consumed
                 LOG.warning("executor %s failed: %s", verified.action, type(exc).__name__)
                 out.update(executed=False, execution_error=getattr(exc, "code", "")
                            or type(exc).__name__)
+                cause = exc.__cause__
+                if isinstance(cause, PayPalError):  # PayPal's own words for the owner
+                    out.update(execution_reason=cause.reason, execution_debug_id=cause.debug_id,
+                               execution_declined=is_declined(cause))
         return JSONResponse(out)
 
 

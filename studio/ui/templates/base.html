@@ -21,8 +21,9 @@
     {% set here = page_path(request.url.path) %}
     <nav class="nav" aria-label="{{ t('nav.label') }}">
     {# five places to work; the receipts and "how it works" are in the footer #}
-    {% for href, key in (("/studio", "nav.studio"), ("/inbox", "nav.inbox"), ("/leads", "nav.leads"), ("/report", "nav.report"), ("/help", "nav.help")) %}
-    <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ t(key) }}</a>
+    {% for href, key in (("/studio", "nav.studio"), ("/inbox", "nav.inbox"), ("/leads", "nav.leads"), ("/report", "nav.report"), ("/money", "nav.money"), ("/help", "nav.help")) %}
+    {% if href != "/money" or paypal_on() %}
+    <a href="{{ href }}"{% if here == href or (href == "/help" and here == "/pl/help") %} aria-current="page"{% endif %}>{{ t(key) }}</a>{% endif %}
     {% endfor %}
     </nav>
     <span class="tag">{{ t("tagline") }}</span>

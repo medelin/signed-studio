@@ -111,6 +111,7 @@ class FakePayPal:
         # webhook events PayPal would send, in order; ``drain`` hands them out
         self.outbox: list[dict[str, Any]] = []
         self._fail: list[int] = []
+        self.decline_authorize = ""  # an issue code: the next authorize is refused with it
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handle)
@@ -180,6 +181,9 @@ class FakePayPal:
                 return httpx.Response(seen[1], content=seen[2],
                                       headers={"Content-Type": "application/json"})
             body = json.loads(request.content) if request.content else {}
+            mocked = _mock_code(request)
+            if mocked and path.endswith("/capture"):  # sandbox negative testing
+                return _err(422, "UNPROCESSABLE_ENTITY", mocked)
             resp = self._post(path, body)
             if resp.status_code < 500:
                 self.idempotent[key] = (path, resp.status_code, resp.content)
@@ -305,6 +309,9 @@ class FakePayPal:
             return _err(404, "RESOURCE_NOT_FOUND", "INVALID_RESOURCE_ID")
         if order.status == "CREATED":
             return _err(422, "UNPROCESSABLE_ENTITY", "ORDER_NOT_APPROVED")
+        if self.decline_authorize:
+            issue, self.decline_authorize = self.decline_authorize, ""
+            return _err(422, "UNPROCESSABLE_ENTITY", issue)
         if order.status == "COMPLETED":
             return _err(422, "UNPROCESSABLE_ENTITY", "ORDER_ALREADY_AUTHORIZED")
         unit = order.body["purchase_units"][0]
@@ -439,6 +446,15 @@ class FakePayPal:
                     "paypal_fee": _fmt(cap.amount_minor * 29 // 1000 + 30, cap.currency)},
                 "links": [{"href": "https://api.sandbox.paypal.com/v2/payments/"
                                    f"captures/{cap.id}", "rel": "self", "method": "GET"}]}
+
+
+def _mock_code(request: httpx.Request) -> str:
+    """The code in a ``PayPal-Mock-Response`` header ({"mock_application_codes": "..."})."""
+    try:
+        return str(json.loads(request.headers.get("PayPal-Mock-Response", ""))
+                   ["mock_application_codes"])
+    except (ValueError, KeyError, TypeError):
+        return ""
 
 
 def _err(status: int, name: str, issue: str) -> httpx.Response:

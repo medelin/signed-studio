@@ -166,7 +166,7 @@ class Vault:
 
     def _fail(self, ref: str, step: str, exc: PayPalError) -> None:
         self._receipt(ref, step, ok=False, error=exc.name or "HTTP_ERROR", issue=exc.issue,
-                      http_status=exc.status)
+                      http_status=exc.status, debug_id=exc.debug_id or None)
 
     def start(self, account_id: str, *, return_url: str, cancel_url: str) -> tuple[str, str]:
         """A setup token for ``account_id``: ``(vault ref, PayPal approve URL)``. The

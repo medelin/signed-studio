@@ -41,9 +41,17 @@ studio = ["ui/templates/*.html", "ui/static/*", "agents/prompts/*.md", "agents/*
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# the vendored PayPal toolkit (kept byte for byte, see its NOTICE.md) still calls
+# datetime.utcnow() and pydantic's .dict()
+filterwarnings = [
+    "ignore:datetime.datetime.utcnow:DeprecationWarning:studio.vendor.paypal_agent_toolkit",
+    "ignore:The `dict` method is deprecated:DeprecationWarning:studio.vendor.paypal_agent_toolkit",
+]
 
 [tool.ruff]
 line-length = 100
+# vendored third-party code (see its NOTICE.md) is kept byte for byte
+extend-exclude = ["studio/vendor"]
 target-version = "py311"
 
 [tool.ruff.lint]
@@ -53,6 +61,10 @@ ignore = ["S101"]
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "studio.vendor.*"
+ignore_errors = true
 
 [tool.ruff.lint.per-file-ignores]
 # Synthetic test credentials are not secrets.
