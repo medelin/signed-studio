@@ -944,11 +944,13 @@ def _check_paypal_call(receipt: Receipt, valid: Mapping[str, _Grant], money: _Mo
 WEBHOOK_VERIFIED = frozenset({"rsa", "rsa+postback"})
 
 
-def _check_paypal_webhook(receipt: Receipt, valid: Mapping[str, _Grant], money: _Money
-                          ) -> list[str]:
+def _check_paypal_webhook(receipt: Receipt, valid: Mapping[str, _Grant], money: _Money,
+                          deferred: list[tuple[Receipt, str]] | None = None) -> list[str]:
     """P-V3: a PayPal webhook receipt is verified, applied once, and names an order this
     run funded; its ``custom_id`` is that funding's ad hash and its amount at most the
-    signed amount."""
+    signed amount. The buyer approves in PayPal before the owner signs, so PayPal's
+    "order approved" may be recorded before the signature that funds the order: with
+    ``deferred``, an order not (yet) funded is checked again at the end of the log."""
     d = receipt.details
     errors = []
     if d.get("verified") not in WEBHOOK_VERIFIED:
@@ -977,9 +979,18 @@ def _check_paypal_webhook(receipt: Receipt, valid: Mapping[str, _Grant], money: 
         auth = d.get("authorization_id")
         order = money.auth_order.get((receipt.run_id, str(auth)), "")
     block = _order_blocks(valid, money, receipt.run_id).get(str(order))
+    if block is None and deferred is not None:
+        deferred.append((receipt, str(order)))
+        return errors
+    return errors + _webhook_block(receipt, block)
+
+
+def _webhook_block(receipt: Receipt, block: dict[str, Any] | None) -> list[str]:
+    """P-V3, the funded order's part: it exists, names this ad and at most its amount."""
+    d = receipt.details
+    errors: list[str] = []
     if block is None:
-        return errors + [f"{receipt.id}: PayPal webhook for an order this run did not "
-                         "fund (P-V3)"]
+        return [f"{receipt.id}: PayPal webhook for an order this run did not fund (P-V3)"]
     custom = d.get("custom_id_sha256")
     if custom is not None and custom != block["content_sha256"]:
         errors.append(f"{receipt.id}: PayPal attests another ad (custom_id) than the one "
@@ -1318,6 +1329,7 @@ def verify(
     briefs: dict[str, str] = {}  # run -> brief_sha256 of its latest confirmed brief
     mandates = _Mandates()  # signed mandates, their revocations and use counts
     money = _Money()  # what the PayPal receipts moved (P-V1…P-V4, P-V6)
+    deferred: list[tuple[Receipt, str]] = []  # P-V3 webhooks recorded before their signature
     counts: dict[str, int] = {}
     manifests: list[Any] = []
     ids: set[str] = set()
@@ -1403,7 +1415,7 @@ def verify(
         if receipt.kind == PAYPAL_KIND:
             errors += _check_paypal_call(receipt, valid.get(run, {}), money, mandates)
         if receipt.kind == PAYPAL_WEBHOOK_KIND:
-            errors += _check_paypal_webhook(receipt, valid.get(run, {}), money)
+            errors += _check_paypal_webhook(receipt, valid.get(run, {}), money, deferred)
         if receipt.kind == "external_write":
             errors += _check_write(receipt, grants.setdefault(run, {}),
                                    used.setdefault(run, set()), briefs.get(run))
@@ -1412,6 +1424,9 @@ def verify(
         seen.setdefault(run, set()).add(receipt.hash)
         last_ts[run] = receipt.ts
         counts[run] = counts.get(run, 0) + 1
+    for receipt, order in deferred:  # funded by a signature later in the log, or never
+        errors += _webhook_block(receipt, _order_blocks(valid.get(receipt.run_id, {}), money,
+                                                        receipt.run_id).get(order))
     for (_run, auth), rid in sorted(money.after_revoke.items()):
         errors.append(f"{rid}: vault charge {auth} recorded after its mandate was revoked "
                       "and never voided (P-V5)")

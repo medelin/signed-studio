@@ -45,7 +45,7 @@ def forge(env, kind, details):
     env.ledger.append(RUN, agent="treasury", kind=kind, provider="paypal", details=details)
 
 
-def resign(env, mutate):
+def resign(env, mutate, order=None):
     """The server edits receipts it already wrote and re-signs the log with its own
     ledger key: same ids, re-chained hashes, a fresh manifest. Returns the verify report
     (the owner's approver keys are the real ones)."""
@@ -55,6 +55,9 @@ def resign(env, mutate):
     key = env.ledger._key
     lines = [json.loads(x) for x in env.ledger.export_jsonl().splitlines()]
     receipts = [x for x in lines if "manifest" not in x]
+    if order is not None:  # the same receipts, recorded in another order
+        by_id = {x["id"]: x for x in receipts}
+        receipts = [by_id[i] for i in order]
     heads: dict[str, str] = {}
     counts: dict[str, int] = {}
     for x in receipts:
@@ -360,3 +363,50 @@ def test_9_paypal_answering_with_another_ad_stops_the_create(tmp_path):
     with pytest.raises(FundingError) as e:
         env.funder.money.sync_order(step.funding.id)
     assert e.value.code == "mismatch"
+
+
+
+def test_order_approved_before_the_owner_signs_still_verifies(tmp_path):
+    """The buyer pays first: PayPal's "order approved" webhook can be recorded before the
+    owner's signature that funds the order. That honest log verifies."""
+    from decimal import Decimal
+
+    from studio.agents import media_buyer
+    from studio.approvals import attach_funding
+    from tests.test_paypal_funded import payload, sign_pending
+
+    env = Env(tmp_path)
+    p = payload()
+    pending = env.pending(p, ITEM)
+    step = env.funder.money.open(
+        run_id=RUN, item_id=ITEM, content_sha256=pending.content_sha256, currency="PLN",
+        daily_budget_minor=p["campaign"]["daily_budget_minor"], days=3, fee_pct=Decimal(5))
+    order = step.funding.order_id
+    env.funder.fake.approve(order)
+    event = {"id": "WH-1ORDERAPPROVED0-0001", "event_type": "CHECKOUT.ORDER.APPROVED",
+             "resource": {"id": order, "status": "APPROVED", "purchase_units": [
+                 {"custom_id": pending.content_sha256,
+                  "amount": {"currency_code": "PLN", "value": "94.50"}}]}}
+    headers, body = env.funder.signer.sign(event)
+    webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
+                   lookup=env.funder.lookup)
+    hooks = [r for r in env.ledger.receipts(RUN) if r.kind == PAYPAL_WEBHOOK_KIND]
+    assert hooks and not any(r.kind == "approval" for r in env.ledger.receipts(RUN))
+    env.funder.money.sync_order(step.funding.id)
+    f = funding.get(env.conn, step.funding.id)
+    fresh, funded = attach_funding(env.conn, pending.id, p, f.block(), ledger=env.ledger)
+    v = sign_pending(env.conn, env.ledger, fresh, funded)
+    media_buyer.create(env.conn, env.ledger, env.adapter, v, funded, env.tmp,
+                       funder=env.funder)
+    report = env.verify()
+    assert report.ok, report.errors
+
+
+def test_a_webhook_for_an_order_never_signed_is_still_caught_at_the_end(log):
+    forge(log, PAYPAL_WEBHOOK_KIND, {"event_type": "CHECKOUT.ORDER.APPROVED",
+                                     "event_id": "WH-1FORGED0000009-0009",
+                                     "order_id": "8ZZ00000NEVERSIGNED", "verified": "rsa",
+                                     "resource_kind": "order", "status": "APPROVED",
+                                     "event_class": "order.approved", "resource_source": "api",
+                                     "amount_minor": 100, "currency": "PLN"})
+    assert has(errors(log), "did not fund (P-V3)")[0]
