@@ -837,7 +837,7 @@ $("activate-button").addEventListener("click", async () => {
     const payload = await Signer.loadPayload(r.data.approval_id);
     status("activate-status", T("signing_activation", { budget: minor(payload.content.daily_budget_minor, payload.content.currency), currency: payload.content.currency }));
     // sandbox only: PayPal-Mock-Response on the capture; outside the signed bytes
-    const simulate = $("simulate-decline") && $("simulate-decline").checked ? { simulate: "INSTRUMENT_DECLINED" } : {};
+    const simulate = $("simulate-decline") && $("simulate-decline").checked ? { simulate: "TRANSACTION_REFUSED" } : {};
     const done = await Signer.sign(payload, simulate);
     if (!done.executed && "execution_declined" in done) {  // PayPal answered the capture
       status("activate-status", done.execution_declined

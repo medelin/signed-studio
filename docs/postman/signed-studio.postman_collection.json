@@ -938,7 +938,7 @@
               {
                 "disabled": true,
                 "key": "PayPal-Mock-Response",
-                "value": "{\"mock_application_codes\":\"INSTRUMENT_DECLINED\"}"
+                "value": "{\"mock_application_codes\":\"TRANSACTION_REFUSED\"}"
               },
               {
                 "key": "Content-Type",

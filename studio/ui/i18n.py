@@ -71,7 +71,7 @@ EN: dict[str, str] = {
     "index.kicker": "two views of every ad",
     "index.lead": "Muse agents plan, write, draw and review. Nothing leaves the studio until "
                   "a person signs the exact content.",
-    "index.signed_in": "You are signed in as the judge.",
+    "index.signed_in": "You are signed in.",
     "index.judges": "Judges sign in to run the studio.",
     "index.login_off": "Sign-in is disabled on this instance.",
     "index.help_html": 'Who checks what, and what it costs: <a href="/help">help</a>.',
@@ -526,7 +526,7 @@ PL: dict[str, str] = {
     "index.kicker": "dwa widoki każdej reklamy",
     "index.lead": "Agenci Muse planują, piszą, rysują i recenzują. Nic nie wychodzi ze studia, "
                   "dopóki człowiek nie podpisze dokładnej treści.",
-    "index.signed_in": "Jesteś zalogowany jako juror.",
+    "index.signed_in": "Jesteś zalogowany.",
     "index.judges": "Jurorzy logują się, żeby uruchomić studio.",
     "index.login_off": "Logowanie jest wyłączone na tej instancji.",
     "index.help_html": 'Kto co sprawdza i ile to kosztuje: <a href="/help">pomoc</a>.',

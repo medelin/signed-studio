@@ -200,8 +200,9 @@ Around that, on PayPal's own tooling:
   The assistant can reconcile (`paypal_transactions`) and `propose_refund`; the proposal is a
   pending approval with a link, the owner signs, and nothing moves before that.
 - **Negative testing:** on a capture, the sandbox `PayPal-Mock-Response`
-  (`INSTRUMENT_DECLINED`, `TRANSACTION_REFUSED`) is sent when the owner ticks "simulate a
-  declined card" at activation. The studio shows PayPal's reason and keeps the money
+  (`TRANSACTION_REFUSED`) is sent when the owner ticks "simulate PayPal refusing the capture"
+  at activation (the sandbox answers `INSTRUMENT_DECLINED` on an authorization capture with an
+  empty 403, so the toggle uses the code it really answers, 422 with a `debug_id`). The studio shows PayPal's reason and keeps the money
   held; after a declined authorize the owner funds the campaign again with another PayPal method by running the brief again (a new campaign approval, since the declined one is consumed).
 - **Money page** (`/money`, AG Grid Community): holds, captures, voids and mandate charges
   with receipts, "Check with PayPal" (Transaction Search reconciliation) and "Explain"

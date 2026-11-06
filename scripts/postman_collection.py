@@ -124,7 +124,7 @@ def pp(name: str, method: str, path: str, *, body: Any = None, auth: str = "bear
     hdr = [{"key": k, "value": v} for k, v in sorted((headers or {}).items())]
     if name == "Capture authorization":
         hdr.append({"key": "PayPal-Mock-Response", "disabled": True,
-                    "value": '{"mock_application_codes":"INSTRUMENT_DECLINED"}'})
+                    "value": '{"mock_application_codes":"TRANSACTION_REFUSED"}'})
     req: dict[str, Any] = {
         "method": method, "header": hdr, "description": desc,
         "url": {"raw": raw, "host": ["{{paypal_base}}"],

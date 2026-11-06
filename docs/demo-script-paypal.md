@@ -37,9 +37,9 @@ Each beat lists the screenshot in `docs/screenshots/paypal/` it matches, as a ba
   campaign paused."
 
 **5. One declined capture (1:10-1:25)**
-- On screen: Activate with "simulate a declined card" ticked; the sign; the message with
-  PayPal's reason (INSTRUMENT_DECLINED); the money still held.
-- Say: "PayPal's sandbox can refuse a card on demand. The studio shows PayPal's reason
+- On screen: Activate with "simulate PayPal refusing the capture" ticked; the sign; the
+  message with PayPal's reason (TRANSACTION_REFUSED) and debug id; the money still held.
+- Say: "PayPal's sandbox can refuse the capture on demand. The studio shows PayPal's reason
   and nothing is captured."
 
 **6. My assistant pays inside a mandate I signed (1:25-1:55)** — shots 6, 7, 8
