@@ -297,3 +297,60 @@ def test_pending_capture_at_paypal_is_pending_never_missing(w):
     w.sandbox.transactions = []  # Transaction Search lists S(uccess) only by default
     assert q.total_minor == 22050 and f
     assert by_move(run(w))["capture"] == "pending"
+
+
+def _client(handler):
+    return PayPalClient("id", "secret", transport=httpx.MockTransport(handler),
+                        sleep=lambda s: None)
+
+
+def _token(request):
+    return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+
+
+def test_the_window_reaches_back_past_transaction_searchs_lag(w):
+    captured(w.conn, "run_ui", "cre_1", ts=NOW - 600)  # a move minutes old
+    starts = []
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return _token(request)
+        starts.append(request.url.params["start_date"])
+        return httpx.Response(200, json={"transaction_details": [], "page": 1,
+                                         "total_pages": 1})
+
+    w.client = _client(handler)
+    run(w)
+    from studio.paypal.reconcile import _iso
+    assert starts and starts[0] <= _iso(NOW - RECON_LAG_S - 3600)
+
+
+def test_data_not_yet_available_makes_recent_moves_pending(w):
+    captured(w.conn, "run_ui", "cre_1", ts=NOW - 600)
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return _token(request)
+        return httpx.Response(404, json={
+            "name": "INVALID_REQUEST",
+            "message": "Data for the given start date is not available.",
+            "debug_id": "ca5628ebdbc44"})
+
+    w.client = _client(handler)
+    lines = run(w)
+    assert by_move(lines) == {"authorization": "pending", "capture": "pending"} or \
+        set(by_move(lines).values()) <= {"pending", "held"}
+
+
+def test_any_other_404_is_still_an_error(w):
+    from studio.paypal.agent_tools import ToolRefused
+    captured(w.conn, "run_ui", "cre_1", ts=NOW - 600)
+
+    def handler(request):
+        if request.url.path == "/v1/oauth2/token":
+            return _token(request)
+        return httpx.Response(404, json={"name": "RESOURCE_NOT_FOUND"})
+
+    w.client = _client(handler)
+    with pytest.raises(ToolRefused):
+        run(w)

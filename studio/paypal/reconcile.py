@@ -117,7 +117,9 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, receipt
     ref_ids: set[str] = set()  # paypal_reference_id of every listed transaction
     infos: dict[str, list[dict[str, Any]]] = {}
     if inside:
-        report.window_start = max(start, min(inside) - 3600)
+        # Transaction Search is refreshed hours late: a start after its last refresh is a
+        # 404 for the whole search, so the window always reaches back past the lag
+        report.window_start = max(start, min(min(inside) - 3600, now - RECON_LAG_S - 3600))
         chain = tools_chain(account_id)
         record: list[dict[str, Any]] = []  # every page's call: one receipt for the run
         read = False

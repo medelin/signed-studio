@@ -305,6 +305,11 @@ class _Adapter:
         try:
             reply = self.client.get(target)
         except PayPalError as exc:
+            if path == TRANSACTIONS_PATH and exc.status == 404 and exc.name == "INVALID_REQUEST":
+                # "Data for the given start date is not available": nothing listed yet
+                empty = {"transaction_details": [], "page": 1, "total_items": 0,
+                         "total_pages": 0}
+                return json.dumps(empty) if payload is not None else empty
             self.error = self.error or ToolRefused("paypal_error", str(exc))
             raise self.error from None
         return json.dumps(reply.json) if payload is not None else reply.json
