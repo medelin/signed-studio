@@ -41,6 +41,12 @@ studio = ["ui/templates/*.html", "ui/static/*", "agents/prompts/*.md", "agents/*
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# the vendored PayPal toolkit (kept byte for byte, see its NOTICE.md) still calls
+# datetime.utcnow() and pydantic's .dict()
+filterwarnings = [
+    "ignore:datetime.datetime.utcnow:DeprecationWarning:studio.vendor.paypal_agent_toolkit",
+    "ignore:The `dict` method is deprecated:DeprecationWarning:studio.vendor.paypal_agent_toolkit",
+]
 
 [tool.ruff]
 line-length = 100

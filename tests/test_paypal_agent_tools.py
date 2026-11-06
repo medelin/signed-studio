@@ -65,9 +65,19 @@ class Sandbox:
         if path.startswith("/v2/checkout/orders/"):
             return httpx.Response(200, json={
                 "id": path.rsplit("/", 1)[1], "status": "COMPLETED",
-                "payer": {"email_address": "buyer@example.com"},
-                "purchase_units": [{"payments": {"captures": [
-                    {"amount": {"currency_code": "EUR", "value": "10.00"}}]}}]})
+                "payer": {"email_address": "buyer@example.com"}, "intent": "AUTHORIZE",
+                "payment_source": {"paypal": {"phone_number": {"national_number": "0700"}}},
+                "links": [{"href": "https://api.sandbox.paypal.com/x"}],
+                "purchase_units": [{
+                    "reference_id": "default", "custom_id": "a" * 64,
+                    "payee": {"merchant_id": "MERCH123", "email_address": "m@example.com"},
+                    "shipping": {"name": {"full_name": "Ann Buyer"},
+                                 "phone_number": {"national_number": "0700123456"},
+                                 "address": {"address_line_1": "1 Main St"}},
+                    "payments": {"authorizations": [
+                        {"id": "7AU11111AB222222C", "status": "CREATED", "links": [1],
+                         "seller_protection": {"status": "ELIGIBLE"},
+                         "amount": {"currency_code": "EUR", "value": "10.00"}}]}}]})
         if path == "/v1/customer/disputes":
             return httpx.Response(200, json={"items": self.disputes})
         if path.startswith("/v1/customer/disputes/"):
@@ -196,7 +206,7 @@ def test_order_details_of_a_foreign_order_is_refused(w):
 
 def test_own_order_details_are_redacted(w):
     out = w.run("get_order_details", {"order_id": OWN_ORDER})
-    assert out["raw"]["id"] == OWN_ORDER
+    assert out["id"] == OWN_ORDER
     assert "buyer@example.com" not in json.dumps(out) + w.export()
     assert [r.details["path"] for r in w.receipts()] == [f"/v2/checkout/orders/{OWN_ORDER}"]
 
@@ -624,3 +634,63 @@ def test_same_answer_in_two_chains_hashes_differently(tmp_path):
         (r,) = world.ledger.receipts(chain)
         hashes.append(r.details["body_sha256"])
     assert hashes[0] != hashes[1]
+
+
+# -- final review fixes ---------------------------------------------------------------------
+
+
+def test_order_view_is_an_allowlist_without_payer_phone_or_payee(w):
+    out = w.run("get_order_details", {"order_id": OWN_ORDER})
+    assert out == {"id": OWN_ORDER, "status": "COMPLETED", "intent": "AUTHORIZE",
+                   "purchase_units": [{"reference_id": "default", "custom_id": "a" * 64,
+                                       "payments": {"authorizations": [{
+                                           "id": "7AU11111AB222222C", "status": "CREATED",
+                                           "amount": {"currency_code": "EUR",
+                                                      "value": "10.00"}}]}}]}
+    blob = json.dumps(out) + w.export()
+    for secret in ("0700123456", "national_number", "MERCH123", "Ann Buyer", "1 Main St",
+                   "m@example.com", "api.sandbox.paypal.com", "seller_protection"):
+        assert secret not in blob
+
+
+def test_order_answer_has_no_message_and_never_claims_captured(w):
+    out = w.run("get_order_details", {"order_id": OWN_ORDER})
+    assert "message" not in out and "raw" not in out and "amount" not in out
+    assert "captured" not in json.dumps(out)
+    assert "captures" not in json.dumps(out)  # an AUTHORIZE order with only an authorization
+
+
+def test_drop_keys_cover_phone_and_name_parts():
+    out = agent_tools.redact({"phone_number": {"national_number": "1"}, "phone_type": "M",
+                              "email": "x", "full_name": "A", "given_name": "A",
+                              "surname": "B", "tax_info": {"tax_id": "1"}, "ok": 1})
+    assert out == {"ok": 1}
+
+
+def test_list_transactions_without_dates_defaults_to_the_last_31_days(w):
+    w.run("list_transactions", {})
+    (req,) = w.sandbox.calls("/v1/reporting/transactions")
+    q = req.url.params
+    assert q["start_date"].endswith("Z") and q["end_date"].endswith("Z")
+    from datetime import datetime
+    start = datetime.strptime(q["start_date"], "%Y-%m-%dT%H:%M:%SZ")
+    end = datetime.strptime(q["end_date"], "%Y-%m-%dT%H:%M:%SZ")
+    assert 30 <= (end - start).days <= 31
+
+
+def test_explicit_dates_are_kept(w):
+    w.run("list_transactions", {"start_date": "2026-01-01T00:00:00Z",
+                                "end_date": "2026-01-02T00:00:00Z"})
+    (req,) = w.sandbox.calls("/v1/reporting/transactions")
+    assert req.url.params["start_date"] == "2026-01-01T00:00:00Z"
+
+
+def test_receipt_key_refuses_a_loose_existing_file(tmp_path):
+    import os
+    receipt_key(tmp_path)
+    path = tmp_path / "receipt-hmac.key"
+    os.chmod(path, 0o644)
+    with pytest.raises(RuntimeError, match="permissions"):
+        receipt_key(tmp_path)
+    os.chmod(path, 0o600)
+    assert len(receipt_key(tmp_path)) == 32

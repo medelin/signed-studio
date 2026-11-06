@@ -889,8 +889,9 @@ OPS: dict[str, Op] = {o.name: o for o in (
                ("comment_id",)), draft_reply),
     Op("paypal_transactions", "Your PayPal authorizations and captures checked against "
        "PayPal's own transaction list (sandbox): per line matched, pending (PayPal lists "
-       "transactions up to 3 hours late), missing or amount_mismatch. Only your own money; "
-       "no payer data. " + CANNOT, "read", _schema(), paypal_transactions),
+       "transactions up to 3 hours late), held (an authorization nothing was captured "
+       "from), missing, amount_mismatch or unknown (older than the searched window). Only "
+       "your own money; no payer data. " + CANNOT, "read", _schema(), paypal_transactions),
     Op("paypal_tool", "Read-only PayPal Agent Toolkit tools on your own sandbox money, "
        "answered without payer data: list_transactions, get_order_details, list_disputes, "
        "get_dispute. It cannot move money; refunds go through propose_refund and a human's "

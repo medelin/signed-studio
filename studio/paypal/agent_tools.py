@@ -26,6 +26,7 @@ The receipts go in the chain ``chain_id`` the caller names (see ``tools_chain``)
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import re
 from dataclasses import dataclass
@@ -67,7 +68,10 @@ DROP_KEYS = frozenset({"payer_info", "shipping_info", "payer", "payment_source",
                        "seller", "email_address", "phone", "name", "address",
                        # free text a payer or an agent typed
                        "transaction_subject", "transaction_note", "messages", "note", "notes",
-                       "reason", "buyer_comments", "memo"})
+                       "reason", "buyer_comments", "memo",
+                       # phone and name parts, e-mail, tax data (defense in depth)
+                       "phone_number", "national_number", "phone_type", "email", "full_name",
+                       "given_name", "surname", "tax_info"})
 _EMAIL = re.compile(r"[^\s@<>\"']+@[^\s@<>\"']+\.[^\s@<>\"']+")
 
 
@@ -184,6 +188,47 @@ def _own_transaction(info: dict[str, Any], refs: AccountRefs) -> bool:
             or info.get("paypal_reference_id") in refs.paypal_ids)
 
 
+def _money(obj: Any) -> dict[str, Any] | None:
+    if not isinstance(obj, dict):
+        return None
+    return {k: obj[k] for k in ("currency_code", "value")
+            if isinstance(obj.get(k), str)}
+
+
+def _payment_view(items: Any) -> list[dict[str, Any]]:
+    out = []
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        row = {k: it[k] for k in ("id", "status") if isinstance(it.get(k), str)}
+        amount = _money(it.get("amount"))
+        if amount is not None:
+            row["amount"] = amount
+        out.append(row)
+    return out
+
+
+def order_view(order: dict[str, Any]) -> dict[str, Any]:
+    """An Orders v2 answer reduced to an allowlist: ids, status, intent and, per purchase
+    unit, ``reference_id``, ``custom_id`` and the authorizations / captures / refunds as
+    ``{id, status, amount}``. No payer, shipping, payee, payment source or links."""
+    out: dict[str, Any] = {k: order[k] for k in ("id", "status", "intent")
+                           if isinstance(order.get(k), str)}
+    units = []
+    for unit in order.get("purchase_units") or []:
+        if not isinstance(unit, dict):
+            continue
+        row = {k: unit[k] for k in ("reference_id", "custom_id")
+               if isinstance(unit.get(k), str)}
+        payments = unit.get("payments") if isinstance(unit.get("payments"), dict) else {}
+        row["payments"] = {k: _payment_view(payments.get(k))
+                           for k in ("authorizations", "captures", "refunds")
+                           if payments.get(k)}
+        units.append(row)
+    out["purchase_units"] = units
+    return out
+
+
 def _disputed_ids(dispute: Any) -> list[str]:
     items = dispute.get("disputed_transactions") if isinstance(dispute, dict) else None
     return [t["seller_transaction_id"] for t in items or []
@@ -214,7 +259,9 @@ def only_own(name: str, answer: dict[str, Any], refs: AccountRefs, *,
         raw = answer.get("raw")
         if not isinstance(raw, dict) or raw.get("id") not in refs.paypal_ids:
             raise ToolRefused("not_allowed", "not an order of this account")
-        return answer
+        # the vendored answer's ``message`` ("has been successfully captured") is wrong for
+        # an AUTHORIZE order and ``raw`` is PayPal's full body: only the allowlist leaves
+        return order_view(raw)
     if name == "get_dispute":
         if not any(i in refs.paypal_ids for i in _disputed_ids(answer)):
             raise ToolRefused("not_allowed", "not a dispute about this account's money")
@@ -315,6 +362,14 @@ def run_read_tool(*, client: PayPalClient, ledger: Ledger, conn: Any, receipt_ke
             raise ToolRefused("invalid_arguments", "unknown dispute_state")
         params = {k: params[k] for k in DISPUTE_FILTERS if params.get(k) is not None}
         params["page_size"] = DISPUTES_PAGE_SIZE
+    if name == "list_transactions" and isinstance(params, dict) \
+            and not params.get("transaction_id"):
+        # the vendored model's defaults are naive local-less timestamps without ``Z``
+        now = dt.datetime.now(dt.UTC)
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        params = {**params}
+        params.setdefault("end_date", now.strftime(fmt))
+        params.setdefault("start_date", (now - dt.timedelta(days=31)).strftime(fmt))
     record: list[dict[str, Any]] = []
     out: dict[str, Any] | None = None
     try:

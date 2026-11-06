@@ -124,6 +124,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         account_id = account_of(sid)
         recon = None
         if check:
+            if settings.read_only:
+                return JSONResponse({"error": "read_only"}, 503)
             if getattr(app.state, "funder", None) is None:
                 return JSONResponse({"error": "paypal_unavailable"}, 503)
             try:

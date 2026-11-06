@@ -271,3 +271,29 @@ def test_reconcile_receipt_hides_other_accounts_data(w):
     path = w.tmp / "receipts.jsonl"
     path.write_text(w.export())
     assert verify(path, w.ledger.public_key).ok
+
+
+def test_refund_listed_with_a_negative_amount_is_matched(w):
+    f = captured(w.conn, "run_ui", "cre_1")
+    funding.record_move(w.conn, f, "refund", paypal_id="4RF11111AB222222C", amount_minor=1250,
+                        now=NOW - 5 * 3600)
+    w.sandbox.transactions = [listed(CAP), listed("4RF11111AB222222C", value="-12.50", ref=CAP)]
+    assert by_move(run(w))["refund"] == "matched"
+    w.sandbox.transactions = [listed(CAP), listed("4RF11111AB222222C", value="-13.50", ref=CAP)]
+    assert by_move(run(w))["refund"] == "amount_mismatch"
+
+
+def test_a_negative_capture_is_still_a_mismatch(w):
+    captured(w.conn, "run_ui", "cre_1")
+    w.sandbox.transactions = [listed(CAP, value="-220.50")]
+    assert by_move(run(w))["capture"] == "amount_mismatch"
+
+
+def test_pending_capture_at_paypal_is_pending_never_missing(w):
+    q = funding.quote("EUR", 21000, 1, Decimal(5))
+    ts = NOW - 10 * 3600
+    f = captured(w.conn, "run_ui", "cre_1", ts=ts)
+    w.conn.execute("UPDATE funding_moves SET status = 'PENDING' WHERE move = 'capture'")
+    w.sandbox.transactions = []  # Transaction Search lists S(uccess) only by default
+    assert q.total_minor == 22050 and f
+    assert by_move(run(w))["capture"] == "pending"

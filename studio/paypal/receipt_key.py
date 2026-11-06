@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,9 @@ def receipt_key(data_dir: Path) -> bytes:
     if len(key) != KEY_BYTES:
         raise RuntimeError(f"{path} must hold exactly {KEY_BYTES} bytes (found {len(key)}): "
                            "remove it only if no receipt hash needs to stay comparable")
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode & 0o077:
+        raise RuntimeError(f"{path}: permissions {oct(mode)} too open for the receipt key (600)")
     return key
 
 

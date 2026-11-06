@@ -84,8 +84,11 @@ def _same_amount(move: dict[str, Any], info: dict[str, Any]) -> bool:
     amount = info.get("transaction_amount")
     if not isinstance(amount, dict):
         return False
+    value = amount.get("value")
+    if move["move"] == "refund" and isinstance(value, str):
+        value = value.lstrip("-")  # Transaction Search lists a refund as "-12.50"
     try:
-        minor = funding.parse_amount(amount.get("value"), str(amount.get("currency_code")))
+        minor = funding.parse_amount(value, str(amount.get("currency_code")))
     except funding.FundingError:
         return False
     return minor == move["amount_minor"] and amount.get("currency_code") == move["currency"]
@@ -155,7 +158,9 @@ def reconcile_report(*, conn: Any, client: PayPalClient, ledger: Ledger, receipt
             status[key] = "matched" if ok else "amount_mismatch"
             if m["move"] == "capture":
                 captured_ok.add(fid)
-        elif now - m["ts"] < RECON_LAG_S:
+        elif now - m["ts"] < RECON_LAG_S or str(m.get("status") or "").upper() == "PENDING":
+            # Transaction Search lists successful transactions only: a capture PayPal
+            # itself calls PENDING is not "missing" however old
             status[key] = "pending"
         else:
             status[key] = "unknown" if report.truncated else "missing"

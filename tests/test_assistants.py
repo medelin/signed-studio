@@ -631,3 +631,9 @@ def test_by_id_search_of_a_foreign_id_is_refused_for_assistants(tmp_path):
         {"name": "list_transactions", "params": {"transaction_id": "3C679366HH908993F",
                                                  "search_months": 1}})
     assert status == 200 and body["result"]["found"] is False
+
+
+def test_paypal_transactions_description_lists_all_six_statuses():
+    from studio.paypal.reconcile import STATUSES
+    desc = assistants.OPS["paypal_transactions"].description
+    assert all(st in desc for st in STATUSES)

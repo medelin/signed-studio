@@ -203,3 +203,15 @@ def test_a_failed_check_is_not_retried_within_the_cooldown(world, monkeypatch):
     assert c.get("/api/money?reconcile=1").status_code == 502
     assert c.get("/api/money?reconcile=1").status_code == 502
     assert len(calls) == 1
+
+
+def test_check_with_paypal_is_refused_in_read_only_mode(tmp_path, monkeypatch):
+    app = make_app(tmp_path, PAYPAL_ADAPTER="mock", STUDIO_READ_ONLY="1")
+    owner = account(app, "owner")
+    calls = []
+    monkeypatch.setattr(recon, "reconcile_report", lambda **kw: calls.append(1))
+    c = client(app)
+    r = c.get("/api/money?reconcile=1")
+    assert r.status_code == 503 and r.json() == {"error": "read_only"} and not calls
+    assert c.get("/api/money").status_code == 200  # reading the grid stays possible
+    assert owner
