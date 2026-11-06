@@ -17,3 +17,6 @@
   height: 28rem;
 }
 #money-advice { white-space: pre-wrap; }
+
+/* the money table needs the whole width of the page */
+main:has(#money-grid) { max-width: none; }

@@ -147,7 +147,7 @@ def check(t: Treasury, *, currency: str, total_minor: int, campaigns: list[str],
     return reasons
 
 
-def advise(client: MuseClient, *, run_id: str, currency: str, total_minor: int,
+def advise(client: MuseClient | None, *, run_id: str, currency: str, total_minor: int,
            campaigns: list[str], max_each_minor: int, statement: Statement | None,
            fee_pct: Decimal) -> Advice:
     """One strict-JSON call (no tools), then code's checks. A model error or an answer
@@ -158,6 +158,9 @@ def advise(client: MuseClient, *, run_id: str, currency: str, total_minor: int,
     content = json.dumps(facts(currency=currency, total_minor=total_minor,
                                campaigns=campaigns, max_each_minor=max_each_minor,
                                statement=statement, fee_pct=fee_pct), sort_keys=True)
+    if client is None:  # no model configured: code's answer, said so
+        fallback.refused = ["model_unavailable"]
+        return fallback
     try:
         result = client.respond(
             MODEL,

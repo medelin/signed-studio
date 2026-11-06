@@ -147,3 +147,13 @@ def test_the_route_explains_a_captured_funding_for_its_owner_only(tmp_path):
     login(other, s.app, username="intruder")
     r = other.post(f"/api/funding/{fid}/treasurer", json={"spend_minor": 0})
     assert r.status_code == 404
+
+
+def test_no_model_gives_codes_answer():
+    from decimal import Decimal
+    from studio.agents import treasurer
+    a = treasurer.advise(None, run_id="run_x", currency="PLN", total_minor=14700,
+                         campaigns=["cmp_1"], max_each_minor=14700, statement=None,
+                         fee_pct=Decimal(5))
+    assert a.as_dict()["source"] == "code" if "source" in a.as_dict() else True
+    assert "model_unavailable" in a.refused

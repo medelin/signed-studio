@@ -78,7 +78,9 @@
         valueFormatter: (p) => (p.value ? label(recons)(p) : "—") },
       { headerName: "", width: 110, sortable: false, filter: false, cellRenderer: explain },
     ],
-    defaultColDef: { sortable: true, filter: true, resizable: true },
+    // AG Grid's icon font is not vendored (CSP: 'self' only): plain arrows, no header menus
+    defaultColDef: { sortable: true, filter: false, resizable: true, suppressHeaderMenuButton: true },
+    icons: { sortAscending: "↑", sortDescending: "↓", sortUnSort: "" },
     autoSizeStrategy: { type: "fitGridWidth", defaultMinWidth: 80 },
     rowData: [],
     getRowId: (p) => p.data.funding_id,

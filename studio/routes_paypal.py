@@ -302,7 +302,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
                     funding.MAX_TOTAL_MINOR:
                 return JSONResponse({"error": "amount"}, 400)
         statement = funder.money.statement(f.id, spend) if f.captured_minor else None
-        advice = treasurer.advise(app.state.muse, run_id=f.run_id, currency=f.currency,
+        clients = getattr(app.state, "clients", None)
+        try:  # the hosted model (the treasurer sees no customer text), made on demand
+            muse = app.state.muse if app.state.muse is not None else (
+                clients()[0] if clients else None)
+        except Exception:  # noqa: BLE001 - no model: code's split and explanation
+            muse = None
+        advice = treasurer.advise(muse, run_id=f.run_id, currency=f.currency,
                                   total_minor=total, campaigns=list(items),
                                   max_each_minor=total, statement=statement,
                                   fee_pct=f.fee_pct)
