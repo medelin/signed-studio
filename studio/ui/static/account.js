@@ -30,12 +30,18 @@
   function fromPage() {
     const id = decodeURIComponent(location.hash.slice(1));
     if (groupOf.has(id)) return groupOf.get(id);
+    // a part inside a section (/account#mandates after PayPal, an assistant's manage_url)
+    const el = id ? document.getElementById(id) : null;
+    const host = el ? el.closest("section.account-part[id]") : null;
+    if (host && groupOf.has(host.id)) return groupOf.get(host.id);
     const failed = sections.find((s) => s.querySelector(".status.error"));
     return failed ? groupOf.get(failed.id) : tabs[0].dataset.group;
   }
 
   window.addEventListener("hashchange", () => show(fromPage()));
   show(fromPage());
+  const target = location.hash.length > 1 ? document.getElementById(decodeURIComponent(location.hash.slice(1))) : null;
+  if (target && !groupOf.has(target.id)) target.scrollIntoView({ block: "start" });
   if (waCode) waCode.scrollIntoView({ block: "center" });
 })();
 
