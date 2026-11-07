@@ -260,8 +260,11 @@ class Vault:
                 cur = None
             else:
                 if held is not None:
-                    self.conn.execute("UPDATE paypal_vault SET token_id = NULL, status = 'deleted', "
-                                      "updated_ts = ? WHERE id = ?", (now, held[0]))
+                    self.conn.execute("UPDATE paypal_vault SET token_id = NULL, "
+                                      "status = 'deleted', updated_ts = ? WHERE id = ?",
+                                      (now, held[0]))
+                    # a queued DELETE of that token would now destroy the new save's token
+                    self.conn.execute("DELETE FROM vault_deletions WHERE token_id = ?", (token,))
                 cur = self.conn.execute(
                     "UPDATE paypal_vault SET token_id = ?, token_sha256 = ?, status = 'active', "
                     "updated_ts = ? WHERE id = ? AND status = 'setup'",
@@ -271,8 +274,8 @@ class Vault:
                           status="ACTIVE", vault_sha256=digest_token, body_sha256=digest)
             raise VaultError("this PayPal is already saved on another account", "saved_elsewhere")
         if held is not None:
-            self._receipt(held[0], "paypal.vault_replaced", ok=True, status="REPLACED",
-                          vault_sha256=digest_token, replaced_by=ref)
+            self._receipt(held[0], "paypal.vault_replaced", ok=True,
+                          status="REPLACED", vault_sha256=digest_token, replaced_by=ref)
         if cur.rowcount != 1:
             raise VaultError("this saved PayPal changed meanwhile", "conflict")
         self._receipt(ref, "paypal.vault_save", ok=True, status="ACTIVE",
@@ -329,11 +332,20 @@ class Vault:
             "JOIN paypal_vault v ON v.id = d.vault_ref WHERE d.next_ts <= ? "
             "ORDER BY d.next_ts, d.vault_ref LIMIT ?", (t, limit)).fetchall()
         for ref, token_id, attempts, digest_token in rows:
+            # the same PayPal saved again gives PayPal's same token id: a live row holding
+            # it means the queued DELETE is stale and must not run
+            live = self.conn.execute(
+                "SELECT 1 FROM paypal_vault WHERE token_id = ? AND status IN ('active', 'setup')",
+                (token_id,)).fetchone()
+            if live is not None:
+                with transaction(self.conn):
+                    self.conn.execute("DELETE FROM vault_deletions WHERE vault_ref = ?", (ref,))
+                continue
             try:
                 digest = delete_payment_token(self.client, str(token_id))
             except PayPalError as exc:
                 if exc.status != 404:
-                    delay = min(RETRY_FIRST_S * 2 ** int(attempts), RETRY_MAX_S)
+                    delay = min(RETRY_FIRST_S * 2 ** min(int(attempts), 8), RETRY_MAX_S)
                     with transaction(self.conn):
                         self.conn.execute(
                             "UPDATE vault_deletions SET attempts = attempts + 1, next_ts = ?, "

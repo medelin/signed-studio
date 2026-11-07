@@ -763,3 +763,39 @@ def test_studio_vault_retry_prints_the_count(tmp_path, capsys):
     conn = db.connect(data / "studio.db")
     assert conn.execute("SELECT COUNT(*) FROM vault_deletions").fetchone()[0] == 0
     assert conn.execute("SELECT token_id FROM paypal_vault").fetchone()[0] is None
+
+
+def test_a_queued_deletion_never_destroys_a_re_saved_token(tmp_path):
+    """PayPal's DELETE failed and the token is queued; the same payer saves PayPal again
+    (PayPal answers the same token id): the queue entry is dropped, never retried."""
+    a = "acct_0123456789abcdef"
+    v, fake = _vault(tmp_path)
+    first = v.finish(a, _save(v, fake, a))
+    token = v.conn.execute("SELECT token_id FROM paypal_vault WHERE id = ?",
+                           (first.id,)).fetchone()[0]
+    fake.fail_next(400)  # a 5xx would be retried by the client; 400 is final
+    v.delete(a, first.id)
+    assert v.conn.execute("SELECT count(*) FROM vault_deletions").fetchone()[0] == 1
+    fake.reuse_vault_id = token
+    second = v.finish(a, _save(v, fake, a))
+    assert second.status == "active"
+    assert v.conn.execute("SELECT count(*) FROM vault_deletions").fetchone()[0] == 0
+    assert v.retry_deletions(now=v.clock() + 7200) == 0
+    assert v.active(a, second.token_sha256) is not None
+    assert fake.vault_tokens[token] == "ACTIVE"
+
+
+def test_a_stale_queue_row_for_a_live_token_is_dropped_without_a_paypal_call(tmp_path):
+    a = "acct_0123456789abcdef"
+    v, fake = _vault(tmp_path)
+    saved = v.finish(a, _save(v, fake, a))
+    token = v.conn.execute("SELECT token_id FROM paypal_vault WHERE id = ?",
+                           (saved.id,)).fetchone()[0]
+    v.conn.execute("INSERT INTO vault_deletions (vault_ref, token_id, attempts, next_ts, "
+                   "last_error, created_ts) VALUES (?, ?, 1, 0, 'x', 0)", (saved.id, token))
+    v.conn.commit()
+    deletes_before = len([c for c in fake.calls if c[0] == "DELETE"])
+    assert v.retry_deletions(now=10.0) == 1
+    assert v.conn.execute("SELECT count(*) FROM vault_deletions").fetchone()[0] == 0
+    assert len([c for c in fake.calls if c[0] == "DELETE"]) == deletes_before
+    assert fake.vault_tokens[token] == "ACTIVE"
