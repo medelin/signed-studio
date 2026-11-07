@@ -158,6 +158,21 @@ def run_paypal(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_vault(args: argparse.Namespace) -> int:
+    """``studio vault retry``: retry the PayPal DELETE of saved-PayPal tokens that failed."""
+    from studio import db
+    from studio.paypal import hooks
+
+    settings, conn, ledger, _ = _studio(args.env_file)
+    db.init(conn)
+    funder = hooks.make(settings.paypal, conn, ledger)
+    if funder is None:
+        print("PayPal is off (PAYPAL_ADAPTER unset)")
+        return 0
+    print(f"retried {funder.vault.retry_deletions()}")
+    return 0
+
+
 def run_verify(args: argparse.Namespace) -> int:
     """Verify an export with the published ledger key, latest seq and approver keys."""
     min_seq = args.min_seq
@@ -286,6 +301,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_ins = sub.add_parser("insights-pull", help="objective-aware insights snapshot of every "
                            "campaign and fresh recommendations (read-only on Meta)")
     p_ins.add_argument("--env-file", type=Path, default=Path(".env"))
+    p_vault = sub.add_parser("vault", help="saved PayPal jobs")
+    vault_sub = p_vault.add_subparsers(dest="vault_cmd", required=True)
+    vault_sub.add_parser("retry", help="retry failed PayPal token deletions (also hourly "
+                         "in the sandbox)").add_argument("--env-file", type=Path,
+                                                         default=Path(".env"))
     p_pp = sub.add_parser("paypal", help="PayPal (sandbox) jobs")
     pp_sub = p_pp.add_subparsers(dest="paypal_cmd", required=True)
     p_void = pp_sub.add_parser("void-lapsed", help="void authorizations held past the "
@@ -318,6 +338,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return leads_poll(args.env_file)
         if args.cmd == "insights-pull":
             return insights_pull(args.env_file)
+        if args.cmd == "vault":
+            return run_vault(args)
         if args.cmd == "paypal":
             return run_paypal(args)
         if args.cmd == "mcp":

@@ -197,7 +197,9 @@ class Resetter:
     """Daemon thread calling ``maybe_reset`` every ``TICK_S``; errors are logged, retried."""
 
     def __init__(self, conn: Any, config: SandboxConfig,
-                 last_write: Callable[[], float | None]) -> None:
+                 last_write: Callable[[], float | None],
+                 before: Callable[[], Any] | None = None) -> None:
+        self._before = before  # e.g. the vault's deletion retry; its failure never blocks the reset
         self._conn = conn
         self._config = config
         self._last_write = last_write
@@ -211,6 +213,11 @@ class Resetter:
         self._stop.set()
 
     def tick(self) -> str:
+        if self._before is not None:
+            try:
+                self._before()
+            except Exception:  # noqa: BLE001
+                LOG.exception("sandbox: vault deletion retry failed")
         return maybe_reset(self._conn, enabled=self._config.enabled,
                            interval_s=self._config.reset_interval_s,
                            last_write=self._last_write())
@@ -335,7 +342,9 @@ def install(app: Any, settings: Settings, conn: Any,
     def last_write() -> float | None:
         return max((g.last_write for g in guards if g.last_write is not None), default=None)
 
-    resetter = Resetter(conn, cfg, last_write)
+    funder = getattr(app.state, "funder", None)
+    resetter = Resetter(conn, cfg, last_write,
+                        before=funder.vault.retry_deletions if funder is not None else None)
     app.state.sandbox_resetter = resetter
     if cfg.reset_thread:
         resetter.start()
