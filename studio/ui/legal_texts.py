@@ -18,16 +18,20 @@ from typing import Final
 from markupsafe import Markup
 
 CONTACT: Final = "muse@udun.eu"
-UPDATED: Final = "2026-11-03"
+UPDATED: Final = "2026-11-07"
 
 # page -> lang -> (title, [(heading, [paragraph, …]), …])
 PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
     "privacy": {
         "en": ("Privacy", [
             ("Who runs this site", [
-                "Muse Studio Lite is an open-source (Apache-2.0) project. This copy at "
-                "muse.udun.eu is a sandbox for the Meta hackathon; it is hosted in Finland "
-                "and will be deleted after 16 November 2026.",
+                "Signed Studio (Muse Studio Lite) is an open-source (Apache-2.0) project. "
+                "This copy at pay.udun.eu is a sandbox: it runs against PayPal's sandbox, "
+                "moves no real money, and may be reset or deleted at any time. It is hosted "
+                "in Finland.",
+                "Every signed-in account works in the same studio workspace: briefs, "
+                "fundings and receipts created in the web interface are visible to all "
+                "signed-in accounts. Do not enter anything you would not show them.",
                 f"Contact for anything about your data: {CONTACT}."]),
             ("What we store", [
                 "Accounts: user name, display name, optional e-mail address, a password hash "
@@ -35,11 +39,27 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
                 "them on, and your sessions (time and a short browser label such as "
                 "\"Firefox · Linux\"; no IP address).",
                 "Your work: briefs, generated texts and images, approvals you sign and the "
-                "receipts log that records each step.",
+                "receipts log that records each step. The receipts are hash-chained: each "
+                "one commits to the one before it.",
+                "PayPal sandbox: the reference of each saved PayPal (vault reference) and a "
+                "SHA-256 digest of PayPal's vault id with its status and dates; PayPal's own "
+                "vault id and setup id are kept only to charge or delete the saved PayPal "
+                "and are never shown, exported or written into a receipt. For each funding: "
+                "the amounts and PayPal's order, authorization, capture and refund ids. For "
+                "each mandate you sign: its limits and the charges made under it.",
+                "PayPal webhooks: when PayPal calls us about a payment, we keep the "
+                "signed message exactly as PayPal sent it, with its signature headers. "
+                "These messages can hold payer data that PayPal includes (for example the "
+                "payer's name, e-mail address and country in the sandbox). They are "
+                "readable only by the studio's operator.",
                 "Meta: identifiers of the campaigns, ad sets, ads and lead forms created from "
                 "your signed approvals, aggregated ad results, and the leads and comments "
                 "those ads receive, so that you can answer them."]),
             ("What we send to others", [
+                "Payments: PayPal (Europe) S.à r.l. et Cie, S.C.A. processes the sandbox "
+                "payments (order, authorization, capture, refund and the saved PayPal). "
+                "What you enter in PayPal's own windows goes to PayPal, not to us. PayPal's "
+                "privacy statement applies to that data.",
                 "Brief text and generated content are sent to the Meta Model API (Muse models) "
                 "and, for a second opinion, to an open-weights model on Baseten, only to "
                 "produce the campaign you asked for.",
@@ -49,20 +69,42 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
                 "account."]),
             ("Cookies and tracking", [
                 "Only the cookies the site needs: the session, the CSRF token and your "
-                "language and theme. No analytics, no advertising pixels, no third-party "
-                "scripts."]),
+                "language and theme. No analytics and no advertising pixels.",
+                "One third-party script: on the approval page, PayPal's JavaScript SDK is "
+                "loaded from paypal.com so that you can approve the payment. PayPal sees "
+                "your browser's request and may set its own cookies there. Nothing else "
+                "on the site loads third-party scripts."]),
             ("How long", [
-                "Until you delete your account, and in any case until this sandbox is "
-                "deleted after 16 November 2026."]),
+                "Accounts, sessions and profile data: until you delete your account. "
+                "Receipts and signed approvals: kept, because they are the audit trail "
+                "(see below).",
+                "Saved PayPal records, mandates, the signed webhook messages and the "
+                "receipts: for the life of the sandbox database. The hourly sandbox reset "
+                "clears the demo data (briefs, generated content, fundings and their "
+                "payment steps); it does not clear receipts, mandates, saved PayPal records "
+                "or webhook messages. The whole database is deleted when the sandbox is."]),
             ("Your rights", [
-                "You can export your data and delete your account yourself on the Account "
-                f"page, or write to {CONTACT}. See the data deletion page for details."]),
+                "You can export your data (including your mandates, saved PayPal references, "
+                "fundings and charges; never PayPal's own token ids) and delete your account "
+                f"yourself on the Account page, or write to {CONTACT}.",
+                "Deleting your account revokes your mandates, marks your saved PayPal "
+                "records as deleted so nothing can be charged, and then asks PayPal to "
+                "delete the stored payment method (best effort: if PayPal does not answer, "
+                "it stays deleted on our side and the failure is receipted). It erases "
+                "your profile, e-mail address and sessions. The hash-chained receipts stay: "
+                "they are the audit trail and name you only by an opaque account id. "
+                "Signed webhook messages stay until the sandbox is deleted. See the data "
+                "deletion page for details."]),
         ]),
         "pl": ("Prywatność", [
             ("Kto prowadzi stronę", [
-                "Muse Studio Lite to projekt open source (Apache-2.0). Ta kopia pod adresem "
-                "muse.udun.eu to sandbox na hackathon Meta; działa na serwerze w Finlandii i "
-                "zostanie usunięta po 16 listopada 2026 r.",
+                "Signed Studio (Muse Studio Lite) to projekt open source (Apache-2.0). Ta "
+                "kopia pod adresem pay.udun.eu to sandbox: działa na sandboxie PayPal, nie "
+                "przenosi prawdziwych pieniędzy i może zostać zresetowana lub usunięta w "
+                "każdej chwili. Działa na serwerze w Finlandii.",
+                "Wszystkie zalogowane konta pracują w tej samej przestrzeni studia: briefy, "
+                "finansowania i pokwitowania utworzone w interfejsie www widzą wszystkie "
+                "zalogowane konta. Nie wpisuj niczego, czego nie pokazałbyś im.",
                 f"Kontakt we wszystkich sprawach Twoich danych: {CONTACT}."]),
             ("Co przechowujemy", [
                 "Konta: nazwa użytkownika, nazwa wyświetlana, opcjonalny adres e-mail, skrót "
@@ -70,11 +112,29 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
                 "jeśli je włączysz, oraz Twoje sesje (czas i krótka etykieta przeglądarki, np. "
                 "„Firefox · Linux”; bez adresu IP).",
                 "Twoja praca: briefy, wygenerowane teksty i grafiki, podpisane przez Ciebie "
-                "zatwierdzenia i dziennik pokwitowań zapisujący każdy krok.",
+                "zatwierdzenia i dziennik pokwitowań zapisujący każdy krok. Pokwitowania są "
+                "powiązane łańcuchem skrótów: każde zawiera skrót poprzedniego.",
+                "Sandbox PayPal: odwołanie do każdego zapisanego PayPal (vault reference) i "
+                "skrót SHA-256 identyfikatora z PayPal, ze statusem i datami; własny "
+                "identyfikator i identyfikator konfiguracji z PayPal trzymamy tylko po to, "
+                "by obciążyć lub usunąć zapisany PayPal, i nigdy ich nie pokazujemy, nie "
+                "eksportujemy ani nie wpisujemy do pokwitowań. Przy każdym finansowaniu: "
+                "kwoty oraz identyfikatory zamówienia, autoryzacji, pobrania i zwrotu z "
+                "PayPal. Przy każdym podpisanym mandacie: jego limity i obciążenia "
+                "wykonane na jego podstawie.",
+                "Webhooki PayPal: gdy PayPal powiadamia nas o płatności, zapisujemy "
+                "podpisaną wiadomość dokładnie w takiej postaci, jak ją wysłał, wraz z "
+                "nagłówkami podpisu. Takie wiadomości mogą zawierać dane płatnika, które "
+                "PayPal w nich umieszcza (w sandboxie np. imię i nazwisko, e-mail i kraj "
+                "płatnika). Czyta je tylko operator studia.",
                 "Meta: identyfikatory kampanii, zestawów reklam, reklam i formularzy kontaktowych "
                 "utworzonych z Twoich podpisanych zatwierdzeń, zbiorcze wyniki reklam oraz "
                 "leady i komentarze pod tymi reklamami, żebyś mógł na nie odpowiedzieć."]),
             ("Co przekazujemy innym", [
+                "Płatności: sandboxowe płatności (zamówienie, autoryzacja, pobranie, zwrot "
+                "i zapisany PayPal) obsługuje PayPal (Europe) S.à r.l. et Cie, S.C.A. To, "
+                "co wpisujesz w oknach PayPal, trafia do PayPal, nie do nas; do tych "
+                "danych stosuje się polityka prywatności PayPal.",
                 "Treść briefu i wygenerowane materiały trafiają do Meta Model API (modele Muse) "
                 "oraz, jako druga opinia, do modelu open-weights w Baseten, wyłącznie po to, "
                 "żeby przygotować zamówioną kampanię.",
@@ -84,13 +144,32 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
                 "koncie."]),
             ("Ciasteczka i śledzenie", [
                 "Tylko ciasteczka potrzebne do działania strony: sesja, token CSRF oraz język i "
-                "motyw. Bez analityki, bez pikseli reklamowych, bez skryptów firm trzecich."]),
+                "motyw. Bez analityki i bez pikseli reklamowych.",
+                "Jeden skrypt firmy trzeciej: na stronie zatwierdzenia ładujemy z paypal.com "
+                "PayPal JavaScript SDK, żebyś mógł zatwierdzić płatność. PayPal widzi "
+                "zapytanie Twojej przeglądarki i może tam ustawić własne ciasteczka. Nic "
+                "innego na stronie nie ładuje skryptów firm trzecich."]),
             ("Jak długo", [
-                "Do usunięcia konta, a najpóźniej do usunięcia tego sandboxa po 16 listopada "
-                "2026 r."]),
+                "Konta, sesje i dane profilu: do usunięcia konta. Pokwitowania i podpisane "
+                "zatwierdzenia zostają, bo są śladem audytowym (patrz niżej).",
+                "Zapisane rekordy PayPal, mandaty, podpisane wiadomości webhooków i "
+                "pokwitowania: przez cały czas życia bazy sandboxa. Cogodzinny reset "
+                "sandboxa czyści dane demonstracyjne (briefy, wygenerowane materiały, "
+                "finansowania i ich kroki płatnicze); nie czyści pokwitowań, mandatów, "
+                "zapisanych rekordów PayPal ani wiadomości webhooków. Cała baza znika "
+                "razem z sandboxem."]),
             ("Twoje prawa", [
-                "Dane wyeksportujesz i konto usuniesz sam na stronie Konto albo pisząc na "
-                f"{CONTACT}. Szczegóły na stronie o usuwaniu danych."]),
+                "Dane wyeksportujesz (także mandaty, odwołania do zapisanych PayPal, "
+                "finansowania i obciążenia; nigdy własnych identyfikatorów tokenów PayPal) "
+                f"i konto usuniesz sam na stronie Konto albo pisząc na {CONTACT}.",
+                "Usunięcie konta unieważnia Twoje mandaty, oznacza zapisane rekordy PayPal "
+                "jako usunięte (nic nie da się już obciążyć), a potem prosi PayPal o "
+                "usunięcie zapisanej metody płatności (w miarę możliwości: jeśli PayPal nie "
+                "odpowie, po naszej stronie pozostaje usunięta, a błąd trafia do "
+                "pokwitowania). Usuwa profil, adres e-mail i sesje. Pokwitowania powiązane "
+                "łańcuchem skrótów zostają: to ślad audytowy, który wskazuje Cię tylko "
+                "nieczytelnym identyfikatorem konta. Podpisane wiadomości webhooków zostają "
+                "do usunięcia sandboxa. Szczegóły na stronie o usuwaniu danych."]),
         ]),
     },
     "data-deletion": {
@@ -98,7 +177,10 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
             ("Delete it yourself", [
                 "Sign in, open Account and choose Delete account. Your profile, sessions, "
                 "two-step sign-in data and e-mail address are removed at once; the account "
-                "name is kept as a closed tombstone so it cannot be reused.",
+                "name is kept as a closed tombstone so it cannot be reused. In the same "
+                "step your mandates are revoked and your saved PayPal is marked deleted, "
+                "so nothing can be charged; then PayPal is asked to delete the stored "
+                "payment method (best effort, the outcome is receipted).",
                 "Before that you can download everything with Export on the same page."]),
             ("Ask us", [
                 f"Write to {CONTACT} from the address on your account, or with your user "
@@ -115,7 +197,11 @@ PAGES: Final[dict[str, dict[str, tuple[str, list[tuple[str, list[str]]]]]]] = {
             ("Usuń sam", [
                 "Zaloguj się, otwórz Konto i wybierz Usuń konto. Profil, sesje, dane "
                 "logowania dwuetapowego i adres e-mail znikają od razu; nazwa konta zostaje "
-                "jako zamknięty ślad, żeby nikt jej ponownie nie użył.",
+                "jako zamknięty ślad, żeby nikt jej ponownie nie użył. W tym samym kroku "
+                "Twoje mandaty zostają unieważnione, a zapisany PayPal oznaczony jako "
+                "usunięty, więc nic nie da się obciążyć; potem prosimy PayPal o usunięcie "
+                "zapisanej metody płatności (w miarę możliwości, wynik trafia do "
+                "pokwitowania).",
                 "Wcześniej możesz pobrać wszystko przyciskiem Eksport na tej samej stronie."]),
             ("Poproś nas", [
                 f"Napisz na {CONTACT} z adresu zapisanego w koncie albo podaj nazwę "

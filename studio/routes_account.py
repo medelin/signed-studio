@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs
@@ -137,6 +138,56 @@ def _fields(raw: bytes) -> dict[str, str] | None:
     except (ValueError, UnicodeDecodeError):
         return None
     return {k: v[0] for k, v in form.items()}
+
+
+def paypal_export(conn: Any, account_id: str) -> dict[str, list[dict[str, Any]]]:
+    """The PayPal edition's part of the account export: mandates, saved PayPal (reference,
+    SHA-256, status, dates: its columns are chosen here, so no vault token id or setup token
+    id is ever read), the fundings the account may see (as ``/money``) and the charges made
+    under its mandates. A list is left out when its table does not exist (PayPal off)."""
+    from studio import funding
+    from studio.paypal import agent_tools
+
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        out["mandates"] = [m.view() for m in mandates.of_account(conn, account_id)]
+    except sqlite3.OperationalError:
+        return out
+    with conn.lock:
+        try:
+            out["saved_paypal"] = [
+                {"vault_ref": r[0], "status": r[1], "token_sha256": r[2], "created_ts": r[3],
+                 "updated_ts": r[4]}
+                for r in conn.execute(
+                    "SELECT id, status, token_sha256, created_ts, updated_ts FROM paypal_vault "
+                    "WHERE account_id = ? ORDER BY created_ts, id", (account_id,))]
+        except sqlite3.OperationalError:
+            pass
+        try:
+            out["fundings"] = [
+                {"funding_id": f.id, "run_id": f.run_id, "item_id": f.item_id,
+                 "content_sha256": f.content_sha256, "currency": f.currency,
+                 "budget_minor": f.budget_minor, "fee_minor": f.fee_minor,
+                 "total_minor": f.total_minor, "state": f.state, "order_id": f.order_id,
+                 "authorization_id": f.authorization_id, "capture_id": f.capture_id,
+                 "authorized_minor": f.authorized_minor, "captured_minor": f.captured_minor,
+                 "refunded_minor": f.refunded_minor, "created_ts": f.created_ts,
+                 "updated_ts": f.updated_ts}
+                for f in (funding.get(conn, fid)
+                          for fid in agent_tools.owned_funding_ids(conn, account_id))]
+        except sqlite3.OperationalError:
+            pass
+        try:
+            keys = ("approval_id", "mandate_id", "period", "amount_minor", "currency",
+                    "vault_sha256", "status", "funding_id", "created_ts", "updated_ts")
+            out["mandate_charges"] = [
+                dict(zip(keys, r, strict=True)) for r in conn.execute(
+                    f"SELECT {', '.join(keys)} FROM mandate_charges WHERE mandate_id IN "  # noqa: S608
+                    "(SELECT id FROM mandates WHERE account_id = ?) "
+                    "ORDER BY created_ts, approval_id", (account_id,))]
+        except sqlite3.OperationalError:
+            pass
+    return out
 
 
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
@@ -276,7 +327,12 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
         if me is None:
             return JSONResponse({"error": "login_required"}, 401)
         sid, account = me
-        data = store.export(account.id, ledger.receipts(), sid)
+        money = paypal_export(conn, account.id)
+        data = store.export(account.id, ledger.receipts(), sid,
+                            mandates=money.get("mandates"),
+                            saved_paypal=money.get("saved_paypal"),
+                            fundings=money.get("fundings"),
+                            mandate_charges=money.get("mandate_charges"))
         app.state.notifier.security("export_ready", account)
         body = json.dumps(data, indent=1, ensure_ascii=False, sort_keys=True)
         return Response(body, media_type="application/json", headers={
