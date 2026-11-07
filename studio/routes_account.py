@@ -26,6 +26,7 @@ from fastapi.templating import Jinja2Templates
 
 from studio import accounts, auth, db, mandates, notify, prefs, whatsapp
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
+from studio.funding import display_amount
 from studio.meta import capi
 from studio.meta.adapter import AdapterError
 from studio.receipts import Ledger
@@ -143,6 +144,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
     from studio.app import COOKIE, LOGIN_BODY_TIMEOUT_S, _same_origin, client_ip
 
     store: Accounts = app.state.accounts
+    templates.env.filters["money"] = display_amount
     templates.env.globals["qr_svg"] = accounts.qr_svg
     templates.env.globals["format_secret"] = accounts.format_secret
 

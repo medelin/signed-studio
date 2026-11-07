@@ -41,6 +41,8 @@ studio = ["ui/templates/*.html", "ui/static/*", "agents/prompts/*.md", "agents/*
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not live'"
+markers = ["live: talks to the PayPal sandbox; needs RUN_PAYPAL_LIVE_TESTS=1 and the credentials file"]
 # the vendored PayPal toolkit (kept byte for byte, see its NOTICE.md) still calls
 # datetime.utcnow() and pydantic's .dict()
 filterwarnings = [
