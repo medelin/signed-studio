@@ -49,6 +49,7 @@ import sqlite3
 import time
 import zlib
 from collections.abc import Callable, Iterable, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,10 @@ from studio.funding import FundingError, parse_amount
 from studio.receipts import PAYPAL_WEBHOOK_KIND, Ledger, Receipt, sha256_hex
 
 CERT_HOSTS = frozenset({"api.paypal.com", "api.sandbox.paypal.com"})
+CERT_PATH = re.compile(r"^/v1/notifications/certs/.")  # PayPal's cert endpoint, nothing else
+CERT_FETCH_TIMEOUT_S = 5.0
+CERT_NEGATIVE_TTL_S = 60.0  # a cert URL that failed is not fetched again for this long
+CERT_NEGATIVE_MAX = 64
 MAX_SKEW_S = 300
 MAX_BODY = 256 * 1024
 AUTH_ALGO = "SHA256withRSA"
@@ -150,14 +155,23 @@ class Transmission:
             raise WebhookRefused("malformed transmission time", "headers") from None
 
 
+def _locked(conn: sqlite3.Connection) -> AbstractContextManager[Any]:
+    """The connection's shared lock: ``apply`` runs on worker threads now, and one SQLite
+    connection serves them all. Held around database work only, never around network I/O."""
+    lock = getattr(conn, "lock", None)
+    return lock if lock is not None else nullcontext()
+
+
 def cert_url_ok(url: str) -> bool:
-    """Only PayPal's own API hosts, over HTTPS, default port, no credentials."""
+    """Only PayPal's own API hosts, over HTTPS, default port, no credentials, and only
+    the certificate path (``/v1/notifications/certs/...``)."""
     try:
         parts = urlsplit(url)
     except ValueError:
         return False
     return (parts.scheme == "https" and parts.hostname in CERT_HOSTS and parts.port is None
-            and not parts.username and not parts.password and "@" not in parts.netloc)
+            and not parts.username and not parts.password and "@" not in parts.netloc
+            and CERT_PATH.match(parts.path) is not None)
 
 
 def message(t: Transmission, webhook_id: str, body: bytes) -> bytes:
@@ -254,7 +268,7 @@ def http_fetch(url: str) -> bytes:
 
     if not cert_url_ok(url):
         raise WebhookRefused("cert URL is not PayPal's", "cert_url")
-    with httpx.Client(timeout=10.0, follow_redirects=False) as c:
+    with httpx.Client(timeout=CERT_FETCH_TIMEOUT_S, follow_redirects=False) as c:
         r = c.get(url)
     if r.status_code != 200 or len(r.content) > 64 * 1024:
         raise WebhookRefused("could not fetch PayPal's certificate", "cert_fetch")
@@ -273,23 +287,34 @@ class Verifier:
         self.roots = roots if roots is not None else load_roots()
         self.intermediates = load_intermediates()
         self.clock = clock
+        self._failed: dict[str, float] = {}  # cert URL -> when it failed (negative cache)
 
     def cert(self, url: str) -> tuple[x509.Certificate, str]:
         if not cert_url_ok(url):
             raise WebhookRefused("cert URL is not PayPal's", "cert_url")
         now = self.clock()
-        row = self.conn.execute("SELECT pem, sha256 FROM paypal_certs WHERE url = ? AND "
-                                "not_after > ? ORDER BY fetched_ts DESC LIMIT 1",
-                                (url, now)).fetchone()
-        pem = row[0].encode() if row else self.fetch(url)
+        with _locked(self.conn):
+            row = self.conn.execute("SELECT pem, sha256 FROM paypal_certs WHERE url = ? AND "
+                                    "not_after > ? ORDER BY fetched_ts DESC LIMIT 1",
+                                    (url, now)).fetchone()
+        if row is None:
+            failed_at = self._failed.get(url)
+            if failed_at is not None and now - failed_at < CERT_NEGATIVE_TTL_S:
+                raise WebhookRefused("could not fetch PayPal's certificate", "cert_fetch")
         try:
-            chain = x509.load_pem_x509_certificates(pem)
-        except ValueError:
-            raise WebhookRefused("the certificate is not PEM", "cert") from None
-        leaf = check_chain(chain, self.roots, now, self.intermediates)
+            pem = row[0].encode() if row else self.fetch(url)
+            try:
+                chain = x509.load_pem_x509_certificates(pem)
+            except ValueError:
+                raise WebhookRefused("the certificate is not PEM", "cert") from None
+            leaf = check_chain(chain, self.roots, now, self.intermediates)
+        except WebhookRefused:
+            if row is None:
+                self._remember_failure(url, now)
+            raise
         digest = hashlib.sha256(leaf.public_bytes(Encoding.DER)).hexdigest()
         if row is None:
-            with funding.atomic(self.conn):
+            with _locked(self.conn), funding.atomic(self.conn):
                 self.conn.execute(
                     "INSERT OR IGNORE INTO paypal_certs (sha256, url, pem, not_after, "
                     "fetched_ts) VALUES (?, ?, ?, ?, ?)",
@@ -297,6 +322,13 @@ class Verifier:
         elif row[1] != digest:
             raise WebhookRefused("the pinned certificate changed", "cert_pin")
         return leaf, digest
+
+    def _remember_failure(self, url: str, now: float) -> None:
+        for old in [u for u, t in self._failed.items() if now - t >= CERT_NEGATIVE_TTL_S]:
+            del self._failed[old]
+        while len(self._failed) >= CERT_NEGATIVE_MAX:
+            del self._failed[next(iter(self._failed))]  # the oldest (insertion order)
+        self._failed[url] = now
 
     def verify(self, headers: Mapping[str, str], body: bytes) -> tuple[Transmission, str]:
         """``(transmission, cert_sha256)`` of a genuine, fresh PayPal transmission."""
@@ -440,8 +472,10 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
     if not (isinstance(eid, str) and _EVENT_ID.fullmatch(eid) and isinstance(etype, str)
             and re.fullmatch(r"[A-Z][A-Z0-9_.-]{2,80}", etype) and isinstance(resource, dict)):
         raise WebhookRefused("the event lacks an id, a type or a resource", "body")
-    if conn.execute("SELECT 1 FROM paypal_events WHERE transmission_id = ? AND "
-                    "body_sha256 = ?", (t.transmission_id, body_hash)).fetchone():
+    with _locked(conn):
+        seen = conn.execute("SELECT 1 FROM paypal_events WHERE transmission_id = ? AND "
+                            "body_sha256 = ?", (t.transmission_id, body_hash)).fetchone()
+    if seen:
         return Applied("duplicate", eid)  # this very delivery was recorded
     subject = _subject(etype, _ids(etype, resource))
     if subject is None:
@@ -469,7 +503,7 @@ def apply(conn: sqlite3.Connection, ledger: Ledger, verifier: Verifier,
     ids[subject[0]] = subject[1]
     kind = RESOURCE_KINDS[subject[0]]
     custom = _custom_id(api)
-    with funding.atomic(conn):
+    with _locked(conn), funding.atomic(conn):
         f = _find_funding(conn, ids)
         if f is None or (custom and custom != f.content_sha256):
             raise WebhookRefused("the resource is not one of the studio's fundings",

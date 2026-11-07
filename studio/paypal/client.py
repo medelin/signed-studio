@@ -181,8 +181,10 @@ class PayPalClient:
 
     # -- calls ---------------------------------------------------------------------------
 
-    def get(self, path: str, *, retries: int = RETRIES) -> Reply:
-        return self._call("GET", path, None, None, retries=retries)
+    def get(self, path: str, *, retries: int = RETRIES,
+            timeout: float | None = None) -> Reply:
+        """A GET; ``timeout`` (seconds) overrides the client's for this call only."""
+        return self._call("GET", path, None, None, retries=retries, timeout=timeout)
 
     def delete(self, path: str) -> Reply:
         """A DELETE (idempotent by nature: deleting a deleted vault token is a 404)."""
@@ -205,7 +207,7 @@ class PayPalClient:
 
     def _call(self, method: str, path: str, body: dict[str, Any] | None,
               rid: str | None, *, mock_response: str | None = None,
-              retries: int = RETRIES) -> Reply:
+              retries: int = RETRIES, timeout: float | None = None) -> Reply:
         content = None if body is None else json.dumps(body, separators=(",", ":")).encode()
         refreshed = False
         attempt = 0
@@ -233,7 +235,8 @@ class PayPalClient:
                 headers["PayPal-Mock-Response"] = json.dumps(
                     {"mock_application_codes": mock_response}, separators=(",", ":"))
             try:
-                resp = self._send(method, path, headers=headers, content=content)
+                resp = self._send(method, path, headers=headers, content=content,
+                                  timeout=timeout)
             except PayPalError as exc:
                 sent = sent or exc.sent
                 ambiguous = ambiguous or exc.unknown
@@ -264,9 +267,11 @@ class PayPalClient:
                          hashlib.sha256(resp.content).hexdigest())
 
     def _send(self, method: str, path: str, *, headers: Mapping[str, str],
-              content: bytes | None) -> httpx.Response:
+              content: bytes | None, timeout: float | None = None) -> httpx.Response:
+        extra = {} if timeout is None else {"timeout": timeout}
         try:
-            return self._http.request(method, path, headers=dict(headers), content=content)
+            return self._http.request(method, path, headers=dict(headers), content=content,
+                                      **extra)
         except httpx.TransportError as exc:
             sent = not isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout)
             raise PayPalError(0, "NETWORK_ERROR", transient=True,

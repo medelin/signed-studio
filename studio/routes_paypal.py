@@ -23,6 +23,7 @@ Registered only when ``PAYPAL_ADAPTER`` is set (``app.state.funder``):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -30,6 +31,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from studio import funding
 from studio.agents import treasurer
@@ -53,6 +55,8 @@ APPROVAL_ID = re.compile(r"[0-9a-f]{32}")
 FUNDING_ID = re.compile(r"fund_[0-9a-f]{16}")
 ITEM_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}")
 NO_STORE = {"Cache-Control": "no-store"}
+WEBHOOK_CONCURRENCY = 4  # verifications at once; more get 429 (PayPal redelivers)
+LOOKUP_TIMEOUT_S = 8.0  # the webhook's read of the resource it names
 
 
 def _days(payload: dict[str, Any], asked: Any) -> int:
@@ -159,28 +163,31 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             asked = (await request.json()).get("days")
         except (ValueError, AttributeError):
             asked = None
-        try:
-            pending, payload = pending_for(approval_id, guard)
-            ad_hash = payload_sha256(ad_payload(payload))
-            if ad_hash != pending.content_sha256:
-                raise FundingRefused("this approval already carries a funding", "funded")
-            for f in funding.of_item(conn, pending.item_id):  # one open order per ad
-                if f.state in ("created", "payer_approved") and f.content_sha256 == ad_hash \
-                        and f.order_id:
-                    return JSONResponse(view(f), headers=NO_STORE)
-            campaign = payload.get("campaign") or {}
-            step = funder.money.open(
-                run_id=pending.run_id, item_id=pending.item_id, content_sha256=ad_hash,
-                currency=str(campaign.get("currency", "")),
-                daily_budget_minor=int(campaign.get("daily_budget_minor", 0)),
-                days=_days(payload, asked), fee_pct=settings.paypal.fee_pct,
-                max_daily_minor=to_minor(settings.max_daily_budget,
-                                         str(campaign.get("currency", ""))))
-        except (FundingRefused, FundingError, PayPalError) as exc:
-            return refused(exc)
-        out = view(step.funding)
-        out["approve_url"] = step.result.approve_url if step.result else ""
-        return JSONResponse(out, 201, headers=NO_STORE)
+        def work() -> Response:  # PayPal call and SQLite: off the event loop
+            try:
+                pending, payload = pending_for(approval_id, guard)
+                ad_hash = payload_sha256(ad_payload(payload))
+                if ad_hash != pending.content_sha256:
+                    raise FundingRefused("this approval already carries a funding", "funded")
+                for f in funding.of_item(conn, pending.item_id):  # one open order per ad
+                    if f.state in ("created", "payer_approved") and f.content_sha256 == ad_hash \
+                            and f.order_id:
+                        return JSONResponse(view(f), headers=NO_STORE)
+                campaign = payload.get("campaign") or {}
+                step = funder.money.open(
+                    run_id=pending.run_id, item_id=pending.item_id, content_sha256=ad_hash,
+                    currency=str(campaign.get("currency", "")),
+                    daily_budget_minor=int(campaign.get("daily_budget_minor", 0)),
+                    days=_days(payload, asked), fee_pct=settings.paypal.fee_pct,
+                    max_daily_minor=to_minor(settings.max_daily_budget,
+                                             str(campaign.get("currency", ""))))
+            except (FundingRefused, FundingError, PayPalError) as exc:
+                return refused(exc)
+            out = view(step.funding)
+            out["approve_url"] = step.result.approve_url if step.result else ""
+            return JSONResponse(out, 201, headers=NO_STORE)
+
+        return await run_in_threadpool(work)
 
     def payer_approved(approval_id: str, guard: str, *, mock: bool) -> Response:
         try:
@@ -243,7 +250,7 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
         guard = write_guard(request)
         if isinstance(guard, JSONResponse):
             return guard
-        account = caller(guard)
+        account = await run_in_threadpool(caller, guard)
         if account is None or not account.sees_personal_data:
             return JSONResponse({"error": "not_found"}, 404)  # full accounts only
         if not FUNDING_ID.fullmatch(funding_id):
@@ -252,21 +259,25 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             amount = (await request.json()).get("amount_minor")
         except (ValueError, AttributeError):
             amount = None
-        if not isinstance(amount, int) or isinstance(amount, bool):
-            # the funding is looked up first, so a stranger's id is not_found, not 400
-            with conn.lock:
-                try:
-                    owned = owns_item(funding.get(conn, funding_id).item_id, account)
-                except FundingError:
-                    owned = False
-            return JSONResponse({"error": "refund_amount" if owned else "not_found"},
-                                400 if owned else 404)
-        try:
-            pending, payload = propose_refund(funding_id, amount, account)
-        except (FundingRefused, FundingError) as exc:
-            return refused(exc)
-        return JSONResponse({"approval_id": pending.id, "content": payload,
-                             "content_sha256": pending.content_sha256}, 201)
+
+        def work() -> Response:  # SQLite and the refund proposal: off the event loop
+            if not isinstance(amount, int) or isinstance(amount, bool):
+                # the funding is looked up first, so a stranger's id is not_found, not 400
+                with conn.lock:
+                    try:
+                        owned = owns_item(funding.get(conn, funding_id).item_id, account)
+                    except FundingError:
+                        owned = False
+                return JSONResponse({"error": "refund_amount" if owned else "not_found"},
+                                    400 if owned else 404)
+            try:
+                pending, payload = propose_refund(funding_id, amount, account)
+            except (FundingRefused, FundingError) as exc:
+                return refused(exc)
+            return JSONResponse({"approval_id": pending.id, "content": payload,
+                                 "content_sha256": pending.content_sha256}, 201)
+
+        return await run_in_threadpool(work)
 
     @app.post("/api/funding/{funding_id}/treasurer")
     async def treasurer_advice(funding_id: str, request: Request) -> Response:
@@ -276,7 +287,6 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
         guard = write_guard(request)
         if isinstance(guard, JSONResponse):
             return guard
-        account = caller(guard)
         if not FUNDING_ID.fullmatch(funding_id):
             return JSONResponse({"error": "not_found"}, 404)
         try:
@@ -284,42 +294,57 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
         except ValueError:
             body = {}
         body = body if isinstance(body, dict) else {}
-        spend, total = body.get("spend_minor", 0), body.get("split_total_minor")
-        items = body.get("campaigns")
-        with conn.lock:
-            try:
-                f = funding.get(conn, funding_id)
-            except FundingError:
-                return JSONResponse({"error": "not_found"}, 404)
-            items = items if isinstance(items, list) and items else [f.item_id]
-            if len(items) > treasurer.MAX_CAMPAIGNS or not all(
-                    isinstance(i, str) and ITEM_ID.fullmatch(i) and owns_item(i, account)
-                    for i in items + [f.item_id]):
-                return JSONResponse({"error": "not_found"}, 404)
-        total = f.budget_minor if total is None else total
-        for v in (spend, total):
-            if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= \
-                    funding.MAX_TOTAL_MINOR:
-                return JSONResponse({"error": "amount"}, 400)
-        statement = funder.money.statement(f.id, spend) if f.captured_minor else None
-        clients = getattr(app.state, "clients", None)
-        try:  # the hosted model (the treasurer sees no customer text), made on demand
-            muse = app.state.muse if app.state.muse is not None else (
-                clients()[0] if clients else None)
-        except Exception:  # noqa: BLE001 - no model: code's split and explanation
-            muse = None
-        advice = treasurer.advise(muse, run_id=f.run_id, currency=f.currency,
-                                  total_minor=total, campaigns=list(items),
-                                  max_each_minor=total, statement=statement,
-                                  fee_pct=f.fee_pct)
-        return JSONResponse({"funding_id": f.id, **advice.as_dict()}, headers=NO_STORE)
+
+        def work() -> Response:  # SQLite, the model call, the statement: off the event loop
+            account = caller(guard)
+            spend, total = body.get("spend_minor", 0), body.get("split_total_minor")
+            items = body.get("campaigns")
+            with conn.lock:
+                try:
+                    f = funding.get(conn, funding_id)
+                except FundingError:
+                    return JSONResponse({"error": "not_found"}, 404)
+                items = items if isinstance(items, list) and items else [f.item_id]
+                if len(items) > treasurer.MAX_CAMPAIGNS or not all(
+                        isinstance(i, str) and ITEM_ID.fullmatch(i) and owns_item(i, account)
+                        for i in items + [f.item_id]):
+                    return JSONResponse({"error": "not_found"}, 404)
+            total = f.budget_minor if total is None else total
+            for v in (spend, total):
+                if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= \
+                        funding.MAX_TOTAL_MINOR:
+                    return JSONResponse({"error": "amount"}, 400)
+            statement = funder.money.statement(f.id, spend) if f.captured_minor else None
+            clients = getattr(app.state, "clients", None)
+            try:  # the hosted model (the treasurer sees no customer text), made on demand
+                muse = app.state.muse if app.state.muse is not None else (
+                    clients()[0] if clients else None)
+            except Exception:  # noqa: BLE001 - no model: code's split and explanation
+                muse = None
+            advice = treasurer.advise(muse, run_id=f.run_id, currency=f.currency,
+                                      total_minor=total, campaigns=list(items),
+                                      max_each_minor=total, statement=statement,
+                                      fee_pct=f.fee_pct)
+            return JSONResponse({"funding_id": f.id, **advice.as_dict()}, headers=NO_STORE)
+
+        return await run_in_threadpool(work)
+
+    webhook_slots = asyncio.Semaphore(WEBHOOK_CONCURRENCY)
+
+    def webhook_lookup(path: str) -> dict[str, Any] | None:
+        """The resource read of a webhook: one fast read with its own 8-second timeout."""
+        return funder.money.client.get(path, retries=0, timeout=LOOKUP_TIMEOUT_S).json
 
     @app.post("/webhooks/paypal")
     async def paypal_webhook(request: Request) -> Response:
         body = await request.body()
+        if webhook_slots.locked():  # full: PayPal redelivers, the event loop stays free
+            return JSONResponse({"error": "busy"}, 429, headers={"Retry-After": "5"})
         try:
-            applied = webhooks.apply(conn, ledger, funder.verifier, request.headers, body,
-                                     lookup=funder.lookup)
+            async with webhook_slots:
+                applied = await run_in_threadpool(
+                    webhooks.apply, conn, ledger, funder.verifier, request.headers, body,
+                    lookup=webhook_lookup)
         except webhooks.WebhookRefused as exc:
             LOG.warning("PayPal webhook refused: %s", exc.code)
             # PayPal's API could not be read: nothing was stored, so PayPal's retry of
