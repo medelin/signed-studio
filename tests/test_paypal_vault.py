@@ -556,3 +556,110 @@ def test_the_same_paypal_saved_on_another_account_is_refused_not_a_500(tmp_path)
         v.finish(b, ref)
     assert exc.value.code == "saved_elsewhere" and v.get(ref).status == "failed"
     assert v.active(a, first.token_sha256) is not None
+
+
+# -- account deletion ends the saved PayPal and the mandates (E1) ---------------------------
+
+
+def _delete_account(s):
+    from tests.test_assistants import OTHER_PASSWORD
+
+    r = s.c.post("/account/delete", data={"csrf": csrf(s.c), "confirm": "owner",
+                                         "password": OTHER_PASSWORD})
+    assert r.status_code == 200, r.text
+
+
+def test_deleting_the_account_revokes_its_mandates_and_retires_its_saved_paypal(tmp_path):
+    from studio.accounts import NoSuchAccount
+
+    s = Studio(tmp_path)
+    _, first = s.grant()
+    _, second = s.grant()
+    token_id = s.conn.execute("SELECT token_id FROM paypal_vault WHERE id = ?",
+                              (s.ref,)).fetchone()[0]
+    _delete_account(s)
+    for mid in (first, second):
+        m = mandates.get(s.conn, mid)
+        assert m.status() == "revoked"
+        (rev,) = [x for x in s.ledger.receipts(mid) if x.kind == "mandate.revoke"]
+        assert rev.details["reason"] == "account_deleted"
+    assert s.funder.vault.get(s.ref).status == "deleted"
+    assert set(s.funder.fake.vault_tokens.values()) == {"DELETED"}
+    (gone,) = [x for x in s.ledger.receipts(s.ref)
+               if x.details.get("step") == "paypal.vault_delete"]
+    assert gone.details["ok"] is True and token_id not in repr(gone.details)
+    with pytest.raises(NoSuchAccount):
+        s.app.state.accounts.export(s.acct.id, [])
+    report = s.verify()
+    assert report.ok, report.errors
+
+
+def test_the_saved_paypal_stays_deleted_locally_when_paypal_refuses_the_delete(tmp_path):
+    s = Studio(tmp_path)
+    s.grant()
+    s.funder.fake.fail_next(500, 500, 500, 500, 500)
+    _delete_account(s)
+    assert s.funder.vault.get(s.ref).status == "deleted"
+    assert set(s.funder.fake.vault_tokens.values()) == {"ACTIVE"}  # PayPal never deleted it
+    (fail,) = [x for x in s.ledger.receipts(s.ref)
+               if x.details.get("step") == "paypal.vault_delete"]
+    assert fail.details["ok"] is False
+    assert mandates.get(s.conn, s.conn.execute("SELECT id FROM mandates").fetchone()[0]
+                        ).status() == "revoked"
+
+
+def test_a_wrong_password_deletes_nothing(tmp_path):
+    s = Studio(tmp_path)
+    _, mid = s.grant()
+    r = s.c.post("/account/delete", data={"csrf": csrf(s.c), "confirm": "owner",
+                                         "password": "wrong-wrong-wrong-1"})
+    assert r.status_code == 400
+    assert mandates.get(s.conn, mid).status() == "active"
+    assert s.funder.vault.get(s.ref).status == "active"
+
+
+def test_retire_all_marks_every_row_deleted_first_and_returns_the_references(tmp_path):
+    v, fake = _vault(tmp_path)
+    acct = "acct_0123456789abcdef"
+    refs = []
+    for _ in range(2):
+        ref, _url = v.start(acct, return_url="https://x.example/r",
+                            cancel_url="https://x.example/c")
+        fake.approve_setup(v.setup_token_of(acct, ref))
+        refs.append(ref)
+    v.finish(acct, refs[0])  # one active, one still being set up
+    other, _ = v.start("acct_fedcba9876543210", return_url="https://x.example/r",
+                       cancel_url="https://x.example/c")
+    assert sorted(v.retire_all(acct)) == sorted(refs)
+    assert {v.get(r).status for r in refs} == {"deleted"}
+    assert v.get(other).status == "setup"  # another account's row is not touched
+    assert v.retire_all(acct) == []
+
+
+# -- a charge re-checks the account after PayPal answers (E1) --------------------------------
+
+
+def test_a_charge_whose_account_was_deleted_while_paypal_answered_is_voided(tmp_path):
+    s = Studio(tmp_path)
+    s.grant()
+    real = s.funder.money.charge_vault
+
+    def delete_meanwhile(*args, **kw):
+        step = real(*args, **kw)
+        # the account is erased between the reservation and PayPal's answer
+        s.conn.execute("UPDATE accounts SET status = 'deleted' WHERE id = ?", (s.acct.id,))
+        return step
+
+    s.funder.money.charge_vault = delete_meanwhile
+    s.run()  # the deleted account's token no longer reads the run back: look at the stores
+    (fid, status, error) = s.conn.execute(
+        "SELECT funding_id, status, error FROM mandate_charges").fetchone()
+    assert (status, error) == ("refused", "account_gone")
+    assert funding.get(s.conn, fid).state == "voided"
+    # nothing was created (the one campaign is the seeded demo) and the run is back
+    # with the owner
+    assert s.conn.execute("SELECT count(*) FROM campaigns WHERE id != 'cmp-demo-1'"
+                          ).fetchone()[0] == 0
+    assert s.conn.execute("SELECT status FROM run_state").fetchone()[0] == "awaiting_approval"
+    report = s.verify()
+    assert report.ok, report.errors

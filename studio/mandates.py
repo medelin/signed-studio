@@ -462,6 +462,36 @@ def revoke(conn: Any, ledger: Ledger, account: Any, mandate_id: str,
     return True
 
 
+def revoke_all(conn: Any, ledger: Ledger, account_id: str, reason: str = "account_deleted",
+               now: float | None = None) -> list[str]:
+    """Revoke every still-unrevoked mandate of ``account_id`` (an account ending): each
+    leaves a ``mandate.revoke`` receipt naming the ``reason``. Joins the caller's
+    transaction when there is one (the account's deletion), else makes its own. Returns
+    the revoked ids."""
+    clock = time.time() if now is None else now
+    if not is_opaque(account_id):
+        return []
+
+    def run() -> list[str]:
+        rows = conn.execute(f"SELECT {_COLUMNS} FROM mandates WHERE account_id = ? "  # noqa: S608
+                            "AND revoked_ts IS NULL ORDER BY created_ts, id",
+                            (account_id,)).fetchall()
+        done = []
+        for m in map(_mandate, rows):
+            conn.execute("UPDATE mandates SET revoked_ts = ? WHERE id = ?", (clock, m.id))
+            ledger.append(m.id, agent="owner", kind=MANDATE_REVOKE, conn=conn,
+                          output_sha256=m.sha256,
+                          details={"mandate_id": m.id, "mandate_sha256": m.sha256,
+                                   "reason": reason})
+            done.append(m.id)
+        return done
+
+    if conn.in_transaction:
+        return run()
+    with transaction(conn):
+        return run()
+
+
 # -- does a campaign fit? ------------------------------------------------------------------
 
 

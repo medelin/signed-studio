@@ -289,6 +289,55 @@ class Vault:
                           vault_sha256=saved.token_sha256, body_sha256=digest)
         return saved
 
+    def retire_local(self, account_id: str) -> list[str]:
+        """Mark every saved PayPal of ``account_id`` that is not yet deleted ``deleted``
+        (a method still being set up too), so none can be charged, and return their
+        references. Joins the caller's transaction when there is one (the account's
+        deletion); the token at PayPal is left for ``drop_at_paypal``."""
+        if not is_opaque(account_id):
+            return []
+
+        def run() -> list[str]:
+            rows = self.conn.execute("SELECT id FROM paypal_vault WHERE account_id = ? AND "
+                                     "status != 'deleted' ORDER BY created_ts, id",
+                                     (account_id,)).fetchall()
+            self.conn.execute("UPDATE paypal_vault SET status = 'deleted', updated_ts = ? "
+                              "WHERE account_id = ? AND status != 'deleted'",
+                              (self.clock(), account_id))
+            return [str(r[0]) for r in rows]
+
+        if self.conn.in_transaction:
+            return run()
+        with transaction(self.conn):
+            return run()
+
+    def drop_at_paypal(self, refs: list[str]) -> None:
+        """Best effort: delete the token of each (already ``deleted``) reference at PayPal,
+        with the semantics of ``delete``: a receipt either way, a 404 counts as done, any
+        other failure is receipted and the local ``deleted`` stands."""
+        for ref in refs:
+            row = self.conn.execute("SELECT token_id, token_sha256 FROM paypal_vault "
+                                    "WHERE id = ?", (ref,)).fetchone()
+            if row is None or not row[0]:
+                continue
+            try:
+                digest = delete_payment_token(self.client, str(row[0]))
+            except PayPalError as exc:
+                if exc.status != 404:
+                    self._fail(ref, "paypal.vault_delete", exc)
+                    continue
+                digest = ""
+            self._receipt(ref, "paypal.vault_delete", ok=True, status="DELETED",
+                          vault_sha256=row[1], body_sha256=digest)
+
+    def retire_all(self, account_id: str) -> list[str]:
+        """End every saved PayPal of an account that is going away: ``deleted`` locally
+        first (``retire_local``), then a best-effort delete at PayPal for each
+        (``drop_at_paypal``). Returns the references."""
+        refs = self.retire_local(account_id)
+        self.drop_at_paypal(refs)
+        return refs
+
     def get(self, ref: str) -> Saved:
         row = self.conn.execute(f"SELECT {_COLUMNS} FROM paypal_vault WHERE id = ?",  # noqa: S608
                                 (ref,)).fetchone()

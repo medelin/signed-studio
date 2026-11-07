@@ -1136,11 +1136,16 @@ class Accounts:
     # -- deletion and export ---------------------------------------------------------------
 
     def delete(self, account_id: str, *, confirm: str, password: str, code: str = "",
-               external_fresh: bool = False) -> None:
+               external_fresh: bool = False,
+               before_erase: Callable[[sqlite3.Connection], None] | None = None) -> None:
         """Password (or a fresh provider sign-in for an account without one) + typed
         confirmation (the user name) (+ a code with 2FA on). Erases the
         personal fields and the second factor, revokes every session and approver key; the
-        row stays as a tombstone so receipts keep resolving to a pseudonymous id."""
+        row stays as a tombstone so receipts keep resolving to a pseudonymous id.
+
+        ``before_erase`` runs inside the same transaction once every check has passed and
+        before anything is erased: what must end with the account (its signed mandates, its
+        saved PayPal) ends atomically with it, and not at all for a refused deletion."""
         with self._read() as c:
             row = self._require(c, account_id)
         if row[3]:
@@ -1154,6 +1159,8 @@ class Accounts:
             row = self._require(c, account_id)
             if row[4]:
                 self._check_code(c, account_id, row[4], row[6], code)
+            if before_erase is not None:
+                before_erase(c)
             self._erase(c, account_id, now)
 
     def _erase(self, c: sqlite3.Connection, account_id: str, now: float) -> None:

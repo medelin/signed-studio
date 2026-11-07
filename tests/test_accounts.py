@@ -276,6 +276,40 @@ def test_delete_erases_personal_fields_and_keeps_a_tombstone(store):
     assert store.create("ola", PASSWORD).id != a.id  # the name is free again
 
 
+def test_delete_runs_the_before_erase_step_only_after_every_check_passes(store):
+    a = store.create("ola", PASSWORD)
+    seen = []
+
+    def before(c):  # inside the deletion transaction, the account not yet erased
+        seen.append(c.execute("SELECT status FROM accounts WHERE id = ?", (a.id,)).fetchone()[0])
+
+    with pytest.raises(accounts.WrongPassword):
+        store.delete(a.id, confirm="ola", password="wrong-wrong-wrong", before_erase=before)
+    with pytest.raises(accounts.ConfirmationMismatch):
+        store.delete(a.id, confirm="someone", password=PASSWORD, before_erase=before)
+    assert seen == []
+    store.delete(a.id, confirm="ola", password=PASSWORD, before_erase=before)
+    assert seen == ["active"] and store.get(a.id).status == "deleted"
+
+
+def test_a_failing_before_erase_step_leaves_the_account_untouched(store):
+    a = store.create("ola", PASSWORD)
+
+    def boom(c):
+        raise RuntimeError("no")
+
+    with pytest.raises(RuntimeError):
+        store.delete(a.id, confirm="ola", password=PASSWORD, before_erase=boom)
+    assert store.get(a.id).status == "active"
+
+
+def test_the_export_of_a_deleted_account_raises(store):
+    a = store.create("ola", PASSWORD)
+    store.delete(a.id, confirm="ola", password=PASSWORD)
+    with pytest.raises(accounts.NoSuchAccount):
+        store.export(a.id, [])
+
+
 def test_delete_with_two_factor_needs_a_code(store):
     a = store.create("ola", PASSWORD)
     _, codes = enrol(store, a)
