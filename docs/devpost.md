@@ -7,7 +7,7 @@
 **Links:**
 - Try it: https://pay.udun.eu (user `judge`, password in the private judges field below)
 - Code: https://github.com/medelin/signed-studio (Apache-2.0)
-- Video: https://youtu.be/icfZGcml_hI (under 3:00)
+- Video: https://youtu.be/NfhqFX9LYE8 (under 3:00)
 
 **Private field for judges (never in the public text):** judge password; for checkout, the
 PayPal sandbox test card (Visa 4111 1111 1111 1111, any future expiry, CVV 123, "Pay as
