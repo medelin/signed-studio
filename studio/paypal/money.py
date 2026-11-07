@@ -95,6 +95,8 @@ class Money:
         Ledger.validate_ids(run_id, AGENT)
         f = funding.create(self.conn, run_id=run_id, item_id=item_id,
                            content_sha256=content_sha256, q=q, now=self._now())
+        if f.order_id:  # ``create`` handed back the ad's open funding: it has its order
+            raise FundingError("this ad already has an open PayPal order", "order_exists")
         body = orders.order_body(q, content_sha256=content_sha256, invoice_id=f.id,
                                  reference_id=item_id)
         rid, idem = _idem(f.id, "create")

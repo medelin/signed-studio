@@ -49,9 +49,11 @@ window.StudioPayPal = (() => {
     return sdk;
   }
 
-  async function approved(approvalId, path, onFunded) {
+  async function approved(approvalId, path, onFunded, orderId) {
     say(T("paypal_checking"));
-    const r = await Signer.postJSON("/api/funding/" + encodeURIComponent(approvalId) + path, {});
+    // PayPal's orderID binds the exact order the buyer approved to this approval
+    const r = await Signer.postJSON("/api/funding/" + encodeURIComponent(approvalId) + path,
+      orderId ? { order_id: orderId } : {});
     if (!r.ok) {
       say(E(r.data, r.status), true);
       return;
@@ -102,7 +104,7 @@ window.StudioPayPal = (() => {
       await paypal.Buttons({
         style: { label: "pay", layout: "vertical" },
         createOrder: () => o.order_id,
-        onApprove: () => approved(data.approval_id, "/payer-approved", onFunded),
+        onApprove: (a) => approved(data.approval_id, "/payer-approved", onFunded, a.orderID),
         onCancel: () => say(T("paypal_cancelled"), true),
         onError: () => say(T("paypal_sdk_failed"), true),
       }).render("#paypal-button");

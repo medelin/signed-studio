@@ -321,8 +321,22 @@ CREATE TABLE IF NOT EXISTS funding_claims (
 """
 
 
+# States before authorization: an order made (or about to be) but not yet holding money.
+OPEN_STATES = ("created", "payer_approved")
+_OPEN_SQL = ", ".join(f"'{s}'" for s in OPEN_STATES)
+
+
 def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    # One open funding per (item, ad hash). A database from before this index may hold
+    # several: keep the newest, end the older ones as ``expired`` (an order never
+    # authorized), then create the index, which can no longer fail.
+    conn.execute(
+        f"UPDATE fundings SET state = 'expired', updated_ts = ? WHERE state IN ({_OPEN_SQL}) "  # noqa: S608
+        "AND rowid NOT IN (SELECT MAX(rowid) FROM fundings "
+        f"WHERE state IN ({_OPEN_SQL}) GROUP BY item_id, content_sha256)", (time.time(),))
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS fundings_one_open ON fundings "  # noqa: S608
+                 f"(item_id, content_sha256) WHERE state IN ({_OPEN_SQL})")
 
 
 @contextmanager
@@ -412,20 +426,34 @@ def of_item(conn: sqlite3.Connection, item_id: str) -> list[Funding]:
 def create(conn: sqlite3.Connection, *, run_id: str, item_id: str, content_sha256: str,
            q: Quote, now: float | None = None) -> Funding:
     """A new funding in state ``created`` with no PayPal order yet (``order_id`` is set by
-    the step that creates the order, in the same state)."""
+    the step that creates the order, in the same state). At most one funding per
+    ``(item_id, content_sha256)`` is open (``fundings_one_open``): when one exists, or a
+    racing request inserts it first, that one is returned instead of a second."""
     if not _SHA256.fullmatch(content_sha256 or ""):
         raise FundingError("content_sha256 must be a SHA-256 hex digest", "content")
     if not _ITEM.fullmatch(item_id or ""):
         raise FundingError("item_id must be an opaque id", "item")
     ts = time.time() if now is None else now
     fid = new_id("fund_", 8)
+    open_sql = (f"SELECT {', '.join(_COLUMNS)} FROM fundings WHERE item_id = ? "  # noqa: S608
+                f"AND content_sha256 = ? AND state IN ({_OPEN_SQL})")
     with atomic(conn):
-        conn.execute(
-            "INSERT INTO fundings (id, run_id, item_id, content_sha256, currency, "
-            "daily_budget_minor, days, budget_minor, fee_pct, fee_minor, total_minor, state, "
-            "created_ts, updated_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', ?, ?)",
-            (fid, run_id, item_id, content_sha256, q.currency, q.daily_budget_minor, q.days,
-             q.budget_minor, str(q.fee_pct), q.fee_minor, q.total_minor, ts, ts))
+        existing = conn.execute(open_sql, (item_id, content_sha256)).fetchone()
+        if existing is not None:
+            return _row(existing)
+        try:
+            conn.execute(
+                "INSERT INTO fundings (id, run_id, item_id, content_sha256, currency, "
+                "daily_budget_minor, days, budget_minor, fee_pct, fee_minor, total_minor, "
+                "state, created_ts, updated_ts) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', ?, ?)",
+                (fid, run_id, item_id, content_sha256, q.currency, q.daily_budget_minor,
+                 q.days, q.budget_minor, str(q.fee_pct), q.fee_minor, q.total_minor, ts, ts))
+        except sqlite3.IntegrityError:  # a racing request on another connection won
+            existing = conn.execute(open_sql, (item_id, content_sha256)).fetchone()
+            if existing is None:
+                raise
+            return _row(existing)
     return get(conn, fid)
 
 
