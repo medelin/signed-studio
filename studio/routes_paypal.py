@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 import re
+import threading
 from typing import Any
 
 from fastapi import FastAPI, Request
@@ -154,6 +155,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
                              "fee_pct": settings.paypal.fee_pct_text,
                              "sandbox": True}, headers=NO_STORE)
 
+    order_lock = threading.Lock()  # one PayPal order is made at a time (see create_order)
+
     @app.post("/api/funding/{approval_id}/order")
     async def create_order(approval_id: str, request: Request) -> Response:
         guard = write_guard(request)
@@ -169,10 +172,22 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
                 ad_hash = payload_sha256(ad_payload(payload))
                 if ad_hash != pending.content_sha256:
                     raise FundingRefused("this approval already carries a funding", "funded")
+                with order_lock:  # racing creates for one ad share its one open order
+                    return open_order(pending, payload, ad_hash)
+            except (FundingRefused, FundingError, PayPalError) as exc:
+                return refused(exc)
+
+        def open_order(pending: Pending, payload: dict[str, Any], ad_hash: str) -> Response:
+            def existing() -> funding.Funding | None:
                 for f in funding.of_item(conn, pending.item_id):  # one open order per ad
-                    if f.state in ("created", "payer_approved") and f.content_sha256 == ad_hash \
+                    if f.state in funding.OPEN_STATES and f.content_sha256 == ad_hash \
                             and f.order_id:
-                        return JSONResponse(view(f), headers=NO_STORE)
+                        return f
+                return None
+
+            try:
+                if (f := existing()) is not None:
+                    return JSONResponse(view(f), headers=NO_STORE)
                 campaign = payload.get("campaign") or {}
                 step = funder.money.open(
                     run_id=pending.run_id, item_id=pending.item_id, content_sha256=ad_hash,
@@ -181,7 +196,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
                     days=_days(payload, asked), fee_pct=settings.paypal.fee_pct,
                     max_daily_minor=to_minor(settings.max_daily_budget,
                                              str(campaign.get("currency", ""))))
-            except (FundingRefused, FundingError, PayPalError) as exc:
+            except FundingError as exc:
+                if exc.code == "order_exists" and (f := existing()) is not None:
+                    return JSONResponse(view(f), headers=NO_STORE)  # another process won
                 return refused(exc)
             out = view(step.funding)
             out["approve_url"] = step.result.approve_url if step.result else ""
@@ -189,7 +206,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
 
         return await run_in_threadpool(work)
 
-    def payer_approved(approval_id: str, guard: str, *, mock: bool) -> Response:
+    def payer_approved(approval_id: str, guard: str, *, mock: bool,
+                       order_id: str | None = None) -> Response:
         try:
             pending, payload = pending_for(approval_id, guard)
             ad_hash = payload_sha256(ad_payload(payload))
@@ -199,6 +217,9 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
             if not fs:
                 raise FundingRefused("no PayPal order for this approval", "no_order")
             f = fs[-1]
+            if order_id is not None and f.order_id != order_id:
+                # PayPal's orderID from the button must be this approval's open order
+                return JSONResponse({"error": "order_mismatch"}, 409, headers=NO_STORE)
             if mock:
                 if funder.fake is None:
                     raise FundingRefused("not found", "not_found")
@@ -216,11 +237,19 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
                              "funding_sha256": fresh.funding_sha256}, headers=NO_STORE)
 
     @app.post("/api/funding/{approval_id}/payer-approved")
-    def payer_approved_route(approval_id: str, request: Request) -> Response:
+    async def payer_approved_route(approval_id: str, request: Request) -> Response:
         guard = write_guard(request)
         if isinstance(guard, JSONResponse):
             return guard
-        return payer_approved(approval_id, guard, mock=False)
+        try:
+            body = await request.json()
+        except ValueError:  # no body: an older cached page (one release)
+            body = None
+        order_id = body.get("order_id") if isinstance(body, dict) else None
+        if order_id is not None and not isinstance(order_id, str):
+            order_id = ""  # a malformed id matches nothing
+        return await run_in_threadpool(payer_approved, approval_id, guard, mock=False,
+                                       order_id=order_id)
 
     @app.post("/api/funding/{approval_id}/mock-approve")
     def mock_approve(approval_id: str, request: Request) -> Response:
