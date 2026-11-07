@@ -49,7 +49,19 @@ CREATE TABLE IF NOT EXISTS paypal_vault (
     updated_ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS paypal_vault_account ON paypal_vault (account_id, status);
+
+-- tokens whose DELETE at PayPal failed: retried until PayPal says 204/404, then erased
+CREATE TABLE IF NOT EXISTS vault_deletions (
+    vault_ref TEXT PRIMARY KEY,
+    token_id TEXT NOT NULL,
+    attempts INTEGER NOT NULL,
+    next_ts REAL NOT NULL,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_ts REAL NOT NULL
+);
 """
+RETRY_FIRST_S = 60.0
+RETRY_MAX_S = 3600.0
 
 
 class VaultError(Exception):
@@ -283,11 +295,56 @@ class Vault:
             except PayPalError as exc:
                 if exc.status != 404:  # already gone at PayPal: deleted all the same
                     self._fail(ref, "paypal.vault_delete", exc)
+                    self._enqueue(ref, str(row[0]), exc)
                     return saved
                 digest = ""
+            self._erase(ref)
             self._receipt(ref, "paypal.vault_delete", ok=True, status="DELETED",
                           vault_sha256=saved.token_sha256, body_sha256=digest)
         return saved
+
+    def _enqueue(self, ref: str, token_id: str, exc: PayPalError) -> None:
+        """Keep the token id for a later retry; the local ``deleted`` already stands."""
+        now = self.clock()
+        with transaction(self.conn):
+            self.conn.execute(
+                "INSERT OR IGNORE INTO vault_deletions (vault_ref, token_id, attempts, "
+                "next_ts, last_error, created_ts) VALUES (?, ?, 1, ?, ?, ?)",
+                (ref, token_id, now + RETRY_FIRST_S, exc.name or "HTTP_ERROR", now))
+
+    def _erase(self, ref: str) -> None:
+        """PayPal confirmed (204/404): the token id is no longer kept."""
+        with transaction(self.conn):
+            self.conn.execute("UPDATE paypal_vault SET token_id = NULL WHERE id = ? "
+                              "AND status = 'deleted'", (ref,))
+            self.conn.execute("DELETE FROM vault_deletions WHERE vault_ref = ?", (ref,))
+
+    def retry_deletions(self, now: float | None = None, limit: int = 20) -> int:
+        """Retry the PayPal DELETE of every queued token that is due; on 204/404 erase the
+        token id and the queue row (receipt ``paypal.vault_delete``, SHA-256 only), on
+        failure double the delay (60 s up to 1 h). Returns the number processed."""
+        t = self.clock() if now is None else now
+        rows = self.conn.execute(
+            "SELECT d.vault_ref, d.token_id, d.attempts, v.token_sha256 FROM vault_deletions d "
+            "JOIN paypal_vault v ON v.id = d.vault_ref WHERE d.next_ts <= ? "
+            "ORDER BY d.next_ts, d.vault_ref LIMIT ?", (t, limit)).fetchall()
+        for ref, token_id, attempts, digest_token in rows:
+            try:
+                digest = delete_payment_token(self.client, str(token_id))
+            except PayPalError as exc:
+                if exc.status != 404:
+                    delay = min(RETRY_FIRST_S * 2 ** int(attempts), RETRY_MAX_S)
+                    with transaction(self.conn):
+                        self.conn.execute(
+                            "UPDATE vault_deletions SET attempts = attempts + 1, next_ts = ?, "
+                            "last_error = ? WHERE vault_ref = ?",
+                            (t + delay, exc.name or "HTTP_ERROR", ref))
+                    continue
+                digest = ""
+            self._erase(str(ref))
+            self._receipt(str(ref), "paypal.vault_delete", ok=True, status="DELETED",
+                          vault_sha256=digest_token, body_sha256=digest)
+        return len(rows)
 
     def retire_local(self, account_id: str) -> list[str]:
         """Mark every saved PayPal of ``account_id`` that is not yet deleted ``deleted``
@@ -325,8 +382,10 @@ class Vault:
             except PayPalError as exc:
                 if exc.status != 404:
                     self._fail(ref, "paypal.vault_delete", exc)
+                    self._enqueue(ref, str(row[0]), exc)
                     continue
                 digest = ""
+            self._erase(ref)
             self._receipt(ref, "paypal.vault_delete", ok=True, status="DELETED",
                           vault_sha256=row[1], body_sha256=digest)
 

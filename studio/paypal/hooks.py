@@ -117,7 +117,7 @@ class Funder:
         is attested by PayPal's API, not by the webhook body. One fast read: a transient
         failure answers 503 and PayPal redelivers, which is cheaper than holding its 30 s
         delivery window on our own retries."""
-        return self.money.client.get(path, retries=0).json
+        return self.money.client.get(path, retries=0, timeout=8.0).json
 
     def flush(self) -> int:
         """Mock mode: deliver the fake's webhook events, signed, through ``apply``."""

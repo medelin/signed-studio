@@ -663,3 +663,103 @@ def test_a_charge_whose_account_was_deleted_while_paypal_answered_is_voided(tmp_
     assert s.conn.execute("SELECT status FROM run_state").fetchone()[0] == "awaiting_approval"
     report = s.verify()
     assert report.ok, report.errors
+
+
+# -- durable retry of the PayPal token deletion ---------------------------------------------
+
+
+def _saved(v, fake, account="acct_0123456789abcdef"):
+    ref, _ = v.start(account, return_url="https://x.example/r", cancel_url="https://x.example/c")
+    fake.approve_setup(v.setup_token_of(account, ref))
+    return v.finish(account, ref)
+
+
+def _queue(v):
+    return v.conn.execute("SELECT vault_ref, attempts, next_ts FROM vault_deletions").fetchall()
+
+
+def _token(v, ref):
+    return v.conn.execute("SELECT token_id FROM paypal_vault WHERE id = ?", (ref,)).fetchone()[0]
+
+
+def _chain_ok(v, tmp_path):
+    from studio.approvals import Keys
+    from studio.receipts import verify
+
+    path = tmp_path / "r.jsonl"
+    path.write_text(v.ledger.export_jsonl())
+    return verify(path, v.ledger.public_key, approver_keys=Keys.registry(v.conn)).ok
+
+
+def test_a_failed_delete_is_queued_and_retried_until_the_token_id_is_erased(tmp_path):
+    v, fake = _vault(tmp_path)
+    saved = _saved(v, fake)
+    fake.fail_next(400)
+    t0 = 1_000_000.0
+    v.clock = lambda: t0
+    assert v.delete("acct_0123456789abcdef", saved.id).status == "deleted"
+    (ref, attempts, next_ts), = _queue(v)
+    assert (ref, attempts, next_ts) == (saved.id, 1, t0 + 60)
+    assert _token(v, saved.id)  # kept until PayPal confirms
+    assert v.retry_deletions(now=t0 + 59) == 0 and len(_queue(v)) == 1
+    assert v.retry_deletions(now=t0 + 60) == 1
+    assert _queue(v) == [] and _token(v, saved.id) is None
+    assert v.get(saved.id).status == "deleted"
+    last = [r for r in v.ledger.export_jsonl().splitlines() if "paypal.vault_delete" in r][-1]
+    assert '"ok":true' in last.replace(" ", "") and "DELETED" in last
+    assert not any(t in v.ledger.export_jsonl() for t in fake.vault_tokens)  # never the id
+    assert _chain_ok(v, tmp_path)
+
+
+def test_a_repeated_failure_doubles_the_delay_and_caps_at_an_hour(tmp_path):
+    v, fake = _vault(tmp_path)
+    saved = _saved(v, fake)
+    fake.fail_next(400)
+    v.clock = lambda: 0.0
+    v.delete("acct_0123456789abcdef", saved.id)
+    now, delays = 60.0, []
+    for _ in range(9):
+        fake.fail_next(400)
+        assert v.retry_deletions(now=now) == 1
+        (_, _, next_ts), = _queue(v)
+        delays.append(next_ts - now)
+        now = next_ts
+    assert delays == [120, 240, 480, 960, 1920, 3600, 3600, 3600, 3600]
+    assert v.retry_deletions(now=now) == 1 and _queue(v) == []
+
+
+def test_dropping_at_paypal_queues_a_failure_and_a_404_counts_as_done(tmp_path):
+    v, fake = _vault(tmp_path)
+    a = _saved(v, fake)
+    refs = v.retire_local("acct_0123456789abcdef")
+    fake.fail_next(500, 500, 500, 500)
+    v.drop_at_paypal(refs)
+    assert [r[0] for r in _queue(v)] == [a.id]
+    fake.vault_tokens.clear()  # gone at PayPal meanwhile: the DELETE answers 404
+    assert v.retry_deletions(now=1e12) == 1
+    assert _queue(v) == [] and _token(v, a.id) is None
+
+
+def test_studio_vault_retry_prints_the_count(tmp_path, capsys):
+    from studio import cli, db
+    from studio.paypal import vault as pv
+
+    data = tmp_path / "data"
+    data.mkdir()
+    conn = db.connect(data / "studio.db")
+    db.init(conn)
+    pv.ensure_schema(conn)
+    conn.execute("INSERT INTO paypal_vault (id, account_id, setup_token_id, token_id, status, "
+                 "created_ts, updated_ts) VALUES ('vlt_x', 'acct_0123456789abcdef', 'S1', "
+                 "'TOK1', 'deleted', 1, 1)")
+    conn.execute("INSERT INTO vault_deletions VALUES ('vlt_x', 'TOK1', 1, 0, 'HTTP_ERROR', 0)")
+    conn.commit()
+    conn.close()
+    env = tmp_path / ".env"
+    env.write_text(f"STUDIO_DATA_DIR={data}\nPAYPAL_ADAPTER=mock\n")
+    env.chmod(0o600)
+    assert cli.main(["vault", "retry", "--env-file", str(env)]) == 0
+    assert capsys.readouterr().out.strip() == "retried 1"
+    conn = db.connect(data / "studio.db")
+    assert conn.execute("SELECT COUNT(*) FROM vault_deletions").fetchone()[0] == 0
+    assert conn.execute("SELECT token_id FROM paypal_vault").fetchone()[0] is None
