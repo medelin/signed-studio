@@ -213,12 +213,15 @@ the same file, so they mail too):
 | `STUDIO_MAIL_FROM` | default `Signed Studio <muse@udun.eu>`; for JMAP it must equal the address of one of the mailbox's identities |
 | `STUDIO_PUBLIC_URL` | the site's origin, e.g. `https://muse.udun.eu` (https; no path); without it mails carry no link |
 
-### Registration with Google or Facebook
+### Registration with PayPal, Facebook or Google
 
 | Variable | Meaning |
 |---|---|
+| `PAYPAL_LOGIN_CLIENT_ID`, `PAYPAL_LOGIN_CLIENT_SECRET` | a sandbox REST app with *Log in with PayPal* (the studio's own `PAYPAL_CLIENT_ID` / `PAYPAL_CLIENT_SECRET` app serves both); redirect (Return) URL `<STUDIO_PUBLIC_URL>/auth/paypal/callback`; scopes `openid profile email`. Sandbox only: with `PAYPAL_ENV` other than `sandbox` the app refuses to start |
 | `GOOGLE_LOGIN_CLIENT_ID`, `GOOGLE_LOGIN_CLIENT_SECRET` | an OAuth web client (Google Cloud → Credentials); redirect URI `<STUDIO_PUBLIC_URL>/auth/google/callback`; scopes `openid email profile` |
 | `FACEBOOK_LOGIN_CLIENT_ID`, `FACEBOOK_LOGIN_CLIENT_SECRET` | a Meta app with the Facebook Login use case (`email`, `public_profile`); valid OAuth redirect URI `<STUDIO_PUBLIC_URL>/auth/facebook/callback` |
+
+**Developer Dashboard (PayPal).** Apps & Credentials → Sandbox → the app → *Other features* → tick **Log in with PayPal** → *Advanced Settings*: Return URL `https://pay.udun.eu/auth/paypal/callback` (your `STUDIO_PUBLIC_URL` + `/auth/paypal/callback`); share *Full name* and *Email*; privacy policy and user agreement URL `https://pay.udun.eu/help#privacy`. Copy the app's client id and secret into the server's env file (mode 600) as `PAYPAL_LOGIN_CLIENT_ID` / `PAYPAL_LOGIN_CLIENT_SECRET`, never into the repository. Sign in on the consent page with a sandbox personal (buyer) account. The e-mail is kept on the account only when PayPal reports it verified; the PayPal `user_id` is the identity.
 
 A provider is offered on `/login` when both of its variables are set; set `STUDIO_PUBLIC_URL` too, so the redirect URI never comes from the request's Host header. A new identity gets a **trial** account with no password: on a live adapter it signs exactly what `judge` signs (paused `campaign.create` to the operator's landing host) until `studio account promote <user>`. An e-mail match never links an existing account; a signed-in owner links a provider from the account page. While a Google app is in *Testing* or a Meta app in *Development* mode, only its test users / app roles can sign in.
 
