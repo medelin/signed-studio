@@ -1,4 +1,5 @@
-"""Live PayPal sandbox smoke test. Opt-in: skipped unless ``RUN_PAYPAL_LIVE_TESTS=1`` **and** the sandbox credentials file exist:
+"""Live PayPal sandbox smoke test. Opt-in: skipped unless ``RUN_PAYPAL_LIVE_TESTS=1`` **and**
+the sandbox credentials file exist:
 ``~/.config/muse-pay/paypal-sandbox.env`` (mode 600) with ``PAYPAL_CLIENT_ID`` and
 ``PAYPAL_CLIENT_SECRET`` of a sandbox REST app (``MUSE_PAY_PAYPAL_ENV`` names another
 file). It talks to ``api-m.sandbox.paypal.com`` only, moves no money (an order nobody

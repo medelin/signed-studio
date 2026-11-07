@@ -7,7 +7,8 @@
   takes neither: its token call authenticates with HTTP Basic, never with a body secret.
 - ``/auth/{provider}/callback`` exchanges the code, reads the provider's stable user id
   (OIDC ``sub``, Facebook ``id``, PayPal ``user_id``) and signs that identity's account in,
-  or registers a new ``trial`` account (``studio.accounts``). An e-mail match never links an existing account;
+  or registers a new ``trial`` account (``studio.accounts``). An e-mail match never links an
+  existing account;
   linking happens only from a signed-in session (``/auth/{provider}/start`` while signed in).
 - The session cookie is ``SameSite=Strict``, which the browser holds back for the rest of a
   redirect chain the provider started; so the callback answers with a tiny page that moves

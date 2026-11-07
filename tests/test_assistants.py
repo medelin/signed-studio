@@ -460,7 +460,8 @@ def test_propose_refund_returns_sign_url_and_moves_nothing(tmp_path):
     status, body = app.state.assistants.call(
         principal_of(app, tok), "propose_refund", {"funding_id": f.id, "amount": "5.25"})
     assert status == 200, body
-    assert body["status"] == assistants.AWAITING and body["sign_url"] == f"{BASE}/studio?approval={body['approval_id']}"
+    assert body["status"] == assistants.AWAITING
+    assert body["sign_url"] == f"{BASE}/studio?approval={body['approval_id']}"
     assert body["content"]["refund"]["amount_minor"] == 525
     conn = app.state.conn
     row = conn.execute("SELECT action, status FROM approvals WHERE id = ?",

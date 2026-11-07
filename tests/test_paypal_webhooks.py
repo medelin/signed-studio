@@ -485,7 +485,7 @@ def test_pinned_intermediate_is_not_a_trust_anchor():
     leaf it did not sign is refused."""
     import datetime as _dt
 
-    roots = webhooks.load_roots()
+    webhooks.load_roots()
     inter = webhooks.load_intermediates()
     now = _dt.datetime(2026, 11, 4, tzinfo=_dt.UTC).timestamp()
     with pytest.raises(webhooks.WebhookRefused):

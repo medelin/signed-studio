@@ -218,6 +218,8 @@ EN_ACCOUNTS: dict[str, str] = {
     "err.stale_credentials": "The account's password or sign-in settings changed meanwhile; "
                              "sign in again.",
     "err.too_many_sessions": "Too many people are signed in right now; try again in a minute.",
+    "err.busy": "The studio is busy with other PayPal notifications; PayPal will send this one "
+                "again.",
     "social.heading": "New here? Register in one step",
     "social.lead": "Continue with PayPal, Facebook or Google to sign in or create your account. A "
                    "new account starts on trial: campaigns are created paused, on the "
@@ -447,6 +449,7 @@ PL_ACCOUNTS: dict[str, str] = {
     "err.stale_credentials": "W międzyczasie zmieniło się hasło lub ustawienia logowania "
                              "konta; zaloguj się ponownie.",
     "err.too_many_sessions": "Zalogowanych jest teraz zbyt wiele osób; spróbuj za minutę.",
+    "err.busy": "Studio obsługuje teraz inne powiadomienia PayPal; PayPal wyśle to jeszcze raz.",
     "social.heading": "Pierwszy raz? Zarejestruj się jednym krokiem",
     "social.lead": "Kontynuuj przez PayPal, Facebooka lub Google, żeby się zalogować albo założyć "
                    "konto. Nowe konto zaczyna od okresu próbnego: kampanie powstają "

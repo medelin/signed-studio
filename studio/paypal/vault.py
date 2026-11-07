@@ -248,8 +248,9 @@ class Vault:
                 cur = None
             else:
                 if held is not None:
-                    self.conn.execute("UPDATE paypal_vault SET token_id = NULL, status = 'deleted', "
-                                      "updated_ts = ? WHERE id = ?", (now, held[0]))
+                    self.conn.execute("UPDATE paypal_vault SET token_id = NULL, "
+                                      "status = 'deleted', updated_ts = ? WHERE id = ?",
+                                      (now, held[0]))
                 cur = self.conn.execute(
                     "UPDATE paypal_vault SET token_id = ?, token_sha256 = ?, status = 'active', "
                     "updated_ts = ? WHERE id = ? AND status = 'setup'",

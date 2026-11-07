@@ -37,7 +37,7 @@ def test_installer_refuses_a_planted_secret(tmp_path):
     (tmp_path / "sandbox.env").write_text("PAYPAL_CLIENT_SECRET=x\n")
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "fixture.key").write_text("fine: inside tests/")
-    out = subprocess.run(["bash", str(script), "abcdef1"], capture_output=True, text=True)
+    out = subprocess.run(["bash", str(script), "abcdef1"], capture_output=True, text=True)  # noqa: S603,S607
     assert out.returncode == 1
     assert "sandbox.env" in out.stderr and "fixture.key" not in out.stderr
 
@@ -46,12 +46,12 @@ def test_installer_does_not_refuse_a_clean_tree(tmp_path):
     script = _script_copy(tmp_path)
     (tmp_path / "tests").mkdir()
     (tmp_path / "tests" / "fixture.key").write_text("fine")
-    out = subprocess.run(["bash", str(script), "abcdef1"], capture_output=True, text=True)
+    out = subprocess.run(["bash", str(script), "abcdef1"], capture_output=True, text=True)  # noqa: S603,S607
     assert "refusing to install" not in out.stderr  # stops later (not root / no env)
 
 
 def test_mandate_summary_uses_zero_decimal_amounts():
-    env = Environment(loader=FileSystemLoader(ROOT / "studio" / "ui" / "templates"))
+    env = Environment(loader=FileSystemLoader(ROOT / "studio" / "ui" / "templates"))  # noqa: S701
     env.filters["money"] = display_amount
     tpl = env.from_string('{{ text("mandate.limits_pay", charge=1500 | money("HUF"), '
                           'cap=300000 | money("HUF"), currency="HUF", days=7, kinds="x") }}'

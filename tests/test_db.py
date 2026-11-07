@@ -318,7 +318,7 @@ def test_reset_clears_paypal_fundings_with_the_briefs_that_own_them(conn, tmp_pa
     assert conn.execute("SELECT count(*) FROM api_briefs").fetchone() == (1,)
     db.reset_demo(conn)
     for table in ("fundings", "funding_moves", "funding_claims", "api_briefs"):
-        assert conn.execute(f"SELECT count(*) FROM {table}").fetchone() == (0,), table
+        assert conn.execute(f"SELECT count(*) FROM {table}").fetchone() == (0,), table  # noqa: S608
 
 
 def test_reset_works_without_the_optional_tables(conn):

@@ -151,6 +151,7 @@ def test_the_route_explains_a_captured_funding_for_its_owner_only(tmp_path):
 
 def test_no_model_gives_codes_answer():
     from decimal import Decimal
+
     from studio.agents import treasurer
     a = treasurer.advise(None, run_id="run_x", currency="PLN", total_minor=14700,
                          campaigns=["cmp_1"], max_each_minor=14700, statement=None,
