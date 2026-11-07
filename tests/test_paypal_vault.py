@@ -805,6 +805,8 @@ def test_a_takeover_that_loses_the_race_rolls_the_old_row_and_the_queue_back(tmp
     """The new row is no longer ``setup`` when PayPal answers (e.g. the owner removed it
     meanwhile): nothing of the takeover sticks — the old row keeps its token and status,
     the queued deletion stays, no token is orphaned."""
+    from studio.paypal.vault import VaultError
+
     a = "acct_0123456789abcdef"
     v, fake = _vault(tmp_path)
     first = v.finish(a, _save(v, fake, a))

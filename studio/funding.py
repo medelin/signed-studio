@@ -423,6 +423,13 @@ def of_item(conn: sqlite3.Connection, item_id: str) -> list[Funding]:
     return [_row(r) for r in rows]
 
 
+def _same_quote(f: Funding, q: Quote) -> bool:
+    """Whether the open funding ``f`` is the amount ``q`` asks for (every money field)."""
+    return (f.currency == q.currency and f.daily_budget_minor == q.daily_budget_minor
+            and f.days == q.days and f.budget_minor == q.budget_minor
+            and f.fee_minor == q.fee_minor and f.total_minor == q.total_minor)
+
+
 def create(conn: sqlite3.Connection, *, run_id: str, item_id: str, content_sha256: str,
            q: Quote, now: float | None = None) -> Funding:
     """A new funding in state ``created`` with no PayPal order yet (``order_id`` is set by
@@ -440,7 +447,17 @@ def create(conn: sqlite3.Connection, *, run_id: str, item_id: str, content_sha25
     with atomic(conn):
         existing = conn.execute(open_sql, (item_id, content_sha256)).fetchone()
         if existing is not None:
-            return _row(existing)
+            found = _row(existing)
+            if _same_quote(found, q):
+                return found
+            # the open funding was quoted differently (a fee or budget setting changed):
+            # an order-less row is retired and replaced; one with a PayPal order is never
+            # silently reused for another amount
+            if found.order_id:
+                raise FundingError("the open funding's amount differs from the quote",
+                                   "quote_changed")
+            conn.execute("UPDATE fundings SET state = 'expired', updated_ts = ? WHERE id = ? "
+                         "AND state = 'created' AND order_id IS NULL", (ts, found.id))
         try:
             conn.execute(
                 "INSERT INTO fundings (id, run_id, item_id, content_sha256, currency, "

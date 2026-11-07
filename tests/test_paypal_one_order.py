@@ -152,3 +152,21 @@ def test_a_database_with_duplicate_open_fundings_is_repaired_at_start(conn):
     funding.ensure_schema(conn)  # idempotent
     with pytest.raises(FundingError):
         funding.get(conn, "fund_nope")
+
+
+def test_an_open_funding_is_reused_only_for_the_same_amount(conn):
+    """A fee or budget setting changed between two requests: an order-less open funding is
+    retired and replaced by one with the new amount; one that already has a PayPal order is
+    never silently reused for another amount (``quote_changed``)."""
+    first = funding.create(conn, run_id="run_1", item_id="cre_1", content_sha256=H, q=Q)
+    dearer = funding.quote("GBP", 1200, 3, funding.Decimal(5))
+    second = funding.create(conn, run_id="run_1", item_id="cre_1", content_sha256=H, q=dearer)
+    assert second.id != first.id and second.total_minor == dearer.total_minor
+    assert funding.get(conn, first.id).state == "expired"
+    conn.execute("UPDATE fundings SET order_id = 'ORDER1' WHERE id = ?", (second.id,))
+    conn.commit()
+    with pytest.raises(FundingError) as exc:
+        funding.create(conn, run_id="run_1", item_id="cre_1", content_sha256=H, q=Q)
+    assert exc.value.code == "quote_changed"
+    same = funding.create(conn, run_id="run_1", item_id="cre_1", content_sha256=H, q=dearer)
+    assert same.id == second.id
