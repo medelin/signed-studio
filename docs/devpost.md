@@ -7,10 +7,11 @@
 **Links:**
 - Try it: https://pay.udun.eu (user `judge`, password in the private judges field below)
 - Code: https://github.com/medelin/signed-studio (Apache-2.0)
-- Video: <YouTube URL> (2:55)
+- Video: https://youtu.be/icfZGcml_hI (under 3:00)
 
-**Private field for judges (never in the public text):** judge password; PayPal sandbox
-buyer login (Personal account e-mail and password) for checkout and "Save my PayPal".
+**Private field for judges (never in the public text):** judge password; for checkout, the
+PayPal sandbox test card (Visa 4111 1111 1111 1111, any future expiry, CVV 123, "Pay as
+guest"); for "Save my PayPal", the sandbox Personal buyer login (e-mail and password).
 
 ---
 
@@ -37,23 +38,31 @@ reviewers check every ad against the facts the owner confirmed and the platform'
   per period, which assistant tokens. Their own AI assistant (Claude, ChatGPT or a script,
   over MCP or the HTTPS API) runs a brief and pays from the saved PayPal, only inside those
   limits. Outside them it gets a pay-and-sign link for the owner instead of money.
-- **Reading and testing.** The assistant reads the account's PayPal transactions (PayPal
-  Agent Toolkit read tools, Transaction Search reconciliation), and can propose a refund
-  that only the owner's signature executes. A sandbox switch simulates a declined card
-  (`PayPal-Mock-Response`) so the failure path is visible. The `/money` page (AG Grid)
-  shows every hold, capture and void.
+- **PayPal's agent tools, behind the gate.** The assistant reads the account's PayPal
+  transactions through PayPal's Agent Toolkit read tools, limited to the account's own
+  money, and can propose a refund that only the owner's signature executes.
+- **Unhappy paths on screen.** A sandbox switch makes PayPal refuse the capture
+  (`PayPal-Mock-Response`): the studio shows PayPal's reason and `debug_id`, nothing is
+  taken and the money stays held.
+- **Money page.** One AG Grid table of every hold, capture, void, refund and mandate charge.
+  "Check with PayPal" reconciles each move against PayPal's Transaction Search (matched,
+  pending while PayPal's search catches up, held, missing, amount mismatch); "Explain" has
+  the AI treasurer explain a funding in plain words, every amount recomputed by code.
 - **Proof.** Every PayPal call is a receipt in an Ed25519-signed, hash-chained ledger.
   PayPal's webhooks are verified offline against PayPal's RSA signature and re-read from
   PayPal's API. `studio verify` rechecks six money rules (P-V1…P-V6) on an exported ledger:
   no capture without the owner's activation signature, no vault charge outside a valid
-  mandate, never the same charge twice, voids after revocation.
+  mandate, refunds only on their own signed approval, never the same charge twice, voids
+  after revocation. One changed byte fails it.
 
 ## How we built it
 
 Python (FastAPI, SQLite), no front-end framework; WebCrypto Ed25519 keys that never leave
 the owner's browser. PayPal: Orders v2 (create, authorize, capture, void, refund), Vault v3
 (setup tokens, payment tokens, delete), Webhooks (offline RSA verification, pinned cert
-chain). AI: Muse Spark 1.3 for planning, copy and review; Muse Image 1.0 for images; SAM 3.1
+chain), Transaction Search (reconciliation), sandbox negative testing
+(`PayPal-Mock-Response`), and PayPal's Agent Toolkit run through the studio's own receipted
+PayPal client. AI: Muse Spark 1.3 for planning, copy and review; Muse Image 1.0 for images; SAM 3.1
 for product cut-outs; an open-weights second reviewer; an AI treasurer that explains a
 funding's reconciliation but never sees a PayPal id and never moves money — code recomputes
 every amount it states. MCP server (Streamable HTTP) and an OpenAPI for assistants.
@@ -61,7 +70,18 @@ every amount it states. MCP server (Streamable HTTP) and an OpenAPI for assistan
 ## Challenges we ran into
 
 - Proving money rules offline, not just enforcing them online: the verifier has to
-  reconstruct who signed what for which PayPal order from the ledger alone.
+  reconstruct who signed what for which PayPal order from the ledger alone, including
+  PayPal's "order approved" webhook arriving before the owner's signature and a buyer who
+  approves an order the owner never signs.
+- PayPal's Transaction Search lags behind real time, and a search window that starts after
+  its last refresh is rejected as a whole. Reconciliation reaches back past the lag and
+  calls very recent moves "pending", never "missing".
+- Negative testing: the sandbox answers `INSTRUMENT_DECLINED` on an authorization capture
+  with an empty 403, so the studio uses `TRANSACTION_REFUSED`, which returns PayPal's real
+  error shape and `debug_id`.
+- Giving an AI agent PayPal's tools safely: answers limited to the account's own PayPal ids,
+  nothing hashed from PayPal's raw pages (the sandbox merchant is shared), write tools
+  refused.
 - Browser security meets payment redirects: the strict CSP and `SameSite=Strict` session
   cookie both broke the Vault return from PayPal at first; fixed without loosening either
   (a sandbox-only `form-action`, a one-time same-site bounce).
@@ -71,12 +91,14 @@ every amount it states. MCP server (Streamable HTTP) and an OpenAPI for assistan
 ## Accomplishments that we're proud of
 
 - 600/600 tampered ledger exports rejected by `studio verify`; 25/25 clean exports accepted.
-- 284/284 attack tests pass, including 12 PayPal money attack classes (over-cap charges,
-  charges after revocation, a charge replayed against another mandate, captures without an
-  activation signature).
-- A real sandbox run end to end: order, payer approval, authorization, capture; and a real
-  customer-not-present vault charge from an assistant under a signed mandate.
-- One campaign run costs about $0.09 in model calls.
+- 3,271 automated tests pass, including 288 attack tests (28 of them PayPal money attacks:
+  over-cap charges, charges after revocation, a charge replayed against another mandate,
+  captures without an activation signature, webhooks for orders nobody signed).
+- Everything in the video is a live sandbox run on the hosted demo: order, payer approval,
+  authorization, a refused capture, the capture, an assistant paying under a signed
+  mandate, an assistant's refund proposal signed by the owner, reconciliation against
+  PayPal's own transaction list.
+- One campaign run costs about $0.10 in model calls.
 
 ## What we learned
 
@@ -86,7 +108,8 @@ human, enforced by code, and checkable by anyone afterwards.
 ## What's next
 
 Per-client accounts for small agencies, more ad channels behind the same signature, and
-PayPal refunds as their own signed approvals in the UI.
+PayPal's Agent Ready delegated tokens in place of our own mandate once they are generally
+available (the same idea: a maximum amount, a currency and an expiry, signed by a human).
 
 ## Tools (AI models and services, and how they are used)
 
@@ -108,7 +131,7 @@ PayPal refunds as their own signed approvals in the UI.
 
 ## Built with
 
-python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks · paypal-agent-toolkit · paypal-ai-toolkit ·
+python · fastapi · sqlite · paypal-orders-v2 · paypal-vault-v3 · paypal-webhooks · paypal-transaction-search · paypal-agent-toolkit · paypal-ai-toolkit ·
 apimatic-context-plugin · ag-grid · postman · webcrypto-ed25519 · mcp · muse-spark · sam-3.1 · meta-marketing-api
 
 ## Submission-period note
