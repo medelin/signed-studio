@@ -1,12 +1,13 @@
-"""Sign in or register with Google or Facebook (OAuth 2.0 authorization code flow).
+"""Sign in or register with PayPal, Facebook or Google (OAuth 2.0 authorization code flow).
 
 - ``/auth/{provider}/start`` opens the provider's consent page. The ``state`` is random,
   kept server-side for ten minutes and bound to a ``SameSite=Lax`` cookie on ``/auth/``, so a
   callback the browser did not start is refused. Google also gets PKCE (S256); Facebook's
-  profile call carries ``appsecret_proof``.
+  profile call carries ``appsecret_proof``. PayPal ("Log in with PayPal", sandbox only here)
+  takes neither: its token call authenticates with HTTP Basic, never with a body secret.
 - ``/auth/{provider}/callback`` exchanges the code, reads the provider's stable user id
-  (OIDC ``sub``, Facebook ``id``) and signs that identity's account in, or registers a new
-  ``trial`` account (``studio.accounts``). An e-mail match never links an existing account;
+  (OIDC ``sub``, Facebook ``id``, PayPal ``user_id``) and signs that identity's account in,
+  or registers a new ``trial`` account (``studio.accounts``). An e-mail match never links an existing account;
   linking happens only from a signed-in session (``/auth/{provider}/start`` while signed in).
 - The session cookie is ``SameSite=Strict``, which the browser holds back for the rest of a
   redirect chain the provider started; so the callback answers with a tiny page that moves
@@ -46,7 +47,19 @@ class Provider:
     pkce: bool
 
 
+def paypal_hosts(env: str) -> tuple[str, str]:
+    """(consent page, API base) of PayPal's sandbox, or of live for any other ``env``. Sign-in
+    refuses to start on anything but the sandbox (``SocialLoginConfig.from_env``)."""
+    if env == "sandbox":
+        return "https://www.sandbox.paypal.com/connect", "https://api-m.sandbox.paypal.com"
+    return "https://www.paypal.com/connect", "https://api-m.paypal.com"
+
+
+PAYPAL_CONNECT, PAYPAL_API = paypal_hosts("sandbox")
+
 PROVIDERS = {
+    "paypal": Provider("paypal", PAYPAL_CONNECT, PAYPAL_API + "/v1/oauth2/token",
+                       "openid profile email", False),
     "google": Provider("google", "https://accounts.google.com/o/oauth2/v2/auth",
                        "https://oauth2.googleapis.com/token", "openid email profile", True),
     "facebook": Provider("facebook", f"https://www.facebook.com/{GRAPH_VERSION}/dialog/oauth",
@@ -61,33 +74,44 @@ class SocialLoginConfig:
     google_secret: str = field(default="", repr=False)
     facebook_id: str = ""
     facebook_secret: str = field(default="", repr=False)
+    paypal_id: str = ""
+    paypal_secret: str = field(default="", repr=False)
+    paypal_env: str = "sandbox"
 
     def client(self, provider: str) -> tuple[str, str] | None:
         pair = {"google": (self.google_id, self.google_secret),
-                "facebook": (self.facebook_id, self.facebook_secret)}.get(provider)
+                "facebook": (self.facebook_id, self.facebook_secret),
+                "paypal": (self.paypal_id, self.paypal_secret)}.get(provider)
         return pair if pair and all(pair) else None
 
     @property
     def enabled(self) -> list[str]:
-        """Configured providers in display order: Facebook first (the studio is for Meta
-        advertisers), then Google."""
-        return [p for p in ("facebook", "google") if self.client(p)]
+        """Configured providers in display order: PayPal first (the studio's own money
+        runs on it, so judges already have a sandbox login), then Facebook (the studio is
+        for Meta advertisers), then Google."""
+        return [p for p in ("paypal", "facebook", "google") if self.client(p)]
 
     @classmethod
     def from_env(cls, e: Mapping[str, str]) -> SocialLoginConfig:
         """Raises ``ValueError`` naming the variable; a provider is on when both are set."""
         values = {name: e.get(name, "").strip() for name in (
             "GOOGLE_LOGIN_CLIENT_ID", "GOOGLE_LOGIN_CLIENT_SECRET",
-            "FACEBOOK_LOGIN_CLIENT_ID", "FACEBOOK_LOGIN_CLIENT_SECRET")}
-        for prefix in ("GOOGLE_LOGIN_", "FACEBOOK_LOGIN_"):
+            "FACEBOOK_LOGIN_CLIENT_ID", "FACEBOOK_LOGIN_CLIENT_SECRET",
+            "PAYPAL_LOGIN_CLIENT_ID", "PAYPAL_LOGIN_CLIENT_SECRET")}
+        for prefix in ("GOOGLE_LOGIN_", "FACEBOOK_LOGIN_", "PAYPAL_LOGIN_"):
             pair = [values[prefix + "CLIENT_ID"], values[prefix + "CLIENT_SECRET"]]
             if any(pair) and not all(pair):
                 raise ValueError(f"{prefix}CLIENT_ID and {prefix}CLIENT_SECRET go together")
         fb = values["FACEBOOK_LOGIN_CLIENT_ID"]
         if fb and not fb.isdigit():
             raise ValueError("FACEBOOK_LOGIN_CLIENT_ID is the numeric Meta app id")
+        env = e.get("PAYPAL_ENV", "").strip().lower() or "sandbox"
+        if values["PAYPAL_LOGIN_CLIENT_ID"] and env != "sandbox":
+            raise ValueError("PAYPAL_LOGIN_* is sandbox-only in this release "
+                             f"(PAYPAL_ENV={env!r})")
         return cls(values["GOOGLE_LOGIN_CLIENT_ID"], values["GOOGLE_LOGIN_CLIENT_SECRET"],
-                   fb, values["FACEBOOK_LOGIN_CLIENT_SECRET"])
+                   fb, values["FACEBOOK_LOGIN_CLIENT_SECRET"],
+                   values["PAYPAL_LOGIN_CLIENT_ID"], values["PAYPAL_LOGIN_CLIENT_SECRET"], env)
 
 
 @dataclass(frozen=True)
@@ -168,6 +192,8 @@ def authorize_url(provider: str, client_id: str, redirect_uri: str, state: str,
     p = PROVIDERS[provider]
     query = {"client_id": client_id, "redirect_uri": redirect_uri, "response_type": "code",
              "scope": p.scope, "state": state}
+    if provider == "paypal":
+        query["flowEntry"] = "static"  # the consent page without PayPal's sign-up detour
     if p.pkce:
         query |= {"code_challenge": challenge_of(pending.verifier),
                   "code_challenge_method": "S256", "prompt": "select_account"}
@@ -193,12 +219,17 @@ def fetch_identity(provider: str, client: tuple[str, str], code: str, redirect_u
     client_id, secret = client
     form = {"client_id": client_id, "client_secret": secret, "code": code,
             "redirect_uri": redirect_uri, "grant_type": "authorization_code"}
+    basic = None
+    if provider == "paypal":  # HTTP Basic carries the client; the secret never rides the body
+        form = {"grant_type": "authorization_code", "code": code}
+        basic = httpx.BasicAuth(client_id, secret)
     if p.pkce:
         form["code_verifier"] = pending.verifier
     own = http is None
     http = http or httpx.Client(timeout=TIMEOUT_S)
     try:
-        r = http.post(p.token_url, data=form)
+        r = http.post(p.token_url, data=form, auth=basic) if basic else http.post(
+            p.token_url, data=form)
         if r.status_code != 200:
             raise ProviderError(f"{provider} token exchange: HTTP {r.status_code}")
         token = str(r.json().get("access_token") or "")
@@ -206,6 +237,10 @@ def fetch_identity(provider: str, client: tuple[str, str], code: str, redirect_u
             raise ProviderError(f"{provider} token exchange: no access token")
         if provider == "google":
             r = http.get("https://openidconnect.googleapis.com/v1/userinfo",
+                         headers={"Authorization": f"Bearer {token}"})
+        elif provider == "paypal":
+            r = http.get(PAYPAL_API + "/v1/identity/oauth2/userinfo",
+                         params={"schema": "paypalv1.1"},
                          headers={"Authorization": f"Bearer {token}"})
         else:
             proof = hmac.new(secret.encode(), token.encode(), hashlib.sha256).hexdigest()
@@ -220,13 +255,27 @@ def fetch_identity(provider: str, client: tuple[str, str], code: str, redirect_u
     finally:
         if own:
             http.close()
-    subject = str(data.get("sub" if provider == "google" else "id") or "")
+    subject = str(data.get({"google": "sub", "paypal": "user_id"}.get(provider, "id")) or "")
     if not subject or len(subject) > 255:
         raise ProviderError(f"{provider} profile: no user id")
     email = str(data.get("email") or "")
     if provider == "google" and data.get("email_verified") is not True:
         email = ""
+    if provider == "paypal":
+        email = paypal_verified_email(data)
     return Identity(provider, subject, email, str(data.get("name") or ""))
+
+
+def paypal_verified_email(data: Mapping[str, Any]) -> str:
+    """The e-mail only when PayPal vouches for it: ``email_verified`` is true, or the primary
+    entry of ``emails`` is confirmed (``schema=paypalv1.1``). Otherwise ``""``."""
+    if data.get("email_verified") is True:
+        return str(data.get("email") or "")
+    for entry in data.get("emails") or []:
+        if isinstance(entry, dict) and entry.get("primary") is True \
+                and entry.get("confirmed") is True:
+            return str(entry.get("value") or "")
+    return ""
 
 
 def bounce_page(target: str, label: str) -> str:

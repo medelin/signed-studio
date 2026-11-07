@@ -279,6 +279,7 @@ button.danger { background: var(--signal); color: var(--signal-ink); }
 }
 .social-signin .ob-button:hover { background: color-mix(in oklch, var(--ink) 8%, transparent); filter: none; }
 .social-signin .ob-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.social-signin .social-paypal { font-weight: 600; }  /* first in the list: the sandbox login judges already have */
 .social-links { list-style: none; padding: 0; margin: .25rem 0 1rem; display: grid; gap: .4rem; }
 .ob-banner {
   display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between;

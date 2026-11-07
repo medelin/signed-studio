@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     code_locked_until REAL NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS external_logins (
-    provider TEXT NOT NULL CHECK (provider IN ('google', 'facebook')),
+    provider TEXT NOT NULL CHECK (provider IN ('google', 'facebook', 'paypal')),
     subject TEXT NOT NULL,              -- the provider's stable user id (OIDC sub, FB id)
     account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
     created_ts REAL NOT NULL,
@@ -318,10 +318,33 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     for statement in SESSIONS_SCHEMA:
         conn.execute(statement)
+    _widen_external_providers(conn)
     have = {row[1] for row in conn.execute("PRAGMA table_info(accounts)")}
     for name, ddl in _LATER_COLUMNS.items():
         if name not in have:
             conn.execute(f"ALTER TABLE accounts ADD COLUMN {name} {ddl}")
+
+
+def _widen_external_providers(conn: sqlite3.Connection) -> None:
+    """A database made before PayPal sign-in has ``CHECK (provider IN ('google',
+    'facebook'))``; SQLite cannot alter a CHECK, so the table is rebuilt once (rows kept)."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'external_logins'").fetchone()
+    if row is None or "'paypal'" in row[0]:
+        return
+    conn.executescript("""
+        BEGIN;
+        ALTER TABLE external_logins RENAME TO external_logins_old;
+        CREATE TABLE external_logins (
+            provider TEXT NOT NULL CHECK (provider IN ('google', 'facebook', 'paypal')),
+            subject TEXT NOT NULL,
+            account_id TEXT NOT NULL REFERENCES accounts (id) ON DELETE CASCADE,
+            created_ts REAL NOT NULL,
+            PRIMARY KEY (provider, subject)
+        );
+        INSERT INTO external_logins SELECT provider, subject, account_id, created_ts
+            FROM external_logins_old;
+        DROP TABLE external_logins_old;
+        COMMIT;""")
 
 
 # -- passwords --------------------------------------------------------------------------

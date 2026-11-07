@@ -219,24 +219,27 @@ EN_ACCOUNTS: dict[str, str] = {
                              "sign in again.",
     "err.too_many_sessions": "Too many people are signed in right now; try again in a minute.",
     "social.heading": "New here? Register in one step",
-    "social.lead": "Continue with Google or Facebook to sign in or create your account. A "
+    "social.lead": "Continue with PayPal, Facebook or Google to sign in or create your account. A "
                    "new account starts on trial: campaigns are created paused, on the "
                    "studio's own page, until the operator lifts the trial.",
+    "social.continue_paypal": "Continue with PayPal",
     "social.continue_google": "Continue with Google",
     "social.continue_facebook": "Continue with Facebook",
     "social.continue": "Continue to Signed Studio",
     "social.error": "That sign-in did not go through. Try again, or use your user name "
                     "and password.",
+    "social.paypal": "PayPal",
     "social.google": "Google",
     "social.facebook": "Facebook",
     "social.linked": "connected",
     "social.reauth": "confirm it's you",
+    "social.link_paypal": "Connect PayPal",
     "social.link_google": "Connect Google",
     "social.link_facebook": "Connect Facebook",
     "social.linked_lead": "Sign in with:",
     "social.trial": "This account is on trial: you can prepare and sign paused campaigns; "
                     "the operator lifts the trial.",
-    "social.no_password": "This account signs in with Google or Facebook. To add a "
+    "social.no_password": "This account signs in with PayPal, Facebook or Google. To add a "
                           "password, sign in with your provider again and come back here "
                           "within 15 minutes.",
     "social.first_password": "You just signed in with your provider, so you can set a "
@@ -445,24 +448,27 @@ PL_ACCOUNTS: dict[str, str] = {
                              "konta; zaloguj się ponownie.",
     "err.too_many_sessions": "Zalogowanych jest teraz zbyt wiele osób; spróbuj za minutę.",
     "social.heading": "Pierwszy raz? Zarejestruj się jednym krokiem",
-    "social.lead": "Kontynuuj przez Google lub Facebooka, żeby się zalogować albo założyć "
+    "social.lead": "Kontynuuj przez PayPal, Facebooka lub Google, żeby się zalogować albo założyć "
                    "konto. Nowe konto zaczyna od okresu próbnego: kampanie powstają "
                    "wstrzymane, na stronie studia, dopóki operator go nie zniesie.",
+    "social.continue_paypal": "Kontynuuj z PayPal",
     "social.continue_google": "Kontynuuj przez Google",
     "social.continue_facebook": "Kontynuuj przez Facebooka",
     "social.continue": "Przejdź do Signed Studio",
     "social.error": "To logowanie się nie udało. Spróbuj ponownie albo użyj nazwy "
                     "użytkownika i hasła.",
+    "social.paypal": "PayPal",
     "social.google": "Google",
     "social.facebook": "Facebook",
     "social.linked": "połączone",
     "social.reauth": "potwierdź, że to Ty",
+    "social.link_paypal": "Połącz z PayPal",
     "social.link_google": "Połącz z Google",
     "social.link_facebook": "Połącz z Facebookiem",
     "social.linked_lead": "Logowanie przez:",
     "social.trial": "To konto jest w okresie próbnym: przygotujesz i podpiszesz kampanie "
                     "wstrzymane; okres próbny znosi operator.",
-    "social.no_password": "To konto loguje się przez Google lub Facebooka. Żeby dodać "
+    "social.no_password": "To konto loguje się przez PayPal, Facebooka lub Google. Żeby dodać "
                           "hasło, zaloguj się ponownie przez dostawcę i wróć tu w ciągu "
                           "15 minut.",
     "social.first_password": "Właśnie zalogowałeś się przez dostawcę, więc możesz teraz "

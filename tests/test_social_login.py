@@ -2,6 +2,7 @@
 that started it, a new identity gets a trial account, an e-mail never links an existing
 account on its own, and a trial account on a live adapter signs only what the judge signs."""
 
+import base64
 import hashlib
 import hmac
 from urllib.parse import parse_qs, urlsplit
@@ -22,6 +23,12 @@ SOCIAL = {"GOOGLE_LOGIN_CLIENT_ID": "gid.apps.googleusercontent.com",
           "FACEBOOK_LOGIN_CLIENT_ID": "1120296133738519",
           "FACEBOOK_LOGIN_CLIENT_SECRET": "f" * 32,
           "STUDIO_PUBLIC_URL": "https://testserver"}
+
+
+PAYPAL = {"PAYPAL_LOGIN_CLIENT_ID": "AaPayPalSandboxId",
+          "PAYPAL_LOGIN_CLIENT_SECRET": "p-secret"}
+PAYPAL_PROFILE = {"user_id": "https://www.paypal.com/webapps/auth/identity/user/AbC123",
+                  "name": "Pat Buyer", "email": "pat@example.com", "email_verified": True}
 
 
 class Provider:
@@ -59,6 +66,8 @@ GOOGLE = {"sub": "1098", "email": "ola@example.com", "email_verified": True, "na
 def test_config_needs_both_halves():
     assert SocialLoginConfig.from_env({}).enabled == []
     assert SocialLoginConfig.from_env(SOCIAL).enabled == ["facebook", "google"]
+    assert SocialLoginConfig.from_env({**SOCIAL, **PAYPAL}).enabled == [
+        "paypal", "facebook", "google"]
     with pytest.raises(ValueError, match="go together"):
         SocialLoginConfig.from_env({"GOOGLE_LOGIN_CLIENT_ID": "x"})
     with pytest.raises(ValueError, match="numeric"):
@@ -196,6 +205,7 @@ def test_login_page_offers_the_configured_providers(tmp_path):
         page = c.get("/login").text
         assert 'href="/auth/google/start?next=/"' in page
         assert "/auth/facebook/start" in page
+        assert "/auth/paypal/start" not in page
     plain = create_app(settings(tmp_path / "plain"))
     with TestClient(plain, base_url="https://testserver") as c:
         assert "/auth/google/start" not in c.get("/login").text
@@ -349,3 +359,130 @@ def test_provider_sign_ins_count_in_the_client_budget(tmp_path):
         c.cookies.clear()
         r = _sign_in(c)
     assert r.status_code == 303 and "social_error=" in r.headers["location"]
+
+
+def test_paypal_start_uses_connect_with_static_flow_and_no_pkce(tmp_path):
+    app, _ = _app(tmp_path, PAYPAL_PROFILE, **PAYPAL)
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.get("/auth/paypal/start", follow_redirects=False)
+        assert r.status_code == 303
+        url = urlsplit(r.headers["location"])
+        q = parse_qs(url.query)
+        assert f"{url.scheme}://{url.netloc}{url.path}" == "https://www.sandbox.paypal.com/connect"
+        assert q["flowEntry"] == ["static"] and q["response_type"] == ["code"]
+        assert q["scope"] == ["openid profile email"] and q["client_id"] == ["AaPayPalSandboxId"]
+        assert q["redirect_uri"] == ["https://testserver/auth/paypal/callback"]
+        assert len(q["state"][0]) >= 40 and "code_challenge" not in q
+
+
+def test_paypal_token_exchange_uses_basic_auth_and_userinfo_bearer(tmp_path):
+    app, fake = _app(tmp_path, PAYPAL_PROFILE, **PAYPAL)
+    with TestClient(app, base_url="https://testserver") as c:
+        account = app.state.sessions.account_of(_sign_in(c, "paypal").cookies[COOKIE])
+    assert account.tier == "trial" and account.email == "pat@example.com"
+    token, info = fake.seen
+    assert token.url.host == "api-m.sandbox.paypal.com" and token.url.path == "/v1/oauth2/token"
+    want = base64.b64encode(b"AaPayPalSandboxId:p-secret").decode()
+    assert token.headers["authorization"] == f"Basic {want}"
+    assert parse_qs(token.content.decode()) == {"grant_type": ["authorization_code"],
+                                                "code": ["c0de"]}
+    assert b"p-secret" not in token.content
+    assert info.method == "GET" and info.url.path == "/v1/identity/oauth2/userinfo"
+    assert info.url.params["schema"] == "paypalv1.1"
+    assert info.headers["authorization"] == "Bearer tok-123"
+    assert app.state.accounts.by_identity("paypal", PAYPAL_PROFILE["user_id"]).id == account.id
+
+
+def test_paypal_unverified_email_is_not_kept(tmp_path):
+    app, _ = _app(tmp_path, {**PAYPAL_PROFILE, "email_verified": False}, **PAYPAL)
+    with TestClient(app, base_url="https://testserver") as c:
+        account = app.state.sessions.account_of(_sign_in(c, "paypal").cookies[COOKIE])
+    assert account.email == ""
+    absent = {k: v for k, v in PAYPAL_PROFILE.items() if k != "email_verified"}
+    app, _ = _app(tmp_path / "b", absent, **PAYPAL)
+    with TestClient(app, base_url="https://testserver") as c:
+        account = app.state.sessions.account_of(_sign_in(c, "paypal").cookies[COOKIE])
+    assert account.email == ""
+
+
+def test_paypal_confirmed_primary_email_is_kept(tmp_path):
+    profile = {"user_id": "u-1", "name": "Pat", "emails": [
+        {"value": "old@example.com", "primary": False, "confirmed": True},
+        {"value": "pat@example.com", "primary": True, "confirmed": True}]}
+    app, _ = _app(tmp_path, profile, **PAYPAL)
+    with TestClient(app, base_url="https://testserver") as c:
+        account = app.state.sessions.account_of(_sign_in(c, "paypal").cookies[COOKIE])
+    assert account.email == "pat@example.com"
+
+
+def test_paypal_userinfo_without_user_id_is_refused(tmp_path):
+    for bad in ({"name": "Pat", "email": "p@example.com"}, {"user_id": "x" * 256}):
+        app, _ = _app(tmp_path / str(len(bad)), bad, **PAYPAL)
+        with TestClient(app, base_url="https://testserver") as c:
+            r = _sign_in(c, "paypal")
+            assert r.headers["location"] == "/login?social_error=provider"
+        assert len(app.state.accounts.listing()) == 1  # the judge only
+
+
+def test_a_rejected_paypal_code_registers_nothing_and_burns_the_state(tmp_path):
+    app = create_app(settings(tmp_path, **SOCIAL, **PAYPAL))
+    app.state.social_http = httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(400, json={"error": "invalid_grant"})))
+    with TestClient(app, base_url="https://testserver") as c:
+        r = c.get("/auth/paypal/start", follow_redirects=False)
+        state = parse_qs(urlsplit(r.headers["location"]).query)["state"][0]
+        r = c.get("/auth/paypal/callback", params={"code": "c", "state": state},
+                  follow_redirects=False)
+        assert r.headers["location"] == "/login?social_error=provider"
+        r = c.get("/auth/paypal/callback", params={"code": "c", "state": state},
+                  follow_redirects=False)
+        assert r.headers["location"] == "/login?social_error=state"
+    assert len(app.state.accounts.listing()) == 1
+
+
+def test_the_same_paypal_user_signing_in_twice_is_one_account(tmp_path):
+    app, _ = _app(tmp_path, PAYPAL_PROFILE, **PAYPAL)
+    with TestClient(app, base_url="https://testserver") as c:
+        first = app.state.sessions.account_of(_sign_in(c, "paypal").cookies[COOKIE])
+    with TestClient(app, base_url="https://testserver") as c:
+        second = app.state.sessions.account_of(_sign_in(c, "paypal").cookies[COOKIE])
+    assert first.id == second.id and len(app.state.accounts.listing()) == 2
+
+
+def test_paypal_login_env_needs_both_halves_and_sandbox():
+    with pytest.raises(ValueError, match="PAYPAL_LOGIN_CLIENT_ID and PAYPAL_LOGIN_CLIENT_SECRET"):
+        SocialLoginConfig.from_env({"PAYPAL_LOGIN_CLIENT_ID": "x"})
+    with pytest.raises(ValueError, match="PAYPAL_LOGIN_CLIENT_ID and PAYPAL_LOGIN_CLIENT_SECRET"):
+        SocialLoginConfig.from_env({"PAYPAL_LOGIN_CLIENT_SECRET": "x"})
+    with pytest.raises(ValueError, match="sandbox-only"):
+        SocialLoginConfig.from_env({**PAYPAL, "PAYPAL_ENV": "live"})
+    # PAYPAL_ENV alone (the studio's own money setting) does not touch sign-in
+    assert SocialLoginConfig.from_env({"PAYPAL_ENV": "sandbox"}).enabled == []
+    assert SocialLoginConfig.from_env({**PAYPAL, "PAYPAL_ENV": "Sandbox"}).enabled == ["paypal"]
+
+
+def test_a_database_made_before_paypal_accepts_a_paypal_identity(tmp_path):
+    import sqlite3
+
+    from studio import accounts
+
+    conn = sqlite3.connect(tmp_path / "old.db")
+    conn.executescript(accounts.SCHEMA.replace("('google', 'facebook', 'paypal')",
+                                               "('google', 'facebook')"))
+    conn.execute("INSERT INTO accounts (id, username, created_ts, updated_ts) "
+                 "VALUES ('a1', 'ola', 0, 0)")
+    conn.execute("INSERT INTO external_logins VALUES ('google', 'g1', 'a1', 0)")
+    conn.commit()
+    accounts.ensure_schema(conn)
+    conn.execute("INSERT INTO external_logins VALUES ('paypal', 'p1', 'a1', 0)")
+    rows = conn.execute("SELECT provider FROM external_logins ORDER BY provider").fetchall()
+    assert rows == [("google",), ("paypal",)]
+
+
+def test_login_page_lists_paypal_first(tmp_path):
+    app, _ = _app(tmp_path, GOOGLE, **PAYPAL)
+    with TestClient(app, base_url="https://testserver") as c:
+        page = c.get("/login").text
+        assert "Continue with PayPal" in page
+        assert page.index("/auth/paypal/start") < page.index("/auth/facebook/start") \
+            < page.index("/auth/google/start")
