@@ -44,19 +44,19 @@ uses for money). Facebook needs configuration only.
 - [x] A1 Vault: saving the same PayPal again moves PayPal's reused vault id to the new save
       (`studio/paypal/vault.py` `finish`), another account is refused (`saved_elsewhere`).
       Tests in `tests/test_paypal_vault.py`. Full suite, commit, deploy.
-- [ ] A2 Re-record the mandate scene in English (`--lang=en-US`, `locale="en-US"` in
+- [x] A2 Re-record the mandate scene in English (`--lang=en-US`, `locale="en-US"` in
       `record.py`), render `edit2.py`, copy to `media/video/signed-studio-demo.mp4` + captions.
-- [ ] A3 Operator uploads to YouTube (replace or new link); update `docs/devpost.md`, Devpost
+- [x] A3 Operator uploads to YouTube (replace or new link); update `docs/devpost.md`, Devpost
       form (video field), `docs/demo-script-paypal.md` beats.
 - [ ] A4 Afterwards: revoke the recording token (`demo video assistant`), disable `demo`
       (`account disable demo`), delete the recording vault/mandate from the demo account.
 
 ## Part B — Facebook sign-in on pay (configuration, operator)
 
-- [ ] B1 Meta app (the one `muse-studio-lite` uses, `FACEBOOK_LOGIN_CLIENT_ID` on `muse`):
+- [x] B1 Meta app (the one `muse-studio-lite` uses, `FACEBOOK_LOGIN_CLIENT_ID` on `muse`):
       add `https://pay.udun.eu/auth/facebook/callback` to **Valid OAuth Redirect URIs**
       (Facebook Login → Settings) in neo.
-- [ ] B2 `/etc/muse-pay/env`: `FACEBOOK_LOGIN_CLIENT_ID`, `FACEBOOK_LOGIN_CLIENT_SECRET` (copy
+- [x] B2 `/etc/muse-pay/env`: `FACEBOOK_LOGIN_CLIENT_ID`, `FACEBOOK_LOGIN_CLIENT_SECRET` (copy
       from `muse:/etc/muse-studio-lite/env`, mode 640, never through the chat), restart.
 - [ ] B3 Check: `/login` shows "Continue with Facebook"; a sign-in with the operator's own
       Facebook test user creates a `trial` account; `studio verify` unaffected.
@@ -150,12 +150,12 @@ uses for money). Facebook needs configuration only.
 
 ### Task C3: wire-up on pay (operator)
 
-- [ ] Developer Dashboard (neo, signed in): sandbox app of the studio → enable "Log in with
+- [x] Developer Dashboard (neo, signed in): sandbox app of the studio → enable "Log in with
       PayPal", Return URL `https://pay.udun.eu/auth/paypal/callback`, share name + e-mail.
-- [ ] `/etc/muse-pay/env`: `PAYPAL_LOGIN_CLIENT_ID` = `PAYPAL_CLIENT_ID`,
+- [x] `/etc/muse-pay/env`: `PAYPAL_LOGIN_CLIENT_ID` = `PAYPAL_CLIENT_ID`,
       `PAYPAL_LOGIN_CLIENT_SECRET` = `PAYPAL_CLIENT_SECRET` (copied inside the file; never
       through the chat). Deploy, restart.
-- [ ] Check with the sandbox buyer (`sb-43c6n834336069@personal.example.com`): a new `trial`
+- [x] Check with the sandbox buyer (`sb-43c6n834336069@personal.example.com`): a new `trial`
       account appears; `Account → Sign-in` shows the PayPal link; sign-out and back in gives
       the same account. Add a line to `docs/devpost.md` (judges may sign in with PayPal
       using the sandbox buyer login from the private field).
@@ -255,7 +255,7 @@ the hourly sandbox-reset tick and from `studio` CLI `vault retry`; after PayPal 
 `token_id`), operator view in `/money` not required. Tests: failed delete is retried and the
 token id erased after success.
 
-### Decision for the operator (P1 conditional): single workspace vs accounts
+### Decision (operator, 7 Nov): single workspace now; accounts per client after the hackathon
 
 Registration is open now (PayPal, Facebook). Every signed-in account shares the operator's
 Studio workspace (`STUDIO` ownership): fundings, receipts and approvals created in the UI are

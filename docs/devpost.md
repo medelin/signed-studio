@@ -6,6 +6,8 @@
 
 **Links:**
 - Try it: https://pay.udun.eu (user `judge`, password in the private judges field below)
+- Or sign in with PayPal ("Continue with PayPal" on the sign-in page) using the sandbox buyer
+  login from the private field: a fresh trial account of your own, same studio workspace
 - Code: https://github.com/medelin/signed-studio (Apache-2.0)
 - Video: https://youtu.be/NfhqFX9LYE8 (under 3:00)
 
