@@ -16,8 +16,17 @@ umask 027
 
 REV=${1:?usage: pay-install.sh <git-rev>}
 [[ $REV =~ ^[0-9a-f]{7,40}$ ]] || { echo "bad revision: $REV" >&2; exit 2; }
-[[ $(id -u) -eq 0 ]] || { echo "run as root" >&2; exit 2; }
 SRC=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+# Local secrets and state must never ride along into a release (outside tests/).
+found=$(cd "$SRC" && find . \( -path ./.git -o -path ./.venv -o -path ./tests \) -prune -o \
+  -type f \( -name .env -o -name sandbox.env -o -name '*.db' -o -name '*.key' \
+  -o -name 'receipts*.jsonl' \) -print)
+if [[ -n $found ]]; then
+  echo "refusing to install: the source directory holds local secrets or state:" >&2
+  printf '  %s\n' $found >&2
+  exit 1
+fi
+[[ $(id -u) -eq 0 ]] || { echo "run as root" >&2; exit 2; }
 BASE=/opt/muse-pay
 SVC=muse-pay
 SVC_USER=muse-pay

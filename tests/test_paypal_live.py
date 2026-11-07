@@ -1,4 +1,4 @@
-"""Live PayPal sandbox smoke test. Skipped unless the sandbox credentials file exists:
+"""Live PayPal sandbox smoke test. Opt-in: skipped unless ``RUN_PAYPAL_LIVE_TESTS=1`` **and** the sandbox credentials file exist:
 ``~/.config/muse-pay/paypal-sandbox.env`` (mode 600) with ``PAYPAL_CLIENT_ID`` and
 ``PAYPAL_CLIENT_SECRET`` of a sandbox REST app (``MUSE_PAY_PAYPAL_ENV`` names another
 file). It talks to ``api-m.sandbox.paypal.com`` only, moves no money (an order nobody
@@ -23,7 +23,11 @@ from studio.settings import read_env_file
 ENV = Path(os.environ.get("MUSE_PAY_PAYPAL_ENV", "")
            or Path.home() / ".config" / "muse-pay" / "paypal-sandbox.env")
 
-pytestmark = pytest.mark.skipif(not ENV.is_file(), reason=f"no PayPal sandbox file {ENV}")
+RUN_LIVE = os.environ.get("RUN_PAYPAL_LIVE_TESTS") == "1" and ENV.is_file()
+
+pytestmark = [pytest.mark.live,
+              pytest.mark.skipif(not RUN_LIVE, reason="set RUN_PAYPAL_LIVE_TESTS=1 and provide "
+                                 f"the PayPal sandbox file {ENV}")]
 
 
 @pytest.fixture(scope="module")

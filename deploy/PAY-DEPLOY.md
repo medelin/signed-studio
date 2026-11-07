@@ -121,7 +121,7 @@ curl -sI https://pay.YOUR-DOMAIN/healthz          # 200 over HTTPS
 curl -s https://pay.YOUR-DOMAIN/api/ledger-key    # the ledger's public key
 ```
 
-- **PayPal webhook** (not done yet, Day 4): register `https://pay.YOUR-DOMAIN/webhooks/paypal`
+- **PayPal webhook** (registered and verified since 5 Nov 2026; to redo it): register `https://pay.YOUR-DOMAIN/webhooks/paypal`
   with PayPal (`POST /v1/notifications/webhooks`, sandbox), put the returned id in
   `PAYPAL_WEBHOOK_ID`, `systemctl restart muse-pay`. The webhook path needs no session; the
   proxy must pass the body unchanged (both files above do).

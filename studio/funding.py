@@ -109,6 +109,15 @@ def format_amount(minor: int, currency: str) -> str:
     return f"{minor // 100}.{minor % 100:02d}"
 
 
+def display_amount(minor: Any, currency: Any) -> str:
+    """Template filter: minor units → display string through ``format_amount`` (zero-decimal
+    aware). A value it cannot format is shown as it is, never as a guess."""
+    try:
+        return format_amount(minor, str(currency))
+    except FundingError:
+        return str(minor)
+
+
 def parse_amount(value: Any, currency: str) -> int:
     """PayPal's amount string → minor units. Refuses more decimals than the currency has
     (so ``"48.005"`` is an error, never a rounding)."""
