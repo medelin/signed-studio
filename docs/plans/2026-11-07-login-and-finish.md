@@ -174,3 +174,93 @@ uses for money). Facebook needs configuration only.
 Live PayPal keys or a PayPal app review; linking the PayPal identity to the Vault (a saved
 PayPal stays an explicit, separate step); Google unless B4 is asked for; merchant dashboard
 in the video.
+
+## Part E — the read-only audit of 7 Nov (Codex, `PAYMUSE_READONLY_AUDIT_2026-11-07.md`)
+
+Verified against `d15cb49`…`311089f` by the operator's session before planning. Each task is
+one subagent (Sonnet 5.5) in its own worktree, failing test first, reviewer before merge.
+Files are disjoint between tasks that run in parallel.
+
+### Task E1 (P1): account deletion ends saved PayPal and mandates; a charge re-checks the account
+
+**Files:** `studio/accounts.py` (`_erase`, the deletion transaction only), `studio/mandates.py`
+(`revoke_all(conn, ledger, account_id, reason="account_deleted")`), `studio/paypal/vault.py`
+(`retire_all(account_id) -> list[str]`: every row of the account → `deleted` locally, then a
+best-effort PayPal DELETE per token with the existing `delete` semantics), `studio/paypal/hooks.py`
+(`Funder.charge`: after PayPal answers, re-read the account; if it is not `active` → void the
+authorization and settle the charge as `refused:account_gone`), `studio/routes_account.py` (the
+delete route calls the three in this order: mandates → vault → erase, inside one request; PayPal
+calls after the local transaction). Tests: `tests/test_accounts.py`, `tests/test_paypal_vault.py`,
+`tests/test_mandate_charge.py` (or the file that holds the charge tests).
+- Tests: deletion revokes N mandates and retires M vaults (local status first, receipts
+  `mandate.revoke` / `paypal.vault_delete`); deletion while PayPal DELETE fails (500) still
+  leaves the vault `deleted` locally; a charge whose account is deleted between reservation and
+  PayPal's answer is voided and recorded; the account export after deletion raises.
+- Keep `credential_gen` bump and session revocation as they are.
+
+### Task E2 (P1): no blocking PayPal I/O on the event loop; a tighter public webhook
+
+**Files:** `studio/routes_paypal.py` (every `async def` that calls the PayPal client or the
+webhook verifier: wrap the blocking call in `starlette.concurrency.run_in_threadpool`; the
+webhook additionally under an `asyncio.Semaphore(4)` and refusing with 429 when it is full),
+`studio/routes_mandates.py` (vault start/delete the same way), `studio/paypal/webhooks.py`
+(`cert_url_allowed`: host **and** path pattern `^/v1/notifications/certs/` …; a 60-s negative
+cache of failed cert URLs capped at 64 entries; cert fetch timeout 5 s), `studio/paypal/hooks.py`
+is NOT touched (E1 owns it); the webhook's resource read gets its own `timeout=8.0` through the
+client's existing per-call timeout parameter (add one if `PayPalClient.get` has none:
+`studio/paypal/client.py`). Tests: `tests/test_paypal_webhooks.py`, `tests/test_routes_paypal*.py`.
+- Tests: a webhook with a cert URL on the right host but a wrong path is refused before any
+  fetch; a failed cert URL is not fetched again within 60 s; the fifth concurrent webhook gets
+  429; `/healthz` answers while a webhook's cert fetch sleeps 3 s (use a fake transport with a
+  delay and `httpx.AsyncClient` against the app).
+
+### Task E3 (P2, small): live tests opt-in; nginx limits; installer excludes; docs drift
+
+**Files:** `tests/test_paypal_live.py` (skip unless `RUN_PAYPAL_LIVE_TESTS=1` **and** the file
+exists; `pytest.ini`/`pyproject`: marker `live`), `deploy/nginx/signed-studio-pay.conf`
+(per-path `client_max_body_size`: 32m for the voice route, 64m for clips, 2m default — mirror
+`deploy/apache` and `deploy/caddy` examples), `deploy/pay-install.sh` (refuse to install when
+the source dir contains `.env`, `sandbox.env`, `*.db`, `*.key`, `receipts*.jsonl` outside
+`tests/`; print which), `deploy/PAY-DEPLOY.md` (webhook: registered and verified since 5 Nov;
+remove "Day 4"), `README.md` (host names: pay.udun.eu for the PayPal edition),
+`studio/ui/templates/account_assistants.html` (mandate amounts through the existing
+zero-decimal-aware formatter used by `app.js`, or a `money` filter in Jinja).
+- Tests: live module skipped without the env var even when the file exists; installer refusal
+  (a shell test or a pytest calling the script with a temp dir); the mandate summary renders
+  `HUF 1500` not `HUF 15.00`.
+
+### Task E4 (P1/P2): privacy notice and export for the PayPal edition
+
+**Files:** `studio/ui/legal_texts.py` (EN+PL: pay.udun.eu, PayPal as processor, PayPal's JS SDK
+on the approval page, what is stored: vault references and PayPal ids, signed webhook bodies,
+fundings; retention; deletion behaviour per E1), `studio/accounts.py` (`export` gains
+`mandates`, `saved_paypal` (ref, SHA-256, status, dates — never token ids), `fundings`,
+`mandate_charges`), `studio/routes_account.py` (the export route passes the PayPal stores).
+Runs after E1 merges (both touch `accounts.py`). Tests: `tests/test_account_pages.py`,
+`tests/test_legal_texts*.py`.
+
+### Task E5 (P2): one PayPal order per approval; `onApprove` binds the exact order
+
+**Files:** `studio/funding.py` (partial unique index: one funding in state `created`/`approved`
+per `(item_id, content_sha256)`; `create` returns the existing open one on conflict),
+`studio/routes_paypal.py` (`payer-approved` takes `order_id` from the body and matches it to the
+approval's funding; mismatch → 409), `studio/ui/static/paypal.js` (send `data.orderID`). Tests:
+two concurrent creates → one order; approval with another order id → 409.
+
+### Task E6 (P2): durable retry of PayPal token deletion
+
+**Files:** `studio/paypal/vault.py` (table `vault_deletions(vault_ref, token_id, attempts,
+next_ts, last_error)`; `delete` enqueues when PayPal fails; `retry_deletions(now)` called from
+the hourly sandbox-reset tick and from `studio` CLI `vault retry`; after PayPal 204/404 erase
+`token_id`), operator view in `/money` not required. Tests: failed delete is retried and the
+token id erased after success.
+
+### Decision for the operator (P1 conditional): single workspace vs accounts
+
+Registration is open now (PayPal, Facebook). Every signed-in account shares the operator's
+Studio workspace (`STUDIO` ownership): fundings, receipts and approvals created in the UI are
+visible to all. For the hackathon this is the declared single-operator model; the privacy text
+(E4) and the login page say so. Real per-account separation is a later project, not this week.
+
+**Not doing now:** SBOM/CVE scan in CI, digest-pinned images, BLOB storage of webhook bodies,
+`STUDIO_PUBLIC_URL` made mandatory (worth a line in PAY-DEPLOY.md: set it).
