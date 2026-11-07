@@ -32,7 +32,7 @@ import re
 import sqlite3
 import time
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -328,12 +328,16 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 @contextmanager
 def atomic(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
     """Join the caller's transaction when there is one (so a state change, its money move
-    and its receipt commit together), otherwise open one."""
-    if conn.in_transaction:
-        yield conn
-    else:
-        with transaction(conn):
+    and its receipt commit together), otherwise open one. The connection's lock (an RLock,
+    see ``transaction``) is taken first: routes run on worker threads, and without it a
+    thread could "join" a transaction another thread has open."""
+    lock: AbstractContextManager[Any] = getattr(conn, "lock", None) or nullcontext()
+    with lock:
+        if conn.in_transaction:
             yield conn
+        else:
+            with transaction(conn):
+                yield conn
 
 
 @dataclass(frozen=True)
