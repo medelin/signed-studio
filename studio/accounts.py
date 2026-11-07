@@ -45,10 +45,10 @@ import threading
 import time
 import unicodedata
 from collections import OrderedDict
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 from urllib.parse import quote
 
 from argon2 import PasswordHasher
@@ -1195,9 +1195,15 @@ class Accounts:
                 "decided_ts")
         return [dict(zip(keys, r, strict=True)) for r in rows]
 
-    def export(self, account_id: str, receipts: list[Any], current_sid: str = ""
-               ) -> dict[str, Any]:
-        """Everything stored about the account, minus hashes and secrets."""
+    def export(self, account_id: str, receipts: list[Any], current_sid: str = "", *,
+               mandates: Sequence[Mapping[str, Any]] | None = None,
+               saved_paypal: Sequence[Mapping[str, Any]] | None = None,
+               fundings: Sequence[Mapping[str, Any]] | None = None,
+               mandate_charges: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+        """Everything stored about the account, minus hashes and secrets. The PayPal
+        lists (already read by the caller; ``None`` when PayPal is off) are cut down to
+        ``EXPORT_KEYS``: a PayPal vault id or setup token id never leaves, whatever the
+        caller passed."""
         account = self.get(account_id)
         if account is None or account.status == "deleted":
             raise NoSuchAccount("no such account")
@@ -1224,6 +1230,11 @@ class Accounts:
             "whatsapp": self._whatsapp(account_id),
             **({"conversions_api": {"consent": True, "consent_ts": consent}}
                if (consent := self.capi_consent(account_id)) else {}),
+            **{name: [{k: row[k] for k in EXPORT_KEYS[name] if k in row} for row in rows]
+               for name, rows in (("mandates", mandates), ("saved_paypal", saved_paypal),
+                                  ("fundings", fundings),
+                                  ("mandate_charges", mandate_charges))
+               if rows is not None},
         }
 
     def _whatsapp(self, account_id: str) -> dict[str, Any]:
@@ -1232,6 +1243,22 @@ class Accounts:
                             "FROM accounts WHERE id = ?", (account_id,)).fetchone()
         return {"number": row[0] if row else "", "notifications": bool(row[1]) if row else False,
                 "verified_ts": row[2] if row else 0}
+
+
+# What the export may carry of each PayPal list: references, SHA-256 digests, PayPal's
+# order/authorization/capture ids, amounts, states and dates. Never a vault token id or a
+# setup token id (``paypal_vault.token_id`` / ``setup_token_id``).
+EXPORT_KEYS: Final[dict[str, tuple[str, ...]]] = {
+    "mandates": ("mandate_id", "limits", "sha256", "used", "created_ts", "revoked_ts",
+                 "status"),
+    "saved_paypal": ("vault_ref", "token_sha256", "status", "created_ts", "updated_ts"),
+    "fundings": ("funding_id", "run_id", "item_id", "content_sha256", "currency",
+                 "budget_minor", "fee_minor", "total_minor", "state", "order_id",
+                 "authorization_id", "capture_id", "authorized_minor", "captured_minor",
+                 "refunded_minor", "created_ts", "updated_ts"),
+    "mandate_charges": ("approval_id", "mandate_id", "period", "amount_minor", "currency",
+                        "vault_sha256", "status", "funding_id", "created_ts", "updated_ts"),
+}
 
 
 def _clean_profile(fields: Mapping[str, str]) -> dict[str, str]:
