@@ -1,4 +1,4 @@
-# Demo video script: the PayPal edition (2:55)
+# Demo video script: the PayPal edition (2:54)
 
 **Where:** public YouTube video (unlisted is not enough if the rules say public), under
 3:00, English voice or English subtitles. Link it in the Devpost form.
@@ -13,60 +13,70 @@ in as `judge` for the buyer-present part and as your own account for the mandate
 (its PayPal pages are in Polish, because the sandbox account's country is PL; say so once).
 Each beat lists the screenshot in `docs/screenshots/paypal/` it matches, as a backup shot.
 
-## Nine beats
+## Ten beats (as recorded on 7 Nov 2026, 2:54)
 
-**1. Problem (0:00-0:12)**
-- On screen: the first line on a title card, then the studio home.
-- Say: "Nobody sane gives an AI their card. So here the AI never touches money: PayPal
-  does, and only after I sign."
+Every beat is a live sandbox run on https://pay.udun.eu recorded with Playwright on a
+virtual screen (`scratchpad/video/record.py`), the voice is synthetic (Kokoro `am_michael`),
+the cut adds eased push-ins on the element that matters, crossfades and a title per beat
+(`edit2.py`). The spoken line of each beat is below; captions carry the same words.
 
-**2. A brief becomes a campaign draft (0:12-0:30)**
-- On screen: Studio, a short brief, Draft my brief, the [FACT] questions, Confirm, the
-  agents' receipts ticking by with model ids, the copy variants and images.
-- Say: "Agents plan, write and draw. Every step is a receipt. Nothing is sent yet."
+**1. The promise (0:00–0:12)** — title card, the studio home.
+- "Signed Studio is an AI ad agency for one-person businesses that cannot spend a cent you
+  did not sign for. PayPal holds the money; my signature releases it."
 
-**3. The approval screen creates the PayPal order (0:30-0:50)** — shot `1-approve-and-pay.png`
-- On screen: Approve and sign: hashes, then the PayPal box: 220.50 PLN, the order id, the
-  buttons; the sign button is disabled.
-- Say: "Code computes the amount. The order carries the ad's hash as custom_id."
+**2. Brief to draft (0:12–0:30)** — Studio, the example brief, Draft, the [FACT] questions.
+- "I describe what I sell. Agents plan, write and draw, and every step is a receipt.
+  Nothing is sent yet."
 
-**4. Pay in PayPal, then sign: money held, campaign PAUSED (0:50-1:10)** — shots 2, 4, 5
-- On screen: PayPal sandbox checkout; back in the studio the row PAYPAL FUNDING SHA256;
-  Approve and sign; campaign created PAUSED, "money held".
-- Say: "My signature covers the PayPal order. Signing holds the money and creates the
-  campaign paused."
+**3. Save PayPal once · sign limits (0:30–0:57)** — Account → Assistants & API: Save my
+PayPal → the sandbox buyer's PayPal consent page (in Polish: the sandbox account's country is
+PL) → back with "Saved PayPal"; the mandate form (goal, country, hosts, 25 PLN a day, 3
+campaigns, 7 days, pay from the saved PayPal up to 200 PLN per campaign and 400 PLN a week);
+Prepare → Approve and sign → "Signed. The mandate is active".
+- "Once, I save my PayPal, approving it in PayPal itself. Then I sign limits for my
+  assistant: the goal, the country, the sites, a daily budget and caps."
 
-**5. One declined capture (1:10-1:25)**
-- On screen: Activate with "simulate PayPal refusing the capture" ticked; the sign; the
-  message with PayPal's reason (TRANSACTION_REFUSED) and debug id; the money still held.
-- Say: "PayPal's sandbox can refuse the capture on demand. The studio shows PayPal's reason
-  and nothing is captured."
+**4. The assistant pays inside the mandate (0:57–1:12)** — terminal: `run_brief` →
+`outcome: mandate_charge`, `fits: true`, the checked limits, `paypal.vault_charge`, order id;
+then the money page: 147.00 PLN held, "Paid via: Mandate".
+- "My own assistant runs a brief over MCP. It fits the mandate, so it pays from my saved
+  PayPal, buyer not present. PayPal holds the money; the campaign starts paused."
 
-**6. My assistant pays inside a mandate I signed (1:25-1:55)** — shots 6, 7, 8
-- On screen: Save my PayPal (consent page), the mandate's limits in words, Approve and
-  sign; then Claude Desktop with our MCP server: `run_brief` → `"outcome":
-  "mandate_charge"`, order id, 220.50 PLN, PAUSED.
-- Say: "I sign limits once. My assistant runs a brief and pays from my saved PayPal, buyer
-  not present. Over the limit, it gets a link for me instead of money."
+**5. Outside the limits: a link for the owner (1:12–1:33)** — terminal: a 30 PLN/day brief →
+`outcome: pay_and_sign`, `mandate_reasons: daily_budget, max_charge`, the link; the run page
+down to Approve and sign and the PayPal box (220.50 PLN, the order id).
+- "A bigger budget is outside my limits, so the assistant gets a link for me, never money.
+  The approval screen computes the amount in code, and creates a PayPal order carrying the
+  ad's hash."
 
-**7. The assistant reads PayPal and proposes a refund (1:55-2:20)**
-- On screen: in the same chat, "what did PayPal record this week?" → our assistant op `paypal_transactions`, built on PayPal's Agent Toolkit tools
-  (matched, held); "refund that" → `propose_refund` → a pending approval with a link; open
-  it, sign.
-- Say: "The assistant reads PayPal through our server, and it can only propose a refund:
-  nothing moves until I sign."
+**6. PayPal checkout · signature holds the money (1:33–1:49)** — the inline card form
+(sandbox Visa), PAYPAL FUNDING SHA256 in the signed bytes, Approve and sign → "money held",
+campaign PAUSED.
+- "I approve the payment in PayPal. My signature covers the PayPal order. Signing holds the
+  money, and creates the campaign paused."
 
-**8. The money page and proof (2:20-2:48)**
-- On screen: /money (AG Grid): holds, captures, a void, the charge, "Check with PayPal"
-  and "Explain"; then `studio verify receipts.jsonl --server https://pay.udun.eu` → `chain
-  OK`; one byte edited → `chain INVALID`.
-- Say: "Every PayPal call is a signed, hash-chained receipt. studio verify rechecks the
-  money rules offline. One changed byte fails it."
+**7. PayPal refuses the capture · then captures (1:49–2:04)** — "Sandbox: simulate PayPal
+refusing the capture" ticked → Request activation and sign → PayPal's reason
+(TRANSACTION_REFUSED) and debug_id, money still held; unticked → Activated, captured.
+- "PayPal's sandbox can refuse the capture on demand. The studio shows PayPal's reason, and
+  nothing is taken. Without it, my second signature captures."
 
-**9. End card (2:48-2:55)**
-- On screen: https://pay.udun.eu · the repository URL · "PayPal sandbox only · built
-  3–12 Nov 2026 on a base tagged base-meta-final".
-- Say: "Signed Studio. AI does the work; PayPal and my signature hold the money."
+**8. Refund: the assistant proposes, the owner signs (2:04–2:24)** — terminal:
+`paypal_transactions()` (Agent Toolkit behind the gate: matched, held, the lines),
+`propose_refund(…, "47.00")` → a sign link; the owner opens it and signs → "refunded".
+- "The assistant reads PayPal through PayPal's own Agent Toolkit, behind our gate. It can
+  only propose a refund. Nothing moves until I sign."
+
+**9. Reconcile with PayPal · verify offline (2:24–2:44)** — /money: Check with PayPal
+(matched / pending), Explain (the AI treasurer); terminal: `studio verify receipts.jsonl`
+→ `chain OK`; one byte changed → `chain INVALID`.
+- "Every PayPal call is a signed, hash-chained receipt. The money page reconciles them with
+  PayPal's own transaction list. Studio verify rechecks the money rules offline, and one
+  changed byte fails it."
+
+**10. End card (2:44–2:54)** — https://pay.udun.eu · github.com/medelin/signed-studio ·
+"PayPal sandbox only · built 3–12 Nov 2026 on a base tagged base-meta-final".
+- "Signed Studio. AI does the work; PayPal and my signature hold the money."
 
 ## Never on screen
 
