@@ -28,6 +28,9 @@ def env(tmp_path):
     ("https://api.sandbox.paypal.com/v1/notifications/certs/CERT-1", True),
     ("https://api.paypal.com/v1/notifications/certs/CERT-1", True),
     ("http://api.paypal.com/v1/notifications/certs/CERT-1", False),
+    ("https://api.paypal.com/v1/oauth2/token", False),
+    ("https://api.paypal.com/v1/notifications/certsX/1", False),
+    ("https://api.paypal.com/v1/notifications/certs", False),
     ("https://api.paypal.com:8443/certs", False),
     ("https://evil.example.com/certs", False),
     ("https://api.paypal.com.evil.example.com/certs", False),
@@ -123,7 +126,7 @@ def test_the_route_needs_no_session_and_refuses_forgeries(tmp_path):
         # PayPal's API does not know that capture: refused, nothing stored
         assert r.status_code == 400 and r.json()["error"] == "unknown_resource"
         assert not a.state.conn.execute("SELECT 1 FROM paypal_events").fetchone()
-        a.state.funder.lookup = lambda path: (_ for _ in ()).throw(TimeoutError())
+        a.state.funder.money.client.get = _down
         headers, body = signer.sign({"id": "WH-1ROUTE0000002-0002",
                                      "event_type": "PAYMENT.CAPTURE.COMPLETED",
                                      "resource": {"id": "3C000000NOTOURS0X"}})
@@ -515,3 +518,150 @@ def test_webhook_lookup_does_not_retry(env):
         webhooks.apply(env.conn, env.ledger, env.funder.verifier, headers, body,
                        lookup=env.funder.lookup)
     assert e.value.code == "lookup_failed" and len(seen) == 1
+
+
+def _down(path, **kw):
+    raise TimeoutError()
+
+
+def test_a_right_host_wrong_path_cert_url_is_refused_before_any_fetch(env):
+    fetched = []
+    v = webhooks.Verifier(env.conn, "W1", fetch=lambda u: fetched.append(u) or b"",
+                          roots=env.funder.signer.roots)
+    headers, body = env.funder.signer.sign({"id": "WH-1AAAAAAAA0002-0001"})
+    headers["paypal-cert-url"] = "https://api.sandbox.paypal.com/v1/oauth2/token"
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        v.verify(headers, body)
+    assert e.value.code == "cert_url" and not fetched
+
+
+def test_a_failed_cert_url_is_not_fetched_again_within_60_seconds(tmp_path):
+    e = Env(tmp_path)
+    now = [time.time()]
+    fetched = []
+
+    def broken(url):
+        fetched.append(url)
+        raise webhooks.WebhookRefused("could not fetch PayPal's certificate", "cert_fetch")
+
+    v = webhooks.Verifier(e.conn, "W1", fetch=broken, roots=e.funder.signer.roots,
+                          clock=lambda: now[0])
+    for _ in range(3):
+        with pytest.raises(webhooks.WebhookRefused) as exc:
+            v.cert(MOCK_CERT_URL)
+        assert exc.value.code == "cert_fetch"
+    assert fetched == [MOCK_CERT_URL]
+    now[0] += 61
+    with pytest.raises(webhooks.WebhookRefused):
+        v.cert(MOCK_CERT_URL)
+    assert fetched == [MOCK_CERT_URL, MOCK_CERT_URL]
+
+
+def test_the_negative_cache_is_capped_at_64_urls(tmp_path):
+    e = Env(tmp_path)
+
+    def broken(url):
+        raise webhooks.WebhookRefused("could not fetch PayPal's certificate", "cert_fetch")
+
+    v = webhooks.Verifier(e.conn, "W1", fetch=broken, roots=e.funder.signer.roots)
+    for i in range(100):
+        with pytest.raises(webhooks.WebhookRefused):
+            v.cert(f"https://api.paypal.com/v1/notifications/certs/C{i}")
+    assert len(v._failed) <= 64
+
+
+def test_the_cert_fetch_has_a_five_second_timeout(monkeypatch):
+    import httpx
+
+    seen = {}
+
+    class Fake:
+        def __init__(self, **kw):
+            seen.update(kw)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url):
+            return httpx.Response(200, content=b"x")
+
+    monkeypatch.setattr(httpx, "Client", Fake)
+    webhooks.http_fetch(MOCK_CERT_URL)
+    assert seen["timeout"] == 5.0 and seen["follow_redirects"] is False
+
+
+def _webhook_app(tmp_path):
+    from studio.app import create_app
+    from tests.test_ui_studio import settings
+
+    return create_app(settings(tmp_path, PAYPAL_ADAPTER="mock", STUDIO_REQUIRE_LOGIN="1"))
+
+
+def _signed(app, n):
+    event = {"id": f"WH-1CONC{n:09d}-0001", "event_type": "PAYMENT.CAPTURE.COMPLETED",
+             "resource": {"id": "3C000000NOTOURS0X"}}
+    return app.state.funder.signer.sign(event)
+
+
+def test_the_fifth_concurrent_webhook_gets_429(tmp_path):
+    import asyncio
+
+    import httpx
+
+    a = _webhook_app(tmp_path)
+    v = a.state.funder.verifier
+    real = v.fetch
+
+    def slow(url):
+        time.sleep(1.0)
+        return real(url)
+
+    v.fetch = slow
+
+    async def go():
+        transport = httpx.ASGITransport(app=a)
+        async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as c:
+            reqs = []
+            for i in range(5):
+                headers, body = _signed(a, i)
+                reqs.append(c.post("/webhooks/paypal", content=body, headers=headers))
+            return [r.status_code for r in await asyncio.gather(*reqs)]
+
+    codes = asyncio.run(go())
+    assert codes.count(429) == 1 and codes.count(400) == 4, codes
+
+
+def test_healthz_answers_while_a_webhooks_cert_fetch_sleeps(tmp_path):
+    import asyncio
+
+    import httpx
+
+    a = _webhook_app(tmp_path)
+    v = a.state.funder.verifier
+    real = v.fetch
+
+    def slow(url):
+        time.sleep(3.0)
+        return real(url)
+
+    v.fetch = slow
+
+    async def go():
+        transport = httpx.ASGITransport(app=a)
+        async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as c:
+            headers, body = _signed(a, 99)
+            hook = asyncio.ensure_future(c.post("/webhooks/paypal", content=body,
+                                                headers=headers))
+            await asyncio.sleep(0.3)  # the fetch is now sleeping
+            t0 = time.monotonic()
+            h = await c.get("/healthz")
+            took = time.monotonic() - t0
+            still_sleeping = not hook.done()  # healthz was answered during the fetch
+            await hook
+            return h.status_code, took, still_sleeping
+
+    status, took, still_sleeping = asyncio.run(go())
+    assert status == 200 and took < 1.0 and still_sleeping, (took, still_sleeping)

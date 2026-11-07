@@ -30,6 +30,7 @@ from urllib.parse import parse_qs, quote, urlencode
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from studio import auth, mandates
 from studio.meta import objectives
@@ -178,13 +179,15 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> Non
         from studio.paypal.vault import VaultError
 
         try:
-            ref, approve = funder.vault.start(
-                account.id, return_url=base(request) + "/account/paypal/vault/return",
-                cancel_url=base(request) + "/account?paypal=cancelled#mandates")
+            ref, approve = await run_in_threadpool(
+                lambda: funder.vault.start(
+                    account.id, return_url=base(request) + "/account/paypal/vault/return",
+                    cancel_url=base(request) + "/account?paypal=cancelled#mandates"))
         except (PayPalError, VaultError):
             return refuse(request, sid, account, "paypal_vault_failed", 502)
         if funder.fake is not None:  # mock mode: the fake plays the buyer's approval
-            funder.fake.approve_setup(funder.vault.setup_token_of(account.id, ref))
+            await run_in_threadpool(
+                lambda: funder.fake.approve_setup(funder.vault.setup_token_of(account.id, ref)))
             return RedirectResponse(f"/account/paypal/vault/return?vault_ref={ref}", 303,
                                     headers=NO_STORE)
         return RedirectResponse(approve, 303, headers=NO_STORE)
@@ -240,7 +243,8 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any) -> Non
         from studio.paypal.vault import VaultError
 
         try:
-            funder.vault.delete(account.id, (form.get("vault_ref") or [""])[0][:40])
+            await run_in_threadpool(
+                funder.vault.delete, account.id, (form.get("vault_ref") or [""])[0][:40])
         except VaultError as exc:
             return refuse(request, sid, account, "paypal_vault_" + exc.code, exc.status)
         return RedirectResponse("/account?paypal=deleted#mandates", 303, headers=NO_STORE)
