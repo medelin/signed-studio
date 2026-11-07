@@ -24,7 +24,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from studio import accounts, auth, db, notify, prefs, whatsapp
+from studio import accounts, auth, db, mandates, notify, prefs, whatsapp
 from studio.accounts import Account, AccountError, Accounts, AccountSessions, SecretBox
 from studio.meta import capi
 from studio.meta.adapter import AdapterError
@@ -475,16 +475,29 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             return refused(request, sid, account, "delete", ip)
         from studio import routes_social  # it imports this module
 
+        funder = getattr(app.state, "funder", None)
+        retired: list[str] = []
+
+        def end_money(c: Any) -> None:
+            """Inside the deletion transaction: no mandate and no saved PayPal can be
+            used once the account is gone (PayPal's own delete follows, below)."""
+            mandates.revoke_all(c, app.state.ledger, account.id, "account_deleted")
+            if funder is not None:
+                retired.extend(funder.vault.retire_local(account.id))
+
         try:
             await run_in_threadpool(store.delete, account.id, confirm=fields.get("confirm", ""),
                                     password=fields.get("password", ""),
                                     code=fields.get("code", ""),
-                                    external_fresh=routes_social.external_fresh(app, sid))
+                                    external_fresh=routes_social.external_fresh(app, sid),
+                                    before_erase=end_money)
         except AccountError as exc:
             refused_attempt(ip, exc)
             return page(request, sid, account, status=400,
                         errors={"delete": ("err." + exc.code, "")})
         app.state.limiter.settle(ip, True)
+        if funder is not None and retired:  # after the local transaction: PayPal may be slow
+            await run_in_threadpool(funder.vault.drop_at_paypal, retired)
         app.state.challenges.drop_account(account.id)
         app.state.notifier.security("deletion_requested", account)  # address read before erasure
         app.state.sessions.revoke(request.cookies.get(COOKIE))

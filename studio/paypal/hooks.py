@@ -211,8 +211,10 @@ class Funder:
         must be the declared one. ``mandate_charges`` is settled ``done`` with the
         funding, or ``refused`` on PayPal's definite refusal (an unknown outcome stays
         pending, its amount reserved; calling ``charge`` again resends the same request
-        id). A mandate revoked, or a saved PayPal deleted, by the time PayPal answered:
-        the hold is voided at once and ``mandate_revoked`` raised."""
+        id). The account deleted by the time PayPal answered: the hold is voided, the
+        charge is settled ``refused`` (``account_gone``) and ``account_gone`` raised. A
+        mandate revoked, or a saved PayPal deleted, by then: the hold is voided at once
+        and ``mandate_revoked`` raised."""
         from studio import mandates
 
         q = self.mandate_quote(payload)
@@ -249,6 +251,16 @@ class Funder:
                     mandates.settle_charge(self.conn, verified.pending_id, "refused",
                                            funding_id=f.id, error=exc.issue or exc.name)
             raise
+        if not self._account_active(mandate.account_id):
+            # deleted while PayPal answered: the hold is voided, the charge is not a charge
+            try:
+                self.money.void(f.id, reason="account_gone")
+            finally:
+                with transaction(self.conn):
+                    mandates.settle_charge(self.conn, verified.pending_id, "refused",
+                                           funding_id=f.id, error="account_gone")
+            raise FundingRefused("the account was deleted while PayPal answered",
+                                 "account_gone")
         with transaction(self.conn):
             mandates.settle_charge(self.conn, verified.pending_id, "done", funding_id=f.id)
         m = mandates.get(self.conn, mandate.id)
@@ -262,6 +274,11 @@ class Funder:
                 "authorization_id": held.authorization_id,
                 "amount_minor": held.authorized_minor, "currency": held.currency,
                 "receipt_id": step.receipt.id, "receipt_hash": step.receipt.hash}
+
+    def _account_active(self, account_id: str) -> bool:
+        row = self.conn.execute("SELECT status FROM accounts WHERE id = ?",
+                                (account_id,)).fetchone()
+        return row is not None and row[0] == "active"
 
     def release(self, approval_id: str, reason: str) -> None:
         """Void the hold of a mandate's charge whose campaign was not created."""
