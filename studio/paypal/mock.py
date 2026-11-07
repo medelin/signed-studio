@@ -250,7 +250,8 @@ class FakePayPal:
             if self.setup_tokens[sid] != "APPROVED":
                 return _err(422, "UNPROCESSABLE_ENTITY", "SETUP_TOKEN_NOT_APPROVED")
             self.setup_tokens[sid] = "VAULTED"
-            vid = self._next("9").lower()
+            # PayPal answers the same vault id when the same payer saves PayPal again
+            vid = getattr(self, "reuse_vault_id", None) or self._next("9").lower()
             self.vault_tokens[vid] = "ACTIVE"
             return httpx.Response(201, json={
                 "id": vid, "customer": {"id": "mockcustomer01"},

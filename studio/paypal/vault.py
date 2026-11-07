@@ -237,10 +237,30 @@ class Vault:
         digest_token = token_sha256(token)
         now = self.clock()
         with transaction(self.conn):
-            cur = self.conn.execute(
-                "UPDATE paypal_vault SET token_id = ?, token_sha256 = ?, status = 'active', "
-                "updated_ts = ? WHERE id = ? AND status = 'setup'",
-                (token, digest_token, now, ref))
+            # PayPal answers the same vault id when the same payer saves PayPal again: on
+            # this account the new save takes it over (its SHA-256, which mandates name, is
+            # unchanged); on another account it is refused
+            held = self.conn.execute("SELECT id, account_id FROM paypal_vault WHERE token_id = ? "
+                                     "AND id != ?", (token, ref)).fetchone()
+            if held is not None and held[1] != account_id:
+                self.conn.execute("UPDATE paypal_vault SET status = 'failed', updated_ts = ? "
+                                  "WHERE id = ? AND status = 'setup'", (now, ref))
+                cur = None
+            else:
+                if held is not None:
+                    self.conn.execute("UPDATE paypal_vault SET token_id = NULL, status = 'deleted', "
+                                      "updated_ts = ? WHERE id = ?", (now, held[0]))
+                cur = self.conn.execute(
+                    "UPDATE paypal_vault SET token_id = ?, token_sha256 = ?, status = 'active', "
+                    "updated_ts = ? WHERE id = ? AND status = 'setup'",
+                    (token, digest_token, now, ref))
+        if cur is None:
+            self._receipt(ref, "paypal.vault_save", ok=False, error="SAVED_ELSEWHERE",
+                          status="ACTIVE", vault_sha256=digest_token, body_sha256=digest)
+            raise VaultError("this PayPal is already saved on another account", "saved_elsewhere")
+        if held is not None:
+            self._receipt(held[0], "paypal.vault_replaced", ok=True, status="REPLACED",
+                          vault_sha256=digest_token, replaced_by=ref)
         if cur.rowcount != 1:
             raise VaultError("this saved PayPal changed meanwhile", "conflict")
         self._receipt(ref, "paypal.vault_save", ok=True, status="ACTIVE",

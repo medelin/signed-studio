@@ -520,3 +520,39 @@ def test_the_recorded_vault_cassette_parses():
     held = orders.charge_vault(c, charge["request"]["json"], request_id="ss-3" + "0" * 48)
     assert held.kind == "authorization" and held.status == "CREATED" and held.order_id
     assert held.custom_id == charge["request"]["json"]["purchase_units"][0]["custom_id"]
+
+
+def _save(v, fake, account):
+    ref, _ = v.start(account, return_url="https://x.example/r", cancel_url="https://x.example/c")
+    fake.approve_setup(v.setup_token_of(account, ref))
+    return ref
+
+
+def test_saving_the_same_paypal_again_moves_the_token_to_the_new_save(tmp_path):
+    """PayPal gives the same payer the same vault id again (seen live in the sandbox): the
+    new save takes it over, the old row is retired, and mandates (which name the token's
+    SHA-256, unchanged) keep working. Before: a 500 from the UNIQUE token_id."""
+    a = "acct_0123456789abcdef"
+    v, fake = _vault(tmp_path)
+    first = v.finish(a, _save(v, fake, a))
+    fake.reuse_vault_id = v.conn.execute("SELECT token_id FROM paypal_vault WHERE id = ?",
+                                         (first.id,)).fetchone()[0]
+    second = v.finish(a, _save(v, fake, a))
+    assert second.status == "active" and second.token_sha256 == first.token_sha256
+    assert v.get(first.id).status == "deleted"
+    assert v.active(a, first.token_sha256)[0] == second.id
+
+
+def test_the_same_paypal_saved_on_another_account_is_refused_not_a_500(tmp_path):
+    from studio.paypal.vault import VaultError
+
+    a, b = "acct_0123456789abcdef", "acct_fedcba9876543210"
+    v, fake = _vault(tmp_path)
+    first = v.finish(a, _save(v, fake, a))
+    fake.reuse_vault_id = v.conn.execute("SELECT token_id FROM paypal_vault WHERE id = ?",
+                                         (first.id,)).fetchone()[0]
+    ref = _save(v, fake, b)
+    with pytest.raises(VaultError) as exc:
+        v.finish(b, ref)
+    assert exc.value.code == "saved_elsewhere" and v.get(ref).status == "failed"
+    assert v.active(a, first.token_sha256) is not None
