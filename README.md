@@ -214,6 +214,33 @@ Built with PayPal's help: `/paypal:doctor` (PayPal AI Toolkit plugin for Claude 
 on this repo on 5 Nov 2026 (0 critical, 4 warnings, all fixed) and the APIMatic Context
 Plugin for PayPal was installed in the coding agent ([docs/BUILD-LOG.md](docs/BUILD-LOG.md)).
 
+## The money page
+
+`/money` is an [AG Grid Community](https://www.ag-grid.com) 34.3.1 table of every funding of
+your account (PayPal sandbox), with an AG Charts Community 12.3.1 chart above it. Both are
+vendored and served from `'self'`; the CSP is unchanged (`script-src 'self'; style-src 'self'`).
+Community edition only, nothing Enterprise.
+
+- **Column filters** with floating filters: text on funding, campaign, state, receipts and
+  PayPal check; number on amount, held, taken and refunded; date on created.
+- **Quick filter**: one search box above the grid, across every column (coded columns match
+  the label you see).
+- **CSV export**: `exportDataAsCsv`, file `money-YYYY-MM-DD.csv`, totals row included.
+- **Per-currency totals**: a pinned bottom row, computed on the server (exact cents) from the
+  same rows: amount, held, taken, refunded; one row per currency when there are several.
+- **Status badges**: state and PayPal check as cell renderers, a glyph plus the label on the
+  studio's theme tokens (light and dark). The glyph is text, there is no icon font.
+- **Remembered layout**: column order, widths, sort and filters are kept in `localStorage`
+  per account (try/catch; a private window just starts fresh); "Reset columns" clears them.
+- **Daily chart**: held, taken and refunded per day in the account's main currency
+  (`daily` in `GET /api/money`), drawn on canvas with colours read from the theme tokens.
+- **Keyboard and screen readers**: the grid is a labelled region with a keys hint, DOM order
+  follows visual order, a 3 px focus ring on cells, headers and filters, the chart carries a
+  text summary.
+
+`GET /api/money` returns `rows`, `totals` and `daily`; no call to PayPal unless you press
+"Check with PayPal".
+
 ## AI, and where it stops
 
 | Agent | Model | Does | Never |

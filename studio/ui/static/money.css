@@ -20,3 +20,25 @@
 
 /* the money table needs the whole width of the page */
 main:has(#money-grid) { max-width: none; }
+
+/* toolbar, chart, status badges, focus */
+.money-tools { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
+.money-search-label { position: absolute; left: -10000px; }
+.money-search { flex: 1 1 14rem; min-width: 10rem; max-width: 26rem; padding: .5rem .7rem;
+  background: var(--bg-raised); color: var(--ink); border: 1px solid var(--rule); }
+.money-search:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
+.money-chart-box { margin: .75rem 0; padding: 0; }
+.money-chart { width: 100%; height: 14rem; }
+.money-badge { display: inline-flex; align-items: center; gap: .35em; padding: 0 .6em;
+  line-height: 1.7; font-size: .8rem; font-weight: 600; border: 1px solid currentColor;
+  border-radius: 999px; white-space: nowrap; }
+.money-badge-glyph { font-weight: 700; }
+.money-badge-ok { color: var(--ok); background: var(--ok-soft); }
+.money-badge-warn { color: var(--partial); background: var(--partial-soft); }
+.money-badge-bad { color: var(--signal); background: var(--signal-soft); }
+.money-badge-idle { color: var(--down); background: var(--soft); }
+.studio-grid .ag-cell:focus, .studio-grid .ag-cell-focus, .studio-grid .ag-cell:focus-within,
+.studio-grid .ag-header-cell:focus-visible, .studio-grid .ag-header-cell:focus-within,
+.studio-grid .ag-floating-filter:focus-within { outline: 3px solid var(--signal); outline-offset: -3px; }
+.studio-grid .ag-row-pinned { font-weight: 700; background: var(--soft); }
+.studio-grid .ag-floating-filter-input input { background: var(--bg-raised); color: var(--ink); }
