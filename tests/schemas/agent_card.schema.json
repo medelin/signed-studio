@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["protocolVersion", "name", "description", "url", "version", "provider",
+               "documentationUrl", "capabilities", "securitySchemes", "defaultInputModes",
+               "defaultOutputModes", "skills", "extensions"],
+  "properties": {
+    "capabilities": {"type": "object", "required": ["streaming", "pushNotifications"],
+                     "properties": {"streaming": {"const": false},
+                                    "pushNotifications": {"const": false}}},
+    "securitySchemes": {"type": "object", "required": ["bearer"]},
+    "skills": {"type": "array", "minItems": 1,
+               "items": {"type": "object",
+                         "required": ["id", "name", "description", "tags", "examples"],
+                         "properties": {"tags": {"type": "array", "minItems": 1},
+                                        "examples": {"type": "array", "minItems": 1}}}},
+    "extensions": {"type": "object", "required": ["payments", "interfaces"],
+                   "properties": {"payments": {"type": "object",
+                                  "required": ["pays", "limits", "otherwise", "proof"]},
+                                  "interfaces": {"type": "object", "required": ["mcp", "openapi"]}}}
+  }
+}

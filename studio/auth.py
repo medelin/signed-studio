@@ -45,6 +45,8 @@ FORM_CHECKED_IN_ROUTE = frozenset({"/login", "/logout", "/login/2fa",
 FORM_CHECKED_PREFIXES = ("/account/",)  # studio.routes_account checks the csrf field
 PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favicon.ico",
                           "/privacy", "/data-deletion", "/terms", "/pricing",
+                          "/agentic", "/pl/agentic",  # studio.routes_agents
+                          "/.well-known/agent-card.json",
                           "/k/judge-master-key",  # the demo video's easter egg
                           "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys",
                           "/try", "/pl/try", "/try/data.json",  # the recorded tour

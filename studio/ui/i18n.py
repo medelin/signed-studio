@@ -1342,6 +1342,66 @@ PL.update(PL_PAYPAL)
 EN.update(EN_MANDATES)
 PL.update(PL_MANDATES)
 
+EN_AGENTIC: dict[str, str] = {
+    "agentic.title": "How an assistant works with Signed Studio",
+    "meta.agentic": "What an AI assistant can and cannot do with Signed Studio: it pays "
+                    "only inside a mandate you signed, and otherwise hands you a link.",
+    "agentic.lead": "Your own AI assistant can draft and run a campaign. Money moves only "
+                    "as you signed it.",
+    "agentic.outcomes_h": "Three outcomes",
+    "agentic.o1": "It fits your mandate: the studio holds the money on your saved PayPal "
+                  "and creates the campaign paused. You get the receipt.",
+    "agentic.o2": "It is outside the mandate: the assistant gets a pay-and-sign link and "
+                  "gives it to you. Nothing is paid until you approve and sign.",
+    "agentic.o3": "Read tools: briefs, runs, campaigns, and your own PayPal transactions "
+                  "checked against PayPal's list.",
+    "agentic.never_h": "What an assistant can never do",
+    "agentic.never": "Sign, approve, turn a campaign on, capture money, change a budget, "
+                     "or create or revoke a mandate. A refund it proposes waits for your "
+                     "signature.",
+    "agentic.start_h": "Quick start (Claude Desktop, Claude Code)",
+    "agentic.q1": "Sign in and open Account, Assistants & API.",
+    "agentic.q2": "Make a token (read, or read and draft). It is shown once.",
+    "agentic.q3": "Claude Code: add the server with the command below.",
+    "agentic.q4": "Claude Desktop: use the mcp-remote bridge with the same URL and the "
+                  "Authorization header (see docs/assistants.md).",
+    "agentic.q5": "Then ask: draft a brief for my workshop, and run it.",
+    "agentic.link_card": "Agent card",
+    "agentic.link_trust": "Receipts and proof",
+}
+
+
+PL_AGENTIC: dict[str, str] = {
+    "agentic.title": "Jak asystent pracuje z Signed Studio",
+    "meta.agentic": "Co asystent AI może, a czego nie może w Signed Studio: płaci tylko w "
+                    "granicach mandatu, który podpisałeś, a poza nimi daje Ci link.",
+    "agentic.lead": "Twój własny asystent AI może przygotować i uruchomić kampanię. Pieniądze "
+                    "ruszają tylko tak, jak podpisałeś.",
+    "agentic.outcomes_h": "Trzy rezultaty",
+    "agentic.o1": "Mieści się w mandacie: studio blokuje środki na Twoim zapisanym PayPal i "
+                  "tworzy kampanię wstrzymaną. Dostajesz pokwitowanie.",
+    "agentic.o2": "Wykracza poza mandat: asystent dostaje link do zapłaty i podpisu i oddaje "
+                  "go Tobie. Nic nie jest płatne, dopóki nie zatwierdzisz i nie podpiszesz.",
+    "agentic.o3": "Narzędzia odczytu: briefy, uruchomienia, kampanie i Twoje transakcje "
+                  "PayPal porównane z listą PayPal.",
+    "agentic.never_h": "Czego asystent nie zrobi nigdy",
+    "agentic.never": "Nie podpisze, nie zatwierdzi, nie włączy kampanii, nie pobierze "
+                     "środków, nie zmieni budżetu ani nie utworzy czy cofnie mandatu. Zwrot, "
+                     "który zaproponuje, czeka na Twój podpis.",
+    "agentic.start_h": "Szybki start (Claude Desktop, Claude Code)",
+    "agentic.q1": "Zaloguj się i otwórz Konto, Asystenci i API.",
+    "agentic.q2": "Utwórz token (odczyt albo odczyt i szkice). Pokazuje się raz.",
+    "agentic.q3": "Claude Code: dodaj serwer poleceniem poniżej.",
+    "agentic.q4": "Claude Desktop: użyj mostu mcp-remote z tym samym adresem i nagłówkiem "
+                  "Authorization (zobacz docs/assistants.md).",
+    "agentic.q5": "Potem poproś: przygotuj brief dla mojej pracowni i uruchom go.",
+    "agentic.link_card": "Karta agenta",
+    "agentic.link_trust": "Pokwitowania i dowody",
+}
+
+EN.update(EN_AGENTIC)
+PL.update(PL_AGENTIC)
+
 CATALOGS = {"en": EN, "pl": PL}
 
 

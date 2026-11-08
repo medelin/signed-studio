@@ -56,6 +56,7 @@ from studio import (
     notify,
     prefs,
     routes_account,
+    routes_agents,
     routes_api,
     routes_export,
     routes_google,
@@ -632,6 +633,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_receipts.register(app, settings, ledger, templates, session_of)
     routes_money.register(app, settings, ledger, conn, templates, session_of)
     routes_help.register(app, settings, ledger, templates, session_of)
+    routes_agents.register(app, settings, ledger, templates, session_of)
     routes_try.register(app, settings, templates, session_of)
     routes_onboarding.register(app, settings, ledger, templates, session_of, COOKIE)
     routes_account.register(app, settings, ledger, conn, templates, session_of)
