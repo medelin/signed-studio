@@ -127,7 +127,7 @@ available (the same idea: a maximum amount, a currency and an expiry, signed by 
 | PayPal MCP server (`mcp.sandbox.paypal.com`; optional, documented setup next to ours, not part of the studio) | Read-only questions if the owner adds it | Untested by us; anything that moves money goes through our server |
 | PayPal AI Toolkit plugin (Claude Code) | `/paypal:doctor` on this repo, 5 Nov 2026: 0 critical, 4 warnings, all fixed | Used while building; not part of the running app |
 | APIMatic Context Plugin for PayPal | Installed in the coding agent while building | Used while building; not part of the running app |
-| AG Grid Community 34.3.1 | The `/money` page (holds, captures, voids, charges) | Vendored, strict CSP |
+| AG Grid Community 34.3.1 + AG Charts Community 12.3.1 | The `/money` page: column and floating filters (text, number, date), quick search, CSV export, per-currency pinned totals, status-badge renderers, remembered column state, daily held/taken/refunded chart (details: README, "The money page") | Vendored, strict CSP, Community edition only |
 | Postman | Collection for the assistant API and the PayPal sandbox calls (`docs/postman/`) | Variables only, no secrets |
 | PayPal Orders v2, Vault v3, Webhooks, Transaction Search (sandbox) | Holding, capturing, voiding and charging the budget | Every call is a signed, hash-chained receipt; `studio verify` rechecks P-V1…P-V6 offline |
 

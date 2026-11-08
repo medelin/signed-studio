@@ -1,5 +1,7 @@
 // Muse Studio Lite — /money: the account's PayPal fundings in an AG Grid Community table.
 // Reads /api/money (no PayPal call); the check button asks for ?reconcile=1.
+// Community-only features: column filters (text/number/date, floating), quick filter, CSV export,
+// pinned totals row, cell renderers, remembered column state; AG Charts Community for the daily chart.
 "use strict";
 
 (() => {
@@ -53,39 +55,209 @@
     return { ok: r.ok, status: r.status, data };
   }
 
-  const num = { type: "rightAligned", width: 120 };
+  // ---- status badges: a glyph (plain text, no icon font) + the label, coloured by tone ----
+  const tones = {
+    created: ["idle", "○"], payer_approved: ["idle", "◐"], authorized: ["warn", "◔"],
+    captured: ["ok", "✓"], partially_refunded: ["warn", "↺"], refunded: ["idle", "↺"],
+    voided: ["idle", "∅"], expired: ["idle", "∅"], failed: ["bad", "✕"],
+  };
+  const reconTones = {
+    matched: ["ok", "✓"], pending: ["warn", "…"], held: ["warn", "◔"], missing: ["bad", "✕"],
+    amount_mismatch: ["bad", "≠"], unknown: ["idle", "?"],
+  };
+  const badge = (map, labels) => (p) => {
+    if (!p.value || !p.data || p.data.total) return "";
+    const [tone, glyph] = map[p.value] || ["idle", "•"];
+    const b = document.createElement("span");
+    b.className = "money-badge money-badge-" + tone;
+    const g = document.createElement("span");
+    g.className = "money-badge-glyph";
+    g.setAttribute("aria-hidden", "true");
+    g.textContent = glyph;
+    b.append(g, document.createTextNode(label(labels)(p)));
+    return b;
+  };
+  // filter and quick-filter text for coded columns is the label the user sees
+  const coded = (labels) => ({
+    filterValueGetter: (p) => (p.data && p.data.total ? "" : label(labels)({ value: p.data && p.data[p.colDef.field] })),
+    getQuickFilterText: (p) => (p.value ? label(labels)(p) : ""),
+  });
+
+  // ---- numbers: the *_n twins filter and sort; the display strings come from the server ----
+  const money = (key) => ({
+    field: key + "_n", type: "rightAligned", width: 120, filter: "agNumberColumnFilter",
+    valueFormatter: (p) => (p.data ? p.data[key] : ""),
+    filterParams: { buttons: ["reset"], maxNumDecimalPlaces: 2 },
+  });
+  // created: a Date at local midnight of the (UTC) day shown, for the date filter and sorting
+  const day = (s) => { const [y, m, d] = s.slice(0, 10).split("-").map(Number); return new Date(y, m - 1, d); };
+
+  const columns = [
+    { colId: "created", headerName: T("money_col_created"), width: 150, sort: "desc",
+      valueGetter: (p) => (p.data && p.data.created ? day(p.data.created) : null),
+      valueFormatter: (p) => (p.data && p.data.created) || "",
+      getQuickFilterText: (p) => (p.data && p.data.created) || "",
+      comparator: (a, b, na, nb) => ((na.data && na.data.created_ts) || 0) - ((nb.data && nb.data.created_ts) || 0),
+      filter: "agDateColumnFilter",
+      filterParams: { buttons: ["reset"], comparator: (f, c) => (c < f ? -1 : c > f ? 1 : 0) } },
+    { field: "funding_id", headerName: T("money_col_funding"), width: 190, filter: "agTextColumnFilter" },
+    { field: "run_id", headerName: T("money_col_campaign"), width: 170, filter: "agTextColumnFilter",
+      valueFormatter: (p) => (p.data && p.data.total ? "" : (p.value || "")) },
+    { field: "state", headerName: T("money_col_state"), width: 160, filter: "agTextColumnFilter",
+      valueFormatter: label(states), cellRenderer: badge(tones, states), ...coded(states) },
+    { colId: "amount", headerName: T("money_col_amount"), ...money("amount") },
+    { colId: "authorized", headerName: T("money_col_authorized"), ...money("authorized") },
+    { colId: "captured", headerName: T("money_col_captured"), ...money("captured") },
+    { colId: "refunded", headerName: T("money_col_refunded"), ...money("refunded") },
+    { field: "via", headerName: T("money_col_via"), width: 120, filter: "agTextColumnFilter",
+      valueFormatter: label(vias), ...coded(vias) },
+    { colId: "receipts", headerName: T("money_col_receipts"), width: 190, filter: "agTextColumnFilter",
+      valueGetter: (p) => (p.data && !p.data.total
+        ? ((p.data.receipt_ids || []).length ? p.data.receipt_ids.join(", ") : p.data.run_id) : ""),
+      cellRenderer: (p) => {
+        if (!p.data || p.data.total) return "";
+        const a = document.createElement("a");
+        a.href = "/receipts?run=" + encodeURIComponent(p.data.run_id);
+        a.textContent = p.value;
+        return a;
+      } },
+    { field: "recon", headerName: T("money_col_recon"), width: 190, filter: "agTextColumnFilter",
+      valueFormatter: (p) => (p.value ? label(recons)(p) : (p.data && p.data.total ? "" : "—")),
+      cellRenderer: badge(reconTones, recons),
+      filterValueGetter: (p) => (p.data && p.data.recon ? label(recons)({ value: p.data.recon }) : ""),
+      getQuickFilterText: (p) => (p.value ? label(recons)(p) : "") },
+    { colId: "explain", headerName: "", width: 130, minWidth: 130, sortable: false, filter: false,
+      floatingFilter: false, resizable: false, cellRenderer: (p) => (p.data && !p.data.total ? explain(p) : "") },
+  ];
+  const CSV_COLUMNS = columns.map((c) => c.colId || c.field).filter((id) => id !== "explain");
+
+  // ---- column state (order, widths, sort, filters) remembered per account ----
+  let storeKey = null;
+  const read = () => {
+    try {
+      const v = JSON.parse(localStorage.getItem(storeKey) || "null");
+      return v && Array.isArray(v.columns) ? v : null;
+    } catch (_) { return null; }
+  };
+  let saveTimer = 0;
+  const save = () => {
+    if (api === null || storeKey === null) return;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(storeKey, JSON.stringify({
+          columns: api.getColumnState(), filters: api.getFilterModel() || {},
+        }));
+      } catch (_) { /* private window or blocked storage: the grid just starts fresh next time */ }
+    }, 200);
+  };
+  const restore = () => {
+    const saved = read();
+    if (!saved) return false;
+    try {
+      api.applyColumnState({ state: saved.columns, applyOrder: true });
+      api.setFilterModel(saved.filters || null);
+      return true;
+    } catch (_) { return false; }
+  };
+
   let api = null;  // created when there are rows, so it measures a visible element
   const options = {
     theme: "legacy",
-    columnDefs: [
-      { field: "created", headerName: T("money_col_created"), width: 150, sort: "desc" },
-      { field: "funding_id", headerName: T("money_col_funding"), width: 190 },
-      { field: "state", headerName: T("money_col_state"), width: 130, valueFormatter: label(states) },
-      { field: "amount", headerName: T("money_col_amount"), ...num },
-      { field: "authorized", headerName: T("money_col_authorized"), ...num },
-      { field: "captured", headerName: T("money_col_captured"), ...num },
-      { field: "refunded", headerName: T("money_col_refunded"), ...num },
-      { field: "via", headerName: T("money_col_via"), width: 120, valueFormatter: label(vias) },
-      { field: "receipt_ids", headerName: T("money_col_receipts"), width: 190,
-        valueFormatter: (p) => (p.value || []).join(", "),
-        cellRenderer: (p) => {
-          const a = document.createElement("a");
-          a.href = "/receipts?run=" + encodeURIComponent(p.data.run_id);
-          a.textContent = (p.value || []).length ? p.value.join(", ") : p.data.run_id;
-          return a;
-        } },
-      { field: "recon", headerName: T("money_col_recon"), width: 150,
-        valueFormatter: (p) => (p.value ? label(recons)(p) : "—") },
-      { headerName: "", width: 130, minWidth: 130, sortable: false, filter: false, cellRenderer: explain },
-    ],
-    // AG Grid's icon font is not vendored (CSP: 'self' only): plain arrows, no header menus
-    defaultColDef: { sortable: true, filter: false, resizable: true, suppressHeaderMenuButton: true },
-    icons: { sortAscending: "↑", sortDescending: "↓", sortUnSort: "" },
-    autoSizeStrategy: { type: "fitGridWidth", defaultMinWidth: 80 },
+    columnDefs: columns,
+    // AG Grid's icon font is not vendored (CSP: 'self' only): plain glyphs instead
+    defaultColDef: {
+      sortable: true, filter: true, floatingFilter: true, resizable: true,
+      suppressHeaderMenuButton: true, suppressHeaderFilterButton: true,
+    },
+    icons: {
+      sortAscending: "↑", sortDescending: "↓", sortUnSort: "", filter: "▾", filterActive: "▾",
+      smallDown: "▾", smallUp: "▴", smallLeft: "◂", smallRight: "▸", cancel: "×", clear: "×",
+    },
     rowData: [],
+    pinnedBottomRowData: [],
     getRowId: (p) => p.data.funding_id,
+    ensureDomOrder: true,
+    suppressCellFocus: false,
     domLayout: "normal",
+    onColumnMoved: save, onColumnResized: (e) => { if (e.finished) save(); },
+    onSortChanged: save, onFilterChanged: () => { save(); count(); },
+    onColumnVisible: save, onColumnPinned: save, onModelUpdated: () => count(),
   };
+
+  function count() {
+    if (api === null) return;
+    tally.textContent = T("money_rows", { shown: api.getDisplayedRowCount(), all: total });
+  }
+  let total = 0;
+  const tally = document.getElementById("money-count");
+  const tools = document.getElementById("money-tools");
+  const keys = document.getElementById("money-keys");
+  const search = document.getElementById("money-search");
+
+  // ---- chart: held / taken / refunded per day (AG Charts Community, canvas, no tooltip DOM) ----
+  const chartBox = document.getElementById("money-chart-box");
+  const chartEl = document.getElementById("money-chart");
+  let chart = null;
+  let lastDaily = [];
+  let lastCurrency = "";
+  // a theme token as rgb(): the chart parser knows no oklch/light-dark(), the canvas does
+  function rgb(token) {
+    const probe = document.createElement("span");
+    probe.style.color = "var(" + token + ")";
+    document.body.appendChild(probe);
+    const css = getComputedStyle(probe).color;
+    probe.remove();
+    try {
+      const c = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+      c.fillStyle = css;
+      c.fillRect(0, 0, 1, 1);
+      const d = c.getImageData(0, 0, 1, 1).data;
+      return "rgb(" + d[0] + "," + d[1] + "," + d[2] + ")";
+    } catch (_) { return css; }
+  }
+  function drawChart() {
+    if (!window.agCharts || !chartEl) return;
+    const rows = lastDaily.filter((d) => d.currency === lastCurrency);
+    chartBox.hidden = rows.length === 0;
+    if (rows.length === 0) { if (chart) { chart.destroy(); chart = null; } return; }
+    chartEl.setAttribute("aria-label", T("money_chart_summary", { currency: lastCurrency, days: rows.length }));
+    const ink = rgb("--ink-2"), rule = rgb("--rule-soft"), bg = rgb("--bg-raised");
+    const series = (key, name, token) => ({
+      type: "bar", xKey: "day", yKey: key, yName: name, fill: rgb(token), stroke: rgb(token),
+      tooltip: { enabled: false },
+    });
+    const opts = {
+      container: chartEl, data: rows, background: { fill: bg },
+      animation: { enabled: false }, contextMenu: { enabled: false },
+      series: [
+        series("held", T("money_state_authorized"), "--partial"),
+        series("taken", T("money_state_captured"), "--ok"),
+        series("refunded", T("money_state_refunded"), "--down"),
+      ],
+      axes: [
+        { type: "category", position: "bottom", label: { color: ink }, line: { stroke: rule } },
+        { type: "number", position: "left", label: { color: ink }, line: { stroke: rule },
+          gridLine: { style: [{ stroke: rule }] },
+          title: { text: lastCurrency, color: ink } },
+      ],
+      legend: { position: "bottom", item: { label: { color: ink } } },
+    };
+    if (chart) chart.update(opts); else chart = agCharts.AgCharts.create(opts);
+  }
+  if (window.matchMedia) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { drawChart(); });
+  }
+  new MutationObserver(() => { drawChart(); }).observe(document.documentElement, { attributes: true });
+
+  function pinnedOf(totals) {
+    return (totals || []).map((t) => ({
+      total: true, funding_id: T("money_total", { currency: t.currency }),
+      amount: t.amount, authorized: t.authorized, captured: t.captured, refunded: t.refunded,
+      amount_n: t.amount_n, authorized_n: t.authorized_n, captured_n: t.captured_n,
+      refunded_n: t.refunded_n, currency: t.currency,
+    }));
+  }
 
   async function load(reconcile) {
     status.textContent = T(reconcile ? "money_checking" : "money_loading");
@@ -100,14 +272,51 @@
     if (!r.ok) { status.textContent = T("money_failed", { error: E(data, r.status) }); return; }
     empty.hidden = data.rows.length > 0;
     el.hidden = data.rows.length === 0;
+    tools.hidden = keys.hidden = data.rows.length === 0;
+    total = data.rows.length;
+    lastDaily = data.daily || [];
+    lastCurrency = data.currency || "";
     if (data.rows.length) {
-      if (api === null) api = agGrid.createGrid(el, options);
+      if (api === null) {
+        storeKey = "studio.money.grid.v1." + (data.account || "");
+        const saved = read();
+        // fit the columns to the width only on the first visit: saved widths win afterwards
+        if (!saved) options.autoSizeStrategy = { type: "fitGridWidth", defaultMinWidth: 80 };
+        api = agGrid.createGrid(el, options);
+        restore();
+      }
       api.setGridOption("rowData", data.rows);
+      api.setGridOption("pinnedBottomRowData", pinnedOf(data.totals));
     } else if (api !== null) {
       api.setGridOption("rowData", []);
+      api.setGridOption("pinnedBottomRowData", []);
     }
+    count();
+    drawChart();
     status.textContent = reconcile ? T("money_checked") : "";
   }
+
+  search.addEventListener("input", () => {
+    if (api !== null) api.setGridOption("quickFilterText", search.value);
+    count();
+  });
+  document.getElementById("money-csv").addEventListener("click", () => {
+    if (api === null) return;
+    api.exportDataAsCsv({
+      fileName: "money-" + new Date().toISOString().slice(0, 10) + ".csv",
+      columnKeys: CSV_COLUMNS,
+    });
+  });
+  document.getElementById("money-reset").addEventListener("click", () => {
+    if (api === null) return;
+    api.resetColumnState();
+    api.setFilterModel(null);
+    api.applyColumnState({ state: [{ colId: "created", sort: "desc" }], defaultState: { sort: null } });
+    api.sizeColumnsToFit();
+    search.value = "";
+    api.setGridOption("quickFilterText", "");
+    try { localStorage.removeItem(storeKey); } catch (_) { /* nothing stored */ }
+  });
 
   check.addEventListener("click", async () => {
     check.disabled = true;

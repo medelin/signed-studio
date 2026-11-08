@@ -13,9 +13,24 @@
     <span id="money-status" class="hint" role="status"></span>
   </p>
   <p class="hint" id="money-empty" hidden>{{ t("money.empty") }}</p>
-  <div id="money-grid" class="ag-theme-quartz studio-grid" role="region" aria-label="{{ t('money.table') }}"></div>
+  <figure id="money-chart-box" class="money-chart-box" hidden>
+    <figcaption class="hint">{{ t("money.chart") }}</figcaption>
+    <div id="money-chart" class="money-chart" role="img" aria-label="{{ t('money.chart') }}"></div>
+  </figure>
+  <div id="money-tools" class="money-tools" hidden>
+    <label for="money-search" class="money-search-label">{{ t("money.search") }}</label>
+    <input type="search" id="money-search" class="money-search" autocomplete="off"
+           placeholder="{{ t('money.search_ph') }}" data-quick-filter>
+    <button type="button" id="money-csv" data-export-csv>{{ t("money.csv") }}</button>
+    <button type="button" id="money-reset">{{ t("money.reset") }}</button>
+    <span id="money-count" class="hint" role="status"></span>
+  </div>
+  <p class="hint" id="money-keys" hidden>{{ t("money.keys") }}</p>
+  <div id="money-grid" class="ag-theme-quartz studio-grid" role="region" aria-label="{{ t('money.table') }}"
+       aria-describedby="money-keys" data-floating-filters="1"></div>
   <pre id="money-advice" class="hint" hidden></pre>
 </section>
 <script src="/static/vendor/ag-grid-community.min.noStyle.js" defer></script>
+<script src="/static/vendor/ag-charts-community.min.js" defer></script>
 <script src="/static/money.js" defer></script>
 {% endblock %}

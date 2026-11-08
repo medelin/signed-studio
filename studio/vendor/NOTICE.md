@@ -19,4 +19,18 @@ No local edits. The `noStyle` build is used because the standard build injects ~
 page's `style-src 'self'` forbids the `<style>` elements the Theming API would inject.
 `studio/ui/static/money.css` maps the studio's light/dark tokens onto the grid.
 
+## AG Charts Community 12.3.1 (MIT)
+
+- Source: npm `ag-charts-community@12.3.1` (the 12.3 line pairs with AG Grid 34.3), tarball
+  `https://registry.npmjs.org/ag-charts-community/-/ag-charts-community-12.3.1.tgz`, fetched once.
+- Served from `studio/ui/static/vendor/`; licence in `AG-CHARTS-LICENSE.txt`. Used by the
+  daily chart on `/money` (`studio/ui/static/money.js`).
+- Under `style-src 'self'` the chart draws on canvas; the `<style>` elements it injects for
+  its optional DOM pieces (tooltips, loading overlay) are blocked, so tooltips are off.
+
+| file | from the package | SHA-256 |
+| --- | --- | --- |
+| `ag-charts-community.min.js` | `dist/umd/ag-charts-community.min.js` | `0d7427e02a6c092d01b690b6d8af989b5e4e57ca4ea4f4ca2202d98dd0087314` |
+| `AG-CHARTS-LICENSE.txt` | `LICENSE.txt` | `1cb5ddc0b89c5bf0c5ccdf3a387edc4a1408c922968d633c719265c8ccdd354b` |
+
 The PayPal Agent Toolkit is vendored in `paypal_agent_toolkit/` (see its `NOTICE.md`).

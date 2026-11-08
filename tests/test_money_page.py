@@ -215,3 +215,89 @@ def test_check_with_paypal_is_refused_in_read_only_mode(tmp_path, monkeypatch):
     assert r.status_code == 503 and r.json() == {"error": "read_only"} and not calls
     assert c.get("/api/money").status_code == 200  # reading the grid stays possible
     assert owner
+
+
+def test_totals_per_currency_and_daily_chart_data(tmp_path):
+    from studio.routes_money import daily_of, totals_of
+
+    app = make_app(tmp_path, PAYPAL_ADAPTER="mock")
+    owner = account(app, "owner")
+    _brief(app.state.conn, "brf_t1", "run_t1", owner.id)
+    _brief(app.state.conn, "brf_t2", "run_t2", owner.id)
+    day1, day2 = 1_700_000_000.0, 1_700_000_000.0 + 86400 * 2
+    _fund(app.state.conn, "run_t1", "cre_c", order="1O1", auth="1AU1", capture="1CP1", ts=day1)
+    _fund(app.state.conn, "run_t1", "cre_d", order="2O2", auth="2AU2", ts=day1 + 60)
+    _fund(app.state.conn, "run_t2", "cre_e", order="3O3", auth="3AU3", capture="3CP3", ts=day2)
+    data = client(app).get("/api/money").json()
+    assert data["account"] and data["currency"] == "EUR"
+    (tot,) = data["totals"]  # one currency: one row
+    assert tot["currency"] == "EUR" and tot["count"] == 3
+    assert tot["amount"] == "661.50" and tot["authorized"] == "661.50"
+    assert tot["captured"] == "441.00" and tot["refunded"] == "0.00"
+    assert tot["amount_n"] == 661.5 and tot["captured_n"] == 441.0
+    row = data["rows"][0]
+    assert row["amount_n"] == 220.5 and isinstance(row["created_ts"], int)
+    # chart data: one point per UTC day, numbers in major units, oldest first
+    assert data["daily"] == [
+        {"day": "2023-11-14", "currency": "EUR", "held": 441.0, "taken": 220.5, "refunded": 0.0},
+        {"day": "2023-11-16", "currency": "EUR", "held": 220.5, "taken": 220.5, "refunded": 0.0}]
+    # several currencies: one totals row each, never mixed
+    mixed = [
+        {"currency": "EUR", "created": "2026-01-01 10:00", "amount": "10.00",
+         "authorized": "10.00", "captured": "5.00", "refunded": "1.00"},
+        {"currency": "JPY", "created": "2026-01-01 11:00", "amount": "1000",
+         "authorized": "1000", "captured": "0", "refunded": "0"},
+        {"currency": "EUR", "created": "2026-01-02 10:00", "amount": "0.10",
+         "authorized": "0.10", "captured": "0.20", "refunded": "0.00"}]
+    totals = {t["currency"]: t for t in totals_of(mixed)}
+    assert set(totals) == {"EUR", "JPY"} and totals["EUR"]["amount"] == "10.10"
+    assert totals["EUR"]["captured"] == "5.20" and totals["JPY"]["amount"] == "1000"
+    assert [(d["day"], d["currency"]) for d in daily_of(mixed)] == [
+        ("2026-01-01", "EUR"), ("2026-01-01", "JPY"), ("2026-01-02", "EUR")]
+    empty_app = make_app(tmp_path / "e")
+    empty = client(empty_app).get("/api/money").json()
+    assert empty["totals"] == [] and empty["daily"] == []
+
+
+def test_money_page_has_the_grid_features_and_csp_is_unchanged(world):
+    from pathlib import Path
+
+    app, *_ = world
+    c = client(app)
+    page = c.get("/money")
+    html = page.text
+    assert "data-quick-filter" in html and "data-export-csv" in html
+    assert 'data-floating-filters="1"' in html and 'aria-describedby="money-keys"' in html
+    assert 'id="money-chart"' in html and 'role="img"' in html
+    assert '<script src="/static/vendor/ag-charts-community.min.js"' in html
+    assert i18n.text("en", "money.csv") in html and i18n.text("en", "money.search") in html
+    csp = page.headers["content-security-policy"]
+    assert "script-src 'self';" in csp and "style-src 'self';" in csp
+    assert "unsafe-eval" not in csp
+    js = (Path(__file__).resolve().parents[1] / "studio/ui/static/money.js").read_text()
+    for needle in ("agTextColumnFilter", "agNumberColumnFilter", "agDateColumnFilter",
+                   "floatingFilter: true", "exportDataAsCsv", "quickFilterText",
+                   "pinnedBottomRowData", "localStorage", "AgCharts.create"):
+        assert needle in js
+    for enterprise in ("rowGroup", "enableRowGroup", "pivot", "agSetColumnFilter",
+                       "exportDataAsExcel"):
+        assert enterprise not in js
+    # the page-load JSON carries what the pinned row and the chart need
+    assert {"totals", "daily", "account"} <= set(c.get("/api/money").json())
+
+
+def test_charts_vendor_file_is_served_with_a_script_type(world):
+    app, *_ = world
+    c = client(app)
+    r = c.get("/static/vendor/ag-charts-community.min.js")
+    assert r.status_code == 200 and "javascript" in r.headers["content-type"]
+    assert b"agCharts" in r.content[:600]
+    lic = c.get("/static/vendor/AG-CHARTS-LICENSE.txt")
+    assert lic.status_code == 200 and "MIT" in lic.text
+
+
+def test_money_new_strings_exist_in_en_and_pl():
+    for k in ("money.search", "money.csv", "money.reset", "money.chart", "money.keys",
+              "js.money_col_campaign", "js.money_total", "js.money_chart_summary",
+              "js.money_rows"):
+        assert i18n.EN[k].strip() and i18n.PL[k].strip() and i18n.EN[k] != i18n.PL[k]
