@@ -55,7 +55,9 @@ reviewers check every ad against the facts the owner confirmed and the platform'
   PayPal's API. `studio verify` rechecks six money rules (P-V1…P-V6) on an exported ledger:
   no capture without the owner's activation signature, no vault charge outside a valid
   mandate, refunds only on their own signed approval, never the same charge twice, voids
-  after revocation. One changed byte fails it.
+  after revocation. One changed byte fails it. A judge can see it without an account at
+  `/trust`: the ledger key, a live self-check, the test counts, and `/verify/<hash>` for any
+  receipt.
 
 ## How we built it
 

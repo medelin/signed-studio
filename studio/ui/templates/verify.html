@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ t("verify.title") }} · {{ t("brand") }}{% endblock %}
+{% block content %}
+<section class="trust">
+  <h1>{{ t("verify.title") }}</h1>
+  <p class="trust-check {{ 'ok' if state == 'found' else 'bad' }}" role="status">{{ t("verify." ~ state) }}</p>
+  <dl class="trust-facts">
+    <dt>{{ t("verify.hash") }}</dt><dd><code class="trust-hash">{{ answer.hash[:64] }}</code></dd>
+    {% if answer.step %}<dt>{{ t("verify.step") }}</dt><dd>{{ answer.step }}</dd>
+    <dt>{{ t("verify.time") }}</dt><dd>{{ when }}</dd>{% endif %}
+  </dl>
+  <p><a href="/trust">{{ t("verify.back") }}</a></p>
+</section>
+{% endblock %}

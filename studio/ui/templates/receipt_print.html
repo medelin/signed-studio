@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ t("print.title") }} {{ r.id }} · {{ t("brand") }}{% endblock %}
+{% block content %}
+<section class="trust receipt-print">
+  <h1>{{ t("print.title") }} <code>{{ r.id }}</code></h1>
+  <p class="no-print"><button type="button" id="print-btn">{{ t("print.print") }}</button>
+    <a href="/receipts">{{ t("print.back") }}</a></p>
+  <div class="print-qr">
+    <figure>{{ qr | safe }}<figcaption class="hint">{{ t("print.qr") }}<br><code class="trust-hash">{{ url }}</code></figcaption></figure>
+  </div>
+  <h2>{{ t("print.fields") }}</h2>
+  <dl class="trust-facts">
+    <dt>ts</dt><dd>{{ when }} UTC</dd>
+    {% for k, v in fields %}<dt>{{ k }}</dt><dd>{% if v is mapping or v is sequence and v is not string %}<code class="trust-hash">{{ v | tojson }}</code>{% else %}{{ v }}{% endif %}</dd>
+    {% endfor %}
+  </dl>
+  <dl class="trust-facts">
+    <dt>{{ t("print.hash") }}</dt><dd><code class="trust-hash">{{ r.hash }}</code></dd>
+    <dt>{{ t("print.prev") }}</dt><dd><code class="trust-hash">{{ r.prev }}</code></dd>
+    <dt>{{ t("print.sig") }}</dt><dd><code class="trust-hash">{{ r.sig }}</code></dd>
+    <dt>{{ t("trust.key_h") }}</dt><dd><code class="trust-hash">{{ key }}</code></dd>
+  </dl>
+</section>
+<script src="/static/trust.js" defer></script>
+{% endblock %}

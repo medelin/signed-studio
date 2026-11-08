@@ -326,6 +326,18 @@ Day by day: [docs/BUILD-LOG.md](docs/BUILD-LOG.md).
   `muse-studio-lite` prefix, and names registered on Meta's side (the Facebook app, the
   WhatsApp sender, the CAPI lead source) still read "Muse Studio Lite".
 
+## Proof for anyone
+
+No account needed: **`/trust`** (https://pay.udun.eu/trust) shows the ledger's Ed25519 public
+key with a copy button, the number of receipts and the newest receipt hash (live, cached for
+60 s), the result of a self-check that runs the same `studio verify` code on the server's own
+ledger (at most every 10 minutes: chain, signatures, rules P-V1…P-V6), the test counts (read
+from `docs/eval-summary.json`, regenerated from pytest's collection with `make eval-summary`)
+and the one-line command to check an export yourself. `GET /verify/<hash>` (public,
+rate-limited) says whether a receipt with that hash is in the chain and signed, and shows
+only its step name and time. A signed-in account can print a receipt with a QR code that
+points at its `/verify/<hash>` page: `/receipts/<id>/print`.
+
 ## Docs
 
 [PAYPAL.md](PAYPAL.md) (money flow) · [docs/eval.md](docs/eval.md) (numbers) ·

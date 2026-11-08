@@ -62,6 +62,7 @@
     <a href="/receipts"{% if here == "/receipts" %} aria-current="page"{% endif %}>{{ t("nav.receipts") }}</a> ·
     <a href="{{ t('start.href') }}"{% if here in ("/start", "/pl/start") %} aria-current="page"{% endif %}>{{ t("nav.start") }}</a> ·
     {{ t("foot.ledger") }} <code>{{ epoch }}</code> · {{ t("foot.seq") }} <code>{{ seq }}</code> ·
+    <a href="/trust"{% if here == "/trust" %} aria-current="page"{% endif %}>{{ t("foot.trust") }}</a> ·
     <a href="/api/receipts.jsonl">receipts.jsonl</a> ·
     <a href="/api/ledger-manifest">{{ t("foot.manifest") }}</a> ·
     <a href="/api/ledger-key">{{ t("foot.key") }}</a> ·
