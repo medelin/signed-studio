@@ -379,3 +379,19 @@ button.text-link:hover:not(:disabled) { filter: none;  color: var(--ink); }
 .panel-inset { margin: .75rem 0; padding: .5rem .75rem; border-left: 3px solid var(--rule); background: var(--soft); overflow-wrap: anywhere; min-width: 0; }
 .panel-inset h3 { margin: 0 0 .3rem; font-size: 1rem; }
 #paypal-button { max-width: 360px; }
+
+/* /trust, /verify/<hash> and the printable receipt */
+.trust { max-width: 52rem; margin-inline: auto; }
+.trust-row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.trust-hash { overflow-wrap: anywhere; word-break: break-all; }
+.trust-facts { display: grid; grid-template-columns: max-content 1fr; gap: .3rem 1rem; }
+.trust-facts dt { color: var(--muted); }
+.trust-facts dd { margin: 0; min-width: 0; }
+.trust-check { padding: .6rem .8rem; border: 1px solid var(--line, currentColor); border-radius: .5rem; }
+.trust-check.ok { border-color: var(--ok); }
+.trust-check.bad { border-color: var(--danger, #c00); }
+.print-qr svg { width: 11rem; height: auto; background: #fff; }
+@media print {
+  .top, .foot, .no-print, .ob-banner { display: none !important; }
+  .trust { max-width: none; }
+}

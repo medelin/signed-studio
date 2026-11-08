@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ t("trust.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.trust") }}{% endblock %}
+{% block content %}
+<section class="trust">
+  <h1>{{ t("trust.title") }}</h1>
+  <p class="lead">{{ t("trust.lead") }}</p>
+
+  <h2>{{ t("trust.what_h") }}</h2>
+  <p>{{ t("trust.what") }}</p>
+
+  <h2>{{ t("trust.key_h") }}</h2>
+  <p class="trust-row"><code id="ledger-key" class="trust-hash">{{ key }}</code>
+    <button type="button" class="secondary copy-json" data-copy="ledger-key" data-done="{{ t('trust.copied') }}">{{ t("trust.copy") }}</button></p>
+  <p class="hint">{{ t("trust.key_hint") }}</p>
+
+  <h2>{{ t("trust.chain_h") }}</h2>
+  <dl class="trust-facts">
+    <dt>{{ t("trust.count") }}</dt><dd>{{ stats.count }}</dd>
+    <dt>{{ t("trust.head") }}</dt>
+    <dd>{% if stats.head %}<a href="/verify/{{ stats.head }}"><code class="trust-hash">{{ stats.head }}</code></a>{% else %}{{ t("trust.head_none") }}{% endif %}</dd>
+  </dl>
+
+  <h2>{{ t("trust.check_h") }}</h2>
+  <p class="trust-check {{ 'ok' if check.ok and check.money_rules_ok else 'bad' }}" role="status">
+    {% if check.ok %}{{ t("trust.check_ok", time=checked_at, n=check.receipts, m=check.signatures) }}
+    {% else %}{{ t("trust.check_bad", time=checked_at, n=check.receipts, m=check.signatures, p=check.problems, rules=t("trust.rules_ok" if check.money_rules_ok else "trust.rules_fail")) }}{% endif %}</p>
+  <p class="hint">{{ t("trust.check_hint") }}</p>
+
+  <h2>{{ t("trust.tests_h") }}</h2>
+  <p>{% if summary %}{{ t("trust.tests", total=summary.total_tests, attack=summary.attack_tests, date=summary.get("generated", "")) }}{% else %}{{ t("trust.tests_none") }}{% endif %}</p>
+
+  <h2>{{ t("trust.links_h") }}</h2>
+  <h3 class="hud-label">{{ t("trust.cmd_h") }}</h3>
+  <p class="trust-row"><code id="verify-cmd" class="trust-hash">{{ command }}</code>
+    <button type="button" class="secondary copy-json" data-copy="verify-cmd" data-done="{{ t('trust.copied') }}">{{ t("trust.copy") }}</button></p>
+  <ul>
+    <li><a href="/api/receipts.jsonl">{{ t("trust.link_export") }}</a> · <a href="/help#receipts">{{ t("trust.link_help") }}</a></li>
+    <li><a href="/api/ledger-manifest">{{ t("trust.link_manifest") }}</a></li>
+    <li><a href="{{ repo_url }}" rel="noopener">{{ t("trust.link_repo") }}</a></li>
+    <li><a href="{{ video_url }}" rel="noopener">{{ t("trust.link_video") }}</a></li>
+    <li><a href="/try">{{ t("trust.link_try") }}</a></li>
+  </ul>
+</section>
+<script src="/static/trust.js" defer></script>
+{% endblock %}

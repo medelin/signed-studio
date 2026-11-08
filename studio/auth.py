@@ -45,6 +45,7 @@ FORM_CHECKED_IN_ROUTE = frozenset({"/login", "/logout", "/login/2fa",
 FORM_CHECKED_PREFIXES = ("/account/",)  # studio.routes_account checks the csrf field
 PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favicon.ico",
                           "/privacy", "/data-deletion", "/terms", "/pricing",
+                          "/trust",  # the proof page (studio.trust): key, counts, self-check
                           "/k/judge-master-key",  # the demo video's easter egg
                           "/api/ledger-key", "/api/ledger-manifest", "/api/approver-keys",
                           "/try", "/pl/try", "/try/data.json",  # the recorded tour
@@ -54,7 +55,7 @@ PUBLIC_PATHS = frozenset({"/login", "/logout", "/login/2fa", "/healthz", "/favic
                           # and bounces once to pick up the SameSite=Strict cookie
                           "/account/paypal/vault/return",
                           "/webhooks/paypal"})  # PayPal's servers; RSA-signed, verified
-PUBLIC_PREFIXES = ("/static/", "/try/img/", "/auth/")  # /auth/: studio.routes_social
+PUBLIC_PREFIXES = ("/static/", "/try/img/", "/auth/", "/verify/")  # /auth/: studio.routes_social
 # Posted by Meta's servers, never by a browser: the X-Hub-Signature-256 HMAC of the raw body
 # (checked in studio.routes_whatsapp) is the authentication, so no CSRF token is asked for.
 CSRF_EXEMPT_PATHS = frozenset({"/webhooks/whatsapp", "/webhooks/paypal"})

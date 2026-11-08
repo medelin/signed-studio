@@ -1,4 +1,4 @@
-.PHONY: postman install test lint demo demo-replay serve-replay record-demo verify smoke-live eval
+.PHONY: eval-summary postman install test lint demo demo-replay serve-replay record-demo verify smoke-live eval
 PY ?= .venv/bin/python
 
 install:
@@ -34,3 +34,6 @@ eval:
 
 postman:
 	$(PY) scripts/postman_collection.py
+
+eval-summary:
+	$(PY) scripts/eval_summary.py

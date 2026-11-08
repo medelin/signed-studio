@@ -70,6 +70,7 @@ from studio import (
     routes_report,
     routes_social,
     routes_studio,
+    routes_trust,
     routes_try,
     routes_whatsapp,
     sandbox,
@@ -630,6 +631,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     routes_report.register(app, settings, ledger, conn, write_guard, templates, session_of)
     routes_export.register(app, settings, ledger, conn, write_guard, session_of)
     routes_receipts.register(app, settings, ledger, templates, session_of)
+    def approvers() -> dict[str, Any]:
+        with conn.lock:
+            return dict(Keys.registry(conn))
+
+    routes_trust.register(app, settings, ledger, templates, session_of, approvers,
+                          lambda request: client_ip(request, settings.trusted_proxies))
     routes_money.register(app, settings, ledger, conn, templates, session_of)
     routes_help.register(app, settings, ledger, templates, session_of)
     routes_try.register(app, settings, templates, session_of)
