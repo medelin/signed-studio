@@ -40,6 +40,8 @@ reviewers check every ad against the facts the owner confirmed and the platform'
   per period, which assistant tokens. Their own AI assistant (Claude, ChatGPT or a script,
   over MCP or the HTTPS API) runs a brief and pays from the saved PayPal, only inside those
   limits. Outside them it gets a pay-and-sign link for the owner instead of money.
+  The studio publishes this policy for agents as a public A2A agent card
+  (`/.well-known/agent-card.json`, `extensions.payments`) and explains it on `/agentic`.
 - **PayPal's agent tools, behind the gate.** The assistant reads the account's PayPal
   transactions through PayPal's Agent Toolkit read tools, limited to the account's own
   money, and can propose a refund that only the owner's signature executes.

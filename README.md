@@ -127,6 +127,17 @@ mandate, fits both caps, and appears once in the whole log.
 
 <img src="docs/screenshots/paypal/8-assistant-charge-receipt.png" alt="Receipt JSON for paypal.vault_charge: amount_minor 22050 PLN, mandate_id, approval_id, order_id 2M8004592G627491U, authorization_id 8L094712BM366352W, status CREATED, vault_sha256" width="100%">
 
+## For agents (A2A card)
+
+`GET /.well-known/agent-card.json` is the studio's public A2A agent card (protocol "1.0", the
+fields the zahadun mesh's cards use; no secret, cached, `ETag` = the card's content hash).
+It lists only the tools that work (`draft_brief`, `confirm_brief`, `run_brief`,
+`paypal_transactions`, `propose_refund`), bearer-token security, the MCP and OpenAPI URLs,
+and the payment policy in `extensions.payments`: the assistant pays only inside a mandate the
+owner signed, otherwise it hands the owner a pay-and-sign link, and every step is a signed,
+hash-chained receipt. [`/agentic`](docs/assistants.md) (EN, `/pl/agentic`) explains it to
+people in one screen. Code: `studio/routes_agents.py`; tests: `tests/test_agent_card.py`.
+
 ## Why this is different
 
 Most "human in the loop" payments are a button. Here the approval is cryptographic, bound to

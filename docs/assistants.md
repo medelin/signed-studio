@@ -13,6 +13,11 @@ both transports), `studio/routes_api.py` (`/api/v1`, the bearer gate, the accoun
 `tests/attack/test_assistants.py`. The local stdio server for the operator is a separate
 thing: [docs/mcp.md](mcp.md).
 
+Agents can discover all of this without reading these docs: the public A2A agent card at
+`/.well-known/agent-card.json` (skills, bearer security, the MCP and OpenAPI URLs, and the
+payment policy in `extensions.payments`), and the human page `/agentic`
+(`studio/routes_agents.py`).
+
 ## 1. Make a token
 
 Sign in, open **Account → Assistants & API** (`/account#assistants`):

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ t("agentic.title") }} · {{ t("brand") }}{% endblock %}
+{% block description %}{{ t("meta.agentic") }}{% endblock %}
+{% block content %}
+<section class="pricing" aria-labelledby="agentic-h">
+  <h1 id="agentic-h">{{ t("agentic.title") }}</h1>
+  <p class="lead">{{ t("agentic.lead") }}</p>
+  <p><a href="{{ other_href }}" hreflang="{{ other_lang }}" lang="{{ other_lang }}">{{ lang_names[other_lang] }}</a></p>
+  <div class="panel">
+    <h2 id="agentic-outcomes">{{ t("agentic.outcomes_h") }}</h2>
+    <ol class="plan-promises" aria-labelledby="agentic-outcomes">
+      <li>{{ t("agentic.o1") }}</li>
+      <li>{{ t("agentic.o2") }}</li>
+      <li>{{ t("agentic.o3") }}</li>
+    </ol>
+    <h2 id="agentic-never">{{ t("agentic.never_h") }}</h2>
+    <p>{{ t("agentic.never") }}</p>
+  </div>
+  <div class="panel">
+    <h2 id="agentic-start">{{ t("agentic.start_h") }}</h2>
+    <ol aria-labelledby="agentic-start">
+      <li>{{ t("agentic.q1") }}</li>
+      <li>{{ t("agentic.q2") }}</li>
+      <li>{{ t("agentic.q3") }}</li>
+    </ol>
+    <pre tabindex="0"><code>claude mcp add --transport http muse {{ base }}/mcp \
+  --header "Authorization: Bearer msl_tok_..."</code></pre>
+    <p class="hint">{{ t("agentic.q4") }}</p>
+    <p class="hint">{{ t("agentic.q5") }}</p>
+  </div>
+  <p>
+    <a href="{{ base }}/.well-known/agent-card.json">{{ t("agentic.link_card") }}</a> ·
+    <a href="{{ base }}/mcp"><code>/mcp</code></a> ·
+    <a href="{{ base }}/api/v1/openapi.json">OpenAPI</a> ·
+    <a href="/trust">{{ t("agentic.link_trust") }}</a>
+  </p>
+</section>
+{% endblock %}
