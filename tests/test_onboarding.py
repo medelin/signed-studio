@@ -218,7 +218,9 @@ def test_every_class_in_the_drawings_is_styled():
 def test_links_on_the_landing_page_and_login(client, gated):
     for c, path in ((client, "/"), (gated, "/login")):
         html = c.get(path + "?lang=en").text
-        assert f'<a class="ob-button" href="/start">{EN_ONBOARDING["start.link"]}</a>' in html
+        assert f'href="/start">{EN_ONBOARDING["start.link"]}</a>' in html
+    assert 'class="ob-button" href="/start"' in client.get("/?lang=en").text
+    assert 'class="ob-button" href="/start"' not in gated.get("/login?lang=en").text
     html = client.get("/?lang=pl").text
     assert f'<a class="ob-button" href="/pl/start">{PL_ONBOARDING["start.link"]}</a>' in html
 
