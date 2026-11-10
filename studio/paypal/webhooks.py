@@ -4,7 +4,9 @@
 
 1. Headers ``paypal-transmission-id``, ``-time``, ``-sig``, ``-cert-url`` and
    ``-auth-algo`` (``SHA256withRSA``) are present and well-formed; the transmission time is
-   within ``MAX_SKEW_S`` of now.
+   no more than ``MAX_SKEW_S`` in the future and no older than ``MAX_AGE_S`` (PayPal
+   redelivers a failed webhook for days with its original time; replay is harmless because
+   state is read from the API and recorded once).
 2. The cert URL is ``https://api.paypal.com/…`` or ``https://api.sandbox.paypal.com/…``
    (an allowlist: no other host is ever fetched, so the header cannot point the server at
    an internal address). The PEM is fetched once, pinned by its SHA-256 in
@@ -28,7 +30,8 @@ was recorded is also remembered by (transmission id, body hash), a no-op on rede
 
 Anything else is refused with nothing stored: a body that is not an event or names no
 checkable resource, a resource PayPal's API does not know or that is not ours
-(``WebhookRefused``, the route answers 400), or a failed API read (``lookup_failed``,
+(``WebhookRefused``, the route answers 400; 200 "ignored" for ``not_ours``), or a failed
+API read (``lookup_failed``,
 503, so PayPal delivers again). The receipt (``paypal.webhook``, in the funding's run)
 holds the API's ids, status and class, amount, currency and ``custom_id``, plus the
 body's hash, type and event id as unattested labels, the transmission's hash and time, the
@@ -70,7 +73,8 @@ CERT_PATH = re.compile(r"^/v1/notifications/certs/.")  # PayPal's cert endpoint,
 CERT_FETCH_TIMEOUT_S = 5.0
 CERT_NEGATIVE_TTL_S = 60.0  # a cert URL that failed is not fetched again for this long
 CERT_NEGATIVE_MAX = 64
-MAX_SKEW_S = 300
+MAX_SKEW_S = 300  # a transmission time this far in the future is refused
+MAX_AGE_S = 4 * 86400  # ... and this old: PayPal redelivers for 3 days with the ORIGINAL time
 MAX_BODY = 256 * 1024
 AUTH_ALGO = "SHA256withRSA"
 AGENT = "paypal"
@@ -337,7 +341,8 @@ class Verifier:
         if len(body) > MAX_BODY:
             raise WebhookRefused("body too large", "too_large")
         t = Transmission.from_headers(headers)
-        if abs(self.clock() - t.when()) > MAX_SKEW_S:
+        age = self.clock() - t.when()
+        if age < -MAX_SKEW_S or age > MAX_AGE_S:
             raise WebhookRefused("transmission time outside the allowed window", "stale")
         leaf, digest = self.cert(t.cert_url)
         try:

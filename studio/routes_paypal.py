@@ -376,6 +376,11 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any, write_
                     lookup=webhook_lookup)
         except webhooks.WebhookRefused as exc:
             LOG.warning("PayPal webhook refused: %s", exc.code)
+            if exc.code == "not_ours":
+                # genuine (signed, API-confirmed) but about something that is not, or no
+                # longer, one of our fundings (the sandbox app is shared, fundings are reset):
+                # nothing stored, and a retry could never change that
+                return JSONResponse({"ok": True, "status": "ignored"})
             # PayPal's API could not be read: nothing was stored, so PayPal's retry of
             # this delivery redoes the check
             return JSONResponse({"error": exc.code},
