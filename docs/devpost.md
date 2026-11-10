@@ -9,13 +9,19 @@
 - Or sign in with PayPal ("Continue with PayPal" on the sign-in page) using the sandbox buyer
   login from the private field: a fresh trial account of your own, same studio workspace
 - Code: https://github.com/medelin/signed-studio (Apache-2.0)
-- Video: https://youtu.be/NfhqFX9LYE8 (under 3:00)
+- Video: https://youtu.be/WSi_si3gqa8 (under 3:00)
 
 **Private field for judges (never in the public text):** judge password; for checkout, the
 PayPal sandbox test card (Visa 4111 1111 1111 1111, any future expiry, CVV 123, "Pay as
 guest"); for "Save my PayPal", the sandbox Personal buyer login (e-mail and password).
 
 ---
+
+## Opening (first lines of the description)
+
+**An AI ad agency that cannot spend a cent you did not sign for.** AI agents plan, write and draw your ads. PayPal holds the budget. Nothing is taken until you sign, and when the agent tries anyway, PayPal says no. Every step leaves a signed, hash-chained receipt that anyone can check offline: change one byte and `studio verify` fails. The first 20 seconds of the video show all of it.
+
+**No account needed:** open https://pay.udun.eu and press *See it work without an account (1 min)*, or go straight to the public proof page https://pay.udun.eu/trust (ledger key, chain head, live self-check).
 
 ## Inspiration
 
