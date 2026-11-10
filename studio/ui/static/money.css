@@ -60,4 +60,8 @@ main:has(#money-grid) { max-width: none; }
 .money-chart .ag-charts-proxy-container button { opacity: 0; }
 .money-chart .ag-charts-proxy-container button:focus-visible { opacity: 1; }
 
-/* receipts / PayPal check: keep the badge and link whole; headers never clip */
+/* the Explain button is a compact one inside its cell (the site's button is far wider) */
+.studio-grid .ag-cell button { margin: 0; padding: 0 .7em; min-height: 0; max-width: 100%;
+  font-size: .75rem; line-height: 1.9; vertical-align: middle; }
+/* the native date input is wide: smaller text and no picker icon padding so "mm/dd/yyyy" fits */
+.studio-grid .ag-floating-filter-input input[type=date] { font-size: .75rem; padding-inline: 4px; }
