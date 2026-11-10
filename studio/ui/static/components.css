@@ -378,6 +378,13 @@ button.text-link:hover:not(:disabled) { filter: none;  color: var(--ink); }
 /* the PayPal step on the approval screen (paypal.js) */
 .panel-inset { margin: .75rem 0; padding: .5rem .75rem; border-left: 3px solid var(--rule); background: var(--soft); overflow-wrap: anywhere; min-width: 0; }
 .panel-inset h3 { margin: 0 0 .3rem; font-size: 1rem; }
+/* the approval screen's plain-words card, above the proof details */
+.summary-card { margin: .75rem 0; padding: .75rem 1rem; border: 2px solid var(--signal); background: var(--bg-raised); overflow-wrap: anywhere; min-width: 0; }
+.summary-card h3 { margin: 0 0 .4rem; font-size: 1rem; }
+.summary-card ul { margin: 0; padding-left: 1.1rem; list-style: disc; }
+.summary-card li { margin: .3rem 0; font-size: 1.05rem; line-height: 1.45; }
+.proof > summary { cursor: pointer; font-weight: 600; margin: .5rem 0; }
+.proof > summary:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
 #paypal-button { max-width: 360px; }
 
 /* /trust, /verify/<hash> and the printable receipt */

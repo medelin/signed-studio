@@ -410,6 +410,11 @@
     <p id="ap-mandate-title"></p>
     <ul id="ap-mandate" class="plain"></ul>
   </div>
+  <div class="summary-card" id="ap-summary" role="group" aria-labelledby="ap-summary-h" hidden>
+    <h3 id="ap-summary-h">{{ t("summary.h") }}</h3>
+    <ul id="ap-summary-list" class="plain"></ul>
+  </div>
+  <details class="proof" id="ap-proof" open><summary>{{ t("summary.proof") }}</summary>
   <dl class="kv">
     <dt>{{ t("studio.ap.action") }}</dt><dd id="ap-action"></dd>
     <dt>{{ t("studio.ap.sha") }}</dt><dd><code id="ap-sha"></code></dd>
@@ -430,6 +435,7 @@
   <p class="stamp" id="stamp" hidden><span class="hud-label">{{ t("studio.ap.signed") }}</span> <span class="stamp-hash"></span></p>
   </div>
   <details><summary>{{ t("studio.ap.bytes") }}</summary><pre id="ap-message"></pre></details>
+  </details>
   <div class="panel-inset" id="ap-paypal" aria-labelledby="ap-paypal-h" hidden>
     <h3 id="ap-paypal-h">{{ t("paypal.h") }}</h3>
     <p id="ap-paypal-amount"></p>
@@ -497,6 +503,7 @@
 </section>
 </div>
 <script src="/static/signer.js" defer></script>
+<script src="/static/summary.js" defer></script>
 <script src="/static/paypal.js" defer></script>
 <script src="/static/app.js" defer></script>
 <script src="/static/brief.js" defer></script>
