@@ -92,6 +92,10 @@ EN: dict[str, str] = {
     "login.failed": "Sign-in failed. Check the user name and password, or try again in a "
                     "minute.",
     "login.disabled": "Sign-in is disabled on this instance.",
+    "login.try_button": "See it work without an account (1 min)",
+    "login.try_href": "/try",
+    "login.proof_link": "Proof anyone can check",
+    "login.proof_href": "/trust",
     "login.public_html": 'Public and read-only without signing in: <a href="/api/ledger-key">'
                          'ledger key</a>, <a href="/api/ledger-manifest">manifest</a>, '
                          '<a href="/api/approver-keys">approver keys</a> (what '
@@ -547,6 +551,10 @@ PL: dict[str, str] = {
     "login.failed": "Logowanie nie powiodło się. Sprawdź nazwę użytkownika i hasło albo "
                     "spróbuj ponownie za minutę.",
     "login.disabled": "Logowanie jest wyłączone na tej instancji.",
+    "login.try_button": "Zobacz, jak to działa, bez konta (1 min)",
+    "login.try_href": "/pl/try",
+    "login.proof_link": "Dowód, który każdy może sprawdzić",
+    "login.proof_href": "/trust",
     "login.public_html": 'Publiczne i tylko do odczytu bez logowania: <a href="/api/ledger-key">'
                          'klucz rejestru</a>, <a href="/api/ledger-manifest">manifest</a>, '
                          '<a href="/api/approver-keys">klucze zatwierdzających</a> (tego '
