@@ -32,6 +32,12 @@
     amount_mismatch: () => T("money_recon_amount_mismatch"),
     unknown: () => T("money_recon_unknown"),
   };
+  // the full sentence for badges whose visible text is short (shown as the tooltip)
+  const reconTips = {
+    pending: () => T("money_recon_pending_tip"), held: () => T("money_recon_held_tip"),
+    unknown: () => T("money_recon_unknown_tip"),
+    amount_mismatch: () => T("money_recon_amount_mismatch_tip"),
+  };
   const explain = (p) => {
     const b = document.createElement("button");
     b.type = "button";
@@ -67,7 +73,7 @@
     matched: ["ok", "✓"], pending: ["warn", "…"], held: ["warn", "◔"], missing: ["bad", "✕"],
     amount_mismatch: ["bad", "≠"], unknown: ["idle", "?"],
   };
-  const badge = (map, labels) => (p) => {
+  const badge = (map, labels, tips) => (p) => {
     if (!p.value || !p.data || p.data.total) return "";
     const [tone, glyph] = map[p.value] || ["idle", "•"];
     const b = document.createElement("span");
@@ -79,7 +85,8 @@
     const text = document.createElement("span");
     text.className = "money-badge-text";
     text.textContent = label(labels)(p);
-    b.title = text.textContent;  // long labels ellipsize in a narrow column
+    // the tooltip carries the full sentence when the visible text is short
+    b.title = tips && tips[p.value] ? tips[p.value]() : text.textContent;
     b.append(g, text);
     return b;
   };
@@ -91,7 +98,7 @@
 
   // ---- numbers: the *_n twins filter and sort; the display strings come from the server ----
   const money = (key) => ({
-    field: key + "_n", type: "rightAligned", width: 90, minWidth: 90, maxWidth: 130, flex: 1, filter: "agNumberColumnFilter",
+    field: key + "_n", type: "rightAligned", width: 92, minWidth: 92, maxWidth: 130, flex: 1, filter: "agNumberColumnFilter",
     valueFormatter: (p) => (p.data ? p.data[key] : ""),
     filterParams: { buttons: ["reset"], maxNumDecimalPlaces: 2 },
   });
@@ -101,14 +108,14 @@
   const day = (s) => { const [y, m, d] = s.slice(0, 10).split("-").map(Number); return new Date(y, m - 1, d); };
 
   const columns = [
-    { colId: "created", headerName: T("money_col_created"), width: 150, minWidth: 150, sort: "desc",
+    { colId: "created", headerName: T("money_col_created"), width: 180, minWidth: 180, sort: "desc",
       valueGetter: (p) => (p.data && p.data.created ? day(p.data.created) : null),
       valueFormatter: (p) => (p.data ? stamp(p.data.created) : ""),
       getQuickFilterText: (p) => (p.data ? stamp(p.data.created) : ""),
       comparator: (a, b, na, nb) => ((na.data && na.data.created_ts) || 0) - ((nb.data && nb.data.created_ts) || 0),
       filter: "agDateColumnFilter",
       filterParams: { buttons: ["reset"], comparator: (f, c) => (c < f ? -1 : c > f ? 1 : 0) } },
-    { field: "funding_id", headerName: T("money_col_funding"), minWidth: 155, flex: 2, filter: "agTextColumnFilter",
+    { field: "funding_id", headerName: T("money_col_funding"), minWidth: 130, flex: 2, filter: "agTextColumnFilter",
       tooltipField: "funding_id",
       cellRenderer: (p) => {
         if (!p.data || !p.data.example) return p.value;
@@ -131,7 +138,7 @@
     { colId: "authorized", headerName: T("money_col_authorized"), ...money("authorized") },
     { colId: "captured", headerName: T("money_col_captured"), ...money("captured") },
     { colId: "refunded", headerName: T("money_col_refunded"), ...money("refunded") },
-    { field: "via", headerName: T("money_col_via"), minWidth: 90, flex: 1, filter: "agTextColumnFilter",
+    { field: "via", headerName: T("money_col_via"), minWidth: 92, flex: 1, filter: "agTextColumnFilter",
       valueFormatter: label(vias), ...coded(vias) },
     { colId: "receipts", headerName: T("money_col_receipts"), minWidth: 90, flex: 1, tooltipValueGetter: (p) => p.value, filter: "agTextColumnFilter",
       valueGetter: (p) => (p.data && !p.data.total
@@ -144,12 +151,12 @@
         a.textContent = p.value;
         return a;
       } },
-    { field: "recon", headerName: T("money_col_recon"), minWidth: 150, flex: 1.5, filter: "agTextColumnFilter",
+    { field: "recon", headerName: T("money_col_recon"), minWidth: 125, flex: 1.5, filter: "agTextColumnFilter",
       valueFormatter: (p) => (p.value ? label(recons)(p) : (p.data && p.data.total ? "" : "—")),
-      cellRenderer: badge(reconTones, recons),
+      cellRenderer: badge(reconTones, recons, reconTips),
       filterValueGetter: (p) => (p.data && p.data.recon ? label(recons)({ value: p.data.recon }) : ""),
       getQuickFilterText: (p) => (p.value ? label(recons)(p) : "") },
-    { colId: "explain", headerName: "", width: 85, minWidth: 85, sortable: false, filter: false,
+    { colId: "explain", headerName: "", width: 92, minWidth: 92, sortable: false, filter: false,
       floatingFilter: false, resizable: false, cellRenderer: (p) => (p.data && !p.data.total && !p.data.example ? explain(p) : "") },
   ];
   const CSV_COLUMNS = columns.map((c) => c.colId || c.field).filter((id) => id !== "explain");
@@ -306,7 +313,7 @@
     lastCurrency = data.currency || "";
     if (data.rows.length) {
       if (api === null) {
-        storeKey = "studio.money.grid.v3." + (data.account || "");
+        storeKey = "studio.money.grid.v4." + (data.account || "");
         api = agGrid.createGrid(el, options);
         restore();
       }
