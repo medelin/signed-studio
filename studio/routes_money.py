@@ -9,6 +9,10 @@
   currency (sums of amount, held, taken, refunded; the pinned bottom row) and ``daily`` the
   held/taken/refunded sums per UTC day and currency (the chart).
   ``recon`` is ``null``: the default answer never calls PayPal.
+  A sandbox instance (``STUDIO_SANDBOX=1``) whose account has no fundings answers with four
+  invented rows instead (``examples: true``, each row ``example: true``, ids ``example-*``):
+  built in code, never stored, never checked with PayPal; the page labels them and the
+  CSV export is off for them.
 - ``GET /api/money?reconcile=1``: runs the reconciliation (``studio.paypal.reconcile``,
   Transaction Search) once and fills ``recon`` with the worst status of a row's lines.
   The result is reused for ``RECON_COOLDOWN_S`` per account, so the button cannot hammer
@@ -110,6 +114,33 @@ def rows_of(conn: Any, account_id: str, recon: dict[str, str] | None) -> list[di
     } for f, mandate, receipts in out]
 
 
+def example_rows(now: float) -> list[dict[str, Any]]:
+    """Four invented rows for a sandbox account with no fundings yet: held, captured,
+    partly refunded and a mandate charge. Built in code on every call; never stored, never
+    in the ledger, never sent to PayPal. Newest first, like the real list."""
+    cur = "EUR"
+    #       id, hours ago, state, via, amount, held, taken, refunded (minor units)
+    spec = (("example-mandate", 3, "captured", "mandate", 3150, 3150, 3150, 0),
+            ("example-held", 5, "authorized", "checkout", 22050, 22050, 0, 0),
+            ("example-captured", 29, "captured", "checkout", 22050, 22050, 22050, 0),
+            ("example-refunded", 53, "partially_refunded", "checkout", 11025, 11025, 11025, 4000))
+    out = []
+    for fid, hours, state, via, amount, held, taken, refunded in spec:
+        ts = now - hours * 3600
+        out.append({
+            "funding_id": fid, "run_id": "example", "created_ts": int(ts), "example": True,
+            "amount_n": major(amount, cur), "authorized_n": major(held, cur),
+            "captured_n": major(taken, cur), "refunded_n": major(refunded, cur),
+            "created": dt.datetime.fromtimestamp(ts, dt.UTC).strftime("%Y-%m-%d %H:%M"),
+            "state": state, "currency": cur,
+            "amount": funding.format_amount(amount, cur),
+            "authorized": funding.format_amount(held, cur),
+            "captured": funding.format_amount(taken, cur),
+            "refunded": funding.format_amount(refunded, cur),
+            "via": via, "receipt_ids": [], "recon": None})
+    return out
+
+
 def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
              templates: Jinja2Templates, session_of: Callable[[Request], str | None]) -> None:
     templates.env.globals["paypal_on"] = lambda: getattr(app.state, "funder", None) is not None
@@ -176,7 +207,13 @@ def register(app: FastAPI, settings: Settings, ledger: Ledger, conn: Any,
             except Exception:  # noqa: BLE001 - PayPal or the toolkit failed: say so, no 500
                 return JSONResponse({"error": "paypal"}, 502)
         rows = rows_of(conn, account_id, recon)
+        # a sandbox judge's fundings are reset every hour: show labelled examples instead of
+        # an empty page (not stored, not checked with PayPal, not exported)
+        examples = not rows and bool(getattr(getattr(app.state, "sandbox", None), "enabled",
+                                             False))
+        if examples:
+            rows = example_rows(time.time())
         return JSONResponse({"currency": rows[0]["currency"] if rows else "", "rows": rows,
                              "account": account_id, "totals": totals_of(rows),
-                             "daily": daily_of(rows)},
+                             "daily": daily_of(rows), "examples": examples},
                             headers=NO_STORE)

@@ -665,3 +665,39 @@ def test_healthz_answers_while_a_webhooks_cert_fetch_sleeps(tmp_path):
 
     status, took, still_sleeping = asyncio.run(go())
     assert status == 200 and took < 1.0 and still_sleeping, (took, still_sleeping)
+
+
+def test_a_paypal_redelivery_keeps_its_original_time_and_is_still_accepted(env):
+    # PayPal redelivers a failed webhook for days with the ORIGINAL transmission time
+    # (observed on 4-6 Nov: every retry after the first five minutes was refused "stale")
+    headers, body = env.funder.signer.sign({"id": "WH-1AAAAAAAA0001-0001"},
+                                           now=time.time() - 2 * 3600)
+    t, _ = env.funder.verifier.verify(headers, body)
+    assert t.transmission_id
+
+
+@pytest.mark.parametrize("offset", [-5 * 86400, 600])
+def test_a_transmission_older_than_the_retry_window_or_from_the_future_is_stale(env, offset):
+    headers, body = env.funder.signer.sign({"id": "WH-1AAAAAAAA0001-0001"},
+                                           now=time.time() + offset)
+    with pytest.raises(webhooks.WebhookRefused) as e:
+        env.funder.verifier.verify(headers, body)
+    assert e.value.code == "stale"
+
+
+def test_a_signed_event_for_a_resource_that_is_not_ours_is_acknowledged(tmp_path, monkeypatch):
+    # the sandbox app is shared and its fundings are reset: a genuine event for something
+    # that is not (or no longer) a funding can never become ours, so PayPal must not retry
+    from fastapi.testclient import TestClient
+
+    from studio.app import create_app
+    from tests.test_ui_studio import settings
+
+    def refuse(*a, **k):
+        raise webhooks.WebhookRefused("not ours", "not_ours")
+
+    monkeypatch.setattr(webhooks, "apply", refuse)
+    a = create_app(settings(tmp_path, PAYPAL_ADAPTER="mock", STUDIO_REQUIRE_LOGIN="1"))
+    with TestClient(a, base_url="https://testserver") as c:
+        r = c.post("/webhooks/paypal", content=b"{}", headers={})
+    assert r.status_code == 200 and r.json() == {"ok": True, "status": "ignored"}

@@ -11,6 +11,8 @@
   const empty = document.getElementById("money-empty");
   const advice = document.getElementById("money-advice");
   const check = document.getElementById("money-check");
+  const exampleNote = document.getElementById("money-examples");
+  const csvButton = document.getElementById("money-csv");
 
   agGrid.ModuleRegistry.registerModules([agGrid.AllCommunityModule]);
 
@@ -100,7 +102,16 @@
       comparator: (a, b, na, nb) => ((na.data && na.data.created_ts) || 0) - ((nb.data && nb.data.created_ts) || 0),
       filter: "agDateColumnFilter",
       filterParams: { buttons: ["reset"], comparator: (f, c) => (c < f ? -1 : c > f ? 1 : 0) } },
-    { field: "funding_id", headerName: T("money_col_funding"), width: 190, filter: "agTextColumnFilter" },
+    { field: "funding_id", headerName: T("money_col_funding"), width: 190, filter: "agTextColumnFilter",
+      cellRenderer: (p) => {
+        if (!p.data || !p.data.example) return p.value;
+        const box = document.createElement("span");
+        const b = document.createElement("span");
+        b.className = "money-badge money-badge-example";
+        b.textContent = T("money_example_badge");
+        box.append(document.createTextNode(p.value), b);
+        return box;
+      } },
     { field: "run_id", headerName: T("money_col_campaign"), width: 170, filter: "agTextColumnFilter",
       valueFormatter: (p) => (p.data && p.data.total ? "" : (p.value || "")) },
     { field: "state", headerName: T("money_col_state"), width: 160, filter: "agTextColumnFilter",
@@ -116,6 +127,7 @@
         ? ((p.data.receipt_ids || []).length ? p.data.receipt_ids.join(", ") : p.data.run_id) : ""),
       cellRenderer: (p) => {
         if (!p.data || p.data.total) return "";
+        if (p.data.example) return "—";  // invented rows have no receipts to open
         const a = document.createElement("a");
         a.href = "/receipts?run=" + encodeURIComponent(p.data.run_id);
         a.textContent = p.value;
@@ -127,7 +139,7 @@
       filterValueGetter: (p) => (p.data && p.data.recon ? label(recons)({ value: p.data.recon }) : ""),
       getQuickFilterText: (p) => (p.value ? label(recons)(p) : "") },
     { colId: "explain", headerName: "", width: 130, minWidth: 130, sortable: false, filter: false,
-      floatingFilter: false, resizable: false, cellRenderer: (p) => (p.data && !p.data.total ? explain(p) : "") },
+      floatingFilter: false, resizable: false, cellRenderer: (p) => (p.data && !p.data.total && !p.data.example ? explain(p) : "") },
   ];
   const CSV_COLUMNS = columns.map((c) => c.colId || c.field).filter((id) => id !== "explain");
 
@@ -270,6 +282,11 @@
     }
     const data = await r.json().catch(() => ({}));
     if (!r.ok) { status.textContent = T("money_failed", { error: E(data, r.status) }); return; }
+    const examples = data.examples === true;
+    exampleNote.hidden = !examples;
+    // example rows are shown, never exported and never checked with PayPal
+    csvButton.disabled = examples;
+    check.disabled = examples;
     empty.hidden = data.rows.length > 0;
     el.hidden = data.rows.length === 0;
     tools.hidden = keys.hidden = data.rows.length === 0;
@@ -300,8 +317,8 @@
     if (api !== null) api.setGridOption("quickFilterText", search.value);
     count();
   });
-  document.getElementById("money-csv").addEventListener("click", () => {
-    if (api === null) return;
+  csvButton.addEventListener("click", () => {
+    if (api === null || csvButton.disabled) return;
     api.exportDataAsCsv({
       fileName: "money-" + new Date().toISOString().slice(0, 10) + ".csv",
       columnKeys: CSV_COLUMNS,
@@ -321,6 +338,7 @@
   check.addEventListener("click", async () => {
     check.disabled = true;
     await load(true);
+    if (!exampleNote.hidden) return;  // examples: the button stays off
     check.disabled = false;
   });
   load(false);

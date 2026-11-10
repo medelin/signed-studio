@@ -479,6 +479,7 @@ async function showApproval(pendingId) {
     const data = await Signer.loadPayload(pendingId);
     currentPayload = data;
     $("ap-action").textContent = T("item", { action: data.fields.action, id: data.fields.item_id });
+    if (window.ApprovalSummary) ApprovalSummary.show(data);  // the plain-words card above the proof
     showMandate(data.fields.action === "mandate.grant" ? data.content.mandate : null);
     showLeftOut(data.content || {});
     $("ap-sha").textContent = data.content_sha256;

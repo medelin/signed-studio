@@ -33,6 +33,33 @@ EN_PAYPAL: dict[str, str] = {
                    "to turn the campaign on. Your signature names this PayPal order.",
     "paypal.mock_button": "Approve in the PayPal sandbox (simulated buyer)",
     "paypal.ap_funding": "PayPal funding sha256",
+    "summary.h": "In plain words",
+    "summary.proof": "Proof details",
+    "js.sum_unnamed": "campaign",
+    "js.sum_campaign": "You are approving the campaign “{name}”: it may spend up to {daily} a "
+                       "day for {days} days.",
+    "js.sum_campaign_one": "You are approving the campaign “{name}”: it may spend up to {daily} "
+                           "for one day.",
+    "js.sum_campaign_nodays": "You are approving the campaign “{name}”: it may spend up to "
+                              "{daily} a day.",
+    "js.sum_hold": "When you sign, PayPal holds {total} for it: the ad budget {budget} plus "
+                   "the studio fee {fee}.",
+    "js.sum_paused": "The campaign is created PAUSED: no ad runs and nothing is taken from "
+                     "you yet.",
+    "js.sum_second": "Taking the money needs a second signature from you, when you turn the "
+                     "campaign on.",
+    "js.sum_mandate": "You let your assistant create up to {n} campaigns, each with a daily "
+                      "budget of at most {amount} {currency}, until {date}. It can only "
+                      "create them paused.",
+    "js.sum_mandate_pay": "It may use your saved PayPal to hold at most {charge} {currency} "
+                          "per campaign and {cap} {currency} every {days} days. A hold only "
+                          "reserves the money.",
+    "js.sum_mandate_signature": "Turning a campaign on, taking money, changes and replies "
+                                "still need your signature each time.",
+    "js.sum_refund": "You are approving a refund of {amount} to the buyer, out of the money "
+                     "already taken for this campaign.",
+    "js.sum_refund_final": "PayPal sends the money back as soon as you sign, and a refund "
+                           "cannot be taken back.",
     "js.paypal_creating": "Creating the PayPal order…",
     "js.paypal_amount": "{total}: ad budget {budget} for {days} day(s) + studio fee {fee} "
                         "({pct}%). PayPal order {order}.",
@@ -93,6 +120,8 @@ EN_PAYPAL: dict[str, str] = {
         "The table has the same numbers.",
     "js.money_rows": "{shown} of {all} rows",
     "money.empty": "No fundings yet. A campaign you fund through PayPal appears here.",
+    "money.examples": "Example data — fund a campaign and your own rows replace these",
+    "js.money_example_badge": "Example",
     "js.money_loading": "Loading…",
     "js.money_checking": "Asking PayPal's transaction list…",
     "js.money_checked": "Checked against PayPal's transaction list.",
@@ -163,6 +192,33 @@ PL_PAYPAL: dict[str, str] = {
                    "zamówienie PayPal.",
     "paypal.mock_button": "Zatwierdź w piaskownicy PayPal (symulowany kupujący)",
     "paypal.ap_funding": "sha256 finansowania PayPal",
+    "summary.h": "Prostymi słowami",
+    "summary.proof": "Szczegóły dowodu",
+    "js.sum_unnamed": "kampania",
+    "js.sum_campaign": "Zatwierdzasz kampanię „{name}”: może wydać do {daily} dziennie przez "
+                       "{days} dni.",
+    "js.sum_campaign_one": "Zatwierdzasz kampanię „{name}”: może wydać do {daily} przez jeden "
+                           "dzień.",
+    "js.sum_campaign_nodays": "Zatwierdzasz kampanię „{name}”: może wydać do {daily} "
+                              "dziennie.",
+    "js.sum_hold": "Gdy podpiszesz, PayPal zablokuje na nią {total}: budżet reklamowy "
+                   "{budget} plus opłata studia {fee}.",
+    "js.sum_paused": "Kampania powstaje WSTRZYMANA: żadna reklama nie działa i nic jeszcze "
+                     "nie jest pobierane.",
+    "js.sum_second": "Pobranie pieniędzy wymaga Twojego drugiego podpisu, gdy włączysz "
+                     "kampanię.",
+    "js.sum_mandate": "Pozwalasz asystentowi utworzyć do {n} kampanii, każdą z budżetem "
+                      "dziennym najwyżej {amount} {currency}, do {date}. Może je tworzyć "
+                      "tylko jako wstrzymane.",
+    "js.sum_mandate_pay": "Może użyć Twojego zapisanego PayPal, by zablokować najwyżej "
+                          "{charge} {currency} na kampanię i {cap} {currency} co {days} dni. "
+                          "Blokada tylko rezerwuje pieniądze.",
+    "js.sum_mandate_signature": "Włączenie kampanii, pobranie pieniędzy, zmiany i odpowiedzi "
+                                "nadal wymagają Twojego podpisu za każdym razem.",
+    "js.sum_refund": "Zatwierdzasz zwrot {amount} kupującemu z pieniędzy już pobranych za tę "
+                     "kampanię.",
+    "js.sum_refund_final": "PayPal odsyła pieniądze zaraz po podpisie, a zwrotu nie da się "
+                           "cofnąć.",
     "js.paypal_creating": "Tworzę zamówienie PayPal…",
     "js.paypal_amount": "{total}: budżet reklamowy {budget} na {days} dni + opłata studia "
                         "{fee} ({pct}%). Zamówienie PayPal {order}.",
@@ -226,6 +282,8 @@ PL_PAYPAL: dict[str, str] = {
         "dni: {days}. Te same liczby są w tabeli.",
     "js.money_rows": "{shown} z {all} wierszy",
     "money.empty": "Brak finansowań. Kampania opłacona przez PayPal pojawi się tutaj.",
+    "money.examples": "Dane przykładowe — opłać kampanię, a Twoje własne wiersze zastąpią te",
+    "js.money_example_badge": "Przykład",
     "js.money_loading": "Wczytuję…",
     "js.money_checking": "Pytam listę transakcji PayPal…",
     "js.money_checked": "Sprawdzono z listą transakcji PayPal.",

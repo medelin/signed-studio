@@ -90,6 +90,10 @@ window.StudioPayPal = (() => {
     $("ap-paypal-amount").textContent = T("paypal_amount", {
       total: o.total + " " + o.currency, budget: o.budget, fee: o.fee, pct: o.fee_pct,
       days: o.days, order: o.order_id });
+    if (window.ApprovalSummary) {  // the plain-words card names the same server-computed hold
+      ApprovalSummary.setHold({ total: o.total, budget: o.budget, fee: o.fee, currency: o.currency,
+                                days: o.days });
+    }
     if (cfg.adapter === "mock") {
       const btn = $("paypal-mock");
       btn.hidden = false;

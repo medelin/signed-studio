@@ -304,7 +304,7 @@ def test_7_a_replayed_webhook_receipt_is_caught(log):
 def test_7_a_stale_transmission_is_refused(log):
     import time
 
-    headers, body = log.funder.signer.sign(capture_event(log), now=time.time() - 3600)
+    headers, body = log.funder.signer.sign(capture_event(log), now=time.time() - 5 * 86400)
     with pytest.raises(webhooks.WebhookRefused) as e:
         webhooks.apply(log.conn, log.ledger, log.funder.verifier, headers, body)
     assert e.value.code == "stale"
