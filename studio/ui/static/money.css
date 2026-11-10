@@ -20,15 +20,17 @@
 
 /* the money table needs the whole width of the page */
 main:has(#money-grid) { max-width: none; }
+.money-chart-box { position: relative; z-index: 0; }
 
 /* toolbar, chart, status badges, focus */
-.money-tools { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
+.money-tools { position: relative; z-index: 2; display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .75rem 0; }
 .money-search-label { position: absolute; left: -10000px; }
 .money-search { flex: 1 1 14rem; min-width: 10rem; max-width: 26rem; padding: .5rem .7rem;
   background: var(--bg-raised); color: var(--ink); border: 1px solid var(--rule); }
 .money-search:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
 .money-chart-box { margin: .75rem 0; padding: 0; }
-.money-chart { width: 100%; height: 14rem; }
+.money-chart { position: relative; width: 100%; height: 14rem; overflow: hidden; contain: layout paint; }
+.money-funding { display: inline-flex; align-items: center; white-space: nowrap; }
 .money-badge { display: inline-flex; align-items: center; gap: .35em; padding: 0 .6em;
   line-height: 1.7; font-size: .8rem; font-weight: 600; border: 1px solid currentColor;
   border-radius: 999px; white-space: nowrap; }
@@ -46,3 +48,8 @@ main:has(#money-grid) { max-width: none; }
 .studio-grid .ag-floating-filter:focus-within { outline: 3px solid var(--signal); outline-offset: -3px; }
 .studio-grid .ag-row-pinned { font-weight: 700; background: var(--soft); }
 .studio-grid .ag-floating-filter-input input { background: var(--bg-raised); color: var(--ink); }
+
+/* AG Charts' keyboard proxy buttons (one per legend item) are real <button>s and picked up the
+   site's red chamfered button style: invisible until keyboard-focused */
+.money-chart .ag-charts-proxy-container button { opacity: 0; }
+.money-chart .ag-charts-proxy-container button:focus-visible { opacity: 1; }

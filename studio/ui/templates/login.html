@@ -6,7 +6,7 @@
   <div class="login-art il-place">{{ rotation([["grace", "amara", "leila", "mei", "ola"], ["kofi", "tomasz", "harjit", "diego"]]) }}</div>
   <div class="panel login-panel">
     <h1 id="login-page-h">{{ t("login.title") }}</h1>
-    {% include "_no_account.html" %}
+    {% with how_link=true %}{% include "_no_account.html" %}{% endwith %}
     {% if login_enabled %}
     <p class="hint">{{ t("login.hint") }}</p>
     <form method="post" action="/login" class="stack">
@@ -31,7 +31,6 @@
     {% else %}
     <p class="empty">{{ t("login.disabled") }}</p>
     {% endif %}
-    <p class="ob-entry"><a class="ob-button" href="{{ t('start.href') }}">{{ t("start.link") }}</a></p>
     <p class="hint">{{ t("login.public_html") }}</p>
   </div>
 </section>
