@@ -268,10 +268,11 @@ class PayPalClient:
 
     def _send(self, method: str, path: str, *, headers: Mapping[str, str],
               content: bytes | None, timeout: float | None = None) -> httpx.Response:
-        extra = {} if timeout is None else {"timeout": timeout}
         try:
+            if timeout is None:
+                return self._http.request(method, path, headers=dict(headers), content=content)
             return self._http.request(method, path, headers=dict(headers), content=content,
-                                      **extra)
+                                      timeout=timeout)
         except httpx.TransportError as exc:
             sent = not isinstance(exc, httpx.ConnectError | httpx.ConnectTimeout)
             raise PayPalError(0, "NETWORK_ERROR", transient=True,

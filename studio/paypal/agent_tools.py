@@ -220,7 +220,8 @@ def order_view(order: dict[str, Any]) -> dict[str, Any]:
             continue
         row = {k: unit[k] for k in ("reference_id", "custom_id")
                if isinstance(unit.get(k), str)}
-        payments = unit.get("payments") if isinstance(unit.get("payments"), dict) else {}
+        raw = unit.get("payments")
+        payments: dict[str, Any] = raw if isinstance(raw, dict) else {}
         row["payments"] = {k: _payment_view(payments.get(k))
                            for k in ("authorizations", "captures", "refunds")
                            if payments.get(k)}
