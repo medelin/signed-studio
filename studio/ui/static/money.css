@@ -37,6 +37,10 @@ main:has(#money-grid) { max-width: none; }
 .money-badge-warn { color: var(--partial); background: var(--partial-soft); }
 .money-badge-bad { color: var(--signal); background: var(--signal-soft); }
 .money-badge-idle { color: var(--down); background: var(--soft); }
+.money-badge-example { margin-left: .5em; color: var(--ink); background: var(--partial-soft);
+  border: 1px dashed var(--partial); }
+.money-examples { margin: .75rem 0; padding: .6rem .8rem; font-weight: 600; color: var(--ink);
+  background: var(--partial-soft); border-left: 4px solid var(--partial); }
 .studio-grid .ag-cell:focus, .studio-grid .ag-cell-focus, .studio-grid .ag-cell:focus-within,
 .studio-grid .ag-header-cell:focus-visible, .studio-grid .ag-header-cell:focus-within,
 .studio-grid .ag-floating-filter:focus-within { outline: 3px solid var(--signal); outline-offset: -3px; }

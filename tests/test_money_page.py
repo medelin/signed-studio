@@ -301,3 +301,85 @@ def test_money_new_strings_exist_in_en_and_pl():
               "js.money_col_campaign", "js.money_total", "js.money_chart_summary",
               "js.money_rows"):
         assert i18n.EN[k].strip() and i18n.PL[k].strip() and i18n.EN[k] != i18n.PL[k]
+
+
+# -- example rows on an empty page, sandbox only -------------------------------------------
+
+
+def _sandboxed(app):
+    from studio.sandbox import SandboxConfig
+
+    app.state.sandbox = SandboxConfig(enabled=True)  # the flag only: no guard, no reset thread
+    return app
+
+
+def test_an_empty_sandbox_account_gets_four_labelled_example_rows(tmp_path):
+    app = _sandboxed(make_app(tmp_path, PAYPAL_ADAPTER="mock"))
+    c = client(app)
+    data = c.get("/api/money").json()
+    assert data["examples"] is True and data["currency"] == "EUR"
+    rows = data["rows"]
+    assert len(rows) == 4 and all(r["example"] is True for r in rows)
+    assert {r["state"] for r in rows} == {"authorized", "captured", "partially_refunded"}
+    assert [r["via"] for r in rows].count("mandate") == 1
+    held = next(r for r in rows if r["state"] == "authorized")
+    assert held["authorized"] != "0.00" and held["captured"] == "0.00"
+    part = next(r for r in rows if r["state"] == "partially_refunded")
+    assert part["refunded"] != "0.00" and part["captured"] != "0.00"
+    assert all(r["funding_id"].startswith("example-") and r["recon"] is None for r in rows)
+    # totals and the chart are computed from the same rows
+    (tot,) = data["totals"]
+    assert tot["count"] == 4
+    assert Decimal(tot["amount"]) == sum(Decimal(r["amount"]) for r in rows)
+    assert Decimal(tot["captured"]) == sum(Decimal(r["captured"]) for r in rows)
+    assert len(data["daily"]) >= 2
+    # never stored: no funding row exists
+    assert app.state.conn.execute("SELECT COUNT(*) FROM fundings").fetchone()[0] == 0
+
+
+def test_example_rows_are_not_sent_to_paypal_and_vanish_with_a_real_funding(
+        tmp_path, monkeypatch):
+    app = _sandboxed(make_app(tmp_path, PAYPAL_ADAPTER="mock"))
+    owner = account(app, "owner")
+    calls = []
+
+    def fake(**kw):
+        calls.append(kw)
+        return ReconReport(lines=[], pages_read=1, truncated=False)
+
+    monkeypatch.setattr(recon, "reconcile_report", fake)
+    c = client(app)
+    checked = c.get("/api/money?reconcile=1").json()
+    assert all(r["recon"] is None for r in checked["rows"])  # nothing to match them against
+    _brief(app.state.conn, "brf_ex1", "run_ex1", owner.id)
+    own = _fund(app.state.conn, "run_ex1", "cre_a", order="5O190127TN364715T", auth=AUTH,
+                capture=CAP)
+    real = c.get("/api/money").json()
+    assert real["examples"] is False
+    assert [r["funding_id"] for r in real["rows"]] == [own.id]
+    assert not any(r.get("example") for r in real["rows"])
+
+
+def test_outside_sandbox_mode_an_empty_account_stays_empty(tmp_path):
+    app = make_app(tmp_path, PAYPAL_ADAPTER="mock")
+    data = client(app).get("/api/money").json()
+    assert data["rows"] == [] and data["totals"] == [] and data["daily"] == []
+    assert data["examples"] is False
+
+
+def test_the_money_page_announces_example_data_and_the_js_marks_and_skips_them(tmp_path):
+    from pathlib import Path
+
+    page = client(make_app(tmp_path)).get("/money").text
+    assert 'id="money-examples"' in page
+    assert i18n.text("en", "money.examples") in page
+    assert i18n.text("pl", "money.examples").startswith("Dane przykładowe")
+    js = (Path(__file__).resolve().parents[1] / "studio/ui/static/money.js").read_text()
+    assert "money_example_badge" in js and "data.examples" in js
+
+
+def test_example_strings_exist_in_en_and_pl():
+    for k in ("money.examples", "js.money_example_badge"):
+        assert i18n.EN[k].strip() and i18n.PL[k].strip() and i18n.EN[k] != i18n.PL[k]
+    assert i18n.EN["money.examples"] == (
+        "Example data — fund a campaign and your own rows replace these")
