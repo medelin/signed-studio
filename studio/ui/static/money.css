@@ -13,6 +13,8 @@
   --ag-selected-row-background-color: var(--signal-soft);
   --ag-input-focus-border-color: var(--signal);
   --ag-secondary-foreground-color: var(--muted);
+  --ag-cell-horizontal-padding: 10px;
+  --ag-grid-size: 5px;
   width: 100%;
   height: 28rem;
 }
@@ -30,11 +32,15 @@ main:has(#money-grid) { max-width: none; }
 .money-search:focus-visible { outline: 3px solid var(--signal); outline-offset: 2px; }
 .money-chart-box { margin: .75rem 0; padding: 0; }
 .money-chart { position: relative; width: 100%; height: 14rem; overflow: hidden; contain: layout paint; }
-.money-funding { display: inline-flex; align-items: center; white-space: nowrap; }
+.money-funding { display: flex; align-items: center; white-space: nowrap; min-width: 0; }
+.money-funding-id { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.money-funding .money-badge { flex: none; }
 .money-badge { display: inline-flex; align-items: center; gap: .35em; padding: 0 .6em;
   line-height: 1.7; font-size: .8rem; font-weight: 600; border: 1px solid currentColor;
   border-radius: 999px; white-space: nowrap; }
-.money-badge-glyph { font-weight: 700; }
+.studio-grid .ag-cell .money-badge { max-width: 100%; vertical-align: middle; }
+.money-badge-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.money-badge-glyph { flex: none; font-weight: 700; }
 .money-badge-ok { color: var(--ok); background: var(--ok-soft); }
 .money-badge-warn { color: var(--partial); background: var(--partial-soft); }
 .money-badge-bad { color: var(--signal); background: var(--signal-soft); }
@@ -53,3 +59,5 @@ main:has(#money-grid) { max-width: none; }
    site's red chamfered button style: invisible until keyboard-focused */
 .money-chart .ag-charts-proxy-container button { opacity: 0; }
 .money-chart .ag-charts-proxy-container button:focus-visible { opacity: 1; }
+
+/* receipts / PayPal check: keep the badge and link whole; headers never clip */
