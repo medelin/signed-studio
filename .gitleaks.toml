@@ -1,0 +1,32 @@
+title = "signed-studio gitleaks config"
+
+[extend]
+useDefault = true
+
+# Narrow allowlists for classes of recorded fixture data. Each entry requires BOTH the
+# path and the line pattern to match, so nothing else in these files (or elsewhere) is hidden.
+
+[[allowlists]]
+description = "Replay sets: the field \"key\" is the SHA-256 of a normalized recorded request, not a credential"
+condition = "AND"
+paths = ['''^fixtures/replay/[^/]+/replay\.json$''']
+regexTarget = "line"
+regexes = ['''"key": "[0-9a-f]{64}"''']
+
+[[allowlists]]
+description = "Tour fixture: ledger_key is the ledger's Ed25519 PUBLIC key (hex), published by /api/ledger-key"
+condition = "AND"
+paths = ['''^fixtures/tour/muse\.json$''']
+regexTarget = "line"
+regexes = ['''"ledger_key": "[0-9a-f]{64}"''']
+
+[[allowlists]]
+description = "PayPal sandbox cassette: checkout approval token in a sandbox order link (public identifier, not a secret)"
+condition = "AND"
+paths = ['''^fixtures/cassettes/paypal_sandbox\.json$''']
+regexTarget = "line"
+regexes = ['''sandbox\.paypal\.com/checkoutnow\?token=[A-Z0-9]+''']
+
+[[allowlists]]
+description = ".gitleaksignore holds commit:file:rule:line fingerprints, which look like keys but are not secrets"
+paths = ['''^\.gitleaksignore$''']
